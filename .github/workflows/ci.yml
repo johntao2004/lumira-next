@@ -1,0 +1,49 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: node --test tests/*.test.mjs
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_DB: lumira_next
+          POSTGRES_USER: lumira_next
+          POSTGRES_PASSWORD: ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lumira_next" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      LUMIRA_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/lumira_next
+      LUMIRA_TEST_DB_USER: lumira_next
+      LUMIRA_TEST_DB_PASSWORD: ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+      # Includes the integration tests that need PostgreSQL. Three of them fail on the
+      # baseline (see docs/audits) and must be repaired before this job can gate merges.
+      - run: ./backend/mvnw -f backend/pom.xml -B verify

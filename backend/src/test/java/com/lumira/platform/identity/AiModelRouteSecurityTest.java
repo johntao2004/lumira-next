@@ -2,6 +2,7 @@ package com.lumira.platform.identity;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,7 +17,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.identity.api.MaintenancePolicyPort;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +28,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,7 +39,6 @@ import org.springframework.web.bind.annotation.RestController;
 @WebMvcTest(controllers = AiModelRouteSecurityTest.RouteProbeController.class)
 @ContextConfiguration(classes = AiModelRouteSecurityTest.TestWebConfiguration.class)
 class AiModelRouteSecurityTest {
-    private static final UUID USER_ID = UUID.fromString("6d6144c4-1e60-4a82-96c4-081997dcc001");
     private static final UUID PROVIDER_ID = UUID.fromString("f3fb35ef-b869-4e16-a31a-a4c08f70c335");
 
     @Autowired MockMvc mvc;
@@ -55,27 +55,25 @@ class AiModelRouteSecurityTest {
     @BeforeEach
     @SuppressWarnings({"rawtypes", "unchecked"})
     void stubCurrentAuthorities() {
-        var userStatement = mock(JdbcClient.StatementSpec.class);
-        var authorityStatement = mock(JdbcClient.StatementSpec.class);
-        var userQuery = mock(JdbcClient.MappedQuerySpec.class);
-        var authorityQuery = mock(JdbcClient.MappedQuerySpec.class);
-
-        when(jdbc.sql("SELECT id FROM platform_user WHERE username=:name AND enabled=true"))
-            .thenReturn(userStatement);
-        when(userStatement.param(eq("name"), any())).thenAnswer(invocation -> {
+        var statement = mock(JdbcClient.StatementSpec.class);
+        when(jdbc.sql("SELECT a.authority FROM platform_user u LEFT JOIN platform_effective_authority a ON a.user_id=u.id WHERE u.username=:name AND u.enabled=true"))
+            .thenReturn(statement);
+        when(statement.param(eq("name"), any())).thenAnswer(invocation -> {
             currentUsername.set(invocation.getArgument(1));
-            return userStatement;
+            return statement;
         });
-        when(userStatement.query(UUID.class)).thenReturn(userQuery);
-        when(userQuery.optional()).thenReturn(Optional.of(USER_ID));
-
-        when(jdbc.sql("SELECT authority FROM platform_effective_authority WHERE user_id=:id"))
-            .thenReturn(authorityStatement);
-        when(authorityStatement.param("id", USER_ID)).thenReturn(authorityStatement);
-        when(authorityStatement.query(String.class)).thenReturn(authorityQuery);
-        when(authorityQuery.list()).thenAnswer(invocation -> currentUsername.get().equals("reader")
-            ? List.of("platform:settings:read")
-            : List.of("platform:settings:read", "platform:settings:write"));
+        doAnswer(invocation -> {
+            RowCallbackHandler handler = invocation.getArgument(0);
+            var authorities = currentUsername.get().equals("reader")
+                ? List.of("platform:settings:read")
+                : List.of("platform:settings:read", "platform:settings:write");
+            for (String authority : authorities) {
+                var row = mock(java.sql.ResultSet.class);
+                when(row.getString(1)).thenReturn(authority);
+                handler.processRow(row);
+            }
+            return null;
+        }).when(statement).query(any(RowCallbackHandler.class));
     }
 
     @Test

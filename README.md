@@ -41,7 +41,7 @@ SPRING_FLYWAY_BASELINE_ON_MIGRATE=true SPRING_FLYWAY_BASELINE_VERSION=1 node scr
 
 初始化账号 admin；随机密码保存在 .runtime/local.json 的 LUMIRA_BOOTSTRAP_PASSWORD。文件权限 0600，请在本机查看，不提交或发布。重启不会重设已有账号密码。
 
-生产运行时扫描 `backend/src/main/resources/db/migration/`：`V1__platform_initialization.sql` 是由原 V1–V48 最终结构合并而成的不可变基线；`V2__identity_argon2_password_hash.sql` 扩大密码摘要字段以容纳版本化 Argon2id；`V3__group_platform_navigation.sql` 按用户、内容、运营和平台设置整理内置导航。迁移不写入管理员密码、短信/邮件密钥或其他秘密；原历史增量脚本仅保存在 `backend/src/test/resources/legacy-migrations.archive`，供升级行为回归测试使用，不会被 Flyway 加载。
+生产运行时扫描 `backend/src/main/resources/db/migration/`：`V1__platform_initialization.sql` 是由原 V1–V48 最终结构合并而成的不可变基线；`V2__identity_argon2_password_hash.sql` 扩大密码摘要字段以容纳版本化 Argon2id；`V3__group_platform_navigation.sql` 按用户、内容、运营和平台设置整理内置导航；`V4`–`V17` 为基线之后追加的增量迁移（用户软删除、AI 供应商与数据库化文件/AI 状态、导航整理、按用户/角色文件配额、业务字典扩充、本地化语言注册、敏感词分类、云端 AI 供应商类型、文件回收站）。新变更只追加更高版本，不改写已发布迁移，具体清单以迁移目录为准。迁移不写入管理员密码、短信/邮件密钥或其他秘密；原历史增量脚本仅保存在 `backend/src/test/resources/legacy-migrations.archive`，供升级行为回归测试使用，不会被 Flyway 加载。
 
 需要重建本地数据库时先停止服务，再执行 `LUMIRA_ALLOW_LOCAL_DB_RESET=1 pnpm db:reinitialize`。命令必须带显式的本地重置开关，会先生成 `.runtime/backups/*.dump` 备份，并且只重建配置中的 `lumira_next`，不会触碰旧系统数据库。重建后启动服务即可按顺序执行 V1、V2、V3；`pnpm db:schema-smoke` 会检查活动迁移、表/约束/索引和种子完整性。数据库结构与维护约定见 [数据库初始化说明](docs/database-initialization.md)。
 

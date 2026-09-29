@@ -36,6 +36,8 @@ public class ModelConnectionService {
         public ConnectionResult { models = List.copyOf(models); }
     }
 
+    private static final int MAX_RESPONSE_BYTES = 2_000_000;
+
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final SecretStorePort secrets;
     private final ObjectMapper mapper;
@@ -146,7 +148,12 @@ public class ModelConnectionService {
             } else {
                 builder.GET();
             }
-            HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<java.io.InputStream> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            byte[] body;
+            try (java.io.InputStream stream = response.body()) {
+                // Bounded read: never buffer more than the limit plus one byte from an untrusted endpoint.
+                body = stream.readNBytes(MAX_RESPONSE_BYTES + 1);
+            }
             if (response.statusCode() == 401 || response.statusCode() == 403) {
                 throw unavailable("aiProviderAuthenticationFailed");
             }
@@ -156,10 +163,10 @@ public class ModelConnectionService {
             if (response.statusCode() == 429) {
                 throw unavailable("aiProviderRateLimited");
             }
-            if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body().length() > 2_000_000) {
+            if (response.statusCode() < 200 || response.statusCode() >= 300 || body.length > MAX_RESPONSE_BYTES) {
                 throw unavailable();
             }
-            return mapper.readTree(response.body());
+            return mapper.readTree(body);
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (HttpTimeoutException exception) {

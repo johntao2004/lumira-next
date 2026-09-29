@@ -40,8 +40,8 @@ test("legacy locales and regional tags resolve safely", () => {
 });
 test("interpolation preserves names and zero counts", () => {
   assert.equal(
-    translate("en", "welcomeBack", { name: "Alice" }),
-    "Welcome back, Alice",
+    translate("en", "welcome", { name: "Alice" }),
+    "Welcome to Alice",
   );
   assert.equal(
     translate("en", "moduleCount", { count: 0 }),

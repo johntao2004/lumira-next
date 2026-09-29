@@ -1,6 +1,5 @@
 package com.lumira.platform.identity;
 import java.io.IOException;
-import java.util.UUID;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -16,12 +15,15 @@ final class CurrentAuthorityFilter extends OncePerRequestFilter {
  @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain)throws ServletException,IOException{
   var context=SecurityContextHolder.getContext();var authentication=context.getAuthentication();
   if(authentication!=null&&authentication.isAuthenticated()&&!(authentication instanceof AnonymousAuthenticationToken)){
-   var id=jdbc.sql("SELECT id FROM platform_user WHERE username=:name AND enabled=true").param("name",authentication.getName()).query(UUID.class).optional();
-   if(id.isEmpty()){
+   // One round trip: an enabled account always yields at least one row (authority is NULL when it holds no grants).
+   var grants=new java.util.ArrayList<SimpleGrantedAuthority>();
+   boolean[] active={false};
+   jdbc.sql("SELECT a.authority FROM platform_user u LEFT JOIN platform_effective_authority a ON a.user_id=u.id WHERE u.username=:name AND u.enabled=true")
+    .param("name",authentication.getName()).query(rs->{active[0]=true;String authority=rs.getString(1);if(authority!=null)grants.add(new SimpleGrantedAuthority(authority));});
+   if(!active[0]){
     context.setAuthentication(null);var session=request.getSession(false);if(session!=null)session.invalidate();
     response.setStatus(401);response.setContentType("application/json;charset=UTF-8");response.getWriter().write("{\"detail\":\"账号已停用或会话已失效\"}");return;
    }
-   var grants=jdbc.sql("SELECT authority FROM platform_effective_authority WHERE user_id=:id").param("id",id.get()).query(String.class).list().stream().map(SimpleGrantedAuthority::new).toList();
    var refreshed=UsernamePasswordAuthenticationToken.authenticated(authentication.getPrincipal(),null,grants);
    refreshed.setDetails(authentication.getDetails());context.setAuthentication(refreshed);
   }
