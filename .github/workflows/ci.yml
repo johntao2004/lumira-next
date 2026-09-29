@@ -44,6 +44,5 @@ jobs:
           distribution: temurin
           java-version: 25
           cache: maven
-      # Includes the integration tests that need PostgreSQL. Three of them fail on the
-      # baseline (see docs/audits) and must be repaired before this job can gate merges.
+      # Includes the integration tests that need PostgreSQL (enabled by LUMIRA_TEST_DB_URL).
       - run: ./backend/mvnw -f backend/pom.xml -B verify

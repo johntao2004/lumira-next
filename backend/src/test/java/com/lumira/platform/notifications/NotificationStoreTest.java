@@ -37,6 +37,8 @@ class NotificationStoreTest {
         jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,enabled BOOLEAN)");
         jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
         jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
+        // V41 widened the message-key pattern to the camelCase catalogue keys used by broadcasts.
+        jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
         jdbc.update("INSERT INTO platform_user VALUES(?,'alice',true),(?,'bob',true)", alice, bob);
     }
 
@@ -86,11 +88,12 @@ class NotificationStoreTest {
 
     @Test
     void batchCreationKeepsPerRecipientDeduplication() {
+        // Broadcasts are not backed by an outbox row, so event_id stays NULL (as NotificationAdminService does).
         UUID event = UUID.randomUUID();
         var requests = List.of(
-            new NotificationStore.CreateRequest(alice, event, "broadcast:" + event + ":" + alice,
+            new NotificationStore.CreateRequest(alice, null, "broadcast:" + event + ":" + alice,
                 "broadcast", "notificationCustomTitle", "notificationCustomBody", "{\"title\":\"Hello\"}", "/dashboard/feedback", null),
-            new NotificationStore.CreateRequest(bob, event, "broadcast:" + event + ":" + bob,
+            new NotificationStore.CreateRequest(bob, null, "broadcast:" + event + ":" + bob,
                 "broadcast", "notificationCustomTitle", "notificationCustomBody", "{\"title\":\"Hello\"}", "/dashboard/feedback", null)
         );
         assertEquals(Integer.valueOf(2), tx.execute(status -> store.createBatch(requests)));

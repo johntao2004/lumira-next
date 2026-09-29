@@ -47,10 +47,13 @@ public record AiProviderProfile(
                 case OPENROUTER -> "https://openrouter.ai/api/v1";
                 case MOONSHOT -> "https://api.moonshot.cn/v1";
                 case CUSTOM_OPENAI -> "";
-                case TYPESAFE_JEV -> "https://api.typesafe.ai";
+                case TYPESAFE_JEV -> DECISION_ORIGIN;
             };
         }
     }
+
+    /** The decision-model vendor is a fixed, administrator-enabled integration; no other origin is accepted. */
+    public static final String DECISION_ORIGIN = "https://api.typesafe.ai";
 
     public boolean isDecisionModel() {
         return providerKind == ProviderKind.TYPESAFE_JEV;

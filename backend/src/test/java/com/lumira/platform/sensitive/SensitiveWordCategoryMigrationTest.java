@@ -65,14 +65,15 @@ class SensitiveWordCategoryMigrationTest {
             "SELECT id, word, category, deleted FROM platform_sensitive_word ORDER BY id"));
         assertEquals(1, jdbc.queryForObject(
             "SELECT count(*) FROM platform_dictionary WHERE code='sensitive_word_category' AND enabled AND structure='FLAT'", Integer.class));
-        assertEquals(4, jdbc.queryForObject(
+        // Distinct categories: the two guaranteed choices plus the one retained legacy value.
+        assertEquals(3, jdbc.queryForObject(
             "SELECT count(*) FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='sensitive_word_category'", Integer.class));
         assertEquals(2, jdbc.queryForObject(
             "SELECT count(*) FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='sensitive_word_category' AND i.value IN ('DEFAULT','IMPORTED') AND i.enabled", Integer.class));
         assertEquals("legacy:审计", jdbc.queryForObject(
             "SELECT label FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='sensitive_word_category' AND i.value='legacy:审计'", String.class));
         assertTrue(jdbc.queryForObject(
-            "SELECT enabled FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='sensitive_word_category' AND i.value='legacy:审计'", Boolean.class));
+            "SELECT i.enabled FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='sensitive_word_category' AND i.value='legacy:审计'", Boolean.class));
         assertEquals(1, jdbc.queryForObject(
             "SELECT count(*) FROM pg_indexes WHERE schemaname=current_schema() AND indexname='platform_sensitive_word_category_recent'", Integer.class));
     }

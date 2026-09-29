@@ -120,7 +120,7 @@ public class ModelConnectionService {
         payload.put("model", provider.modelName());
         payload.put("state", state);
         payload.put("questions", questions);
-        return request(provider, "POST", "https://api.typesafe.ai/v1/systemone", payload, true);
+        return request(provider, "POST", AiProviderProfile.DECISION_ORIGIN + "/v1/systemone", payload, true);
     }
 
     private JsonNode request(AiProviderProfile provider, String method, String url, Object payload, boolean requiredKey) {
@@ -204,7 +204,7 @@ public class ModelConnectionService {
 
     static String apiUrl(AiProviderProfile provider, String endpoint) {
         String base = provider.baseUrl().replaceAll("/+$", "");
-        if (provider.isDecisionModel()) return "https://api.typesafe.ai/v1" + endpoint;
+        if (provider.isDecisionModel()) return AiProviderProfile.DECISION_ORIGIN + "/v1" + endpoint;
         if (provider.providerKind() == ProviderKind.DEEPSEEK) return base + endpoint;
         if (!base.matches(".*/v[0-9]+$")) base += "/v1";
         return base + endpoint;

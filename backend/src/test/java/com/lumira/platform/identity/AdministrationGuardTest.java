@@ -1,8 +1,11 @@
 package com.lumira.platform.identity;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -28,5 +31,20 @@ class AdministrationGuardTest {
     void rejectsMissingPermission() {
         assertThrows(IllegalArgumentException.class, () -> AdministrationGuard.lockKey(" "));
         assertThrows(IllegalArgumentException.class, () -> AdministrationGuard.lockKey(null));
+    }
+
+    @Test
+    void takesTheWriteLockOnlyInsideAWritableTransaction() {
+        assertFalse(AdministrationGuard.serializesWrites());
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            TransactionSynchronizationManager.setCurrentTransactionReadOnly(false);
+            assertTrue(AdministrationGuard.serializesWrites());
+            TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
+            assertFalse(AdministrationGuard.serializesWrites());
+        } finally {
+            TransactionSynchronizationManager.setCurrentTransactionReadOnly(false);
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
     }
 }

@@ -3,10 +3,11 @@ package com.lumira.platform.identity;
 import java.util.*;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Call inside a write transaction; recheck grants after waiting for concurrent administration. */
+/** Call inside a write transaction to serialize with concurrent administration; grants are always re-read. */
 @Component
 public class AdministrationGuard implements com.lumira.platform.common.AdministrationPort, com.lumira.platform.modules.ModuleAdministrationAuthorizer {
     private static final long SHARED_SCHEMA_LOCK = 481026L;
@@ -15,12 +16,24 @@ public class AdministrationGuard implements com.lumira.platform.common.Administr
     private final JdbcClient jdbc;
     public AdministrationGuard(JdbcClient jdbc) { this.jdbc=jdbc; }
     public Set<String> require(String actor,String permission) {
-        jdbc.sql("SELECT pg_advisory_xact_lock(:lockKey)")
-            .param("lockKey", lockKey(permission)).query(rs->{rs.next();return 0;});
+        if (serializesWrites()) {
+            jdbc.sql("SELECT pg_advisory_xact_lock(:lockKey)")
+                .param("lockKey", lockKey(permission)).query(rs->{rs.next();return 0;});
+        }
         var held=new HashSet<>(jdbc.sql("SELECT a.authority FROM platform_effective_authority a JOIN platform_user u ON u.id=a.user_id WHERE u.username=:name AND u.enabled")
             .param("name",actor).query(String.class).list());
         if(!held.contains(permission)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"forbidden");
         return held;
+    }
+
+    /**
+     * The advisory lock only orders writers. Outside a transaction it would be released at once
+     * (autocommit), and a read-only transaction writes nothing, so in both cases taking it would
+     * only make readers queue behind unrelated administration. Grants are re-read either way.
+     */
+    static boolean serializesWrites() {
+        return TransactionSynchronizationManager.isActualTransactionActive()
+            && !TransactionSynchronizationManager.isCurrentTransactionReadOnly();
     }
 
     /**

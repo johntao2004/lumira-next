@@ -189,8 +189,8 @@ public class AiProviderService {
 
     private static String normalizeBaseUrl(ProviderKind kind, String raw) {
         if (kind == ProviderKind.TYPESAFE_JEV) {
-            if (raw != null && !raw.isBlank() && !"https://api.typesafe.ai".equals(raw.strip())) invalid();
-            return "https://api.typesafe.ai";
+            if (raw != null && !raw.isBlank() && !AiProviderProfile.DECISION_ORIGIN.equals(raw.strip())) invalid();
+            return AiProviderProfile.DECISION_ORIGIN;
         }
         String value = raw == null ? "" : raw.strip();
         if (value.isEmpty()) value = kind.defaultBaseUrl();

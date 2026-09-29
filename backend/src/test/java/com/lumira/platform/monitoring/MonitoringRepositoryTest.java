@@ -24,7 +24,7 @@ class MonitoringRepositoryTest {
         jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY,enabled BOOLEAN NOT NULL)");
         jdbc.execute("CREATE TABLE spring_session(primary_id CHAR(36) PRIMARY KEY,expiry_time BIGINT NOT NULL)");
         jdbc.execute("CREATE TABLE platform_module_state(id UUID PRIMARY KEY,enabled BOOLEAN NOT NULL)");
-        jdbc.execute("CREATE TABLE platform_event_outbox(id UUID PRIMARY KEY,status TEXT NOT NULL)");
+        jdbc.execute("CREATE TABLE platform_event_outbox(id UUID PRIMARY KEY,status TEXT NOT NULL,source_type TEXT NOT NULL DEFAULT 'test',event_type TEXT NOT NULL DEFAULT 'test.event',attempts INT NOT NULL DEFAULT 0,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),delivered_at TIMESTAMPTZ)");
         jdbc.execute("CREATE TABLE platform_mail_delivery(id UUID PRIMARY KEY,state TEXT NOT NULL)");
         jdbc.execute("CREATE TABLE platform_sms_delivery(id UUID PRIMARY KEY,state TEXT NOT NULL)");
         jdbc.execute("CREATE TABLE platform_notification(id UUID PRIMARY KEY,read_at TIMESTAMPTZ,expires_at TIMESTAMPTZ)");
@@ -33,7 +33,9 @@ class MonitoringRepositoryTest {
         long now = System.currentTimeMillis();
         jdbc.update("INSERT INTO spring_session VALUES(?,?)", UUID.randomUUID(), now + 60_000);
         jdbc.update("INSERT INTO platform_module_state VALUES(?,true),(?,false)", UUID.randomUUID(), UUID.randomUUID());
-        jdbc.update("INSERT INTO platform_event_outbox VALUES(?, 'PENDING'),(?, 'FAILED'),(?, 'DEAD_LETTER')", UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        jdbc.update("INSERT INTO platform_event_outbox(id,status) VALUES(?, 'PENDING'),(?, 'FAILED'),(?, 'DEAD_LETTER'),(?, 'PROCESSING')", UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        jdbc.update("INSERT INTO platform_event_outbox(id,status,delivered_at) VALUES(?, 'DELIVERED', now())", UUID.randomUUID());
+        jdbc.update("INSERT INTO platform_event_outbox(id,status,created_at) VALUES(?, 'PENDING', now()-interval '1 hour')", UUID.randomUUID());
         jdbc.update("INSERT INTO platform_mail_delivery VALUES(?, 'SENDING'),(?, 'UNCERTAIN')", UUID.randomUUID(), UUID.randomUUID());
         jdbc.update("INSERT INTO platform_sms_delivery VALUES(?, 'PENDING'),(?, 'FAILED')", UUID.randomUUID(), UUID.randomUUID());
         jdbc.update("INSERT INTO platform_notification VALUES(?,NULL,NULL),(?,now()-interval '1 minute',now()-interval '1 second')", UUID.randomUUID(), UUID.randomUUID());
@@ -51,7 +53,10 @@ class MonitoringRepositoryTest {
         assertEquals(1, summary.activeSessions());
         assertEquals(1, summary.enabledModules());
         assertEquals(2, summary.totalModules());
-        assertEquals(1, summary.pendingOutbox());
+        assertEquals(2, summary.pendingOutbox());
+        assertEquals(1, summary.processingOutbox());
+        assertEquals(5, summary.eventsCreatedLast5m());
+        assertEquals(1, summary.eventsDeliveredLast5m());
         assertEquals(1, summary.failedOutbox());
         assertEquals(1, summary.deadLetterOutbox());
         assertEquals(1, summary.pendingMail());
