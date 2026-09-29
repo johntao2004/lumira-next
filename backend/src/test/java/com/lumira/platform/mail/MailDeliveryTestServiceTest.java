@@ -1,0 +1,85 @@
+package com.lumira.platform.mail;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.MailConfigurationPort;
+import com.lumira.platform.settings.SmtpSettings;
+import com.lumira.platform.settings.SmtpSettingsService;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import jakarta.mail.Address;
+import jakarta.mail.Message;
+import jakarta.mail.Session;
+import jakarta.mail.Transport;
+import jakarta.mail.internet.InternetAddress;
+
+class MailDeliveryTestServiceTest {
+    @Test void requiresTheExistingGlobalSettingsWritePermission() {
+        var settings = mock(SmtpSettingsService.class);
+        var gateway = mock(SmtpGateway.class);
+        var guard = mock(AdministrationPort.class);
+        var audit = mock(AuditPort.class);
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
+            .when(guard).require("reader", "platform:settings:write");
+
+        var service = new MailDeliveryTestService(settings, gateway, guard, audit);
+        assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("reader"));
+        verifyNoInteractions(settings, gateway, audit);
+        verify(guard, never()).requireGlobal(any(), any());
+    }
+
+    @Test void rejectsRemoteOrAuthenticatedConfigurationWithoutOpeningTransport() {
+        var settings = mock(SmtpSettingsService.class);
+        when(settings.readSettings()).thenReturn(new MailConfigurationPort.Settings(true,
+            "smtp.example.test", 587, "STARTTLS", false, "", "sender@example.test", "Lumira"));
+        var gateway = mock(SmtpGateway.class);
+        var guard = mock(AdministrationPort.class);
+        var audit = mock(AuditPort.class);
+
+        var service = new MailDeliveryTestService(settings, gateway, guard, audit);
+        var failure = assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("admin"));
+        assertEquals("smtpLocalTestUnavailable", failure.getReason());
+        verifyNoInteractions(gateway, audit);
+    }
+
+    @Test void sendsOnlyTheFixedSyntheticMessageAndKeepsHostnameCheckingEnabled() throws Exception {
+        var settings = mock(SmtpSettingsService.class);
+        when(settings.readSettings()).thenReturn(new MailConfigurationPort.Settings(true,
+            "127.0.0.1", 1025, "STARTTLS", false, "", "lumira-qa@example.invalid", "Lumira"));
+        var transport = mock(Transport.class);
+        var capturedSession = new AtomicReference<Session>();
+        var gateway = new SmtpGateway(session -> { capturedSession.set(session); return transport; });
+        var guard = mock(AdministrationPort.class);
+        var audit = mock(AuditPort.class);
+
+        var result = new MailDeliveryTestService(settings, gateway, guard, audit).sendLocalTest("admin");
+
+        assertEquals(SmtpGateway.Result.ACCEPTED.name(), result.result());
+        verify(transport).connect("127.0.0.1", 1025, null, null);
+        assertNotNull(capturedSession.get());
+        assertEquals("true", capturedSession.get().getProperty("mail.smtp.ssl.checkserveridentity"));
+        assertNotNull(capturedSession.get().getProperties().get("mail.smtp.ssl.socketFactory"));
+        var message = org.mockito.ArgumentCaptor.forClass(Message.class);
+        verify(transport).sendMessage(message.capture(), any(Address[].class));
+        assertEquals("smtp-test@example.invalid", message.getValue().getAllRecipients()[0].toString());
+        assertEquals("lumira-qa@example.invalid", ((InternetAddress) message.getValue().getFrom()[0]).getAddress());
+        verify(guard).require("admin", "platform:settings:write");
+        verify(guard).requireGlobal("admin", "platform:settings:write");
+        var auditTarget = org.mockito.ArgumentCaptor.forClass(UUID.class);
+        verify(audit).append(eq("admin"), eq("mail.localTest.ACCEPTED"), auditTarget.capture());
+        assertNotNull(auditTarget.getValue());
+    }
+
+    @Test void loopbackTestHostMustResolveAsTheLiteralIpv4LoopbackAddress() {
+        assertTrue(SmtpGateway.isLoopbackTestHost("127.0.0.1"));
+        assertFalse(SmtpGateway.isLoopbackTestHost("localhost"));
+        assertFalse(SmtpGateway.isLoopbackTestHost("smtp.example.test"));
+    }
+}

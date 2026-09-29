@@ -1,0 +1,317 @@
+package com.lumira.platform.ai;
+
+import static com.lumira.platform.ai.AiProviderProfile.ProviderKind;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.SecretStorePort;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+
+@Service
+public class AiProviderService {
+    public record CredentialChange(String action,
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY) String value) {
+        @Override public String toString() { return "CredentialChange[redacted]"; }
+    }
+    public record ProviderWrite(String name, ProviderKind providerKind, String baseUrl, String modelName,
+                                List<String> capabilityCodes, boolean enabled, Long version,
+                                CredentialChange credential) {}
+    public record ModelDiscoveryRequest(ProviderKind providerKind, String baseUrl,
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY) String credentialValue, UUID providerId) {
+        @Override public String toString() { return "ModelDiscoveryRequest[providerKind=" + providerKind + ", credentialValue=redacted]"; }
+    }
+    public record ProviderView(UUID id, String name, ProviderKind providerKind, String baseUrl,
+                               String modelName, List<String> capabilityCodes, boolean enabled,
+                               long version, boolean credentialConfigured) {}
+
+    private final AiProviderRepository repository;
+    private final ModelConnectionService connections;
+    private final SecretStorePort secrets;
+    private final AdministrationPort guard;
+    private final AuditPort audit;
+    private final ObjectMapper mapper;
+
+    public AiProviderService(AiProviderRepository repository, ModelConnectionService connections,
+            SecretStorePort secrets, AdministrationPort guard, AuditPort audit, ObjectMapper mapper) {
+        this.repository = repository;
+        this.connections = connections;
+        this.secrets = secrets;
+        this.guard = guard;
+        this.audit = audit;
+        this.mapper = mapper;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProviderView> list(String actor) {
+        guard.require(actor, "platform:settings:read");
+        return repository.findAll().stream().map(this::view).toList();
+    }
+
+    @Transactional
+    public ProviderView create(ProviderWrite input, String actor) {
+        requireWrite(actor);
+        Normalized normalized = normalize(input, true);
+        UUID id = UUID.randomUUID();
+        var profile = new AiProviderProfile(id, normalized.name(), normalized.kind(), normalized.baseUrl(),
+            normalized.modelName(), normalized.capabilities(), normalized.enabled(), 1);
+        repository.insert(profile, json(normalized.capabilities()), actor);
+        saveCredential(id, input.credential());
+        requireConfiguredCredential(normalized.kind(), id);
+        audit.append(actor, "ai.provider.created", id);
+        return view(profile);
+    }
+
+    @Transactional
+    public ProviderView update(UUID id, ProviderWrite input, String actor) {
+        requireWrite(actor);
+        if (input == null || input.version() == null || input.version() < 1) invalid();
+        find(id);
+        Normalized normalized = normalize(input, false);
+        var profile = new AiProviderProfile(id, normalized.name(), normalized.kind(), normalized.baseUrl(),
+            normalized.modelName(), normalized.capabilities(), normalized.enabled(), input.version());
+        if (repository.update(profile, json(normalized.capabilities()), actor) != 1) stale();
+        saveCredential(id, input.credential());
+        requireConfiguredCredential(normalized.kind(), id);
+        audit.append(actor, "ai.provider.updated", id);
+        return view(find(id));
+    }
+
+    @Transactional
+    public void delete(UUID id, long version, String actor) {
+        requireWrite(actor);
+        if (version < 1 || repository.delete(id, version) != 1) stale();
+        var state = secrets.state(ModelConnectionService.secretContext(id));
+        if (state.configured()) secrets.save(ModelConnectionService.secretContext(id), state.version(), null);
+        audit.append(actor, "ai.provider.deleted", id);
+    }
+
+    @Transactional(readOnly = true)
+    public ModelConnectionService.ConnectionResult test(UUID id, String actor) {
+        requireWrite(actor);
+        var profile = find(id);
+        return connections.probe(profile);
+    }
+
+    @Transactional(readOnly = true)
+    public ModelConnectionService.ConnectionResult discoverModels(ModelDiscoveryRequest input, String actor) {
+        requireWrite(actor);
+        if (input == null || input.providerKind() == null || input.providerKind() == ProviderKind.TYPESAFE_JEV) invalid();
+        validateDiscoveryCredential(input.credentialValue());
+
+        UUID id = UUID.randomUUID();
+        if (input.providerId() != null) {
+            var existing = find(input.providerId());
+            if (existing.providerKind() != input.providerKind()) invalid();
+            id = existing.id();
+        }
+        String baseUrl = normalizeBaseUrl(input.providerKind(), input.baseUrl());
+        var transientProfile = new AiProviderProfile(id, "Model discovery", input.providerKind(), baseUrl,
+            "", input.providerKind().providerCapabilityCodes(), true, 1);
+        return connections.discoverModels(transientProfile, input.credentialValue());
+    }
+
+    @Transactional(readOnly = true)
+    public ModelConnectionService.ConnectionResult models(UUID id, String actor) {
+        guard.require(actor, "platform:settings:read");
+        var profile = find(id);
+        if (!profile.enabled()) throw new ResponseStatusException(HttpStatus.CONFLICT, "aiProviderDisabled");
+        if (profile.isDecisionModel() || !profile.providerCapabilityCodes().contains("CHAT")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aiChatUnsupported");
+        }
+        return connections.probe(profile);
+    }
+
+    @Transactional(readOnly = true)
+    public AiProviderProfile requireEnabled(UUID id, String actor) {
+        guard.require(actor, "platform:settings:read");
+        var profile = find(id);
+        if (!profile.enabled()) throw new ResponseStatusException(HttpStatus.CONFLICT, "aiProviderDisabled");
+        return profile;
+    }
+
+    private void saveCredential(UUID id, CredentialChange change) {
+        if (change == null) return;
+        String action = change.action() == null ? "KEEP" : change.action();
+        String context = ModelConnectionService.secretContext(id);
+        var current = secrets.state(context);
+        if ("KEEP".equals(action)) {
+            if (change.value() != null) invalid();
+            return;
+        }
+        if ("CLEAR".equals(action)) {
+            if (change.value() != null) invalid();
+            if (current.configured()) secrets.save(context, current.version(), null);
+            return;
+        }
+        if (!"REPLACE".equals(action) || change.value() == null || change.value().isBlank()
+                || change.value().getBytes(StandardCharsets.UTF_8).length > 8192
+                || change.value().codePoints().anyMatch(Character::isISOControl)) invalid();
+        byte[] value = change.value().getBytes(StandardCharsets.UTF_8);
+        try { secrets.save(context, current.version(), value); }
+        finally { Arrays.fill(value, (byte) 0); }
+    }
+
+    private void requireConfiguredCredential(ProviderKind kind, UUID id) {
+        if (kind != ProviderKind.OLLAMA && kind != ProviderKind.LM_STUDIO &&
+                !secrets.state(ModelConnectionService.secretContext(id)).configured()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aiProviderCredentialRequired");
+        }
+    }
+
+    private Normalized normalize(ProviderWrite input, boolean creating) {
+        if (input == null || input.providerKind() == null) invalid();
+        String name = input.name() == null ? "" : input.name().strip();
+        String model = input.modelName() == null || input.modelName().isBlank()
+            ? (input.providerKind() == ProviderKind.TYPESAFE_JEV ? "jev-latest" : "") : input.modelName().strip();
+        if (name.isEmpty() || name.length() > 120 || model.isEmpty() || model.length() > 256
+                || !model.matches("[A-Za-z0-9_.:/-]{1,256}")) invalid();
+        if (!creating && (input.version() == null || input.version() < 1)) invalid();
+
+        ProviderKind kind = input.providerKind();
+        String baseUrl = normalizeBaseUrl(kind, input.baseUrl());
+        List<String> capabilities = normalizeCapabilities(kind, input.capabilityCodes());
+        if (kind == ProviderKind.TYPESAFE_JEV && model.isBlank()) model = "jev-latest";
+        return new Normalized(name, kind, baseUrl, model, capabilities, input.enabled());
+    }
+
+    private static String normalizeBaseUrl(ProviderKind kind, String raw) {
+        if (kind == ProviderKind.TYPESAFE_JEV) {
+            if (raw != null && !raw.isBlank() && !"https://api.typesafe.ai".equals(raw.strip())) invalid();
+            return "https://api.typesafe.ai";
+        }
+        String value = raw == null ? "" : raw.strip();
+        if (value.isEmpty()) value = kind.defaultBaseUrl();
+        if (value.isEmpty() || value.length() > 512) invalid();
+        try {
+            URI uri = URI.create(value);
+            String host = uri.getHost();
+            if (host == null || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) invalid();
+            if (kind == ProviderKind.OLLAMA || kind == ProviderKind.LM_STUDIO) {
+                if (!"http".equals(uri.getScheme()) ||
+                        !(host.equalsIgnoreCase("localhost") || host.equals("127.0.0.1") || host.equals("::1")) ||
+                        uri.getPort() < 1 || uri.getPort() > 65535 ||
+                        !(uri.getPath().isEmpty() || uri.getPath().equals("/") || uri.getPath().equals("/v1"))) invalid();
+            } else {
+                String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+                if (!"https".equalsIgnoreCase(uri.getScheme()) || (uri.getPort() != -1 && uri.getPort() != 443) ||
+                        path.contains("\\") || path.contains("..") || !path.matches("[A-Za-z0-9._~/-]*") ||
+                        !isAllowedCloudHost(host)) invalid();
+            }
+            return value.replaceAll("/+$", "");
+        } catch (IllegalArgumentException exception) {
+            invalid();
+            return "";
+        }
+    }
+
+    static boolean isAllowedCloudHost(String host) {
+        String normalized = host.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.equals("localhost") || normalized.endsWith(".localhost") || normalized.endsWith(".local") ||
+                normalized.endsWith(".internal") || normalized.endsWith(".lan") || normalized.endsWith(".home")) return false;
+        String address = normalized.startsWith("[") && normalized.endsWith("]")
+            ? normalized.substring(1, normalized.length() - 1) : normalized;
+        boolean ipv4Literal = address.matches("\\d{1,3}(?:\\.\\d{1,3}){3}");
+        boolean ipv6Literal = address.contains(":");
+        if (!ipv4Literal && !ipv6Literal) {
+            return normalized.matches("(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+");
+        }
+        try {
+            return isPublicAddress(InetAddress.getByName(address));
+        } catch (UnknownHostException exception) {
+            return false;
+        }
+    }
+
+    static boolean isPublicCloudHost(String host) {
+        if (!isAllowedCloudHost(host)) return false;
+        String normalized = host.toLowerCase(java.util.Locale.ROOT);
+        String address = normalized.startsWith("[") && normalized.endsWith("]")
+            ? normalized.substring(1, normalized.length() - 1) : normalized;
+        if (address.matches("\\d{1,3}(?:\\.\\d{1,3}){3}") || address.contains(":")) return true;
+        try {
+            InetAddress[] addresses = InetAddress.getAllByName(normalized);
+            return addresses.length > 0 && java.util.Arrays.stream(addresses).allMatch(AiProviderService::isPublicAddress);
+        } catch (UnknownHostException exception) {
+            return false;
+        }
+    }
+
+    private static boolean isPublicAddress(InetAddress parsed) {
+        byte[] bytes = parsed.getAddress();
+        if (parsed.isAnyLocalAddress() || parsed.isLoopbackAddress() || parsed.isLinkLocalAddress() ||
+                parsed.isSiteLocalAddress() || parsed.isMulticastAddress()) return false;
+        if (bytes.length == 4) {
+            int first = bytes[0] & 0xff;
+            int second = bytes[1] & 0xff;
+            return first != 0 && first != 10 && first != 127 && first < 224 &&
+                !(first == 169 && second == 254) && !(first == 172 && second >= 16 && second <= 31) &&
+                !(first == 192 && second == 168) && !(first == 100 && second >= 64 && second <= 127) &&
+                !(first == 198 && (second == 18 || second == 19));
+        }
+        if (bytes.length == 16) {
+            if ((bytes[0] & 0xfe) == 0xfc || (bytes[0] & 0xff) == 0xff ||
+                    ((bytes[0] & 0xff) == 0xfe && (bytes[1] & 0xc0) == 0x80)) return false;
+            boolean ipv4Mapped = true;
+            for (int index = 0; index < 10; index++) ipv4Mapped &= bytes[index] == 0;
+            ipv4Mapped &= (bytes[10] & 0xff) == 0xff && (bytes[11] & 0xff) == 0xff;
+            if (ipv4Mapped) {
+                try {
+                    return isPublicAddress(InetAddress.getByAddress(java.util.Arrays.copyOfRange(bytes, 12, 16)));
+                } catch (UnknownHostException exception) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static void validateDiscoveryCredential(String value) {
+        if (value == null || value.isBlank()) return;
+        if (value.getBytes(StandardCharsets.UTF_8).length > 8192 ||
+                value.codePoints().anyMatch(Character::isISOControl)) invalid();
+    }
+
+    private static List<String> normalizeCapabilities(ProviderKind kind, List<String> requested) {
+        // Kept in the request DTO for backward compatibility, but never trusted as
+        // operator-selected model capabilities. The provider adapter owns this list.
+        return kind.providerCapabilityCodes();
+    }
+
+    private String json(List<String> values) {
+        return mapper.writeValueAsString(values);
+    }
+
+    private AiProviderProfile find(UUID id) {
+        return repository.find(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "aiProviderNotFound"));
+    }
+
+    private ProviderView view(AiProviderProfile profile) {
+        boolean configured = secrets.state(ModelConnectionService.secretContext(profile.id())).configured();
+        return new ProviderView(profile.id(), profile.name(), profile.providerKind(), profile.baseUrl(), profile.modelName(),
+            profile.providerCapabilityCodes(), profile.enabled(), profile.version(), configured);
+    }
+
+    private void requireWrite(String actor) {
+        guard.require(actor, "platform:settings:write");
+        guard.requireGlobal(actor, "platform:settings:write");
+    }
+
+    private static void invalid() { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidAiProvider"); }
+    private static void stale() { throw new ResponseStatusException(HttpStatus.CONFLICT, "staleRecord"); }
+    private record Normalized(String name, ProviderKind kind, String baseUrl, String modelName,
+                              List<String> capabilities, boolean enabled) {}
+}

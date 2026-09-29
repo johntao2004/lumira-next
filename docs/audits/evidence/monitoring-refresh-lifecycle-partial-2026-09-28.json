@@ -1,0 +1,40 @@
+{
+  "session": "fresh isolated tab for manual/error/lifecycle checks",
+  "route": "/dashboard/monitoring",
+  "pageErrors": [],
+  "resources": [
+    {
+      "path": "/umi.js",
+      "status": 200,
+      "contentType": "text/javascript; charset=utf-8"
+    }
+  ],
+  "requestTimeline": [
+    {
+      "at": 1790593729861,
+      "iso": "2026-09-28T11:08:49.861Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593729878,
+      "completedIso": "2026-09-28T11:08:49.878Z"
+    },
+    {
+      "at": 1790593739774,
+      "iso": "2026-09-28T11:08:59.774Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593739811,
+      "completedIso": "2026-09-28T11:08:59.811Z"
+    }
+  ],
+  "manual": {},
+  "failureRecovery": {},
+  "hiddenPage": {},
+  "routeLeave": {},
+  "screenshots": [
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-manual.png"
+  ],
+  "failure": "timed out waiting for summary GET 3; observed 2"
+}

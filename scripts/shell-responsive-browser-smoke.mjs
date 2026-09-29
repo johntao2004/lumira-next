@@ -1,0 +1,108 @@
+import { chromium, expect } from '@playwright/test';
+import { readFileSync, mkdirSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { languages, translate } from '../apps/web/src/platform/i18n/messages.ts';
+import { PREFERENCES_COOKIE, serializePreferences, defaultPreferences } from '../apps/web/src/platform/preferences/model.ts';
+
+const config = JSON.parse(readFileSync('.runtime/local.json', 'utf8'));
+const browser = await chromium.launch({
+  headless: true,
+  ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {}),
+});
+const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8010' });
+
+try {
+  const csrf = await (await context.request.get('/api/auth/csrf')).json();
+  assert.equal((await context.request.post('/api/auth/login', {
+    form: { username: 'admin', password: config.LUMIRA_BOOTSTRAP_PASSWORD },
+    headers: { [csrf.headerName]: csrf.token },
+  })).status(), 200);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+
+  async function load(locale, width, dark = false) {
+    await context.addCookies([{
+      name: PREFERENCES_COOKIE,
+      value: serializePreferences({ ...defaultPreferences, locale, dark }),
+      url: 'http://127.0.0.1:8010',
+    }]);
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/dashboard/home');
+    await expect(page.locator('.ant-page-header-heading-title')).toHaveText(translate(locale, 'home'));
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), dark ? 'dark' : 'light');
+  }
+
+  for (const dark of [false, true]) {
+    for (const { value: locale } of languages) {
+      await load(locale, 320, dark);
+      const account = page.locator('.pro-account-trigger');
+      await expect(account).toBeVisible();
+      await account.click();
+      await expect(page.getByRole('menuitem', { name: translate(locale, 'profile'), exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    }
+  }
+
+  for (const width of [390, 768, 1024, 1440]) {
+    for (const dark of [false, true]) {
+      await load('zh-CN', width, dark);
+      const header = await page.locator(width <= 767 ? 'header.ant-pro-layout-header' : '.workspace-utility-header').boundingBox();
+      const account = await page.locator(width <= 767
+        ? 'header.ant-pro-layout-header .pro-account-trigger'
+        : '.workspace-utility-header .pro-account-trigger').boundingBox();
+      assert.ok(header && account, `ProLayout header and account must render at ${width}px`);
+      assert.ok(account.x >= header.x && account.x + account.width <= header.x + header.width + 1, `header action escaped at ${width}px`);
+    }
+  }
+
+  await load('zh-CN', 390);
+  const mobileTrigger = page.locator('.ant-pro-global-header-collapsed-button');
+  await expect(mobileTrigger).toBeVisible();
+  await mobileTrigger.click();
+  const navigationDrawer = page.getByRole('dialog');
+  await expect(navigationDrawer).toBeVisible();
+  const drawerBox = await navigationDrawer.boundingBox();
+  assert.ok(drawerBox && Math.abs(drawerBox.width - 208) <= 1, `mobile navigation drawer must be 208px, got ${drawerBox?.width}`);
+  await expect(navigationDrawer.getByRole('link', { name: '工作台', exact: true })).toBeVisible();
+  await expect(navigationDrawer.getByRole('link', { name: '品牌设置', exact: true })).not.toBeVisible();
+  await navigationDrawer.getByText('平台管理', { exact: true }).click();
+  await expect(navigationDrawer.getByRole('link', { name: '品牌设置', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(navigationDrawer).not.toBeVisible();
+
+  for (const key of ['profile', 'mySessions', 'changePassword']) {
+    await page.locator('.pro-account-trigger').click();
+    await page.getByRole('menuitem', { name: translate('zh-CN', key), exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: translate('zh-CN', key), exact: true });
+    await expect(dialog).toBeVisible();
+    await dialog.locator('.ant-drawer-close').click();
+    await expect(dialog).not.toBeVisible();
+  }
+
+  mkdirSync('.runtime/browser-checks', { recursive: true });
+  await page.screenshot({ path: '.runtime/browser-checks/pro-layout-mobile.png', fullPage: true });
+  await load('zh-CN', 1440);
+  const desktopSider = page.locator('.ant-layout-sider');
+  await expect(desktopSider).toBeVisible();
+  await expect.poll(() => desktopSider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(64);
+  await desktopSider.locator('.ant-pro-sider-collapsed-button').click();
+  await expect.poll(() => desktopSider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(208);
+  await expect(desktopSider.getByRole('link', { name: '工作台', exact: true })).toBeVisible();
+  await desktopSider.getByText('平台管理', { exact: true }).click();
+  await expect(desktopSider.getByRole('link', { name: '品牌设置', exact: true })).toBeVisible();
+  await expect(page.locator('.workspace-utility-header .pro-account-trigger')).toBeVisible();
+  await page.screenshot({ path: '.runtime/browser-checks/pro-layout-desktop.png', fullPage: true });
+
+  assert.deepEqual(errors, []);
+  console.log('PASS: standard ProLayout desktop sidebar and mobile drawer render in light/dark, eight locales and without overflow/pageerrors');
+} finally {
+  try {
+    const csrf = await (await context.request.get('/api/auth/csrf')).json();
+    await context.request.post('/api/auth/logout', { headers: { [csrf.headerName]: csrf.token } });
+  } finally {
+    await browser.close();
+  }
+}

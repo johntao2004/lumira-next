@@ -1,0 +1,23 @@
+{
+    admin off
+}
+:8010 {
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+    }
+    @api path /api /api/*
+    handle @api {
+        reverse_proxy server:8090 {
+            header_up X-Lumira-Client-IP {remote_host}
+            header_up -Forwarded
+            header_up -X-Real-IP
+        }
+    }
+    handle {
+        reverse_proxy web:8010 {
+            header_up -X-Lumira-Client-IP
+        }
+    }
+}

@@ -1,0 +1,12 @@
+node_modules/
+.next/
+apps/web/dist/
+apps/web/src/.umi/
+apps/web/src/.umi-production/
+.runtime/
+target/
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
+*.log

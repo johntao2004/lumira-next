@@ -1,0 +1,56 @@
+{
+  "mode": "实时（约 3 秒轮询）",
+  "selectedAt": "2026-09-28T11:14:29.423Z",
+  "beforeState": "visible",
+  "afterState": "visible",
+  "foregroundSwitch": "AppleScript activated Finder; page stayed open in this isolated Chromium window",
+  "switchSucceeded": true,
+  "backgroundStartedAt": "2026-09-28T11:14:21.373Z",
+  "backgroundWindowSeconds": 8,
+  "summaryGetsDuringBackground": 3,
+  "restoredVisibility": "visible",
+  "firstSummaryGetAfterRestore": null,
+  "requestTimeline": [
+    {
+      "at": "2026-09-28T11:14:15.435Z",
+      "status": 200,
+      "method": "GET",
+      "outcome": "response"
+    },
+    {
+      "at": "2026-09-28T11:14:19.966Z",
+      "status": 200,
+      "method": "GET",
+      "outcome": "response"
+    },
+    {
+      "at": "2026-09-28T11:14:22.992Z",
+      "status": 200,
+      "method": "GET",
+      "outcome": "response"
+    },
+    {
+      "at": "2026-09-28T11:14:26.018Z",
+      "status": 200,
+      "method": "GET",
+      "outcome": "response"
+    },
+    {
+      "at": "2026-09-28T11:14:29.041Z",
+      "status": 200,
+      "method": "GET",
+      "outcome": "response"
+    }
+  ],
+  "resources": [
+    {
+      "path": "/umi.js",
+      "status": 200,
+      "contentType": "text/javascript; charset=utf-8"
+    }
+  ],
+  "pageErrors": [],
+  "screenshots": [
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-background-before.png"
+  ]
+}

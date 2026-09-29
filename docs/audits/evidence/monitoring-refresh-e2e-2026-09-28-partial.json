@@ -1,0 +1,215 @@
+{
+  "route": "/dashboard/monitoring",
+  "loginRoute": "/user/login?returnTo=%2Fdashboard%2Fmonitoring",
+  "browserContext": "new isolated headed Chromium context and page",
+  "resources": [
+    {
+      "path": "/umi.js",
+      "status": 200,
+      "contentType": "text/javascript; charset=utf-8"
+    }
+  ],
+  "pageErrors": [],
+  "intervals": [
+    {
+      "mode": "realtime-3s",
+      "selectedText": "实时（约 3 秒轮询）",
+      "selectedAt": "2026-09-28T11:03:52.635Z",
+      "requestCount": 2,
+      "requests": [
+        {
+          "at": "2026-09-28T11:03:56.952Z",
+          "status": 200,
+          "outcome": "response"
+        },
+        {
+          "at": "2026-09-28T11:03:59.981Z",
+          "status": 200,
+          "outcome": "response"
+        }
+      ],
+      "adjacentGetIntervalsSeconds": [
+        3.029
+      ],
+      "selectionToFirstRequestSeconds": 4.317
+    },
+    {
+      "mode": "interval-5s",
+      "selectedText": "每 5 秒",
+      "selectedAt": "2026-09-28T11:04:00.184Z",
+      "requestCount": 2,
+      "requests": [
+        {
+          "at": "2026-09-28T11:04:05.629Z",
+          "status": 200,
+          "outcome": "response"
+        },
+        {
+          "at": "2026-09-28T11:04:10.654Z",
+          "status": 200,
+          "outcome": "response"
+        }
+      ],
+      "adjacentGetIntervalsSeconds": [
+        5.025
+      ],
+      "selectionToFirstRequestSeconds": 5.445
+    },
+    {
+      "mode": "interval-10s",
+      "selectedText": "每 10 秒",
+      "selectedAt": "2026-09-28T11:04:10.803Z",
+      "requestCount": 2,
+      "requests": [
+        {
+          "at": "2026-09-28T11:04:21.240Z",
+          "status": 200,
+          "outcome": "response"
+        },
+        {
+          "at": "2026-09-28T11:04:31.264Z",
+          "status": 200,
+          "outcome": "response"
+        }
+      ],
+      "adjacentGetIntervalsSeconds": [
+        10.024
+      ],
+      "selectionToFirstRequestSeconds": 10.437
+    },
+    {
+      "mode": "interval-1m",
+      "selectedText": "每 1 分钟",
+      "selectedAt": "2026-09-28T11:04:31.383Z",
+      "requestCount": 1,
+      "requests": [
+        {
+          "at": "2026-09-28T11:05:31.821Z",
+          "status": 200,
+          "outcome": "response"
+        }
+      ],
+      "selectionToFirstRequestSeconds": 60.438,
+      "secondsSincePreviousGet": 60.557,
+      "completeWindowObserved": true
+    },
+    {
+      "mode": "interval-30s",
+      "selectedText": "每 30 秒",
+      "selectedAt": "2026-09-28T11:05:31.989Z",
+      "observationWindowSeconds": 6.5,
+      "autoRequests": 0
+    },
+    {
+      "mode": "interval-5m",
+      "selectedText": "每 5 分钟",
+      "selectedAt": "2026-09-28T11:05:39.083Z",
+      "observationWindowSeconds": 6.5,
+      "autoRequests": 0
+    },
+    {
+      "mode": "interval-15m",
+      "selectedText": "每 15 分钟",
+      "selectedAt": "2026-09-28T11:05:46.121Z",
+      "observationWindowSeconds": 6.5,
+      "autoRequests": 0
+    },
+    {
+      "mode": "interval-1h",
+      "selectedText": "每 1 小时",
+      "selectedAt": "2026-09-28T11:05:53.173Z",
+      "observationWindowSeconds": 6.5,
+      "autoRequests": 0
+    }
+  ],
+  "requestTimeline": [
+    {
+      "at": 1790593432408,
+      "iso": "2026-09-28T11:03:52.408Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593432423,
+      "completedIso": "2026-09-28T11:03:52.423Z"
+    },
+    {
+      "at": 1790593436952,
+      "iso": "2026-09-28T11:03:56.952Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593436975,
+      "completedIso": "2026-09-28T11:03:56.975Z"
+    },
+    {
+      "at": 1790593439981,
+      "iso": "2026-09-28T11:03:59.981Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593440003,
+      "completedIso": "2026-09-28T11:04:00.003Z"
+    },
+    {
+      "at": 1790593445629,
+      "iso": "2026-09-28T11:04:05.629Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593445651,
+      "completedIso": "2026-09-28T11:04:05.651Z"
+    },
+    {
+      "at": 1790593450654,
+      "iso": "2026-09-28T11:04:10.654Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593450678,
+      "completedIso": "2026-09-28T11:04:10.678Z"
+    },
+    {
+      "at": 1790593461240,
+      "iso": "2026-09-28T11:04:21.240Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593461261,
+      "completedIso": "2026-09-28T11:04:21.261Z"
+    },
+    {
+      "at": 1790593471264,
+      "iso": "2026-09-28T11:04:31.264Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593471289,
+      "completedIso": "2026-09-28T11:04:31.289Z"
+    },
+    {
+      "at": 1790593531821,
+      "iso": "2026-09-28T11:05:31.821Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593531850,
+      "completedIso": "2026-09-28T11:05:31.850Z"
+    }
+  ],
+  "screenshots": [
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-default-5s.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-realtime-3s.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-interval-5s.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-interval-10s.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-interval-1m.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-interval-30s.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-interval-5m.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-interval-15m.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-interval-1h.png"
+  ],
+  "manual": {},
+  "failureRecovery": {},
+  "hiddenPage": {},
+  "routeLeave": {},
+  "failure": "locator.click: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: '刷新', exact: true })\u001b[22m\n"
+}

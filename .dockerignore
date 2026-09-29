@@ -1,0 +1,5 @@
+.runtime
+**/node_modules
+**/.next
+**/target
+.git

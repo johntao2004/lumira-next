@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: lumira-platform
+  datasource:
+    url: ${LUMIRA_DB_URL:jdbc:postgresql://127.0.0.1:5432/lumira_next}
+    username: ${LUMIRA_DB_USER:lumira_next}
+    password: ${LUMIRA_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 12
+      minimum-idle: 2
+      connection-timeout: 3000
+  session:
+    timeout: 30m
+    jdbc:
+      initialize-schema: never
+  flyway:
+    locations: classpath:db/migration
+    baseline-on-migrate: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:false}
+    baseline-version: ${SPRING_FLYWAY_BASELINE_VERSION:1}
+  threads:
+    virtual:
+      enabled: true
+server:
+  address: ${LUMIRA_BIND:127.0.0.1}
+  port: ${LUMIRA_PORT:8090}
+  servlet:
+    session:
+      cookie:
+        name: LUMIRA_NEXT_SESSION
+        http-only: true
+        # Secure by default; local HTTP is explicitly opted into by scripts/start.mjs.
+        secure: ${LUMIRA_COOKIE_SECURE:true}
+        same-site: lax
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+lumira:
+  http:
+    upload-idle-timeout-ms: ${LUMIRA_UPLOAD_IDLE_TIMEOUT_MS:30000}
+  files:
+    account-per-minute: ${LUMIRA_UPLOAD_ACCOUNT_PER_MINUTE:30}
+    source-per-minute: ${LUMIRA_UPLOAD_SOURCE_PER_MINUTE:120}
+    local-root: ${LUMIRA_FILES_LOCAL_ROOT:.runtime/files}
+    # The legacy MAXIMUM environment names remain aliases for the system fallback values.
+    default-bytes: ${LUMIRA_FILES_DEFAULT_BYTES:${LUMIRA_FILES_MAXIMUM_BYTES:${lumira.files.maximum-bytes:1073741824}}}
+    default-files: ${LUMIRA_FILES_DEFAULT_COUNT:${LUMIRA_FILES_MAXIMUM_COUNT:${lumira.files.maximum-files:1000}}}
+  login:
+    trusted-proxy-addresses: ${LUMIRA_TRUSTED_PROXY_ADDRESSES:}
+    account-per-minute: ${LUMIRA_LOGIN_ACCOUNT_PER_MINUTE:30}
+    source-per-minute: ${LUMIRA_LOGIN_SOURCE_PER_MINUTE:120}
+  audit:
+    retention: ${LUMIRA_AUDIT_RETENTION:365d}
+    retention-batch: ${LUMIRA_AUDIT_RETENTION_BATCH:1000}
+    retention-interval-ms: ${LUMIRA_AUDIT_RETENTION_INTERVAL_MS:86400000}
+    retention-initial-delay-ms: ${LUMIRA_AUDIT_RETENTION_INITIAL_DELAY_MS:86400000}
+  delivery:
+    terminal-retention: ${LUMIRA_DELIVERY_TERMINAL_RETENTION:30d}
+    retention-batch: ${LUMIRA_DELIVERY_RETENTION_BATCH:1000}
+    retention-interval-ms: ${LUMIRA_DELIVERY_RETENTION_INTERVAL_MS:86400000}
+    retention-initial-delay-ms: ${LUMIRA_DELIVERY_RETENTION_INITIAL_DELAY_MS:86400000}
+  bootstrap:
+    password: ${LUMIRA_BOOTSTRAP_PASSWORD:}

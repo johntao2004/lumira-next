@@ -1,0 +1,31 @@
+{
+  "name": "@lumira/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "PORT=8010 HOST=127.0.0.1 STRICT_PORT=8010 max dev",
+    "build": "max build",
+    "start": "max preview --host 127.0.0.1 --port 8010",
+    "setup": "max setup",
+    "typecheck": "max setup && tsc --noEmit"
+  },
+  "dependencies": {
+    "@ant-design/icons": "6.3.4",
+    "@ant-design/pro-components": "3.1.14-7",
+    "@ant-design/x": "2.7.0",
+    "@tanstack/react-query": "5.102.8",
+    "antd": "6.6.3",
+    "antd-style": "^4.1.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@umijs/max": "4.7.20",
+    "typescript": "7.0.2"
+  }
+}

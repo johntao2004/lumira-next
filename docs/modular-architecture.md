@@ -1,0 +1,168 @@
+# Lumira 模块化架构
+
+## 结论
+
+当前项目最优的演进路线是“模块化单体（modular monolith）”，不是马上拆成微服务。
+
+项目目前约 1 万行 Java、1 万行前端代码，数据库又是一个统一事务边界。现在拆微服务会提前引入网络一致性、部署编排、分布式追踪和跨服务迁移成本，却不能解决现有的直接依赖问题。先把模块边界做成可验证的契约，未来需要独立扩容或独立发布时，再把已经稳定的模块提取成服务，迁移成本最低。
+
+## 模块图
+
+```text
+                         ┌────────────────────┐
+                         │  kernel             │
+                         │  common / modules   │
+                         │  contracts / ports  │
+                         └─────────┬──────────┘
+                                   │
+              ┌────────────────────┴────────────────────┐
+              ▼                                         ▼
+       identity(required)                         platform(required)
+              │                                         │
+              └──────────────┬──────────────────────────┘
+                             ▼
+        required domain modules (independently described)
+   directory / dictionaries / settings / files / events /
+   navigation / notifications / monitoring / communication
+                             │
+                             ▼
+                  optional feature modules
+             audit-console / feedback / sensitive-words
+                         / localization
+```
+
+运行时依赖方向为：`identity` 不依赖可停用模块；`platform` 依赖 `identity`；required 域模块依赖 kernel、identity、platform 或其他 required 域模块；可选模块不能成为 required 模块的依赖。模块内部可以继续按 `api / application / domain / infrastructure / web` 分层，但不能用包名掩盖反向依赖。
+
+## 已落地的模块契约
+
+后端：
+
+- `IdentityModuleConfiguration`、`PlatformModuleDescriptorConfiguration`、`CommunicationModuleConfiguration`、`AuditModuleConfiguration` 等由各模块自己贡献 `PlatformModule`，`modules/ModuleConfiguration.java` 只负责组装注册表。
+- `PlatformModule` 在创建时校验 ID、版本、依赖、自依赖和重复依赖；`ModuleRegistry` 统一检查缺失依赖、循环依赖和 required 依赖 optional 的错误图。
+- `identity/api`、`dictionaries/api`、`notifications/api` 的公共契约不依赖 Spring MVC、Servlet 或 JDBC；领域校验异常由 web 适配器映射为 HTTP 错误，后续可以先拆 API 包再拆应用包。
+- 每个 Controller 必须使用 `@ModuleEndpoint` 声明归属。`ModuleEndpointValidator` 在启动时拒绝未归属或引用未知模块的接口，`ModuleAccessInterceptor` 在请求进入时检查可选模块状态。
+- 写审计只依赖 `common/AuditPort.java`；审计查询仍由 `audit/AuditRepository` 私有持有。清理调度只依赖 `common/TerminalDeliveryQueue.java`，邮件和短信实现该端口。
+- 身份模块只依赖 `common` 与自身 `identity/api` 契约；SMTP、短信凭据、队列和供应商连接都封装在 required `communication` 模块，邮件/短信运维页面也归属于该模块。
+- 身份模块对资料架构、字典校验、头像状态、账号归属、密码/验证码/通行密钥/维护策略只依赖 `identity/api` 端口；settings、dictionaries、files 通过适配器提供实现。客户端地址解析也已经下沉到 `common`，文件和反馈模块不再反向依赖 identity 实现类。
+- 反馈模块发布站内通知只依赖 `notifications/api/NotificationProducerPort`，不再绑定 `NotificationService`；通知模块可以替换存储、消息格式或未来的异步投递实现，而不牵动反馈用例。
+- 反馈策略和资料字段校验只依赖 `dictionaries/api/DictionaryLookupPort`，跨模块不再传递 `DictionaryLookupRepository` 或数据库 ID。
+- 反馈图片入口只依赖 `FileContentPort` 与 `UploadRateLimitPort`；图片归一化器和上传限流器都留在 files 模块内部，文件校验错误通过端口语义返回。
+- communication 模块的邮件与短信队列共用 `communication/DurableDeliveryStore` 状态机；渠道适配器只提供 payload 类型、表名和网关结果映射，租约续期、claim token fencing、退避、UNCERTAIN 和终态清理不会再分叉。
+- communication 模块的邮件与短信 Worker 共用 `communication/DurableDeliveryWorker` 编排；渠道只注入连接源、网关、结果映射和审计前缀，虚拟线程并发上限、总超时、租约续期和保守完成策略保持一致。
+- communication 模块读取 SMTP/SMS 配置只依赖 `common/MailConfigurationPort`、`common/SmsConfigurationPort`；凭据解密、设置版本和设置存储仍由 settings 适配器负责，通信模块不再直接依赖 `SettingStore`、`SecretStore` 或设置 DTO。
+- `scripts/module-boundaries-smoke.py` 已接入 `pnpm test`，检查模块描述、Controller 归属、公共层反向依赖和前端壳层耦合。
+- 同一检查会在静态阶段复现模块注册表的依赖约束：依赖必须存在、不能形成环、必选模块不能依赖可选模块；这样模块图错误不会等到 Spring 启动后才暴露。
+- 同一检查会按后端模块描述校验源码 import：跨模块依赖必须出现在 `PlatformModule.dependencies`，只有 kernel/common 可作为无方向共享层。
+- 同一检查还会逐项比对后端 `PlatformModule` 与前端 `manifest.ts` 的 ID、版本、required 标记和依赖集合，避免两端模块图静默漂移。
+- `ModuleRuntime` 是后台任务共用的生命周期端口；审计清理和敏感词策略都会在模块关闭后停止生效，不只依赖 HTTP 拦截器。
+- HTTP 模块拦截器同样只依赖 `ModuleRuntime`，不再直接依赖 `ModuleStateStore`；请求路径只读取目标模块的状态，避免每次可选模块请求加载完整状态列表。
+- 管理写权限复核使用按权限域确定性的 advisory lock 分桶；模块生命周期和设置/资料共享边界保留 481026，其余文件、通知、字典、反馈等不同域可以并行写入。`requireGlobal` 纯读检查不取锁，管理员文件列表/详情也不再误取写锁。
+- 会话能力和运行时导航只依赖只读 `ModuleCapabilityPort`，不泄漏模块状态记录；只有模块管理/包激活用例需要完整状态版本与修订历史。
+- 模块管理 Controller 对外返回 application DTO，不直接暴露 `ModuleStateStore` 的持久化记录；包激活只读取启用能力快照。
+- `SecretKeys` 缺失时仍允许不依赖密钥的功能启动，但会在启动阶段输出明确告警；生产环境可在部署策略中把该告警升级为 fail-fast。
+- 原来挂在 `platform` 大模块下的字典、文件、设置、目录、事件、导航、通知、监控已各自拥有后端描述符和前端 manifest；`platform` 现在只保留平台壳、模块生命周期和认证入口。
+- 所有后端 Controller 都必须归属于其包对应的模块；目录模块暂时复用 identity 包中的在线会话实现，但该跨包归属已作为唯一显式例外记录在边界检查中，后续移动实现时无需改 API。
+- `backend/src/main/resources/db/module-ownership.json` 为 V1 基线建立表、视图和函数的模块归属清单；边界检查会确保清单覆盖基线对象，数据库 smoke 会确保实际库没有未归属的 `platform_*` 表。
+- 监控的模块总数和启用数读取模块注册能力快照，而不是只统计可选模块状态表，避免 required 模块拆分后仪表盘出现假数据。
+
+前端：
+
+- `platform/modules/types.ts` 定义模块、路由和页面渲染器契约。
+- `platform/api/client.ts` 只负责网络传输、CSRF 和统一错误载体；身份、模块、导航、目录和分页 DTO 分别由对应平台域的 `api-types.ts`/`pagination.ts` 持有，避免形成前端类型上帝文件。
+- `features/*/module.tsx` 由功能模块自己声明路由、权限、依赖和页面；`platform/modules/registry.tsx` 负责拓扑排序、重复路由检查和当前页面渲染。
+- `platform/shell/workspace.tsx` 只消费注册表，不再直接导入所有业务页面；当前只创建和渲染活动页面，减少壳层重渲染工作。
+- 页面模块通过 `React.lazy` 按路由加载；注册表仍在启动时校验所有路由归属，但首屏不会静态加载未访问的业务页面。
+- `routes.ts` 由模块描述生成，新增模块页面不再需要修改一个巨大的中央路由表。
+- 所有 `ResourceTable` 页面和抽屉通过 `platform/routing/use-list-request.ts` 共享分页、页大小和搜索状态；需要浏览器历史的页面继续使用同一契约的 `useListLocation`，避免每个 CRUD 页面重新发明列表状态。
+
+## 后续的真实拆分顺序
+
+### 1. 端口替换已完成，新增跨模块调用必须延续同一规则
+
+本轮已把高风险的历史反向依赖替换为端口；后续如果出现新的跨模块调用，仍应先抽端口，再移动文件。当前契约如下：
+
+| 当前耦合 | 应抽出的端口 | 目标实现 |
+| --- | --- | --- |
+| identity → settings.ProfileSchemaReader | 已完成 `ProfileSchemaPort` | platform/settings adapter |
+| identity → dictionaries/files | 已完成 `ProfileDictionaryPort`、`AvatarStatusPort` | platform/dictionaries、platform/files adapter |
+| files → identity.ProfileRepository | 已完成 `AccountOwnerPort` | identity/ProfileRepository adapter |
+| identity → 安全/维护/通行密钥设置 | 已完成 `SecurityPolicyPort`、`MaintenancePolicyPort`、`PasskeyPolicyPort` | platform/settings adapter |
+| feedback → dictionaries/files/sensitive/notifications | 已完成 `DictionaryLookupPort`、`FileContentPort`、`ContentPolicyPort`、`NotificationProducerPort` | 各自模块适配器 |
+| mail/sms → duplicated queue state machine | 已完成 `DurableDeliveryStore<P>` | communication shared infrastructure |
+| mail/sms → settings concrete services | 已完成 `MailConfigurationPort`、`SmsConfigurationPort` | platform/settings adapters |
+| mail/sms → duplicated worker orchestration | 已完成 `DurableDeliveryWorker<P,C,R>` | communication shared infrastructure |
+| platform/common → 具体队列 | 已完成 `TerminalDeliveryQueue` | mail/sms module |
+| 业务模块 → AuditRepository | 已完成 `AuditPort` | audit module |
+
+端口只放稳定的输入、输出和错误语义，不把 JDBC、Spring MVC、数据库记录类型泄漏到端口。每新增一个端口，都要删除调用方对具体实现的 import，并给端口增加单元测试和适配器测试。
+
+### 2. 再把模块内部统一成五层
+
+新代码按以下结构进入对应模块；旧代码迁移时一次只迁一个用例：
+
+```text
+module/
+  api/             对其他模块公开的端口、命令、只读 DTO
+  application/     用例编排、事务边界、权限策略
+  domain/          不依赖 Spring/JDBC 的规则和值对象
+  infrastructure/ JDBC、加密、外部网络、定时任务
+  web/             Controller、请求校验、响应映射
+```
+
+Controller 不直接访问 Repository；跨模块不传递另一个模块的 Repository、Entity 或 `JdbcClient`。后台任务属于 infrastructure，只通过 application/api 进入模块。
+
+### 3. 数据库按模块归属演进，不重写 V1
+
+现有 `V1__platform_initialization.sql` 是可复现基线，应保持不可变；当前已用 `db/module-ownership.json` 标出 V1 中每个表、视图和函数的模块归属，并登记追加迁移的模块 owner。Flyway 仍使用单一版本历史，迁移文件保持在统一目录并由 owner 标记：
+
+```text
+db/migration/V1__platform_initialization.sql   # 不再修改
+db/migration/V2__identity_argon2_password_hash.sql # identity
+db/migration/V3__group_platform_navigation.sql # navigation
+```
+
+版本号仍然全局唯一；每个迁移文件首行标注 `owner=<module-id>`，CI 检查活动迁移及表、索引和函数的归属。不要把 V1 拆成多份再重新编号，这会破坏已有环境的 Flyway 校验和恢复路径。
+
+### 4. 最后再拆 Maven 模块
+
+当端口替换完成、边界测试稳定后，再将 Maven 拆成：
+
+```text
+backend/
+  lumira-kernel/
+  lumira-identity/
+  lumira-platform/
+  lumira-communication/
+  lumira-audit/
+  lumira-optional/
+  lumira-app/
+```
+
+`lumira-app` 只负责 Spring Boot 启动和模块装配。拆分前必须先做到“删除一个模块的依赖，编译就失败且错误位置清晰”；否则 Maven 多模块只是把一个大模块搬成多个目录，反而增加构建复杂度。
+
+## 模块完成标准
+
+一个模块只有同时满足以下条件，才算真正独立：
+
+1. 有自己的 `PlatformModule`/前端模块描述、版本和依赖。
+2. 所有 HTTP 接口都有归属，启停状态能阻断接口和后台任务。
+3. 有自己的迁移归属、权限清单、审计动作和测试夹具。
+4. 对外只暴露 api/port，不暴露 Repository、实体和数据库连接。
+5. 可单独关闭其页面、接口、定时任务和消息消费者，并且不影响 required 模块。
+6. `pnpm test`、后端测试、构建和真实 HTTP/浏览器回归均通过。
+
+## 2026-09-16 增量验证（历史记录）
+
+- `pnpm test`：当日 20/20 通过；其中包含模块边界检查和模块图的重复、缺失、循环依赖、required→optional 依赖测试。
+- 模块边界检查：15 个后端/前端模块描述符一致，48 个 Controller 均有明确归属；V1 的 37 张平台表和 8 个函数/视图均有数据库归属。
+- identity 的跨包源码检查：已阻止对 settings、dictionaries、files 具体实现的回退依赖，并验证 7 个 identity-facing 端口适配器存在；feedback、files、dictionaries、notifications、communication 的端口也纳入同一边界检查。
+- 前端模块边界检查：已验证页面模块使用懒加载，禁止模块注册文件静态导入业务页面。
+- 前端平台层：已统一日期格式化与无效日期回退，并缓存 `Intl.DateTimeFormat`；错误码白名单由平台 API 工具集中处理。
+- 前端平台层：已统一资源列表状态初始化；边界检查会阻止功能页再次内联 `page/pageSize/search` 默认值，避免 CRUD 页面产生隐性分叉。
+- 导航模块契约：服务端只接受已注册模块 ID，并在运行时节点中回传模块归属，避免菜单引用未安装模块后静默消失。
+- 公共 API 边界检查：已验证三组 `api` 契约不泄漏 Spring MVC、Servlet 或 JDBC 类型。
+- `pnpm typecheck`、`pnpm build`：通过；Next.js 生产构建继续只生成统一的动态 dashboard 壳。
+- `python3 scripts/database-schema-smoke.py`：当日通过；本次没有修改已执行的 V1 基线。
+- 当日记录中的 `mvn compile` 未完成说明已由 2026-09-16 JDK 25 复验覆盖；当前以 [算法基线](algorithm-baseline.md) 与 [验证记录](verification.md) 的最新结果为准。
+
+这套标准比“每个目录都叫 module”更严格，也为未来按模块独立部署保留了清晰的升级路径。

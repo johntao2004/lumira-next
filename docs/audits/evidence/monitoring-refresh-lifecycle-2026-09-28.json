@@ -1,0 +1,132 @@
+{
+  "session": "fresh isolated tab for manual/error/lifecycle checks",
+  "route": "/dashboard/monitoring",
+  "pageErrors": [],
+  "resources": [
+    {
+      "path": "/umi.js",
+      "status": 200,
+      "contentType": "text/javascript; charset=utf-8"
+    }
+  ],
+  "requestTimeline": [
+    {
+      "at": 1790593879753,
+      "iso": "2026-09-28T11:11:19.753Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593879838,
+      "completedIso": "2026-09-28T11:11:19.838Z"
+    },
+    {
+      "at": 1790593889007,
+      "iso": "2026-09-28T11:11:29.007Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593889038,
+      "completedIso": "2026-09-28T11:11:29.038Z"
+    },
+    {
+      "at": 1790593890982,
+      "iso": "2026-09-28T11:11:30.982Z",
+      "method": "GET",
+      "status": 503,
+      "outcome": "response",
+      "completedAt": 1790593891014,
+      "completedIso": "2026-09-28T11:11:31.014Z"
+    },
+    {
+      "at": 1790593902874,
+      "iso": "2026-09-28T11:11:42.874Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593902913,
+      "completedIso": "2026-09-28T11:11:42.913Z"
+    },
+    {
+      "at": 1790593908918,
+      "iso": "2026-09-28T11:11:48.918Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593908940,
+      "completedIso": "2026-09-28T11:11:48.940Z"
+    },
+    {
+      "at": 1790593914945,
+      "iso": "2026-09-28T11:11:54.945Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593914978,
+      "completedIso": "2026-09-28T11:11:54.978Z"
+    },
+    {
+      "at": 1790593938398,
+      "iso": "2026-09-28T11:12:18.398Z",
+      "method": "GET",
+      "status": 200,
+      "outcome": "response",
+      "completedAt": 1790593938423,
+      "completedIso": "2026-09-28T11:12:18.423Z"
+    }
+  ],
+  "manual": {
+    "selectedText": "手动",
+    "selectedAt": "2026-09-28T11:11:19.963Z",
+    "idleObservationSeconds": 8,
+    "automaticGetsDuringIdle": 0,
+    "refreshButtonAccessibleName": "刷新页面",
+    "refreshButtonText": "刷新页面",
+    "clickedAt": "2026-09-28T11:11:28.971Z",
+    "manualGetAt": "2026-09-28T11:11:29.007Z",
+    "status": 200
+  },
+  "failureRecovery": {
+    "failureClickAt": "2026-09-28T11:11:30.936Z",
+    "failureRequestAt": "2026-09-28T11:11:30.982Z",
+    "failureStatus": 503,
+    "failureOutcome": "response",
+    "automaticRetryAfterFailureInManualMode": 0,
+    "manualPostFailureObservationSeconds": 4.5,
+    "injection": "The isolated browser intercepted one page-originated GET /api/platform/monitoring/summary and returned HTTP 503; no direct API request or write was made.",
+    "recoveryMode": "实时（约 3 秒轮询）",
+    "recoverySelectedAt": "2026-09-28T11:11:36.405Z",
+    "recoveryRequestAt": "2026-09-28T11:11:42.874Z",
+    "recoveryStatus": 200,
+    "secondsFromFailureToRecovery": 11.892
+  },
+  "hiddenPage": {
+    "switchMethod": "foregrounded a second page in the same isolated browser context",
+    "beforeSwitch": "visible",
+    "afterSwitch": "visible",
+    "startedAt": "2026-09-28T11:11:48.965Z",
+    "observationSeconds": 8,
+    "summaryGetsWhileBackground": 1,
+    "afterReturn": "visible"
+  },
+  "routeLeave": {
+    "route": "/dashboard/notifications",
+    "departedAt": "2026-09-28T11:11:57.953Z",
+    "observationSeconds": 10,
+    "summaryRequestsBeforeLeave": 6,
+    "summaryGetsAfterDeparture": [],
+    "summaryGetsDuringWindow": 0,
+    "returnedAt": "2026-09-28T11:12:08.441Z",
+    "returnedRefreshSelection": "每 5 秒",
+    "firstGetAfterReturnAt": "2026-09-28T11:12:18.398Z",
+    "firstGetAfterReturnStatus": 200
+  },
+  "screenshots": [
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-manual.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-manual-refreshed.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-failure.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-recovered.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-left-route.png",
+    "/Users/johntao/Documents/GitHub/lumira-next/docs/audits/evidence/monitoring-returned-default.png"
+  ],
+  "method": "Request times/statuses came only from the browser Network request/response events for page-originated read-only summary GETs. Login used the visible form. Failure test intercepted only one page-originated summary GET in this isolated browser. Screenshots contain only the refresh toolbar, generic failure notification, or selected navigation item."
+}

@@ -1,0 +1,40 @@
+import {chromium} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const config=JSON.parse(readFileSync('.runtime/local.json','utf8'));
+const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});let changed=false;
+try{
+ const context=await browser.newContext({baseURL:'http://127.0.0.1:8010',viewport:{width:1213,height:886}});
+ const csrf=await(await context.request.get('/api/auth/csrf')).json();assert.equal((await context.request.post('/api/auth/login',{form:{username:'admin',password:config.LUMIRA_BOOTSTRAP_PASSWORD},headers:{[csrf.headerName]:csrf.token}})).status(),200);
+ const path='/api/platform/settings/profile-fields';assert.equal((await(await context.request.get(path)).json()).version,0,'Refuse to overwrite configured schema');
+ const page=await context.newPage();await page.goto('/dashboard/profile-fields');await page.getByRole('button',{name:'新增资料字段',exact:true}).waitFor();
+ assert.equal(await page.locator('#data_fields_0_key').isDisabled(),true);
+ await page.getByRole('button',{name:'新增资料字段 · 头像',exact:true}).click();
+ await page.locator('.ant-collapse-item').last().locator('.ant-collapse-header').click();
+ assert.equal(await page.locator('#data_fields_4_key').inputValue(),'avatarUrl');
+ assert.equal(await page.locator('#data_fields_4_key').isDisabled(),true);
+ assert.equal(await page.locator('#data_fields_4_type').isDisabled(),true);
+ assert.equal(await page.locator('#data_fields_4_visible').isEnabled(),true);
+ assert.equal(await page.locator('#data_fields_4_required').isEnabled(),true);
+ await page.reload();await page.getByRole('button',{name:'新增资料字段',exact:true}).waitFor();
+ await page.getByRole('button',{name:'新增资料字段',exact:true}).click();
+ await page.locator('.ant-collapse-item').last().locator('.ant-collapse-header').click();
+ await page.locator('#data_fields_4_key').fill('qualification');await page.locator('#data_fields_4_label').fill('Qualification QA');
+ await page.locator('#data_fields_4_type').click();await page.locator('.ant-select-dropdown').getByText('单选',{exact:true}).click();
+ await page.locator('#data_fields_4_options').fill('One\nTwo');
+ await page.locator('#changeReason').fill('Profile field browser fixture');
+ const saved=page.waitForResponse(r=>r.url().endsWith(path)&&r.request().method()==='PUT');await page.locator('button[type="submit"]').click();const result=await saved;assert.equal(result.status(),200,JSON.stringify({body:await result.text(),payload:result.request().postDataJSON()}));changed=true;
+ assert.deepEqual((await result.json()).data.fields.at(-1).options,['One','Two']);
+ await page.reload();await page.getByRole('button',{name:'新增资料字段',exact:true}).waitFor();
+ await page.locator('.ant-collapse-item').last().locator('.ant-collapse-header').click();assert.equal(await page.locator('#data_fields_4_key').inputValue(),'qualification');
+ await page.locator('.ant-collapse-item').last().getByRole('button',{name:/删\s*除/}).click();
+ await page.locator('#changeReason').fill('Remove custom field');const removed=page.waitForResponse(r=>r.url().endsWith(path)&&r.request().method()==='PUT');await page.locator('button[type="submit"]').click();assert.equal((await removed).status(),200);
+ await page.getByRole('button',{name:'配置历史',exact:true}).click();await page.getByRole('row').filter({hasText:'Profile field browser fixture'}).getByRole('button',{name:'详情',exact:true}).click();
+ await page.locator('#restore-profile-fields_changeReason').fill('Restore custom field');const restored=page.waitForResponse(r=>r.url().endsWith(path+'/rollback'));await page.locator('button[form="restore-profile-fields"]').click();const response=await restored;assert.equal(response.status(),200);assert.equal((await response.json()).version,3);
+ assert.equal((await(await context.request.get(path)).json()).data.fields.at(-1).key,'qualification');
+ console.log('PASS: profile field creation, protected built-in key, SELECT options, save/reload, custom removal and history rollback');
+}finally{
+ if(changed)execFileSync('python3',['-c',`from smoke_support import sql; sql("DELETE FROM platform_setting_revision WHERE setting_id IN (SELECT id FROM platform_setting WHERE section='profile-fields'); DELETE FROM platform_audit WHERE target_id IN (SELECT id FROM platform_setting WHERE section='profile-fields'); DELETE FROM platform_setting WHERE section='profile-fields'")`],{cwd:'scripts',stdio:'pipe'});
+ await browser.close();
+}

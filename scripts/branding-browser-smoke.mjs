@@ -1,0 +1,62 @@
+import {observeResponse} from "./browser-support.mjs";
+import {chromium} from '@playwright/test';
+import {readFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const config=JSON.parse(readFileSync('.runtime/local.json','utf8'));
+const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});
+const context=await browser.newContext({baseURL:'http://127.0.0.1:8010',viewport:{width:1213,height:886}});
+let changed=false;
+try{
+ const csrf=await(await context.request.get('/api/auth/csrf')).json();
+ assert.equal((await context.request.post('/api/auth/login',{form:{username:'admin',password:config.LUMIRA_BOOTSTRAP_PASSWORD},headers:{[csrf.headerName]:csrf.token}})).status(),200);
+ const initial=await(await context.request.get('/api/platform/settings/branding')).json();assert.equal(initial.version,0,'Refuse to overwrite configured branding');
+ const page=await context.newPage();await page.goto('/dashboard/branding');
+ const name=page.locator('#data_websiteName');await name.waitFor();assert.equal(await name.inputValue(),'Lumira');
+ const other=await context.newPage();await other.goto('/dashboard/branding');await other.locator('#data_websiteName').waitFor();
+ await name.fill('Browser Branding QA');await page.locator('#data_loginBackgroundUrl').fill('/login-cloud-platform.jpg');await page.locator('#changeReason').fill('Browser verification');
+ const saved=observeResponse(page,r=>r.url().endsWith('/api/platform/settings/branding')&&r.request().method()==='PUT');await page.locator('button[type="submit"]').click();assert.equal((await saved).status(),200);changed=true;
+ await page.waitForFunction(()=>document.title.endsWith('Browser Branding QA'));
+ const anonymous=await browser.newContext({baseURL:'http://127.0.0.1:8010'});
+ const publicData=await(await anonymous.request.get('/api/public/branding')).json();assert.equal(publicData.websiteName,'Browser Branding QA');assert.equal(publicData.version,undefined);
+ const loginPage=await anonymous.newPage();await loginPage.goto('/user/login');await loginPage.getByRole('heading').filter({hasText:'Browser Branding QA'}).waitFor();assert.equal(await loginPage.title(),'Browser Branding QA');const hero=loginPage.locator('.login-hero');await hero.waitFor();assert.equal(await hero.isVisible(),true);assert.match(await hero.evaluate(element=>getComputedStyle(element).backgroundImage),/login-cloud-platform\.jpg/);await anonymous.close();
+ await page.reload();await name.waitFor();assert.equal(await name.inputValue(),'Browser Branding QA');
+ await other.locator('#data_websiteName').fill('Stale edit');await other.locator('#changeReason').fill('Conflict verification');
+ const rejected=observeResponse(other,r=>r.url().endsWith('/api/platform/settings/branding')&&r.request().method()==='PUT');await other.locator('button[type="submit"]').click();assert.equal((await rejected).status(),409);
+ assert.equal(await other.locator('#data_websiteName').inputValue(),'Stale edit');
+ await other.getByRole('main').getByRole('button',{name:'重新载入配置',exact:true}).click();
+ await other.getByRole('button',{name:/取\s*消/}).click();
+ await other.locator('.ant-popconfirm').waitFor({state:'hidden'});
+ assert.equal(await other.locator('#data_websiteName').inputValue(),'Stale edit');
+ await other.route('**/api/platform/settings/branding',route=>route.fulfill({status:503,contentType:'application/json',body:'{"detail":"unavailable"}'}));
+ await other.getByRole('main').getByRole('button',{name:'重新载入配置',exact:true}).click();
+ const failedRead=observeResponse(other,r=>r.url().endsWith('/api/platform/settings/branding')&&r.request().method()==='GET');
+ await other.locator('.ant-popconfirm').getByRole('button',{name:'重新载入配置',exact:true}).click();
+ assert.equal((await failedRead).status(),503);
+ assert.equal(await other.locator('#data_websiteName').inputValue(),'Stale edit');
+ await other.locator('.ant-popconfirm').waitFor({state:'hidden'});
+ await other.unroute('**/api/platform/settings/branding');
+ await other.getByRole('main').getByRole('button',{name:'重新载入配置',exact:true}).click();
+ const reloaded=observeResponse(other,r=>r.url().endsWith('/api/platform/settings/branding')&&r.request().method()==='GET');
+ await other.locator('.ant-popconfirm').getByRole('button',{name:'重新载入配置',exact:true}).click();
+ assert.equal((await reloaded).status(),200);
+ await other.waitForFunction(()=>document.querySelector('#data_websiteName')?.value==='Browser Branding QA');
+ assert.equal(await other.locator('#changeReason').inputValue(),'');
+
+
+ await name.fill('Second branding');await page.locator('#changeReason').fill('Second revision');
+ const second=observeResponse(page,r=>r.url().endsWith('/api/platform/settings/branding')&&r.request().method()==='PUT');await page.locator('button[type="submit"]').click();assert.equal((await second).status(),200);
+ await page.getByRole('button',{name:'配置历史',exact:true}).click();
+ await page.getByRole('columnheader',{name:'更新时间',exact:true}).waitFor();
+ await page.getByRole('columnheader',{name:'恢复来源版本',exact:true}).waitFor();
+ assert.ok(await page.locator('time[datetime]').count()>0);
+ await page.getByRole('row').filter({hasText:'Browser verification'}).getByRole('button',{name:'详情',exact:true}).click();
+ await page.locator('#restore-branding_changeReason').fill('Restore through browser');
+ const rollback=observeResponse(page,r=>r.url().endsWith('/api/platform/settings/branding/rollback'));await page.locator('button[form="restore-branding"]').click();
+ const restored=await rollback;assert.equal(restored.status(),200);assert.equal((await restored.json()).version,3);
+ assert.equal(await name.inputValue(),'Browser Branding QA');
+ console.log('PASS: reload cancellation, failed-read edit preservation, successful reload, localized history metadata, history detail and browser rollback to new version, public branding, anonymous login heading/title and live document title update, branding form save, reload persistence, stale editor conflict and unsaved text preservation');
+}finally{
+ if(changed)execFileSync('python3',['-c',`from smoke_support import sql; sql("DELETE FROM platform_setting_revision WHERE setting_id IN (SELECT id FROM platform_setting WHERE section='branding'); DELETE FROM platform_audit WHERE target_id IN (SELECT id FROM platform_setting WHERE section='branding'); DELETE FROM platform_setting WHERE section='branding'")`],{cwd:'scripts',stdio:'pipe'});
+ await browser.close();
+}

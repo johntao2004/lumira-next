@@ -1,0 +1,42 @@
+package com.lumira.platform.identity;
+
+import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.*;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class OnlineSessionService {
+    private final OnlineSessionRepository sessions;
+    private final com.lumira.platform.common.AdministrationPort guard;
+    private final AuditPort audit;
+
+    public OnlineSessionService(OnlineSessionRepository sessions, com.lumira.platform.common.AdministrationPort guard, AuditPort audit) {
+        this.sessions = sessions; this.guard = guard; this.audit = audit;
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResult<OnlineSessionRepository.Entry> list(String actor, PageRequest request) {
+        guard.requireGlobal(actor, "platform:users:read");
+        long now = System.currentTimeMillis();
+        return new PageResult<>(sessions.list(request, now), sessions.count(request, now), request.page(), request.pageSize());
+    }
+
+    @Transactional
+    public void revoke(String actor, UUID id) {
+        guard.requireGlobal(actor, "platform:users:write");
+        if (!sessions.revoke(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "sessionNotFound");
+        audit.append(actor, "session.adminRevoke", id);
+    }
+
+    @Transactional
+    public int revokeUser(String actor, UUID userId) {
+        guard.requireGlobal(actor, "platform:users:write");
+        int count = sessions.revokeUser(userId);
+        if (count > 0) audit.append(actor, "session.adminRevokeUser", userId);
+        return count;
+    }
+}
