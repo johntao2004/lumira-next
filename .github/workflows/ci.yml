@@ -36,6 +36,8 @@ jobs:
       LUMIRA_TEST_DB_PASSWORD: ci-only
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # spotless ratchetFrom resolves a baseline commit
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -44,5 +46,6 @@ jobs:
           distribution: temurin
           java-version: 25
           cache: maven
+      - run: ./backend/mvnw -f backend/pom.xml -B spotless:check
       # Includes the integration tests that need PostgreSQL (enabled by LUMIRA_TEST_DB_URL).
       - run: ./backend/mvnw -f backend/pom.xml -B verify
