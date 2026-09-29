@@ -24,6 +24,22 @@ class SensitiveWordMatcherTest {
     }
 
     @Test
+    void invisibleFormatCharactersCannotHideAWord() {
+        var matcher = new SensitiveWordMatcher(List.of(
+            new SensitiveWordMatcher.Entry("bad", SensitiveWordMatcher.normalizeForMatch("bad"), "HIGH", "BLOCK")
+        ));
+
+        for (String hidden : List.of("b\u200Bad", "ba\u200Dd", "b\u00ADad", "\uFEFFbad", "b\u2060a\u200Cd")) {
+            assertEquals(1, matcher.find("x " + hidden + " y").size(), () -> "not detected: " + hidden.codePoints().boxed().toList());
+        }
+        // A stored word that itself contains an invisible character still matches its plain form.
+        var stored = new SensitiveWordMatcher(List.of(
+            new SensitiveWordMatcher.Entry("b\u200Bad", "b\u200Bad", "HIGH", "BLOCK")));
+        assertEquals(1, stored.find("bad").size());
+        assertEquals("bad", SensitiveWordMatcher.normalizeForMatch("B\u200BAD"));
+    }
+
+    @Test
     void emitsOverlappingPatternsOnceAndHonorsMaximum() {
         var matcher = new SensitiveWordMatcher(List.of(
             entry("ab", "LOW", "LOG_ONLY"),

@@ -98,7 +98,7 @@ public class FileRepository {
    .param("id",id).query(MAPPER).optional();
  }
  public PageResult<Entry> listOwned(UUID ownerId,PageRequest page){
-  String where=" WHERE owner_id=:owner AND state<>'TRASHED' AND (:search='' OR strpos(lower(original_name),lower(:search))>0)";
+  String where=" WHERE owner_id=:owner AND state NOT IN ('TRASHED','DELETING') AND (:search='' OR strpos(lower(original_name),lower(:search))>0)";
   var filter=PageFilterSql.build(page,java.util.Map.of("originalName","original_name","sizeBytes","size_bytes","state","state","createdAt","created_at"));
   var countParams=new java.util.HashMap<String,Object>();countParams.put("owner",ownerId);countParams.put("search",page.search());countParams.putAll(filter.parameters());
   long total=jdbc.sql("SELECT count(*) FROM platform_file"+where+filter.sql()).params(countParams).query(Long.class).single();
@@ -109,7 +109,7 @@ public class FileRepository {
  }
  /** Global file-center reads include an explicit owner projection and never expose file payloads. */
  public PageResult<ManagedEntry> listManaged(PageRequest page){
-  String where=" WHERE f.state<>'TRASHED' AND (:search='' OR strpos(lower(f.original_name),lower(:search))>0 OR strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
+  String where=" WHERE f.state NOT IN ('TRASHED','DELETING') AND (:search='' OR strpos(lower(f.original_name),lower(:search))>0 OR strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
   var filter=PageFilterSql.build(page,java.util.Map.of("originalName","f.original_name","ownerUsername","CASE WHEN u.username IS NULL THEN '—' ELSE coalesce(u.display_name,u.username) || ' (' || u.username || ')' END","sizeBytes","f.size_bytes","state","f.state","createdAt","f.created_at"));
   var countParams=new java.util.HashMap<String,Object>();countParams.put("search",page.search());countParams.putAll(filter.parameters());
   long total=jdbc.sql("SELECT count(*) FROM platform_file f LEFT JOIN platform_user u ON u.id=f.owner_id"+where+filter.sql()).params(countParams).query(Long.class).single();

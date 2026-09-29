@@ -24,6 +24,8 @@ services:
       LUMIRA_DB_USER: lumira_next
       LUMIRA_DB_PASSWORD: ${LUMIRA_DB_PASSWORD:?Set database password}
       LUMIRA_BOOTSTRAP_PASSWORD: ${LUMIRA_BOOTSTRAP_PASSWORD:?Set initial administrator password}
+      # Optional: bearer token (>=32 chars) that enables /actuator/prometheus for scrapers on the private network.
+      LUMIRA_METRICS_TOKEN: ${LUMIRA_METRICS_TOKEN:-}
       LUMIRA_TRUSTED_PROXY_ADDRESSES: ${LUMIRA_EDGE_ADDRESS:-172.30.78.2}
       # Production must make the transport decision explicitly. Use false only for local HTTP.
       LUMIRA_COOKIE_SECURE: ${LUMIRA_COOKIE_SECURE:?Set LUMIRA_COOKIE_SECURE=true for HTTPS (false only for local HTTP)}
@@ -40,6 +42,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
+    volumes:
+      - files_data:/data/files
     networks:
       - default
       - proxy
@@ -72,5 +76,10 @@ networks:
     ipam:
       config:
         - subnet: ${LUMIRA_PROXY_SUBNET:-172.30.78.0/24}
+          # Dynamic allocation must never hand out the edge's fixed address (it starts last, so the
+          # other services would otherwise take it first). If you change LUMIRA_PROXY_SUBNET, set
+          # LUMIRA_PROXY_POOL to a range inside it that excludes LUMIRA_EDGE_ADDRESS.
+          ip_range: ${LUMIRA_PROXY_POOL:-172.30.78.128/25}
 volumes:
   postgres_data:
+  files_data:

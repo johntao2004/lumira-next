@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
 jobs:
   web:
     runs-on: ubuntu-latest
@@ -17,6 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm build
       - run: node --test tests/*.test.mjs
   backend:
     runs-on: ubuntu-latest
@@ -47,5 +50,39 @@ jobs:
           java-version: 25
           cache: maven
       - run: ./backend/mvnw -f backend/pom.xml -B spotless:check
-      # Includes the integration tests that need PostgreSQL (enabled by LUMIRA_TEST_DB_URL).
+      # Includes the integration tests that need PostgreSQL (enabled by LUMIRA_TEST_DB_URL)
+      # and ArchitectureTest, which freezes the module dependency graph.
       - run: ./backend/mvnw -f backend/pom.xml -B verify
+  images:
+    # Proves both production images still build; the server build also runs the localization generator.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/server.Dockerfile -t lumira-server:ci .
+      - run: docker build -f deploy/web.Dockerfile -t lumira-web:ci .
+      - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: lumira-server:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: lumira-web:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan lockfiles and pom for known vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

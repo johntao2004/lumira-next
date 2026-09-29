@@ -20,10 +20,28 @@ public final class CsvWriter {
         return ("\uFEFF" + output).getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Spreadsheet clients evaluate cells that start with = + - @ (or a tab / line break they strip)
+     * as formulas, so user-controlled text such as a display name could run in an administrator's
+     * Excel. A leading apostrophe forces text. Plain signed numbers are left untouched.
+     */
+    private static String neutralizeFormula(String text) {
+        if (text.isEmpty()) return text;
+        char first = text.charAt(0);
+        if (first == '=' || first == '@' || first == '\t' || first == '\r' || first == '\n')
+            return "'" + text;
+        if ((first == '+' || first == '-') && !text.matches("[+-]?\\d+(?:\\.\\d+)?"))
+            return "'" + text;
+        return text;
+    }
+
     private static String escape(Object value) {
         if (value == null) return "";
-        String text = String.valueOf(value);
-        if (text.indexOf('"') >= 0 || text.indexOf(',') >= 0 || text.indexOf('\r') >= 0 || text.indexOf('\n') >= 0) {
+        String text = neutralizeFormula(String.valueOf(value));
+        if (text.indexOf('"') >= 0
+                || text.indexOf(',') >= 0
+                || text.indexOf('\r') >= 0
+                || text.indexOf('\n') >= 0) {
             return "\"" + text.replace("\"", "\"\"") + "\"";
         }
         return text;

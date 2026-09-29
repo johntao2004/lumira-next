@@ -56,5 +56,5 @@ public class FeedbackService {
   if(input==null||input.version()==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"invalidFeedback");
   return store.handle(owner(actor),actor,id,input.version(),filter(input.status()),input.adminReply(),catalog.load().policy());
  }
- private static String visibleText(String html){return html==null?"":html.replaceAll("(?s)<[^>]*>"," ");}
+ private static String visibleText(String html){return com.lumira.platform.content.RichText.visibleText(html);}
 }

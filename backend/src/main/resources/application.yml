@@ -31,17 +31,28 @@ server:
         # Secure by default; local HTTP is explicitly opted into by scripts/start.mjs.
         secure: ${LUMIRA_COOKIE_SECURE:true}
         same-site: lax
+logging:
+  pattern:
+    # requestId is set by RequestCorrelationFilter; empty outside a request (schedulers, startup).
+    correlation: "[%X{requestId:-}] "
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # /actuator/prometheus is never routed by the edge proxy; scrape it inside the private network.
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
   endpoint:
     health:
       probes:
         enabled: true
       show-details: never
 lumira:
+  metrics:
+    # Bearer token required for /actuator/prometheus (min 32 chars); unset means the endpoint is disabled.
+    token: ${LUMIRA_METRICS_TOKEN:}
   http:
     upload-idle-timeout-ms: ${LUMIRA_UPLOAD_IDLE_TIMEOUT_MS:30000}
   files:

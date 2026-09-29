@@ -2,7 +2,7 @@
 
 import { ProCard, StatisticCard } from "@ant-design/pro-components";
 import { QuestionCircleOutlined } from "@ant-design/icons";
-import { Col, Empty, List, Progress, Row, Select, Space, Statistic, Tag, Tooltip, Typography } from "antd";
+import { Col, Empty, List, Progress, Row, Select, Skeleton, Space, Statistic, Tag, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -209,6 +209,8 @@ export function MonitoringPage() {
         <AsyncButton pending={query.isFetching} onClick={() => void query.refetch()} label={t("refreshPage")} />
       </Space>
     </div>
+
+    {!data && query.isPending && <ProCard><Skeleton active paragraph={{ rows: 8 }} /></ProCard>}
 
     {data && machine && summary && <>
       <ProCard title={t("machineRuntime")} extra={<Tag color={machineNeedsAttention ? "warning" : "success"}>{machineNeedsAttention ? t("attentionRequired") : t("healthy")}</Tag>}>

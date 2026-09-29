@@ -78,10 +78,14 @@ public final class SensitiveWordMatcher {
         return new ScanResult(List.copyOf(matches.values()), blocked, seen.size(), blockingMatchDisplayed);
     }
 
-    /** NFKC + lowercase conversion gives the same match semantics as the legacy service. */
+    /**
+     * NFKC + lowercase gives the same match semantics as the legacy service. Format characters
+     * (zero-width space/joiners, BOM, soft hyphen, bidi marks) are invisible, so they are dropped
+     * on both the stored word and the scanned text; otherwise one inserted between letters hides a word.
+     */
     public static String normalizeForMatch(String value) {
         if (value == null) return "";
-        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
+        String normalized = stripFormatCharacters(Normalizer.normalize(value, Normalizer.Form.NFKC))
             .toLowerCase(Locale.ROOT).strip();
         StringBuilder compacted = new StringBuilder(normalized.length());
         boolean whitespace = false;
@@ -98,11 +102,20 @@ public final class SensitiveWordMatcher {
         return compacted.toString().strip();
     }
 
+    private static String stripFormatCharacters(String value) {
+        if (value.codePoints().noneMatch(cp -> Character.getType(cp) == Character.FORMAT)) return value;
+        var kept = new StringBuilder(value.length());
+        value.codePoints().filter(cp -> Character.getType(cp) != Character.FORMAT).forEach(kept::appendCodePoint);
+        return kept.toString();
+    }
+
     private void add(Entry entry) {
         if (entry == null || entry.normalizedWord() == null || entry.normalizedWord().isBlank()) return;
         Node node = root;
-        for (int i = 0; i < entry.normalizedWord().length(); i++) {
-            node = node.next.computeIfAbsent(entry.normalizedWord().charAt(i), ignored -> new Node());
+        String key = normalizeForMatch(entry.normalizedWord());
+        if (key.isBlank()) return;
+        for (int i = 0; i < key.length(); i++) {
+            node = node.next.computeIfAbsent(key.charAt(i), ignored -> new Node());
         }
         node.outputs.add(entry);
     }

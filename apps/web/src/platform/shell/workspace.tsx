@@ -61,6 +61,33 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
   const errorText = (error: unknown) =>
     t(error instanceof ApiError && error.status === 403 ? "forbidden" : "unavailable");
 
+  // ProLayout renders its mobile navigation trigger as a bare <span onClick>. Give it a role, a name
+  // and keyboard activation so it is reachable without a pointer; the layout itself is untouched.
+  useEffect(() => {
+    const selector = ".ant-pro-global-header-collapsed-button";
+    const label = t("openMenu");
+    const patch = () => document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+      element.setAttribute("role", "button");
+      element.setAttribute("aria-label", label);
+      element.tabIndex = 0;
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      const trigger = (event.target as HTMLElement | null)?.closest?.<HTMLElement>(selector);
+      if (trigger && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        trigger.click();
+      }
+    };
+    patch();
+    const observer = new MutationObserver(patch);
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [t]);
+
   const user = useQuery({
     queryKey: ["session"],
     staleTime: 0,

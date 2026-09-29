@@ -26,7 +26,7 @@ export function PasswordDrawer({ open, onClose }: { open: boolean; onClose: () =
         onClose(); client.clear(); void message.success(t("passwordChanged")); history.replace("/user/login");
       } catch (e) {
         const key = e instanceof ApiError ? e.message : "unavailable";
-        setError(key === "wrongCurrentPassword" || key === "passwordMustDiffer" || key === "passwordPolicy" ? key : "unavailable");
+        setError(key === "wrongCurrentPassword" || key === "passwordMustDiffer" || key === "passwordPolicy" ? key : key === "passwordChangeLimited" ? "emailVerificationLimited" : "unavailable");
       } finally { setPending(false); }
     }}>
       <Form.Item name="currentPassword" label={t("currentPassword")} rules={[{ required: true, message: t("passwordRequired") }]}><Input.Password autoComplete="current-password" /></Form.Item>

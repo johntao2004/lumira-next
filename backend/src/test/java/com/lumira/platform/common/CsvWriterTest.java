@@ -15,4 +15,26 @@ class CsvWriterTest {
         assertEquals("id,\"display\nname\",\"say \"\"hi\"\"\",\"a,b\"\r\n", csv.toString());
         assertEquals("\uFEFF" + csv, new String(CsvWriter.utf8(csv), StandardCharsets.UTF_8));
     }
+
+    @Test
+    void neutralizesSpreadsheetFormulaPrefixesButKeepsPlainNumbers() {
+        var csv = new StringBuilder();
+        CsvWriter.row(
+                csv,
+                java.util.Arrays.asList(
+                        "=HYPERLINK(\"http://evil\")",
+                        "@SUM(A1)",
+                        "+1+1",
+                        "-cmd|x",
+                        "\tcmd",
+                        -5,
+                        "-5.25",
+                        "ok",
+                        null,
+                        12L));
+
+        assertEquals(
+                "\"'=HYPERLINK(\"\"http://evil\"\")\",'@SUM(A1),'+1+1,'-cmd|x,'\tcmd,-5,-5.25,ok,,12\r\n",
+                csv.toString());
+    }
 }
