@@ -31,7 +31,7 @@ http://127.0.0.1:8010/user/login 均返回 HTTP 200，再开始依赖服务的�
 - `www.postgresql.org`
 - `apt.postgresql.org`
 
-安装器支持 Ubuntu 和 Debian。Debian 普通用户默认使用无需 sudo 的方案：工具链保存在仓库之外的 `$HOME/.local/share/lumira-cloud`（可用 `LUMIRA_CLOUD_TOOLS_DIR` 指定）；Node 24 和 Temurin JDK 25 下载包验证 SHA-256，PostgreSQL 18.6 从官方源码校验后编译，保留 zlib，省去开发环境不需要的 ICU 和 psql 行编辑。缺少的 flex、bison 使用系统提供的官方发行版签名密钥，在工具目录内建立隔离 apt 索引、下载并解包；不读取受限的系统 apt 配置，不修改系统。VM 需提供 gcc、make、perl、python3、curl、tar、sha256sum、dpkg-deb 和 apt-get。Ubuntu 普通用户可加 `LUMIRA_CLOUD_USERSPACE=1` 使用同一方案；原有 Ubuntu root/免交互 sudo 方案仍使用官方签名 apt 源。pnpm 固定为 10.33.0。
+安装器支持 Ubuntu 和 Debian。Debian 普通用户默认使用无需 sudo 的方案：工具链保存在仓库之外的 `$HOME/.local/share/lumira-cloud`（可用 `LUMIRA_CLOUD_TOOLS_DIR` 指定）；Node 24 和 Temurin JDK 25 下载包验证 SHA-256，PostgreSQL 18.6 从官方源码校验后编译，保留 zlib，省去开发环境不需要的 ICU 和 psql 行编辑。缺少的 flex、bison、m4 使用系统提供的官方发行版签名密钥，在工具目录内建立隔离 apt 索引、下载并解包；不读取受限的系统 apt 配置，不修改系统。VM 需提供 gcc、make、perl、python3、curl、tar、sha256sum、dpkg-deb 和 apt-get。Ubuntu 普通用户可加 `LUMIRA_CLOUD_USERSPACE=1` 使用同一方案；原有 Ubuntu root/免交互 sudo 方案仍使用官方签名 apt 源。pnpm 固定为 10.33.0。
 
 云端独立 PostgreSQL 18 集群必须使用 5432；端口冲突或配置指向其他数据库时停止并报错，不重置数据库。普通用户集群位于 `.runtime/cloud-postgres`，只监听回环地址；Unix socket 目录权限 0700，TCP 使用 SCRAM 密码认证。应用配置和密钥保存在权限受限的 `.runtime/local.json`。新环境首次启动会自动应用 Flyway 迁移，并在确认没有旧密文时生成开发加密密钥。已有密码及密钥不会替换。
 

@@ -23,6 +23,9 @@ export PATH="$tools/node/bin:$tools/pnpm/bin:$tools/build-tools/usr/bin:$PATH"
 if [[ -x $tools/build-tools/usr/bin/bison ]]; then
   export BISON_PKGDATADIR="$tools/build-tools/usr/share/bison"
 fi
+if [[ -x $tools/build-tools/usr/bin/m4 ]]; then
+  export M4="$tools/build-tools/usr/bin/m4"
+fi
 if ! command -v node >/dev/null || [[ $(node -p 'process.versions.node.split(".")[0]') != 24 ]]; then
   node_arch=$arch; [[ $arch != aarch64 ]] || node_arch=arm64
   curl -fsSL --retry 3 https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt -o "$work/SHASUMS256.txt"
@@ -57,7 +60,7 @@ fi
 if [[ ! -x $tools/postgresql/bin/postgres ]] || [[ $("$tools/postgresql/bin/postgres" --version) != 'postgres (PostgreSQL) 18.6' ]]; then
   # Download from the VM's signed Debian/Ubuntu apt indexes; extract without
   # installing packages or altering the system. Bison needs its relocated data.
-  if ! command -v bison >/dev/null || ! command -v flex >/dev/null; then
+  if ! command -v bison >/dev/null || ! command -v flex >/dev/null || ! command -v m4 >/dev/null; then
     mkdir -p "$work/deb" "$tools/build-tools"
     # VM images may have empty apt lists and unreadable system apt fragments.
     # Keep indexes/config/cache in user space and require official signatures.
@@ -89,12 +92,14 @@ APT::Get::AllowUnauthenticated "false";
 Acquire::AllowInsecureRepositories "false";
 APT
     APT_CONFIG="$apt_dir/apt.conf" apt-get update
-    (cd "$work/deb" && APT_CONFIG="$apt_dir/apt.conf" apt-get download bison flex)
+    (cd "$work/deb" && APT_CONFIG="$apt_dir/apt.conf" apt-get download bison flex m4)
     for deb in "$work/deb/"*.deb; do dpkg-deb -x "$deb" "$tools/build-tools"; done
     export BISON_PKGDATADIR="$tools/build-tools/usr/share/bison"
+    export M4="$tools/build-tools/usr/bin/m4"
   fi
   command -v bison >/dev/null
   command -v flex >/dev/null
+  command -v m4 >/dev/null
   curl -fsSL --retry 3 https://ftp.postgresql.org/pub/source/v18.6/postgresql-18.6.tar.bz2 -o "$work/postgresql.tar.bz2"
   printf '555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f  %s\n' "$work/postgresql.tar.bz2" | sha256sum -c -
   tar -xjf "$work/postgresql.tar.bz2" -C "$work"
