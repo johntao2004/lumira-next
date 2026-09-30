@@ -6,7 +6,9 @@ source scripts/cloud-env.sh
 bash scripts/cloud-database.sh
 # Always install from the refreshed lockfile and compile the current checkout.
 pnpm install --frozen-lockfile
-./backend/mvnw -f backend/pom.xml -B -DskipTests package
+maven_args=(-f backend/pom.xml -B -DskipTests package)
+[[ -z ${LUMIRA_CLOUD_MAVEN_REPO:-} ]] || maven_args+=("-Dmaven.repo.local=$LUMIRA_CLOUD_MAVEN_REPO")
+./backend/mvnw "${maven_args[@]}"
 # Published VM files can contain old PIDs. Never signal a process merely because
 # it inherited the PID of a previous task's service.
 node --input-type=module <<'JS'

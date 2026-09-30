@@ -8,7 +8,9 @@ source /etc/os-release
 [[ ${ID:-} == ubuntu || ${ID:-} == debian ]] || { echo 'Ubuntu or Debian is required.' >&2; exit 1; }
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
-tools=${LUMIRA_CLOUD_TOOLS_DIR:-$HOME/.local/share/lumira-cloud}
+default_tools="$HOME/.local/share/lumira-cloud"
+[[ ! -d /workspace || ! -w /workspace ]] || default_tools=/workspace/lumira-tools/linux
+tools=${LUMIRA_CLOUD_TOOLS_DIR:-$default_tools}
 mkdir -p "$tools"
 tools=$(cd "$tools" && pwd)
 case "$tools/" in "$root/"*) echo 'Keep cloud toolchains outside the source checkout.' >&2; exit 1 ;; esac
@@ -55,7 +57,7 @@ fi
 export JAVA_HOME="$tools/jdk"
 export PATH="$JAVA_HOME/bin:$PATH"
 if ! command -v pnpm >/dev/null || [[ $(pnpm --version) != 10.33.0 ]]; then
-  npm install -g --prefix "$tools/pnpm" pnpm@10.33.0
+  npm install --cache "$tools/npm-cache" -g --prefix "$tools/pnpm" pnpm@10.33.0
 fi
 if [[ ! -x $tools/postgresql/bin/postgres ]] || [[ $("$tools/postgresql/bin/postgres" --version) != 'postgres (PostgreSQL) 18.6' ]]; then
   # Download from the VM's signed Debian/Ubuntu apt indexes; extract without
@@ -110,6 +112,8 @@ chmod 700 .runtime
 touch .runtime/cloud-development
 node_bin=$(dirname "$(readlink -f "$(command -v node)")")
 printf 'export JAVA_HOME=%q\nexport PATH=%q:"$PATH"\nexport LUMIRA_CLOUD_PG_MODE=user\nexport LUMIRA_CLOUD_PG_HOME=%q\nexport PSQL_BIN=%q\n' "$JAVA_HOME" "$tools/pnpm/bin:$node_bin:$JAVA_HOME/bin:$tools/postgresql/bin" "$tools/postgresql" "$tools/postgresql/bin/psql" > .runtime/cloud.env
+mkdir -p "$tools/maven/repository"
+printf 'export MAVEN_USER_HOME=%q\nexport LUMIRA_CLOUD_MAVEN_REPO=%q\n' "$tools/maven" "$tools/maven/repository" >> .runtime/cloud.env
 chmod 600 .runtime/cloud.env
 source scripts/cloud-env.sh
 pnpm install --frozen-lockfile
