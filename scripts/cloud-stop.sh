@@ -14,3 +14,9 @@ if [[ ${LUMIRA_CLOUD_PG_MODE:-system} == user ]]; then
     "$LUMIRA_CLOUD_PG_HOME/bin/pg_ctl" -D "$data" -m fast -w stop
   fi
 fi
+
+# Proxy credentials are regenerated from the next task's environment, not saved
+# in the published filesystem. Dependency caches remain reusable.
+if [[ -n ${LUMIRA_CLOUD_MAVEN_SETTINGS:-} ]]; then
+  rm -f -- "$LUMIRA_CLOUD_MAVEN_SETTINGS"
+fi

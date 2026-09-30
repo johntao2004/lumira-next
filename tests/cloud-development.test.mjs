@@ -18,7 +18,7 @@ function fixture(t, os = 'Linux') {
     executable(`bin/${command}`, `printf '%s\\n' '${command}' >> '${root}/mutations'; exit 99`);
   const env = {...process.env, PATH: `${root}/bin:${process.env.PATH}`};
   // Test fixtures must not inherit the real VM's active database mode/client.
-  for (const key of ['LUMIRA_CLOUD_DEV', 'LUMIRA_CLOUD_PG_MODE', 'LUMIRA_CLOUD_PG_HOME', 'PSQL_BIN']) delete env[key];
+  for (const key of Object.keys(env)) if (key.startsWith('LUMIRA_CLOUD_') || key === 'PSQL_BIN') delete env[key];
   writeFileSync(join(root, '.runtime/cloud.env'), `export JAVA_HOME='${root}/jdk'\n`);
   writeFileSync(join(root, '.runtime/cloud-development'), '');
   return {root, env, executable, run: name => spawnSync('bash', [join(root, 'scripts', name)], {cwd: root, env, encoding: 'utf8'})};

@@ -114,6 +114,8 @@ node_bin=$(dirname "$(readlink -f "$(command -v node)")")
 printf 'export JAVA_HOME=%q\nexport PATH=%q:"$PATH"\nexport LUMIRA_CLOUD_PG_MODE=user\nexport LUMIRA_CLOUD_PG_HOME=%q\nexport PSQL_BIN=%q\n' "$JAVA_HOME" "$tools/pnpm/bin:$node_bin:$JAVA_HOME/bin:$tools/postgresql/bin" "$tools/postgresql" "$tools/postgresql/bin/psql" > .runtime/cloud.env
 mkdir -p "$tools/maven/repository"
 printf 'export MAVEN_USER_HOME=%q\nexport LUMIRA_CLOUD_MAVEN_REPO=%q\n' "$tools/maven" "$tools/maven/repository" >> .runtime/cloud.env
+maven_mirror=${LUMIRA_CLOUD_MAVEN_MIRROR:-https://maven-central.storage-download.googleapis.com/maven2}
+printf 'export MVNW_REPOURL=%q\nexport LUMIRA_CLOUD_MAVEN_SETTINGS=%q\n' "$maven_mirror" "$tools/maven/settings.xml" >> .runtime/cloud.env
 chmod 600 .runtime/cloud.env
 source scripts/cloud-env.sh
 pnpm install --frozen-lockfile

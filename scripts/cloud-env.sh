@@ -10,3 +10,7 @@ export PSQL_BIN=${PSQL_BIN:-/usr/lib/postgresql/18/bin/psql}
 export LUMIRA_COOKIE_SECURE=false
 [[ $(node -p 'process.versions.node.split(".")[0]') == 24 ]]
 [[ $("$JAVA_HOME/bin/javac" -version 2>&1) == javac\ 25* ]]
+
+if [[ -n ${LUMIRA_CLOUD_MAVEN_SETTINGS:-} ]]; then
+  python3 "$lumira_cloud_root/scripts/cloud-maven-settings.py"
+fi

@@ -16,6 +16,7 @@ import { spawnSync } from 'node:child_process';
 const c = JSON.parse(readFileSync('.runtime/local.json', 'utf8'));
 const args = ['-f', 'backend/pom.xml', '-B', 'verify'];
 if (process.env.LUMIRA_CLOUD_MAVEN_REPO) args.push(`-Dmaven.repo.local=${process.env.LUMIRA_CLOUD_MAVEN_REPO}`);
+if (process.env.LUMIRA_CLOUD_MAVEN_SETTINGS) args.push('--settings', process.env.LUMIRA_CLOUD_MAVEN_SETTINGS);
 const result = spawnSync('./backend/mvnw', args, {
   stdio: 'inherit',
   env: {...process.env, LUMIRA_TEST_DB_URL: c.LUMIRA_DB_URL,
