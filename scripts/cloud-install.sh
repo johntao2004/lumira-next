@@ -52,7 +52,7 @@ chmod 700 .runtime
 # The marker makes startup refuse the local Mac and an unprepared server.
 touch .runtime/cloud-development
 node_bin=$(dirname "$(readlink -f "$(command -v node)")")
-printf 'export JAVA_HOME=%q\nexport PATH=%q:"$PATH"\n' "$JAVA_HOME" "/opt/lumira-cloud/pnpm/bin:$node_bin:$JAVA_HOME/bin" > .runtime/cloud.env
+printf 'export JAVA_HOME=%q\nexport PATH=%q:"$PATH"\nexport LUMIRA_CLOUD_PG_MODE=system\nexport PSQL_BIN=/usr/lib/postgresql/18/bin/psql\n' "$JAVA_HOME" "/opt/lumira-cloud/pnpm/bin:$node_bin:$JAVA_HOME/bin" > .runtime/cloud.env
 chmod 600 .runtime/cloud.env
 source scripts/cloud-env.sh
 pnpm install --frozen-lockfile

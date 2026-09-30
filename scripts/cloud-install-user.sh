@@ -55,7 +55,37 @@ if [[ ! -x $tools/postgresql/bin/postgres ]] || [[ $("$tools/postgresql/bin/post
   # installing packages or altering the system. Bison needs its relocated data.
   if ! command -v bison >/dev/null || ! command -v flex >/dev/null; then
     mkdir -p "$work/deb" "$tools/build-tools"
-    (cd "$work/deb" && apt-get download bison flex)
+    # VM images may have empty apt lists and unreadable system apt fragments.
+    # Keep indexes/config/cache in user space and require official signatures.
+    apt_dir="$tools/apt"
+    mkdir -p "$apt_dir/lists/partial" "$apt_dir/cache/archives/partial" "$apt_dir/state"
+    touch "$apt_dir/state/status"
+    if [[ $ID == debian ]]; then
+      key=/usr/share/keyrings/debian-archive-keyring.gpg
+      mirror=https://deb.debian.org/debian
+    else
+      key=/usr/share/keyrings/ubuntu-archive-keyring.gpg
+      mirror=https://archive.ubuntu.com/ubuntu
+      [[ $arch != aarch64 ]] || mirror=https://ports.ubuntu.com/ubuntu-ports
+    fi
+    [[ -r $key ]] || { echo 'Official distribution archive signing key is unavailable.' >&2; exit 1; }
+    printf 'deb [signed-by=%s] %s %s main\n' "$key" "$mirror" "$VERSION_CODENAME" > "$apt_dir/sources.list"
+    cat > "$apt_dir/apt.conf" <<APT
+Dir::Etc::main "-";
+Dir::Etc::parts "-";
+Dir::Etc::sourcelist "$apt_dir/sources.list";
+Dir::Etc::sourceparts "-";
+Dir::State "$apt_dir/state";
+Dir::State::lists "$apt_dir/lists";
+Dir::State::status "$apt_dir/state/status";
+Dir::Cache "$apt_dir/cache";
+Dir::Cache::archives "$apt_dir/cache/archives";
+APT::Sandbox::User "$(id -un)";
+APT::Get::AllowUnauthenticated "false";
+Acquire::AllowInsecureRepositories "false";
+APT
+    APT_CONFIG="$apt_dir/apt.conf" apt-get update
+    (cd "$work/deb" && APT_CONFIG="$apt_dir/apt.conf" apt-get download bison flex)
     for deb in "$work/deb/"*.deb; do dpkg-deb -x "$deb" "$tools/build-tools"; done
     export BISON_PKGDATADIR="$tools/build-tools/usr/share/bison"
   fi
