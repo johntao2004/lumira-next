@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { processGroupRunning } from "./process-group.mjs";
 const file = fileURLToPath(
   new URL("../.runtime/processes.json", import.meta.url),
 );
@@ -16,10 +17,7 @@ if (existsSync(file)) {
   // Graceful shutdown is asynchronous; retain state until every process group exits.
   const deadline = Date.now() + 30000;
   for (;;) {
-    const running = processes.filter(({ pid }) => {
-      try { process.kill(-pid, 0); return true; }
-      catch (error) { if (error.code === "ESRCH") return false; if (error.code === "EPERM") return true; throw error; }
-    });
+    const running = processes.filter(({ pid }) => processGroupRunning(pid));
     if (!running.length) break;
     if (Date.now() >= deadline) throw new Error("Scaffold is still stopping; process state retained. Retry after shutdown completes.");
     await delay(250);
