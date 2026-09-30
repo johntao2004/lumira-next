@@ -19,6 +19,10 @@ case $(uname -m) in x86_64) arch=x64 ;; aarch64|arm64) arch=aarch64 ;; *) exit 1
 work=$(mktemp -d "$tools/install.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 export PATH="$tools/node/bin:$tools/pnpm/bin:$tools/build-tools/usr/bin:$PATH"
+# Persist relocated Bison data lookup when retrying with cached build tools.
+if [[ -x $tools/build-tools/usr/bin/bison ]]; then
+  export BISON_PKGDATADIR="$tools/build-tools/usr/share/bison"
+fi
 if ! command -v node >/dev/null || [[ $(node -p 'process.versions.node.split(".")[0]') != 24 ]]; then
   node_arch=$arch; [[ $arch != aarch64 ]] || node_arch=arm64
   curl -fsSL --retry 3 https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt -o "$work/SHASUMS256.txt"
