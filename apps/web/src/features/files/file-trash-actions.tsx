@@ -8,18 +8,19 @@ import { usePreferences } from "@/platform/providers";
 
 export type TrashFile = { id: string; originalName: string; version: number };
 
-export function FileTrashActions({ file, endpoint, onChanged, onCleanupStarted }: {
+export function FileTrashActions({ file, endpoint, onChanged, onCleanupStarted, disabled = false }: {
   file: TrashFile;
   endpoint: string;
   onChanged: () => Promise<void>;
   onCleanupStarted?: (id: string) => void;
+  disabled?: boolean;
 }) {
   const { t } = usePreferences();
   const { message } = App.useApp();
   const [restoring, setRestoring] = useState(false);
 
   async function restore() {
-    if (restoring) return;
+    if (restoring || disabled) return;
     setRestoring(true);
     try {
       await mutate(`${endpoint}/${file.id}/restore?version=${file.version}`, "POST");
@@ -33,11 +34,12 @@ export function FileTrashActions({ file, endpoint, onChanged, onCleanupStarted }
   }
 
   return <>
-    <Button type="link" loading={restoring} onClick={() => void restore()}>{t("restoreFile")}</Button>
+    <Button type="link" disabled={disabled} loading={restoring} onClick={() => void restore()}>{t("restoreFile")}</Button>
     <DeleteAction
       name={file.originalName}
       actionLabel={t("purgeFile")}
       confirmation={t("purgeFileConfirm", { name: file.originalName })}
+      disabled={disabled || restoring}
       onDelete={async () => {
         try {
           await mutate(`${endpoint}/${file.id}/purge?version=${file.version}`, "DELETE");

@@ -10,3 +10,5 @@ target/
 *.tsbuildinfo
 .DS_Store
 *.log
+# Generated review notes and browser evidence belong in .runtime.
+docs/audits/

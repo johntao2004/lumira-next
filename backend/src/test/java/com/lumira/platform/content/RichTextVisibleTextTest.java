@@ -8,7 +8,9 @@ import org.junit.jupiter.api.Test;
 class RichTextVisibleTextTest {
     @Test
     void inlineFormattingDoesNotSplitAWordButBlocksDo() {
-        assertEquals("bad word", RichText.visibleText("<p>b<b>a</b>d <i>wor</i><span>d</span></p>").strip());
+        assertEquals(
+                "bad word",
+                RichText.visibleText("<p>b<b>a</b>d <i>wor</i><span>d</span></p>").strip());
         String blocks = RichText.visibleText("<p>ab</p><p>cd</p>");
         assertFalse(blocks.contains("abcd"), blocks);
         assertEquals("a b", RichText.visibleText("a<br>b").replaceAll("\\s+", " ").strip());

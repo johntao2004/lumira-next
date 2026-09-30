@@ -1,6 +1,6 @@
 "use client";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
-import { Alert, App, Button, Form as AntForm, Input, Select, Spin, Switch, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Form as AntForm, Input, Select, Spin, Switch, Tabs, Tag, Typography } from "antd";
 import { useIntl } from "@ant-design/pro-components";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +18,7 @@ import type { PageResult } from "@/platform/api/pagination";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { listRequestParams, type ListRequest } from "@/platform/api/pagination";
 import { MAX_PASSWORD_BYTES, defaultPasswordLengthValid } from "@/platform/auth/password-contract";
+import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 
 const userErrorKeys = ["invalidUser", "duplicateRecord", "staleRecord", "protectedAccount", "forbidden", "invalidRole", "invalidOrganization"] as const satisfies readonly MessageKey[];
 
@@ -48,7 +49,7 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
   onSaved: () => Promise<void>;
 }) {
   const { t, locale } = usePreferences();
-  const { modal } = App.useApp();
+  const confirm = useCenteredModalConfirm();
   const client = useQueryClient();
   const [form] = Form.useForm<UserEditValues>();
   const [rolesRequest, setRolesRequest] = useListRequest();
@@ -206,7 +207,7 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
     }
     if (discardPromptOpen.current) return;
     discardPromptOpen.current = true;
-    modal.confirm({
+    confirm({
       title: t("userEditorDiscardTitle"),
       content: t("userEditorDiscardContent"),
       okText: t("confirm"),
@@ -231,7 +232,7 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
       decrease && t("userQuotaDecreaseConfirm"),
       increase && t("userQuotaIncreaseConfirm"),
     ].filter(Boolean);
-    return new Promise<boolean>(resolve => modal.confirm({
+    return new Promise<boolean>(resolve => confirm({
       title: t("userEffectiveQuotaPreview", { storage: formatBytes(preview.proposedMaximumBytes, locale), files: formatCount(preview.proposedMaximumFiles, locale) }),
       content: <div className="flex flex-col gap-2">{rows.map((row, index) => <Typography.Paragraph key={index} className="mb-0">{row}</Typography.Paragraph>)}</div>,
       okText: t("confirm"),

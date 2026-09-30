@@ -667,6 +667,12 @@ input {
   max-width: 600px;
 }
 
+/* Field descriptions stay inside their item's spacing, including async status. */
+.platform-form .ant-form-item-extra {
+  min-height: 0;
+  padding-block-start: 4px;
+}
+
 .settings-form {
   max-width: 720px;
 }

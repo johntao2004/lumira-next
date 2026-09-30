@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, mutate } from "@/platform/api/client";
 import { AsyncButton } from "@/platform/components/async-button";
+import { DrawerFormActions } from "@/platform/components/drawer-actions";
 import { QueryFailure } from "@/platform/components/query-failure";
 import { usePreferences } from "@/platform/providers";
 import { formatDateTime } from "@/platform/i18n/format";
@@ -45,7 +46,7 @@ export function PhoneDrawer({ open, onClose }: { open: boolean; onClose: () => v
     finally { requestForm.setFieldValue("currentPassword", undefined); await client.invalidateQueries({ queryKey }); busy.current = false; setPending(null); }
   }
   function close() { if (busy.current) return; requestForm.resetFields(); confirmForm.resetFields(); setError(null); setNotice(null); onClose(); }
-  return <PlatformDrawer title={t("accountPhone")} open={open} closable={{ disabled: !!pending }} onClose={close} destroyOnHidden size={440}>
+  return <PlatformDrawer title={t("accountPhone")} open={open} closable={{ disabled: !!pending }} onClose={close} destroyOnHidden size={440} footer={<DrawerFormActions formId="account-phone-confirm" onClose={close} pending={!!pending} submitDisabled={!ready || !query.data?.pendingPhone} submitLabel={t("confirmPhone")} />}>
     <Typography.Paragraph>{t("phoneIndependentHint")}</Typography.Paragraph>
     {query.error && <QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} />}
     {query.data && !query.error && <>
@@ -59,9 +60,8 @@ export function PhoneDrawer({ open, onClose }: { open: boolean; onClose: () => v
       <Form.Item name="currentPassword" label={t("currentPassword")} rules={[{ required: true, message: t("passwordRequired") }]}><Input.Password autoComplete="current-password" maxLength={MAX_PASSWORD_BYTES} /></Form.Item>
       <AsyncButton htmlType="submit" label={t("requestPhoneCode")} pending={pending === "request"} disabled={!!pending || !ready} />
     </Form>
-    <Form className="mt-6" form={confirmForm} layout="vertical" disabled={!!pending || !ready || !query.data?.pendingPhone} onFinish={values => submit("confirm", values)}>
+    <Form id="account-phone-confirm" className="mt-6" form={confirmForm} layout="vertical" disabled={!!pending || !ready || !query.data?.pendingPhone} onFinish={values => submit("confirm", values)}>
       <Form.Item name="token" label={t("phoneCode")} rules={[{ required: true, pattern: /^[A-Za-z0-9_-]{43}$/, message: t("invalidVerificationToken") }]}><Input autoComplete="one-time-code" maxLength={43} spellCheck={false} /></Form.Item>
-      <AsyncButton type="primary" htmlType="submit" label={t("confirmPhone")} pending={pending === "confirm"} disabled={!!pending || !ready || !query.data?.pendingPhone} />
     </Form>
   </PlatformDrawer>;
 }

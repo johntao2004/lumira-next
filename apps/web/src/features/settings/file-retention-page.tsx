@@ -14,6 +14,7 @@ export function FileRetentionPage({ canWrite }: { canWrite: boolean }) {
     if (data?.mode !== "AUTOMATIC") return true;
     return new Promise<boolean>(resolve => {
       Modal.confirm({
+        centered: true,
         title: t("fileRetentionConfirmTitle"),
         content: t("fileRetentionConfirm", { days: data.retentionDays ?? 30 }),
         okText: t("confirm"),

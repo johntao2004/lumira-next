@@ -38,6 +38,6 @@ export function PlatformDrawer({open,...props}:DrawerProps){
   event.stopPropagation();props.onClose?.(event);
  }} styles={info=>{
   const styles=typeof props.styles==="function"?props.styles(info):props.styles;
-  return {...styles,wrapper:{...styles?.wrapper,maxWidth:"100%"}};
+  return {...styles,wrapper:{...styles?.wrapper,maxWidth:"100%"},footer:{...styles?.footer,display:"flex",justifyContent:"flex-end",flexShrink:0}};
  }} focusable={{...props.focusable,focusTriggerAfterClose:false}}/>;
 }

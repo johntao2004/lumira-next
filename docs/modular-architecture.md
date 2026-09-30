@@ -163,6 +163,6 @@ backend/
 - 公共 API 边界检查：已验证三组 `api` 契约不泄漏 Spring MVC、Servlet 或 JDBC 类型。
 - `pnpm typecheck`、`pnpm build`：通过；Next.js 生产构建继续只生成统一的动态 dashboard 壳。
 - `python3 scripts/database-schema-smoke.py`：当日通过；本次没有修改已执行的 V1 基线。
-- 当日记录中的 `mvn compile` 未完成说明已由 2026-09-16 JDK 25 复验覆盖；当前以 [算法基线](algorithm-baseline.md) 与 [验证记录](verification.md) 的最新结果为准。
+- 算法选择见 [算法基线](algorithm-baseline.md)；当前源码的验证命令见 [README](../README.md) 与 [云端开发说明](cloud-development.md)。
 
 这套标准比“每个目录都叫 module”更严格，也为未来按模块独立部署保留了清晰的升级路径。

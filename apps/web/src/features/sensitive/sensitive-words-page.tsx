@@ -10,6 +10,7 @@ import { messageKeyFor } from "@/platform/api/errors";
 import { AsyncButton } from "@/platform/components/async-button";
 import { DeleteAction } from "@/platform/components/delete-action";
 import { FormDrawer } from "@/platform/components/form-drawer";
+import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 import { ResourceTable } from "@/platform/components/resource-table";
 import type { PageResult } from "@/platform/api/pagination";
 import { usePreferences } from "@/platform/providers";
@@ -58,7 +59,8 @@ const sensitiveErrorKeys = [
 
 export function SensitiveWordsPage({ canWrite, canImport }: { canWrite: boolean; canImport: boolean }) {
   const { t } = usePreferences();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  const confirm = useCenteredModalConfirm();
   const client = useQueryClient();
   const [request, setRequest] = useListRequest();
   const [selected, setSelected] = useState<string | null | undefined>();
@@ -245,7 +247,7 @@ export function SensitiveWordsPage({ canWrite, canImport }: { canWrite: boolean;
     }
     const sourceLabel = t(importSource === "csv" ? "sensitiveImportCsvSource" : "sensitiveImportPasteSource");
     setConfirmingImport(true);
-    modal.confirm({
+    confirm({
       title: t("sensitiveImportConfirmTitle"),
       content: t("sensitiveImportConfirmBody", { source: sourceLabel, count: words.length, bytes: payloadCheck.bodyBytes }),
       okText: t("confirm"),

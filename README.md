@@ -8,6 +8,8 @@ Umi Max 4.7.20 / Mako / React 19.2.8 / Ant Design 6.6.3 / TypeScript 7.0.2；Jav
 
 ## 启动
 
+Codex 云端开发使用独立 Ubuntu 环境，安装入口为 `LUMIRA_CLOUD_DEV=1 bash scripts/cloud-install.sh`，任务启动入口为 `bash scripts/cloud-start.sh`。完整配置见 [云端开发说明](docs/cloud-development.md)。下列 Homebrew 命令用于本机 macOS。
+
 前置：原生 Node.js 24 LTS、JDK 25、PostgreSQL 18、pnpm 10.33.0。macOS 可用 Homebrew 安装系统运行时；Node 24 是 keg-only，需将它放在 PATH 前端：
 
 ```sh
@@ -96,3 +98,5 @@ Outbox 提供按事件类型显式注册的消费器边界、虚拟线程并发�
 主题、语言、通知和账户操作统一放在内容区顶栏，侧栏底部只保留展开/收起控制。新业务页面应在所属 `features/<module>/manifest.ts` 声明路由、权限和依赖，并在同模块 `module.tsx` 提供懒加载页面；不再修改中央导航分组表。账户菜单继续提供个人资料、会话、草稿、修改密码和退出；修改密码验证原密码并注销该用户的已有会话。
 
 账户修改密码回归：`python3 scripts/password-smoke.py` 使用自动清理的临时账号验证，不修改管理员密码。
+
+可观测性、HTTP 安全头、备份恢复演练、供应链扫描与架构护栏见 [运维手册](docs/operations.md)。

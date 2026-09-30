@@ -20,7 +20,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
-      - run: node --test tests/*.test.mjs
+      - run: pnpm test
   backend:
     runs-on: ubuntu-latest
     services:

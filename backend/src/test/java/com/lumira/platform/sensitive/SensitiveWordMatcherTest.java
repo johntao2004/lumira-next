@@ -1,20 +1,20 @@
 package com.lumira.platform.sensitive;
 
-import java.util.ArrayList;
-import java.util.List;
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 class SensitiveWordMatcherTest {
     @Test
     void normalizesCompatibilityFormsAndCaseBeforeMatching() {
         var word = SensitiveWordMatcher.normalizeForMatch("Ｂａｄ");
-        var matcher = new SensitiveWordMatcher(List.of(
-            new SensitiveWordMatcher.Entry("Bad", word, "HIGH", "BLOCK")
-        ));
+        var matcher =
+                new SensitiveWordMatcher(
+                        List.of(new SensitiveWordMatcher.Entry("Bad", word, "HIGH", "BLOCK")));
 
         var matches = matcher.find("prefix ＢＡＤ suffix");
 
@@ -25,31 +25,46 @@ class SensitiveWordMatcherTest {
 
     @Test
     void invisibleFormatCharactersCannotHideAWord() {
-        var matcher = new SensitiveWordMatcher(List.of(
-            new SensitiveWordMatcher.Entry("bad", SensitiveWordMatcher.normalizeForMatch("bad"), "HIGH", "BLOCK")
-        ));
+        var matcher =
+                new SensitiveWordMatcher(
+                        List.of(
+                                new SensitiveWordMatcher.Entry(
+                                        "bad",
+                                        SensitiveWordMatcher.normalizeForMatch("bad"),
+                                        "HIGH",
+                                        "BLOCK")));
 
-        for (String hidden : List.of("b\u200Bad", "ba\u200Dd", "b\u00ADad", "\uFEFFbad", "b\u2060a\u200Cd")) {
-            assertEquals(1, matcher.find("x " + hidden + " y").size(), () -> "not detected: " + hidden.codePoints().boxed().toList());
+        for (String hidden :
+                List.of("b\u200Bad", "ba\u200Dd", "b\u00ADad", "\uFEFFbad", "b\u2060a\u200Cd")) {
+            assertEquals(
+                    1,
+                    matcher.find("x " + hidden + " y").size(),
+                    () -> "not detected: " + hidden.codePoints().boxed().toList());
         }
         // A stored word that itself contains an invisible character still matches its plain form.
-        var stored = new SensitiveWordMatcher(List.of(
-            new SensitiveWordMatcher.Entry("b\u200Bad", "b\u200Bad", "HIGH", "BLOCK")));
+        var stored =
+                new SensitiveWordMatcher(
+                        List.of(
+                                new SensitiveWordMatcher.Entry(
+                                        "b\u200Bad", "b\u200Bad", "HIGH", "BLOCK")));
         assertEquals(1, stored.find("bad").size());
         assertEquals("bad", SensitiveWordMatcher.normalizeForMatch("B\u200BAD"));
     }
 
     @Test
     void emitsOverlappingPatternsOnceAndHonorsMaximum() {
-        var matcher = new SensitiveWordMatcher(List.of(
-            entry("ab", "LOW", "LOG_ONLY"),
-            entry("abc", "HIGH", "BLOCK"),
-            entry("bc", "MEDIUM", "BLOCK")
-        ));
+        var matcher =
+                new SensitiveWordMatcher(
+                        List.of(
+                                entry("ab", "LOW", "LOG_ONLY"),
+                                entry("abc", "HIGH", "BLOCK"),
+                                entry("bc", "MEDIUM", "BLOCK")));
 
         var matches = matcher.find("abc", 10);
 
-        assertEquals(List.of("ab", "abc", "bc"), matches.stream().map(SensitiveWordMatcher.Match::word).toList());
+        assertEquals(
+                List.of("ab", "abc", "bc"),
+                matches.stream().map(SensitiveWordMatcher.Match::word).toList());
         assertEquals(2, matcher.find("abc", 2).size());
         assertTrue(matches.stream().anyMatch(match -> "BLOCK".equals(match.action())));
     }
@@ -87,6 +102,7 @@ class SensitiveWordMatcherTest {
     }
 
     private static SensitiveWordMatcher.Entry entry(String word, String severity, String action) {
-        return new SensitiveWordMatcher.Entry(word, SensitiveWordMatcher.normalizeForMatch(word), severity, action);
+        return new SensitiveWordMatcher.Entry(
+                word, SensitiveWordMatcher.normalizeForMatch(word), severity, action);
     }
 }

@@ -8,8 +8,9 @@
 
 **指标。** `/actuator/prometheus` 已暴露，所有指标带 `application=lumira-platform` 标签；包含 JVM、Hikari 连接池、HTTP 服务端延迟等 Micrometer 默认指标。
 
-- 该端点在应用内是匿名可读的，**安全依赖网络隔离**：边缘 Caddy 对 `/actuator/*` 一律返回 404，服务端口 8090 只在 compose 内网可达，不映射到宿主机。Prometheus 必须部署在同一内网抓取 `server:8090`。
-- 不要把 8090 直接暴露到公网或经其他反向代理转发 `/actuator`。
+- 端点**默认不存在**：未设置 `LUMIRA_METRICS_TOKEN`（至少 32 字符）时返回 404。设置后，抓取方必须带 `Authorization: Bearer <token>`（`MetricsTokenFilter`，常量时间比较；缺失或错误返回 401）。Prometheus 示例：`authorization: { type: Bearer, credentials_file: /etc/prometheus/lumira.token }`。
+- 纵深防御：边缘 Caddy 对 `/actuator/*` 一律返回 404，服务端口 8090 只在 compose 内网可达、不映射到宿主机；Prometheus 部署在同一内网抓取 `server:8090`。不要把 8090 直接暴露到公网，也不要经其他反向代理转发 `/actuator`。
+- **访问日志**：每个请求在 `lumira.access` 记录器输出一行 `METHOD path -> status in N ms`，带 requestId 前缀；不记录查询串（可能含令牌）。`/actuator/*` 探针降到 DEBUG，避免健康检查刷屏。
 
 **建议的最小告警集**（阈值需按容量测试结果校准）：
 
@@ -70,3 +71,11 @@ PGHOST=... PGUSER=<有 CREATEDB 权限的角色> PGPASSWORD=... scripts/backup-r
 ## 6. 仍未完成（不属于本次改动）
 
 以下需要基础设施或产品决策，代码无法单方面完成：数据库主从/自动故障切换、多副本滚动升级演练、WAL 归档与 PITR、集中式日志与追踪后端（OpenTelemetry Collector）、CAPTCHA/MFA（见 D3）、AI 外发数据的合规评估（见 D4）。
+
+## 7. 云端模型服务与代理 DNS
+
+云端模型服务仍要求 HTTPS 公网目标；Ollama/LM Studio 使用各自的本机接口。正常公网 DNS 解析直接使用系统结果。若本机代理返回 198.18/15 虚拟地址，云端连接会通过固定的 Cloudflare 1.1.1.1 HTTPS DNS 查询真实公网结果，再固定连接到经过验证的地址，同时保留原服务域名的 TLS 校验。混合私网、内网或其它保留地址仍会拒绝，不会直接连接到代理虚拟地址。
+
+该回退只向 Cloudflare 发送服务域名的 DNS 查询，不发送模型服务密钥。A/AAAA 并行查询有 3.7 秒总预算，结果最多缓存 60 秒、128 项；禁止重定向且响应大小有界。受限网络若需要此回退，应允许到 1.1.1.1:443 的出站连接；本流程不修改操作系统 DNS 或代理配置。
+
+已保存的模型密钥仅在同一服务类型和规范化地址下复用。修改连接信息必须替换或清除旧密钥；需要密钥的云端服务仍要求提供有效密钥。模型列表需在实际配置的服务上验证，临时验收输出保存在 `.runtime`。

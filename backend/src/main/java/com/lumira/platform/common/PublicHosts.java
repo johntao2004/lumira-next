@@ -63,6 +63,39 @@ public final class PublicHosts {
         }
     }
 
+    /**
+     * SMTP relays are commonly private (corporate mail servers), so only the addresses that are
+     * never a mail server are refused: unspecified, link-local (cloud metadata services) and
+     * multicast/broadcast.
+     */
+    public static boolean isMailTargetAllowed(InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLinkLocalAddress()
+                || address.isMulticastAddress()) return false;
+        byte[] bytes = address.getAddress();
+        return !(bytes.length == 4 && (bytes[0] & 0xff) >= 224);
+    }
+
+    /**
+     * Syntactic check for a configured SMTP host: dotted-quad literals must be allowed, numeric
+     * shorthand is refused.
+     */
+    public static boolean isMailHostAllowed(String host) {
+        if (host == null || host.isEmpty()) return false;
+        if (host.matches("\\d{1,3}(?:\\.\\d{1,3}){3}")) {
+            try {
+                return isMailTargetAllowed(InetAddress.getByName(host));
+            } catch (UnknownHostException invalid) {
+                return false;
+            }
+        }
+        // Single-label numeric or hex forms ("2130706433", "0x7f000001") are parsed as IPv4 by
+        // resolvers.
+        return !host.matches("(?i)(?:0x[0-9a-f]+|\\d+)(?:\\.(?:0x[0-9a-f]+|\\d+))*")
+                && !host.equalsIgnoreCase("localhost")
+                && !host.toLowerCase(Locale.ROOT).endsWith(".localhost");
+    }
+
     public static boolean isPublicAddress(InetAddress parsed) {
         byte[] bytes = parsed.getAddress();
         if (parsed.isAnyLocalAddress()
@@ -88,6 +121,16 @@ public final class PublicHosts {
                     && !(first == 203 && second == 0 && third == 113);
         }
         if (bytes.length == 16) {
+            // IPv4-translated IPv6 (::ffff:0:0/96) is an IPv4 transport form, so classify the
+            // embedded address rather than treating the 16-byte value as globally routable.
+            if (isIpv4Translated(bytes)) {
+                try {
+                    return isPublicAddress(
+                            InetAddress.getByAddress(Arrays.copyOfRange(bytes, 12, 16)));
+                } catch (UnknownHostException exception) {
+                    return false;
+                }
+            }
             if ((bytes[0] & 0xfe) == 0xfc
                     || (bytes[0] & 0xff) == 0xff
                     || ((bytes[0] & 0xff) == 0xfe && (bytes[1] & 0xc0) == 0x80)) return false;
@@ -116,5 +159,44 @@ public final class PublicHosts {
             return true;
         }
         return false;
+    }
+
+    /** True only for the RFC 2544 benchmarking range used by some local DNS interception tools. */
+    public static boolean isSyntheticAddress(InetAddress parsed) {
+        byte[] bytes = parsed.getAddress();
+        if (bytes.length == 4) return isSyntheticIpv4(bytes);
+        if (bytes.length != 16) return false;
+        if (isIpv4Translated(bytes)) {
+            try {
+                return isSyntheticAddress(
+                        InetAddress.getByAddress(Arrays.copyOfRange(bytes, 12, 16)));
+            } catch (UnknownHostException exception) {
+                return false;
+            }
+        }
+        boolean ipv4Mapped = true;
+        for (int index = 0; index < 10; index++) ipv4Mapped &= bytes[index] == 0;
+        ipv4Mapped &= (bytes[10] & 0xff) == 0xff && (bytes[11] & 0xff) == 0xff;
+        if (!ipv4Mapped) return false;
+        try {
+            return isSyntheticAddress(InetAddress.getByAddress(Arrays.copyOfRange(bytes, 12, 16)));
+        } catch (UnknownHostException exception) {
+            return false;
+        }
+    }
+
+    private static boolean isSyntheticIpv4(byte[] bytes) {
+        return (bytes[0] & 0xff) == 198 && ((bytes[1] & 0xff) == 18 || (bytes[1] & 0xff) == 19);
+    }
+
+    private static boolean isIpv4Translated(byte[] bytes) {
+        if (bytes.length != 16) return false;
+        for (int index = 0; index < 8; index++) {
+            if (bytes[index] != 0) return false;
+        }
+        return (bytes[8] & 0xff) == 0xff
+                && (bytes[9] & 0xff) == 0xff
+                && bytes[10] == 0
+                && bytes[11] == 0;
     }
 }

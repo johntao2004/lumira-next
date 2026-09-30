@@ -2,7 +2,7 @@
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {Alert, App, Button, Card, Checkbox, Col, Input, InputNumber, Row, Spin, Switch, Tag, Select, Space, Typography} from "antd";
+import {Alert, Button, Card, Checkbox, Col, Input, InputNumber, Row, Spin, Switch, Tag, Select, Space, Typography} from "antd";
 import { TableActions } from "@/platform/components/table-actions";
 import { api, mutate } from "@/platform/api/client";
 import { messageKeyFor } from "@/platform/api/errors";
@@ -19,6 +19,7 @@ const roleErrorKeys = ["staleRecord", "protectedAccount", "forbidden", "invalidR
 const roleErrorAliases = { duplicateRecord: "duplicateRole" } as const satisfies Readonly<Record<string, MessageKey>>;
 import { QueryFailure } from "@/platform/components/query-failure";
 import { listRequestParams } from "@/platform/api/pagination";
+import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 
 import type { Role } from "./types";
 
@@ -87,7 +88,7 @@ function rolePermissionLabel(permission: string): MessageKey | null {
 
 export function RolesPage({canWrite,authorities}:{canWrite:boolean;authorities:string[]}) {
   const {t,locale}=usePreferences();
-  const {modal}=App.useApp();
+  const confirm=useCenteredModalConfirm();
   const client=useQueryClient();
   const [request,setRequest]=useListRequest();
   const [selected,setSelected]=useState<string|null|undefined>(undefined);
@@ -126,7 +127,7 @@ export function RolesPage({canWrite,authorities}:{canWrite:boolean;authorities:s
               currentRole.fileQuotaFilesLimit!==(fileQuotaFilesLimit??null)&&`${t("roleFileCountLimit")}: ${currentRole.fileQuotaFilesLimit===null?t("roleQuotaUnrestrictedHint"):new Intl.NumberFormat(locale).format(currentRole.fileQuotaFilesLimit)} → ${fileQuotaFilesLimit==null?t("roleQuotaUnrestrictedHint"):new Intl.NumberFormat(locale).format(fileQuotaFilesLimit)}`,
               currentRole.enabled!==roleValues.enabled&&`${t("enabled")}: ${t(currentRole.enabled?"enabled":"disabled")} → ${t(roleValues.enabled?"enabled":"disabled")}`,
             ].filter(Boolean);
-            const confirmed=await new Promise<boolean>(resolve=>modal.confirm({
+            const confirmed=await new Promise<boolean>(resolve=>confirm({
               title:t("fileQuotaAllocation"),
               content:<div className="flex flex-col gap-2"><Typography.Paragraph>{t("roleQuotaImpactHint")}</Typography.Paragraph>{changes.map((change,index)=><Typography.Paragraph key={index} className="mb-0">{change}</Typography.Paragraph>)}</div>,
               okText:t("confirm"),cancelText:t("cancel"),

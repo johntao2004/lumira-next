@@ -5,7 +5,7 @@ import { QuestionCircleOutlined } from "@ant-design/icons";
 import { Col, Empty, List, Progress, Row, Select, Skeleton, Space, Statistic, Tag, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/platform/api/client";
 import { AsyncButton } from "@/platform/components/async-button";
 import { QueryFailure } from "@/platform/components/query-failure";
@@ -132,6 +132,9 @@ function eventStatusColor(status: FlowEvent["status"]): string {
 export function MonitoringPage() {
   const { t, locale } = usePreferences();
   const [refreshMode, setRefreshMode] = useState<RefreshMode>(5_000);
+  // React Query's fetchFailureCount resets when each refetch begins. Keep the
+  // streak across requests so repeated outage polls actually back off.
+  const consecutiveFailures = useRef(0);
   const [pageActive, setPageActive] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -147,7 +150,16 @@ export function MonitoringPage() {
   }, []);
   const query = useQuery({
     queryKey: ["monitoring-summary"],
-    queryFn: ({ signal }) => api<MonitoringSnapshot>("/platform/monitoring/summary", { signal }),
+    queryFn: async ({ signal }) => {
+      try {
+        const snapshot = await api<MonitoringSnapshot>("/platform/monitoring/summary", { signal });
+        consecutiveFailures.current = 0;
+        return snapshot;
+      } catch (error) {
+        if (!signal.aborted) consecutiveFailures.current++;
+        throw error;
+      }
+    },
     enabled: pageActive,
     retry: false,
     refetchInterval: (currentQuery) => pageActive
@@ -156,7 +168,7 @@ export function MonitoringPage() {
       ? getMonitoringRefetchInterval(
           refreshMode,
           currentQuery.state.fetchStatus,
-          currentQuery.state.fetchFailureCount,
+          consecutiveFailures.current,
         )
       : false,
     refetchIntervalInBackground: false,

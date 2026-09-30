@@ -167,7 +167,6 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
 
   return <div className="w-full ai-console-page">
     {!canReadUsers && <Typography.Text type="secondary" className="ai-console-permission">{t("forbidden")}</Typography.Text>}
-    {providers.data?.some((provider) => provider.enabled && provider.providerKind === "TYPESAFE_JEV") && <Alert className="ai-console-notice" type="info" showIcon message={t("aiJevChatUnsupported")} />}
 
     <div className="ai-chat-workspace">
       <aside className="ai-chat-sidebar" aria-label={t("aiSessions")} data-sessions-open={sessionsOpen}>

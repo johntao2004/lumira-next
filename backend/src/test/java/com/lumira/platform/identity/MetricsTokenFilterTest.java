@@ -12,7 +12,8 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class MetricsTokenFilterTest {
     private static final String TOKEN = "0123456789abcdef0123456789abcdef";
 
-    private static MockHttpServletResponse call(String configured, String path, String authorization) throws Exception {
+    private static MockHttpServletResponse call(
+            String configured, String path, String authorization) throws Exception {
         var request = new MockHttpServletRequest("GET", path);
         request.setServletPath(path);
         if (authorization != null) request.addHeader("Authorization", authorization);
@@ -31,7 +32,10 @@ class MetricsTokenFilterTest {
 
     @Test
     void requiresExactBearerToken() throws Exception {
-        for (String header : new String[]{null, "Bearer wrong", "Basic " + TOKEN, TOKEN, "Bearer " + TOKEN + "x"}) {
+        for (String header :
+                new String[] {
+                    null, "Bearer wrong", "Basic " + TOKEN, TOKEN, "Bearer " + TOKEN + "x"
+                }) {
             var response = call(TOKEN, "/actuator/prometheus", header);
             assertEquals(401, response.getStatus(), String.valueOf(header));
             assertNull(response.getForwardedUrl());

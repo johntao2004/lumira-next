@@ -1,14 +1,11 @@
 "use client";
 import { DrawerForm } from "@ant-design/pro-components";
-import { Button, Space } from "antd";
 import { useLayoutEffect, useRef } from "react";
-import { usePreferences } from "../providers";
-import { AsyncButton } from "./async-button";
+import { DrawerFormActions } from "./drawer-actions";
 
 export function FormDrawer({ open, title, pending, submitDisabled = false, size = 480, formId, onClose, children }: {
   open: boolean; title: string; pending: boolean; submitDisabled?: boolean; size?: number; formId: string; onClose: () => void; children: React.ReactNode;
 }) {
-  const { t } = usePreferences();
   const width = size > 480 ? 720 : 480;
   const launcher = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
@@ -38,10 +35,7 @@ export function FormDrawer({ open, title, pending, submitDisabled = false, size 
       styles: { wrapper: { maxWidth: "100%" } },
     }}
     submitter={{
-      render: () => <Space className="form-actions">
-        <Button onClick={onClose} disabled={pending}>{t("cancel")}</Button>
-        <AsyncButton type="primary" form={formId} htmlType="submit" disabled={submitDisabled} pending={pending} label={t("save")} />
-      </Space>,
+      render: () => <DrawerFormActions formId={formId} onClose={onClose} pending={pending} submitDisabled={submitDisabled} />,
     }}
   >
     {children}

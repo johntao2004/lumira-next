@@ -7,7 +7,7 @@ import {ProfileCompletion} from "./profile-completion";
 import {AvatarEditor} from "./avatar-editor";
 import {ProfileValuesDrawer} from "./profile-values-drawer";
 import {PasskeysDrawer} from "./passkeys-drawer";
-import {Alert, App, Button, Input, Spin} from "antd";
+import {Alert, Button, Input, Spin} from "antd";
 import { useState } from "react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { api,ApiError,mutate } from "@/platform/api/client";
@@ -15,6 +15,7 @@ import { FormDrawer } from "@/platform/components/form-drawer";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
+import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 
 type BuiltInField={key:"displayName"|"realName"|"birthDate"|"region";label:string;description:string;placeholder:string;required:boolean;groupKey:string;groupLabel:string};
 type Profile={fields:BuiltInField[];schemaVersion:number;username:string;displayName:string;realName:string;birthMonth:string;region:string;version:number};
@@ -25,7 +26,7 @@ export function ProfileDrawer({open,onClose}:{open:boolean;onClose:()=>void}) {
   const [emailOpen,setEmailOpen]=useState(false);
   const [phoneOpen,setPhoneOpen]=useState(false);
   const [passkeyOpen,setPasskeyOpen]=useState(false);
-  const [customOpen,setCustomOpen]=useState(false),[dirty,setDirty]=useState(false);const {modal}=App.useApp();
+  const [customOpen,setCustomOpen]=useState(false),[dirty,setDirty]=useState(false);const confirm=useCenteredModalConfirm();
   const {t}=usePreferences();const client=useQueryClient();
   const [pending,setPending]=useState(false);const [error,setError]=useState<MessageKey|null>(null);
   const query=useQuery({queryKey:["profile"],queryFn:()=>api<Profile>("/account/profile"),enabled:open,refetchOnWindowFocus:false});
@@ -40,7 +41,7 @@ export function ProfileDrawer({open,onClose}:{open:boolean;onClose:()=>void}) {
     <Button className="mb-4" disabled={pending} onClick={()=>setPasskeyOpen(true)}>{t("passkeyCredentials")}</Button>
     <FeedbackBubble id="account-profile-error" content={error ? t(error) : query.error ? t("unavailable") : undefined} />
     {query.isFetching && <Spin />}
-    <Button className="mb-4" disabled={pending} onClick={()=>{const proceed=()=>{setDirty(false);onClose();setCustomOpen(true);};if(dirty)modal.confirm({title:t("unsavedProfileHint"),onOk:proceed});else proceed();}}>{t("fieldCustomGroup")}</Button>
+    <Button className="mb-4" disabled={pending} onClick={()=>{const proceed=()=>{setDirty(false);onClose();setCustomOpen(true);};if(dirty)confirm({title:t("unsavedProfileHint"),onOk:proceed});else proceed();}}>{t("fieldCustomGroup")}</Button>
     {ready && profile && <Form key={profile.version} id="account-profile" layout="vertical" disabled={pending} onValuesChange={()=>setDirty(true)} initialValues={profile} onFinish={async values=>{
       setPending(true);setError(null);
       try {

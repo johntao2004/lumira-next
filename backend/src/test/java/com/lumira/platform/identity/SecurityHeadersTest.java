@@ -45,7 +45,10 @@ class SecurityHeadersTest {
                 .andExpect(header().string("X-Frame-Options", "DENY"))
                 .andExpect(header().string("Referrer-Policy", "strict-origin-when-cross-origin"))
                 .andExpect(header().exists("Permissions-Policy"))
-                .andExpect(header().string("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate"));
+                .andExpect(
+                        header().string(
+                                        "Cache-Control",
+                                        "no-cache, no-store, max-age=0, must-revalidate"));
     }
 
     @Test

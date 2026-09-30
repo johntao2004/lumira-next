@@ -13,17 +13,21 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Immutable Aho-Corasick matcher.  A single compiled instance is shared by
- * request threads; dictionary writes publish a replacement instance instead of
- * taking a lock on the hot path.
+ * Immutable Aho-Corasick matcher. A single compiled instance is shared by request threads;
+ * dictionary writes publish a replacement instance instead of taking a lock on the hot path.
  */
 public final class SensitiveWordMatcher {
     public static final int DEFAULT_MAX_MATCHES = 20;
 
     public record Entry(String word, String normalizedWord, String severity, String action) {}
+
     public record Match(String word, String severity, String action) {}
-    public record ScanResult(List<Match> matches, boolean blocked, int totalMatchCount,
-                             boolean blockingMatchDisplayed) {
+
+    public record ScanResult(
+            List<Match> matches,
+            boolean blocked,
+            int totalMatchCount,
+            boolean blockingMatchDisplayed) {
         public ScanResult {
             matches = List.copyOf(matches == null ? List.of() : matches);
         }
@@ -47,9 +51,8 @@ public final class SensitiveWordMatcher {
     }
 
     /**
-     * Keeps the response list bounded while scanning the entire normalized text
-     * for BLOCK entries. A display limit must never decide whether submission is
-     * allowed.
+     * Keeps the response list bounded while scanning the entire normalized text for BLOCK entries.
+     * A display limit must never decide whether submission is allowed.
      */
     public ScanResult scan(String text) {
         return scan(text, DEFAULT_MAX_MATCHES);
@@ -70,23 +73,30 @@ public final class SensitiveWordMatcher {
             for (Entry entry : current.outputs) {
                 if ("BLOCK".equals(entry.action())) blocked = true;
                 if (seen.add(entry.normalizedWord()) && matches.size() < maxMatches) {
-                    matches.putIfAbsent(entry.normalizedWord(), new Match(entry.word(), entry.severity(), entry.action()));
+                    matches.putIfAbsent(
+                            entry.normalizedWord(),
+                            new Match(entry.word(), entry.severity(), entry.action()));
                 }
             }
         }
-        boolean blockingMatchDisplayed = matches.values().stream().anyMatch(match -> "BLOCK".equals(match.action()));
-        return new ScanResult(List.copyOf(matches.values()), blocked, seen.size(), blockingMatchDisplayed);
+        boolean blockingMatchDisplayed =
+                matches.values().stream().anyMatch(match -> "BLOCK".equals(match.action()));
+        return new ScanResult(
+                List.copyOf(matches.values()), blocked, seen.size(), blockingMatchDisplayed);
     }
 
     /**
      * NFKC + lowercase gives the same match semantics as the legacy service. Format characters
      * (zero-width space/joiners, BOM, soft hyphen, bidi marks) are invisible, so they are dropped
-     * on both the stored word and the scanned text; otherwise one inserted between letters hides a word.
+     * on both the stored word and the scanned text; otherwise one inserted between letters hides a
+     * word.
      */
     public static String normalizeForMatch(String value) {
         if (value == null) return "";
-        String normalized = stripFormatCharacters(Normalizer.normalize(value, Normalizer.Form.NFKC))
-            .toLowerCase(Locale.ROOT).strip();
+        String normalized =
+                stripFormatCharacters(Normalizer.normalize(value, Normalizer.Form.NFKC))
+                        .toLowerCase(Locale.ROOT)
+                        .strip();
         StringBuilder compacted = new StringBuilder(normalized.length());
         boolean whitespace = false;
         for (int i = 0; i < normalized.length(); i++) {
@@ -103,14 +113,18 @@ public final class SensitiveWordMatcher {
     }
 
     private static String stripFormatCharacters(String value) {
-        if (value.codePoints().noneMatch(cp -> Character.getType(cp) == Character.FORMAT)) return value;
+        if (value.codePoints().noneMatch(cp -> Character.getType(cp) == Character.FORMAT))
+            return value;
         var kept = new StringBuilder(value.length());
-        value.codePoints().filter(cp -> Character.getType(cp) != Character.FORMAT).forEach(kept::appendCodePoint);
+        value.codePoints()
+                .filter(cp -> Character.getType(cp) != Character.FORMAT)
+                .forEach(kept::appendCodePoint);
         return kept.toString();
     }
 
     private void add(Entry entry) {
-        if (entry == null || entry.normalizedWord() == null || entry.normalizedWord().isBlank()) return;
+        if (entry == null || entry.normalizedWord() == null || entry.normalizedWord().isBlank())
+            return;
         Node node = root;
         String key = normalizeForMatch(entry.normalizedWord());
         if (key.isBlank()) return;

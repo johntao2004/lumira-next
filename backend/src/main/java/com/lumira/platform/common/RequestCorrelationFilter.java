@@ -51,11 +51,20 @@ public final class RequestCorrelationFilter extends OncePerRequestFilter {
         }
     }
 
-    private static void logAccess(HttpServletRequest request, HttpServletResponse response, long ms) {
+    private static void logAccess(
+            HttpServletRequest request, HttpServletResponse response, long ms) {
         String path = request.getRequestURI();
         boolean probe = path.startsWith("/actuator/");
         if (probe ? !access.isDebugEnabled() : !access.isInfoEnabled()) return;
-        String line = request.getMethod() + " " + path + " -> " + response.getStatus() + " in " + ms + " ms";
+        String line =
+                request.getMethod()
+                        + " "
+                        + path
+                        + " -> "
+                        + response.getStatus()
+                        + " in "
+                        + ms
+                        + " ms";
         if (probe) access.debug(line);
         else access.info(line);
     }

@@ -22,7 +22,9 @@ import org.junit.jupiter.api.Test;
 class ArchitectureTest {
     private static final String ROOT = "com.lumira.platform";
 
-    /** module -> feature modules it is allowed to depend on (kernel packages are always allowed). */
+    /**
+     * module -> feature modules it is allowed to depend on (kernel packages are always allowed).
+     */
     private static final Map<String, Set<String>> ALLOWED =
             Map.ofEntries(
                     Map.entry("ai", Set.of()),

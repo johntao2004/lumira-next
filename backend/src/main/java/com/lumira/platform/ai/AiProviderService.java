@@ -94,6 +94,7 @@ public class AiProviderService {
     public ProviderView create(ProviderWrite input, String actor) {
         requireWrite(actor);
         Normalized normalized = normalize(input, true);
+        validateCredentialChange(input.credential());
         UUID id = UUID.randomUUID();
         var profile =
                 new AiProviderProfile(
@@ -116,8 +117,27 @@ public class AiProviderService {
     public ProviderView update(UUID id, ProviderWrite input, String actor) {
         requireWrite(actor);
         if (input == null || input.version() == null || input.version() < 1) invalid();
-        find(id);
+        var existing = find(id);
         Normalized normalized = normalize(input, false);
+        validateCredentialChange(input.credential());
+        boolean connectionChanged =
+                existing.providerKind() != normalized.kind()
+                        || !normalizeBaseUrl(existing.providerKind(), existing.baseUrl())
+                                .equals(normalized.baseUrl());
+        String context = ModelConnectionService.secretContext(id);
+        var currentSecret = secrets.state(context);
+        String credentialAction = credentialAction(input.credential());
+        if (currentSecret.configured()
+                && connectionChanged
+                && !"REPLACE".equals(credentialAction)
+                && !"CLEAR".equals(credentialAction)) invalid();
+        boolean configuredAfterChange =
+                switch (credentialAction) {
+                    case "REPLACE" -> true;
+                    case "CLEAR" -> false;
+                    default -> currentSecret.configured();
+                };
+        requireConfiguredCredential(normalized.kind(), configuredAfterChange);
         var profile =
                 new AiProviderProfile(
                         id,
@@ -160,14 +180,16 @@ public class AiProviderService {
                 || input.providerKind() == null
                 || input.providerKind() == ProviderKind.TYPESAFE_JEV) invalid();
         validateDiscoveryCredential(input.credentialValue());
+        String baseUrl = normalizeBaseUrl(input.providerKind(), input.baseUrl());
 
         UUID id = UUID.randomUUID();
         if (input.providerId() != null) {
             var existing = find(input.providerId());
-            if (existing.providerKind() != input.providerKind()) invalid();
+            if (existing.providerKind() != input.providerKind()
+                    || !normalizeBaseUrl(existing.providerKind(), existing.baseUrl())
+                            .equals(baseUrl)) invalid();
             id = existing.id();
         }
-        String baseUrl = normalizeBaseUrl(input.providerKind(), input.baseUrl());
         var transientProfile =
                 new AiProviderProfile(
                         id,
@@ -204,23 +226,17 @@ public class AiProviderService {
 
     private void saveCredential(UUID id, CredentialChange change) {
         if (change == null) return;
-        String action = change.action() == null ? "KEEP" : change.action();
+        validateCredentialChange(change);
+        String action = credentialAction(change);
         String context = ModelConnectionService.secretContext(id);
         var current = secrets.state(context);
         if ("KEEP".equals(action)) {
-            if (change.value() != null) invalid();
             return;
         }
         if ("CLEAR".equals(action)) {
-            if (change.value() != null) invalid();
             if (current.configured()) secrets.save(context, current.version(), null);
             return;
         }
-        if (!"REPLACE".equals(action)
-                || change.value() == null
-                || change.value().isBlank()
-                || change.value().getBytes(StandardCharsets.UTF_8).length > 8192
-                || change.value().codePoints().anyMatch(Character::isISOControl)) invalid();
         byte[] value = change.value().getBytes(StandardCharsets.UTF_8);
         try {
             secrets.save(context, current.version(), value);
@@ -230,12 +246,33 @@ public class AiProviderService {
     }
 
     private void requireConfiguredCredential(ProviderKind kind, UUID id) {
-        if (kind != ProviderKind.OLLAMA
-                && kind != ProviderKind.LM_STUDIO
-                && !secrets.state(ModelConnectionService.secretContext(id)).configured()) {
+        requireConfiguredCredential(
+                kind, secrets.state(ModelConnectionService.secretContext(id)).configured());
+    }
+
+    private static void requireConfiguredCredential(ProviderKind kind, boolean configured) {
+        if (kind != ProviderKind.OLLAMA && kind != ProviderKind.LM_STUDIO && !configured) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "aiProviderCredentialRequired");
         }
+    }
+
+    private static String credentialAction(CredentialChange change) {
+        return change == null || change.action() == null ? "KEEP" : change.action();
+    }
+
+    private static void validateCredentialChange(CredentialChange change) {
+        if (change == null) return;
+        String action = credentialAction(change);
+        if ("KEEP".equals(action) || "CLEAR".equals(action)) {
+            if (change.value() != null) invalid();
+            return;
+        }
+        if (!"REPLACE".equals(action)
+                || change.value() == null
+                || change.value().isBlank()
+                || change.value().getBytes(StandardCharsets.UTF_8).length > 8192
+                || change.value().codePoints().anyMatch(Character::isISOControl)) invalid();
     }
 
     private Normalized normalize(ProviderWrite input, boolean creating) {

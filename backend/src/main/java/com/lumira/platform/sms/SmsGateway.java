@@ -1,5 +1,6 @@
 package com.lumira.platform.sms;
 
+import com.lumira.platform.common.GuardedSockets;
 import com.lumira.platform.common.SmsConfigurationPort;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -8,6 +9,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -61,32 +63,52 @@ public class SmsGateway {
                                     || host.equals("127.0.0.1")
                                     || host.equals("[::1]")
                                     || host.equals("::1"));
-            // Re-check at connect time so a name that later resolves to an internal address is
-            // never contacted.
-            if (!loopback && !com.lumira.platform.common.PublicHosts.resolvesPublic(host))
-                return Result.CONNECTION_FAILED;
             String payload =
                     mapper.writeValueAsString(
                             new Payload(sms.recipient(), data.sender(), sms.text()));
-            HttpRequest request =
-                    HttpRequest.newBuilder(target)
-                            .timeout(Duration.ofSeconds(data.timeoutSeconds()))
-                            .header("Content-Type", "application/json")
-                            .header("Authorization", "Bearer " + credential)
-                            .POST(
-                                    HttpRequest.BodyPublishers.ofString(
-                                            payload, StandardCharsets.UTF_8))
-                            .build();
-            HttpResponse<Void> response;
-            try {
-                response = client.send(request, HttpResponse.BodyHandlers.discarding());
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                return Result.DELIVERY_UNCERTAIN;
-            } catch (java.io.IOException | java.util.concurrent.CompletionException failed) {
-                return Result.CONNECTION_FAILED;
+            int status;
+            if (loopback) {
+                HttpRequest request =
+                        HttpRequest.newBuilder(target)
+                                .timeout(Duration.ofSeconds(data.timeoutSeconds()))
+                                .header("Content-Type", "application/json")
+                                .header("Authorization", "Bearer " + credential)
+                                .POST(
+                                        HttpRequest.BodyPublishers.ofString(
+                                                payload, StandardCharsets.UTF_8))
+                                .build();
+                try {
+                    status =
+                            client.send(request, HttpResponse.BodyHandlers.discarding())
+                                    .statusCode();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return Result.DELIVERY_UNCERTAIN;
+                } catch (java.io.IOException | java.util.concurrent.CompletionException failed) {
+                    return Result.CONNECTION_FAILED;
+                }
+            } else {
+                // Remote webhooks are dialled through a guard that validates the address actually
+                // being connected, so a hostname that resolves to an internal network is refused
+                // without a separate (rebindable) lookup.
+                try {
+                    status =
+                            GuardedSockets.exchange(
+                                            target,
+                                            "POST",
+                                            Map.of(
+                                                    "Content-Type",
+                                                    "application/json",
+                                                    "Authorization",
+                                                    "Bearer " + credential),
+                                            payload.getBytes(StandardCharsets.UTF_8),
+                                            Duration.ofSeconds(data.timeoutSeconds()),
+                                            1024)
+                                    .status();
+                } catch (java.io.IOException failed) {
+                    return Result.CONNECTION_FAILED;
+                }
             }
-            int status = response.statusCode();
             if (status == 401 || status == 403) return Result.AUTHENTICATION_FAILED;
             if (status >= 200 && status < 300) return Result.ACCEPTED;
             // The provider received an HTTP request, so the final delivery state is not safe to

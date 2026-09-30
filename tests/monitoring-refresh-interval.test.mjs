@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
 import { getMonitoringRefetchInterval, REALTIME_POLL_MS } from '../apps/web/src/features/monitoring/monitoring-refresh-interval.ts';
 
 test('monitoring polling backs off for current failures and returns to baseline after success resets the count', () => {
-  let fetchFailureCount = 0;
-  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', fetchFailureCount), REALTIME_POLL_MS);
-  fetchFailureCount = 1;
-  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', fetchFailureCount), REALTIME_POLL_MS * 2);
-  fetchFailureCount = 2;
-  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', fetchFailureCount), REALTIME_POLL_MS * 4);
-  fetchFailureCount = 0; // TanStack resets this counter after a successful fetch.
-  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', fetchFailureCount), REALTIME_POLL_MS);
+  let consecutiveFailures = 0;
+  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', consecutiveFailures), REALTIME_POLL_MS);
+  consecutiveFailures = 1;
+  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', consecutiveFailures), REALTIME_POLL_MS * 2);
+  consecutiveFailures = 2;
+  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', consecutiveFailures), REALTIME_POLL_MS * 4);
+  consecutiveFailures = 0; // The page resets the cross-request streak on success.
+  assert.equal(getMonitoringRefetchInterval('realtime', 'idle', consecutiveFailures), REALTIME_POLL_MS);
   assert.equal(getMonitoringRefetchInterval(5_000, 'idle', 4), 60_000);
 });
 
@@ -20,8 +19,10 @@ test('monitoring polling is disabled in manual mode and while a request is in fl
   assert.equal(getMonitoringRefetchInterval('realtime', 'fetching', 0), false);
 });
 
-test('monitoring query passes TanStack’s success-reset failure counter to the polling policy', () => {
-  const pageSource = readFileSync(new URL('../apps/web/src/features/monitoring/monitoring-page.tsx', import.meta.url), 'utf8');
-  assert.match(pageSource, /currentQuery\.state\.fetchFailureCount/);
-  assert.doesNotMatch(pageSource, /currentQuery\.state\.errorUpdateCount/);
+test('long configured intervals are never shortened by the failure backoff cap', () => {
+  for (const interval of [60_000, 300_000, 900_000, 3_600_000]) {
+    assert.equal(getMonitoringRefetchInterval(interval, 'idle', 0), interval);
+    assert.equal(getMonitoringRefetchInterval(interval, 'idle', 1), interval);
+    assert.equal(getMonitoringRefetchInterval(interval, 'idle', 20), interval);
+  }
 });

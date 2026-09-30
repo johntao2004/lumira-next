@@ -59,8 +59,11 @@ class RequestCorrelationFilterTest {
 
     @Test
     void writesOneAccessLineWithoutTheQueryString() throws Exception {
-        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("lumira.access");
-        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        var logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("lumira.access");
+        var appender =
+                new ch.qos.logback.core.read.ListAppender<
+                        ch.qos.logback.classic.spi.ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
         try {
@@ -82,8 +85,11 @@ class RequestCorrelationFilterTest {
 
     @Test
     void healthProbesDoNotFloodTheInfoLog() throws Exception {
-        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("lumira.access");
-        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        var logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("lumira.access");
+        var appender =
+                new ch.qos.logback.core.read.ListAppender<
+                        ch.qos.logback.classic.spi.ILoggingEvent>();
         appender.start();
         logger.addAppender(appender);
         try {
@@ -93,7 +99,11 @@ class RequestCorrelationFilterTest {
                     new MockFilterChain());
             assertTrue(
                     appender.list.stream()
-                            .noneMatch(e -> e.getLevel().isGreaterOrEqual(ch.qos.logback.classic.Level.INFO)));
+                            .noneMatch(
+                                    e ->
+                                            e.getLevel()
+                                                    .isGreaterOrEqual(
+                                                            ch.qos.logback.classic.Level.INFO)));
         } finally {
             logger.detachAppender(appender);
         }

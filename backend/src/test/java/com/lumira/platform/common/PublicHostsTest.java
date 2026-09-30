@@ -58,4 +58,38 @@ class PublicHostsTest {
         assertTrue(PublicHosts.isAllowed("api.example.com"));
         assertTrue(PublicHosts.isAllowed("8.8.8.8"));
     }
+
+    @Test
+    void identifiesSyntheticAnswersIncludingEmbeddedIpv4Forms() throws Exception {
+        for (String address :
+                new String[] {
+                    "198.18.0.136", "198.19.255.254", "::ffff:198.18.0.136", "::ffff:0:c612:88"
+                }) {
+            InetAddress parsed = InetAddress.getByName(address);
+            assertTrue(PublicHosts.isSyntheticAddress(parsed), address);
+            assertFalse(PublicHosts.isPublicAddress(parsed), address);
+        }
+        for (String address : new String[] {"8.8.8.8", "::ffff:8.8.8.8", "::ffff:0:808:808"}) {
+            InetAddress parsed = InetAddress.getByName(address);
+            assertFalse(PublicHosts.isSyntheticAddress(parsed), address);
+            assertTrue(PublicHosts.isPublicAddress(parsed), address);
+        }
+    }
+
+    @Test
+    void mailTargetsRefuseOnlyAddressesThatAreNeverMailServers() throws Exception {
+        for (String address :
+                new String[] {
+                    "0.0.0.0",
+                    "169.254.169.254",
+                    "224.0.0.1",
+                    "255.255.255.255",
+                    "fe80::1",
+                    "ff02::1"
+                })
+            assertFalse(PublicHosts.isMailTargetAllowed(InetAddress.getByName(address)), address);
+        for (String address :
+                new String[] {"10.0.0.1", "192.168.1.5", "8.8.8.8", "2606:4700:4700::1111"})
+            assertTrue(PublicHosts.isMailTargetAllowed(InetAddress.getByName(address)), address);
+    }
 }

@@ -11,24 +11,39 @@ import {usePreferences} from "@/platform/providers";
 import type {MessageKey} from "@/platform/i18n/messages";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 type Field={key:string;label:string;description:string;type:'TEXT'|'TEXTAREA'|'NUMBER'|'DATE'|'SELECT';required:boolean;placeholder:string;groupKey:string;groupLabel:string;options:string[];dictionaryCode?:string|null};
-type Snapshot={version:number;schemaVersion:number;fields:Field[];values:Record<string,string>};
+type DictionarySelection={itemId:string;label:string;enabled:boolean};
+type Snapshot={version:number;schemaVersion:number;fields:Field[];values:Record<string,string>;dictionarySelections?:Record<string,DictionarySelection>};
+const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function profileFormValues(snapshot:Snapshot){
+ const values={...snapshot.values};
+ for(const field of snapshot.fields){
+  if(field.type!=='SELECT'||!field.dictionaryCode)continue;
+  const value=values[field.key];const itemId=snapshot.dictionarySelections?.[field.key]?.itemId;
+  if(value&&itemId&&uuidPattern.test(value)&&uuidPattern.test(itemId)&&value.toLowerCase()===itemId.toLowerCase())values[field.key]=itemId;
+ }
+ return values;
+}
 /** Typed controls share the server schema; the server remains authoritative for all validation. */
-function ProfileValueFields({fields}:{fields:Field[]}){
+function ProfileValueFields({fields,values,dictionarySelections}:{fields:Field[];values:Record<string,string>;dictionarySelections?:Record<string,DictionarySelection>}){
  const {t}=usePreferences();const groups=Map.groupBy(fields,field=>field.groupKey);
- return <>{[...groups].map(([key,items])=><fieldset key={key} className="mb-4 border-0 p-0"><legend>{items[0].groupLabel}</legend>{items.map(field=><Form.Item key={field.key} name={field.key} label={field.label} extra={field.description||undefined} rules={[{required:field.required,message:t('invalidProfileValues')}]} getValueFromEvent={field.type==='NUMBER'||field.type==='SELECT'?value=>value??'':undefined}>
- {field.type==='SELECT'&&field.dictionaryCode?<DictionarySelect code={field.dictionaryCode}/>:field.type==='SELECT'?<Select allowClear placeholder={field.placeholder} options={field.options.map(value=>({value,label:value}))}/>:field.type==='NUMBER'?<InputNumber stringMode placeholder={field.placeholder}/>:field.type==='TEXTAREA'?<Input.TextArea rows={4} maxLength={2000} placeholder={field.placeholder}/>:<Input type={field.type==='DATE'?'date':'text'} maxLength={200} placeholder={field.placeholder}/>}</Form.Item>)}</fieldset>)}</>;
+ return <>{[...groups].map(([key,items])=><fieldset key={key} className="mb-4 border-0 p-0"><legend>{items[0].groupLabel}</legend>{items.map(field=>{
+ const value=values[field.key];const metadata=dictionarySelections?.[field.key];
+ const currentSelection=value&&dictionarySelections!==undefined?{itemId:value,label:metadata?.itemId===value?metadata.label:t('unavailable'),enabled:metadata?.itemId===value?metadata.enabled:false}:undefined;
+ return <Form.Item key={field.key} name={field.key} label={field.label} extra={field.description||undefined} rules={[{required:field.required,message:t('invalidProfileValues')}]} getValueFromEvent={field.type==='NUMBER'||field.type==='SELECT'?value=>value??'':undefined}>
+ {field.type==='SELECT'&&field.dictionaryCode?<DictionarySelect code={field.dictionaryCode} currentSelection={currentSelection}/>:field.type==='SELECT'?<Select allowClear placeholder={field.placeholder} options={field.options.map(value=>({value,label:value}))}/>:field.type==='NUMBER'?<InputNumber stringMode placeholder={field.placeholder}/>:field.type==='TEXTAREA'?<Input.TextArea rows={4} maxLength={2000} placeholder={field.placeholder}/>:<Input type={field.type==='DATE'?'date':'text'} maxLength={200} placeholder={field.placeholder}/>}</Form.Item>})}</fieldset>)}</>;
 }
 export function ProfileValuesDrawer({open,onClose}:{open:boolean;onClose:()=>void}){
  const {t}=usePreferences();const client=useQueryClient();const [pending,setPending]=useState(false),[error,setError]=useState<MessageKey|null>(null);
  const query=useQuery({queryKey:['profile-values'],queryFn:({signal})=>api<Snapshot>('/account/profile-values',{signal}),enabled:open,staleTime:0});
+ const initialValues=query.data?profileFormValues(query.data):undefined;
  return <FormDrawer open={open} title={t('fieldCustomGroup')} formId="account-profile-values" pending={pending} submitDisabled={!query.data||query.isFetching||!!query.error||query.data.fields.length===0} onClose={()=>{setError(null);onClose();}}>
  <ProfileCompletion open={open}/>
  {query.isFetching&&<Spin/>}<FeedbackBubble id="account-profile-values-error" content={error ? t(error) : query.error ? t("unavailable") : undefined}/>
  {!query.data&&query.error&&<Button onClick={()=>void query.refetch()}>{t('retry')}</Button>}
- {query.data&&!query.isFetching&&<Form id="account-profile-values" key={`${query.data.version}-${query.data.schemaVersion}`} layout="vertical" disabled={pending} initialValues={query.data.values} onFinish={async values=>{
+ {query.data&&!query.isFetching&&initialValues&&<Form id="account-profile-values" key={`${query.data.version}-${query.data.schemaVersion}`} layout="vertical" disabled={pending} initialValues={initialValues} onFinish={async values=>{
   if(pending)return;setPending(true);setError(null);
   try{await mutate('/account/profile-values','PUT',{version:query.data.version,schemaVersion:query.data.schemaVersion,values:Object.fromEntries(query.data.fields.map(field=>[field.key,values[field.key]??'']))});onClose();await Promise.all([client.invalidateQueries({queryKey:['profile-completion']}),client.invalidateQueries({queryKey:['profile-values']}),client.invalidateQueries({queryKey:['profile']}),client.invalidateQueries({queryKey:['users']})]);}
   catch(e){const key=e instanceof ApiError?e.message:'unavailable';setError(key==='staleRecord'||key==='invalidProfileValues'?key:'unavailable');}finally{setPending(false);}
- }}>{query.data.fields.length?<ProfileValueFields fields={query.data.fields}/>:<Empty description={t('noCustomProfileFields')}/>}</Form>}
+ }}>{query.data.fields.length?<ProfileValueFields fields={query.data.fields} values={initialValues} dictionarySelections={query.data.dictionarySelections}/>:<Empty description={t('noCustomProfileFields')}/>}</Form>}
  </FormDrawer>;
 }

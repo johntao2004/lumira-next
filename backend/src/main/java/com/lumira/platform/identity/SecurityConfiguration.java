@@ -28,7 +28,8 @@ public class SecurityConfiguration {
             LoginRateLimiter limiter,
             LoginAudit loginAudit,
             ClientAddressResolver addresses,
-            @org.springframework.beans.factory.annotation.Value("${lumira.metrics.token:}") String metricsToken,
+            @org.springframework.beans.factory.annotation.Value("${lumira.metrics.token:}")
+                    String metricsToken,
             MaintenancePolicyPort maintenance)
             throws Exception {
         http.authorizeHttpRequests(

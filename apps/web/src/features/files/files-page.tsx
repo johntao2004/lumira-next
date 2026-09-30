@@ -20,6 +20,7 @@ import { formatFileSizeMb } from "./file-size";
 import { FileDownloadAction } from "./file-download-action";
 import { FilePreviewMarkdown } from "./file-preview-markdown";
 import { useFileCleanupTracker } from "./use-file-cleanup-tracker";
+import { useFileBatchActions } from "./use-file-batch-actions";
 
 type FileEntry = { id: string; originalName: string; sizeBytes: number | null; state: "UPLOADING" | "READY" | "DELETING"; version: number; createdAt: string };
 type TrashedFile = Omit<FileEntry, "state"> & { state: "TRASHED"; trashedAt: string };
@@ -36,6 +37,9 @@ export function FilesPage() {
   const [trashRequest, setTrashRequest] = useListRequest();
   const query = useQuery({ queryKey: ["files", request], queryFn: ({ signal }) => api<PageResult<FileEntry>>(`/account/files?${listRequestParams(request)}`, { signal }) });
   const trashQuery = useQuery({ queryKey: ["files", "trash", trashRequest], queryFn: ({ signal }) => api<PageResult<TrashedFile>>(`/account/files/trash?${listRequestParams(trashRequest)}`, { signal }), enabled: tab === "trash" });
+  const filesBatch = useFileBatchActions(query.data?.items, "trash", refresh);
+  const trashBatch = useFileBatchActions(trashQuery.data?.items, "restore", refresh);
+  const batchPending = filesBatch.pending || trashBatch.pending;
   const previewQuery = useQuery({
     queryKey: ["file-preview", previewFile?.id],
     queryFn: ({ signal }) => api<FilePreview>(`/account/files/${previewFile!.id}/preview`, { signal }),
@@ -66,32 +70,35 @@ export function FilesPage() {
     } finally { busy.current = false; setPending(false); await refresh(); }
   }
 
-  const filesTable = <ResourceTable<FileEntry> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={() => void query.refetch()}
-    actions={<><input ref={input} type="file" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void send(file); }} /><AsyncButton type="primary" pending={pending} onClick={() => input.current?.click()} label={t("uploadFile")} /></>}
+  const filesTable = <>{filesBatch.feedback}<ResourceTable<FileEntry> result={query.data} loading={query.isFetching || batchPending} error={query.error} request={request} onChange={next => { if (batchPending) return; filesBatch.reset(); setRequest(next); }} onRetry={() => void query.refetch()}
+    rowSelection={filesBatch.rowSelection}
+    actions={<>{filesBatch.actions}<input ref={input} type="file" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void send(file); }} /><AsyncButton type="primary" pending={pending} disabled={batchPending} onClick={() => input.current?.click()} label={t("uploadFile")} /></>}
     columns={[
       { title: t("fileName"), dataIndex: "originalName", search: true, render: (name, file) => file.state === "READY"
         ? <Button type="link" className="file-preview-link" style={{ whiteSpace: "normal", height: "auto", paddingInline: 0, textAlign: "left", overflowWrap: "anywhere" }} onClick={() => setPreviewFile(file)}>{name}</Button>
         : <span style={{ overflowWrap: "anywhere" }}>{name}</span> },
       { title: t("fileSize"), dataIndex: "sizeBytes", valueType: "digit", render: (_, file) => formatFileSizeMb(file.sizeBytes, locale) },
       { title: t("eventTime"), dataIndex: "createdAt", valueType: "dateTimeRange", render: (_, file) => formatDateTime(file.createdAt, locale, { dateStyle: "medium", timeStyle: "short" }) },
-      { title: t("actions"), search: false, render: (_, file) => <TableActions>{file.state === "READY" && <FileDownloadAction href={`/api/account/files/${file.id}/content`} label={t("downloadFile")} confirmation={t("fileDownloadConfirm", { name: file.originalName })} confirmText={t("downloadFile")} cancelText={t("cancel")} />}{file.state === "READY" && <DeleteAction name={file.originalName} actionLabel={t("moveToTrash")} confirmation={t("moveToTrashConfirm", { name: file.originalName })} onDelete={async () => { try { await mutate(`/account/files/${file.id}?version=${file.version}`, "DELETE"); } finally { await refresh(); } }} />}</TableActions> },
-    ]} />;
+      { title: t("actions"), search: false, render: (_, file) => <TableActions>{file.state === "READY" && <FileDownloadAction href={`/api/account/files/${file.id}/content`} label={t("downloadFile")} confirmation={t("fileDownloadConfirm", { name: file.originalName })} confirmText={t("downloadFile")} cancelText={t("cancel")} />}{file.state === "READY" && <DeleteAction disabled={batchPending} name={file.originalName} actionLabel={t("moveToTrash")} confirmation={t("moveToTrashConfirm", { name: file.originalName })} onDelete={async () => { try { await mutate(`/account/files/${file.id}?version=${file.version}`, "DELETE"); } finally { await refresh(); } }} />}</TableActions> },
+    ]} /></>;
 
-  const trashTable = <ResourceTable<TrashedFile> result={trashQuery.data} loading={trashQuery.isFetching} error={trashQuery.error} request={trashRequest} onChange={setTrashRequest} onRetry={() => void trashQuery.refetch()}
+  const trashTable = <>{trashBatch.feedback}<ResourceTable<TrashedFile> result={trashQuery.data} loading={trashQuery.isFetching || batchPending} error={trashQuery.error} request={trashRequest} onChange={next => { if (batchPending) return; trashBatch.reset(); setTrashRequest(next); }} onRetry={() => void trashQuery.refetch()}
+    rowSelection={trashBatch.rowSelection}
+    actions={trashBatch.actions}
     columns={[
       { title: t("fileName"), dataIndex: "originalName", search: true, render: name => <span style={{ overflowWrap: "anywhere" }}>{name}</span> },
       { title: t("fileSize"), dataIndex: "sizeBytes", valueType: "digit", render: (_, file) => formatFileSizeMb(file.sizeBytes, locale) },
       { title: t("fileDeletedAt"), dataIndex: "trashedAt", valueType: "dateTimeRange", render: (_, file) => formatDateTime(file.trashedAt, locale, { dateStyle: "medium", timeStyle: "short" }) },
-      { title: t("actions"), search: false, render: (_, file) => <TableActions><FileTrashActions file={file} endpoint="/account/files" onChanged={refresh} onCleanupStarted={trackFileCleanup} /></TableActions> },
-    ]} />;
+      { title: t("actions"), search: false, render: (_, file) => <TableActions><FileTrashActions disabled={batchPending} file={file} endpoint="/account/files" onChanged={refresh} onCleanupStarted={trackFileCleanup} /></TableActions> },
+    ]} /></>;
 
   const extension = previewFile?.originalName.split(".").pop()?.toLowerCase();
   const isMarkdown = extension === "md" || extension === "markdown";
   const previewError = previewQuery.error ? t(messageKeyFor(previewQuery.error, previewErrorKeys, "filePreviewFailed")) : null;
 
-  return <><FileUsage /><Tabs activeKey={tab} onChange={setTab} items={[
-    { key: "files", label: t("filesTab"), children: filesTable },
-    { key: "trash", label: t("fileTrash"), children: trashTable },
+  return <><FileUsage /><Tabs activeKey={tab} onChange={next => { if (batchPending) return; filesBatch.reset(); trashBatch.reset(); setTab(next); }} items={[
+    { key: "files", label: t("filesTab"), disabled: batchPending, children: filesTable },
+    { key: "trash", label: t("fileTrash"), disabled: batchPending, children: trashTable },
   ]} />
     <Modal
       title={previewFile?.originalName}

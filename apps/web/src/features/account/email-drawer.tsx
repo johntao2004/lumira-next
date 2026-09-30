@@ -7,6 +7,7 @@ import {Input, Typography} from "antd";
 import {useQuery,useQueryClient} from "@tanstack/react-query";
 import {api,ApiError,mutate} from "@/platform/api/client";
 import {AsyncButton} from "@/platform/components/async-button";
+import {DrawerFormActions} from "@/platform/components/drawer-actions";
 import {QueryFailure} from "@/platform/components/query-failure";
 import {usePreferences} from "@/platform/providers";
 import {formatDateTime} from "@/platform/i18n/format";
@@ -43,7 +44,7 @@ export function EmailDrawer({open,onClose}:{open:boolean;onClose:()=>void}){
   }
  }
  function close(){if(busy.current)return;requestForm.resetFields();confirmForm.resetFields();setError(null);setNotice(null);onClose();}
- return <PlatformDrawer title={t("accountEmail")} open={open} closable={{disabled:!!pending}} onClose={close} destroyOnHidden size={440}>
+ return <PlatformDrawer title={t("accountEmail")} open={open} closable={{disabled:!!pending}} onClose={close} destroyOnHidden size={440} footer={<DrawerFormActions formId="account-email-confirm" onClose={close} pending={!!pending} submitDisabled={!ready||!query.data?.pendingEmail} submitLabel={t("confirmEmail")}/> }>
   <Typography.Paragraph>{t("emailIndependentHint")}</Typography.Paragraph>
   {query.error&&<QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={()=>void query.refetch()}/>}
   {query.data&&!query.error&&<>
@@ -57,9 +58,8 @@ export function EmailDrawer({open,onClose}:{open:boolean;onClose:()=>void}){
    <Form.Item name="currentPassword" label={t("currentPassword")} rules={[{required:true,message:t("passwordRequired")}]}><Input.Password autoComplete="current-password" maxLength={MAX_PASSWORD_BYTES}/></Form.Item>
    <AsyncButton htmlType="submit" label={t("requestEmailCode")} pending={pending==="request"} disabled={!!pending||!ready}/>
   </Form>
-  <Form className="mt-6" form={confirmForm} layout="vertical" disabled={!!pending||!ready||!query.data?.pendingEmail} onFinish={values=>submit("confirm",values)}>
+  <Form id="account-email-confirm" className="mt-6" form={confirmForm} layout="vertical" disabled={!!pending||!ready||!query.data?.pendingEmail} onFinish={values=>submit("confirm",values)}>
    <Form.Item name="token" label={t("emailCode")} rules={[{required:true,pattern:/^[A-Za-z0-9_-]{43}$/,message:t("invalidVerificationToken")}]}><Input autoComplete="one-time-code" maxLength={43} spellCheck={false}/></Form.Item>
-   <AsyncButton type="primary" htmlType="submit" label={t("confirmEmail")} pending={pending==="confirm"} disabled={!!pending||!ready||!query.data?.pendingEmail}/>
   </Form>
  </PlatformDrawer>;
 }
