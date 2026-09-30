@@ -14,3 +14,12 @@ export LUMIRA_COOKIE_SECURE=false
 if [[ -n ${LUMIRA_CLOUD_MAVEN_SETTINGS:-} ]]; then
   python3 "$lumira_cloud_root/scripts/cloud-maven-settings.py"
 fi
+
+# Vendor JDK archives do not include the VM's managed proxy CA. Reuse the
+# existing system Java trust store rather than disabling TLS verification.
+if [[ -r /etc/ssl/certs/java/cacerts ]]; then
+  case ${MAVEN_OPTS:-} in
+    *-Djavax.net.ssl.trustStore=*) ;;
+    *) export MAVEN_OPTS="${MAVEN_OPTS:-} -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts" ;;
+  esac
+fi
