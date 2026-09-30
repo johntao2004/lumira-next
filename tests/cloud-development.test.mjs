@@ -17,7 +17,8 @@ function fixture(t, os = 'Linux') {
   for (const command of ['sudo', 'pg_ctlcluster', 'pg_createcluster', 'apt-get'])
     executable(`bin/${command}`, `printf '%s\\n' '${command}' >> '${root}/mutations'; exit 99`);
   const env = {...process.env, PATH: `${root}/bin:${process.env.PATH}`};
-  delete env.LUMIRA_CLOUD_DEV;
+  // Test fixtures must not inherit the real VM's active database mode/client.
+  for (const key of ['LUMIRA_CLOUD_DEV', 'LUMIRA_CLOUD_PG_MODE', 'LUMIRA_CLOUD_PG_HOME', 'PSQL_BIN']) delete env[key];
   writeFileSync(join(root, '.runtime/cloud.env'), `export JAVA_HOME='${root}/jdk'\n`);
   writeFileSync(join(root, '.runtime/cloud-development'), '');
   return {root, env, executable, run: name => spawnSync('bash', [join(root, 'scripts', name)], {cwd: root, env, encoding: 'utf8'})};
