@@ -6,14 +6,15 @@ PostgreSQL 18. Append Flyway migrations; never rewrite published migrations.
 
 ## Cloud development
 
-Only in a disposable Ubuntu development VM:
+Only in a disposable Ubuntu or Debian development VM:
 
 - Install: `LUMIRA_CLOUD_DEV=1 bash scripts/cloud-install.sh`
 - Start the current checkout: `bash scripts/cloud-start.sh`
 - Check frontend and database-backed backend tests: `bash scripts/cloud-check.sh`
 - Before manual commands: `source scripts/cloud-env.sh`
 - Health: `node scripts/status.mjs`; require HTTP 200 from both services.
-- Stop: `node scripts/stop.mjs`.
+- Stop app services and the user-space database: `bash scripts/cloud-stop.sh`.
+- Before publishing, stop services and PostgreSQL to capture a consistent snapshot.
 
 Do not copy local credentials, databases or uploaded files to the cloud. Generate
 fresh development configuration in the VM. Never commit .runtime or secrets.

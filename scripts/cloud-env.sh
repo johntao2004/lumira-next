@@ -6,7 +6,7 @@ lumira_cloud_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   return 1 2>/dev/null || exit 1
 }
 source "$lumira_cloud_root/.runtime/cloud.env"
-export PSQL_BIN=/usr/lib/postgresql/18/bin/psql
+export PSQL_BIN=${PSQL_BIN:-/usr/lib/postgresql/18/bin/psql}
 export LUMIRA_COOKIE_SECURE=false
 [[ $(node -p 'process.versions.node.split(".")[0]') == 24 ]]
 [[ $("$JAVA_HOME/bin/javac" -version 2>&1) == javac\ 25* ]]

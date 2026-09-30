@@ -12,6 +12,9 @@ if (existsSync('.runtime/local.json')) {
     throw new Error('Cloud startup requires the isolated local lumira_next development database.');
 }
 JS
+if [[ ${LUMIRA_CLOUD_PG_MODE:-system} == user ]]; then
+  exec bash scripts/cloud-database-user.sh
+fi
 as_root() { if [[ $EUID == 0 ]]; then "$@"; else sudo -n "$@"; fi; }
 if ! pg_lsclusters --no-header | awk '$1 == "18" && $2 == "main" {found=1} END {exit !found}'; then
   as_root pg_createcluster 18 main --port 5432

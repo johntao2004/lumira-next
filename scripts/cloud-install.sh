@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Install only in a disposable Codex Ubuntu VM, never on the local Mac.
+# Install only in a disposable Codex Linux VM, never on the local Mac.
 set -euo pipefail
 [[ $(uname -s) == Linux && ${LUMIRA_CLOUD_DEV:-} == 1 ]] || {
-  echo 'Run in a Codex Ubuntu VM: LUMIRA_CLOUD_DEV=1 bash scripts/cloud-install.sh' >&2
+  echo 'Run in a Codex Linux VM: LUMIRA_CLOUD_DEV=1 bash scripts/cloud-install.sh' >&2
   exit 1
 }
 source /etc/os-release
+if [[ $EUID != 0 && ( ${ID:-} == debian || ${LUMIRA_CLOUD_USERSPACE:-} == 1 ) ]]; then
+  exec bash "$(dirname "${BASH_SOURCE[0]}")/cloud-install-user.sh"
+fi
 [[ ${ID:-} == ubuntu ]] || { echo 'This installer requires Ubuntu.' >&2; exit 1; }
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"

@@ -9,7 +9,7 @@ function fixture(t, os = 'Linux') {
   const root = mkdtempSync(join(tmpdir(), 'lumira-cloud-guard-'));
   t.after(() => rmSync(root, {recursive: true, force: true}));
   for (const dir of ['scripts', '.runtime', 'bin', 'jdk/bin']) mkdirSync(join(root, dir), {recursive: true});
-  for (const name of ['cloud-env.sh', 'cloud-database.sh', 'cloud-install.sh'])
+  for (const name of ['cloud-env.sh', 'cloud-database.sh', 'cloud-database-user.sh', 'cloud-install.sh'])
     copyFileSync(resolve('scripts', name), join(root, 'scripts', name));
   const executable = (name, body) => writeFileSync(join(root, name), `#!/bin/sh\n${body}\n`, {mode: 0o700});
   executable('bin/uname', `printf '%s\\n' '${os}'`);
@@ -28,7 +28,7 @@ test('cloud installation refuses a local Mac before installing anything', t => {
   f.env.LUMIRA_CLOUD_DEV = '1';
   const result = f.run('cloud-install.sh');
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Codex Ubuntu VM/);
+  assert.match(result.stderr, /Codex Linux VM/);
   assert.equal(existsSync(join(f.root, 'mutations')), false);
 });
 
@@ -55,5 +55,35 @@ test('a PostgreSQL cluster on a different port is not changed or replaced', t =>
   const result = f.run('cloud-database.sh');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /must use port 5432/);
+  assert.equal(existsSync(join(f.root, 'mutations')), false);
+});
+
+function userDatabaseFixture(t, version = '18') {
+  const f = fixture(t);
+  mkdirSync(join(f.root, 'pg/bin'), {recursive: true});
+  mkdirSync(join(f.root, '.runtime/cloud-postgres/data'), {recursive: true});
+  writeFileSync(join(f.root, '.runtime/cloud-postgres/data/PG_VERSION'), version);
+  writeFileSync(join(f.root, '.runtime/cloud.env'), `export JAVA_HOME='${f.root}/jdk'\nexport LUMIRA_CLOUD_PG_MODE=user\nexport LUMIRA_CLOUD_PG_HOME='${f.root}/pg'\n`);
+  f.executable('pg/bin/initdb', `echo initdb >> '${f.root}/mutations'; exit 99`);
+  return f;
+}
+
+test('user-space startup preserves a database from another PostgreSQL major', t => {
+  const f = userDatabaseFixture(t, '17');
+  const result = f.run('cloud-database.sh');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /database must be PostgreSQL 18/);
+  assert.equal(readFileSync(join(f.root, '.runtime/cloud-postgres/data/PG_VERSION'), 'utf8'), '17');
+  assert.equal(existsSync(join(f.root, 'mutations')), false);
+});
+
+test('user-space startup refuses a ready socket owned by another database', t => {
+  const f = userDatabaseFixture(t);
+  f.executable('pg/bin/pg_isready', 'exit 0');
+  f.executable('pg/bin/psql', "printf '/other/database|180006\\n'");
+  const result = f.run('cloud-database.sh');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unexpected cloud database owner or version/);
+  assert.equal(existsSync(join(f.root, '.runtime/cloud-psql-admin.sh')), false);
   assert.equal(existsSync(join(f.root, 'mutations')), false);
 });
