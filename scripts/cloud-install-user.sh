@@ -112,7 +112,22 @@ chmod 700 .runtime
 touch .runtime/cloud-development
 node_bin=$(dirname "$(readlink -f "$(command -v node)")")
 printf 'export JAVA_HOME=%q\nexport PATH=%q:"$PATH"\nexport LUMIRA_CLOUD_PG_MODE=user\nexport LUMIRA_CLOUD_PG_HOME=%q\nexport PSQL_BIN=%q\n' "$JAVA_HOME" "$tools/pnpm/bin:$node_bin:$JAVA_HOME/bin:$tools/postgresql/bin" "$tools/postgresql" "$tools/postgresql/bin/psql" > .runtime/cloud.env
-mkdir -p "$tools/maven/repository"
+# Keep the prepared workspace's existing store rather than forcing a reinstall.
+pnpm_store=$(python3 - "$tools/pnpm-store" <<'PYPNPM'
+from pathlib import Path
+import json, re, sys
+p = Path('node_modules/.modules.yaml')
+match = re.search(r'^storeDir:\s*(.+)$', p.read_text(), re.M) if p.exists() else None
+value = match[1].strip() if match else ''
+if value.startswith('"'):
+    value = json.loads(value)
+elif value.startswith("'") and value.endswith("'"):
+    value = value[1:-1].replace("''", "'")
+print(re.sub(r'/v[0-9]+$', '', value) if value.startswith('/') else sys.argv[1])
+PYPNPM
+)
+mkdir -p "$tools/cache" "$tools/npm-cache" "$tools/pnpm-cache" "$tools/maven/repository"
+printf 'export XDG_CACHE_HOME=%q\nexport npm_config_cache=%q\nexport npm_config_cache_dir=%q\nexport npm_config_store_dir=%q\n' "$tools/cache" "$tools/npm-cache" "$tools/pnpm-cache" "$pnpm_store" >> .runtime/cloud.env
 printf 'export MAVEN_USER_HOME=%q\nexport LUMIRA_CLOUD_MAVEN_REPO=%q\n' "$tools/maven" "$tools/maven/repository" >> .runtime/cloud.env
 maven_mirror=${LUMIRA_CLOUD_MAVEN_MIRROR:-https://maven-central.storage-download.googleapis.com/maven2}
 printf 'export MVNW_REPOURL=%q\nexport LUMIRA_CLOUD_MAVEN_SETTINGS=%q\n' "$maven_mirror" "$tools/maven/settings.xml" >> .runtime/cloud.env
