@@ -70,8 +70,8 @@ export async function logout() {
   });
 }
 /** Shared write transport: all platform mutations obtain a fresh CSRF token. */
-export async function mutate<T>(path: string, method: "POST" | "PUT" | "PATCH" | "DELETE", data?: unknown, signal?: AbortSignal): Promise<T> {
-  const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : undefined;
+export async function mutate<T>(path: string, method: "POST" | "PUT" | "PATCH" | "DELETE", data?: unknown, signal?: AbortSignal, timeoutMs = 15_000): Promise<T> {
+  const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : timeoutMs === 15_000 ? undefined : AbortSignal.timeout(timeoutMs);
   const token = await csrf(requestSignal);
   return api<T>(path, { method, headers: { "Content-Type": "application/json", [token.headerName]: token.token }, body: data === undefined ? undefined : JSON.stringify(data), signal: requestSignal });
 }

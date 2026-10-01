@@ -496,6 +496,10 @@ public class SecurityConfiguration {
                                                 "/api/platform/ai/actions/*/confirm")
                                         .hasAuthority("platform:users:write")
                                         .requestMatchers(
+                                                org.springframework.http.HttpMethod.DELETE,
+                                                "/api/platform/ai/actions/*")
+                                        .hasAuthority("platform:users:read")
+                                        .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
                                                 "/api/platform/dictionaries/*/export",
                                                 "/api/platform/dictionaries/*/items/*/ancestors",

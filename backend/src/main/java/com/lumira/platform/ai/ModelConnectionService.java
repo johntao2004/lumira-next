@@ -31,10 +31,23 @@ public class ModelConnectionService {
     public record ChatReply(String content, List<ToolCall> toolCalls) {}
 
     public record ModelOption(
-            String id, String name, List<String> inputModalities, List<String> outputModalities) {
+            String id,
+            String name,
+            List<String> inputModalities,
+            List<String> outputModalities,
+            List<String> capabilityCodes) {
         public ModelOption {
             inputModalities = List.copyOf(inputModalities);
             outputModalities = List.copyOf(outputModalities);
+            capabilityCodes = List.copyOf(capabilityCodes);
+        }
+
+        public ModelOption(
+                String id,
+                String name,
+                List<String> inputModalities,
+                List<String> outputModalities) {
+            this(id, name, inputModalities, outputModalities, List.of());
         }
     }
 
@@ -105,7 +118,10 @@ public class ModelConnectionService {
                                     id,
                                     name,
                                     stringValues(entry.path("input_modalities")),
-                                    stringValues(entry.path("output_modalities"))));
+                                    stringValues(entry.path("output_modalities")),
+                                    provider.supportsUserTools(id)
+                                            ? List.of("CHAT", "TOOL_CALLING")
+                                            : provider.providerCapabilityCodes()));
                 }
             }
         }
@@ -124,6 +140,12 @@ public class ModelConnectionService {
         payload.put("model", modelName);
         payload.put("messages", messages);
         payload.put("stream", false);
+        // Lumira carries visible text history only, rather than private reasoning/tool transcripts.
+        if (provider.providerKind() == ProviderKind.DEEPSEEK
+                && provider.supportsUserTools(modelName)) {
+            payload.put("thinking", Map.of("type", "disabled"));
+            payload.put("max_tokens", 2048);
+        }
         if (tools != null && !tools.isEmpty()) {
             payload.put("tools", tools);
             payload.put("tool_choice", "auto");

@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bubble, Conversations, Prompts, Sender, Welcome } from "@ant-design/x";
-import { BulbOutlined, CommentOutlined, EditOutlined, PlusOutlined, SearchOutlined, SettingOutlined } from "@ant-design/icons";
+import { Actions, Bubble, Conversations, Prompts, Sender, ThoughtChain, Welcome } from "@ant-design/x";
+import { XMarkdown } from "@ant-design/x-markdown";
+import { BulbOutlined, CommentOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, SettingOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Descriptions, Input, Select, Space, Spin, Table, Tag, Typography } from "antd";
 import { api, mutate } from "@/platform/api/client";
 import { usePreferences } from "@/platform/providers";
 import { DEFAULT_TABLE_PAGE_SIZE, TABLE_PAGE_SIZE_OPTIONS } from "@/platform/api/pagination";
-import type { ActionProposal, ChatMessage, ChatResponse, ConnectionResult, Provider } from "./types";
+import type { ActionProposal, ChatMessage, ChatResponse, ConnectionResult, ExecutionStep, Provider } from "./types";
 
-type TranscriptItem = { key: number; role: "user" | "assistant"; content: string };
+type TranscriptItem = { key: number; role: "user" | "assistant"; content: string; steps?: ExecutionStep[]; proposalId?: string; failed?: boolean };
 type ChatSession = { key: string; label: string; transcript: TranscriptItem[]; users: ChatResponse["users"] };
 const path = "/platform/ai";
 const initialSession: ChatSession = { key: "current", label: "", transcript: [], users: null };
@@ -28,6 +29,8 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
   const [activeSessionKey, setActiveSessionKey] = useState(initialSession.key);
   const [proposal, setProposal] = useState<ActionProposal | null>(null);
   const [password, setPassword] = useState("");
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const confirming = useRef(false);
   const activeChatRequest = useRef<{
     sessionKey: string;
     content: string;
@@ -53,7 +56,10 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
   const activeSession = sessions.find((session) => session.key === activeSessionKey) ?? sessions[0];
   const transcript = activeSession?.transcript ?? [];
   const matchedUsers = activeSession?.users ?? null;
-  const items = transcript.map((entry) => ({ key: entry.key, role: entry.role, content: entry.content }));
+  const supportsTools = availableModels.find((model) => model.id === modelName)?.capabilityCodes?.includes("TOOL_CALLING")
+    ?? (selected?.modelName === modelName && selected?.capabilityCodes.includes("TOOL_CALLING"));
+
+  useEffect(() => () => { activeChatRequest.current?.controller.abort(); }, []);
 
   useEffect(() => {
     if (!modelCatalog.data || !modelName || availableModels.some((model) => model.id === modelName)) return;
@@ -79,11 +85,11 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
     setSessionsOpen(false);
   };
 
-  const submit = async (text: string) => {
+  const submit = async (text: string, history = transcript) => {
     const content = text.trim();
-    if (!content || !providerId || !modelName || busy || proposal || !activeSession) return;
+    if (!content || !providerId || !modelName || busy || activeChatRequest.current || proposal || !activeSession) return;
     const sessionKey = activeSession.key;
-    const next = [...transcript, { key: Date.now(), role: "user" as const, content }];
+    const next = [...history, { key: Date.now(), role: "user" as const, content }];
     const request = {
       sessionKey,
       content,
@@ -103,11 +109,11 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
     setBusy(true);
     try {
       const messages: ChatMessage[] = next.slice(-20).map(({ role, content: messageContent }) => ({ role: role === "user" ? "user" : "assistant", content: messageContent }));
-      const result = await mutate<ChatResponse>(`${path}/chat`, "POST", { providerId, modelName, messages }, request.controller.signal);
+      const result = await mutate<ChatResponse>(`${path}/chat`, "POST", { providerId, modelName, messages }, request.controller.signal, 65_000);
       if (activeChatRequest.current !== request || request.controller.signal.aborted) return;
       updateSession(sessionKey, (session) => ({
         ...session,
-        transcript: [...session.transcript, { key: Date.now() + 1, role: "assistant", content: result.message }],
+        transcript: [...session.transcript, { key: Date.now() + 1, role: "assistant", content: result.message, steps: result.steps, proposalId: result.proposal?.id }],
         users: result.users,
       }));
       setProposal(result.proposal);
@@ -118,6 +124,7 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
           transcript: [...session.transcript, {
             key: Date.now() + 1,
             role: "assistant",
+            failed: true,
             content: error instanceof Error && error.message === "aiProviderCredentialRequired" ? t("aiProviderCredentialRequired") : t("aiProviderUnavailable"),
           }],
           users: null,
@@ -146,22 +153,62 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
     setBusy(false);
   };
 
+  const updateConfirmation = (sessionKey: string, id: string, status: ExecutionStep["status"]) => {
+    updateSession(sessionKey, (session) => ({ ...session, transcript: session.transcript.map((entry) => entry.proposalId === id
+      ? { ...entry, steps: entry.steps?.map((step) => step.code === "ACTION_CONFIRMATION" ? { ...step, status } : step) }
+      : entry) }));
+  };
   const confirm = async () => {
-    if (!proposal || !activeSession) return;
+    if (!proposal || !activeSession || confirming.current) return;
     if (proposal.kind === "CREATE_USER" && password.length === 0) { message.error(t("aiCreatePassword")); return; }
+    confirming.current = true;
+    setConfirmBusy(true);
+    const sessionKey = activeSession.key;
+    const id = proposal.id;
     try {
       await mutate(`${path}/actions/${proposal.id}/confirm`, "POST", proposal.kind === "CREATE_USER" ? { password } : {});
       message.success(t("aiActionCompleted"));
-      updateSession(activeSession.key, (session) => ({ ...session, transcript: [...session.transcript, { key: Date.now(), role: "assistant", content: t("aiActionCompleted") }] }));
+      updateConfirmation(sessionKey, id, "success");
+      updateSession(sessionKey, (session) => ({ ...session, transcript: [...session.transcript, { key: Date.now(), role: "assistant", content: t("aiActionCompleted") }] }));
       setProposal(null); setPassword("");
       await Promise.all([client.invalidateQueries({ queryKey: ["users"] }), client.invalidateQueries({ queryKey: ["online-users"] })]);
-    } catch { message.error(t("aiActionExpired")); setProposal(null); setPassword(""); }
+    } catch { updateConfirmation(sessionKey, id, "error"); message.error(t("aiActionExpired")); setProposal(null); setPassword(""); }
+    finally { confirming.current = false; setConfirmBusy(false); }
   };
-  const cancelProposal = () => { setProposal(null); setPassword(""); };
+  const cancelProposal = async () => {
+    if (confirming.current || !proposal || !activeSession) return;
+    confirming.current = true;
+    setConfirmBusy(true);
+    try {
+      await mutate(`${path}/actions/${proposal.id}`, "DELETE");
+      updateConfirmation(activeSession.key, proposal.id, "abort");
+      setProposal(null); setPassword("");
+    } catch { message.error(t("unavailable")); }
+    finally { confirming.current = false; setConfirmBusy(false); }
+  };
+  const copyReply = async (content: string) => {
+    try { await navigator.clipboard.writeText(content); message.success(t("aiReplyCopied")); }
+    catch { message.error(t("unavailable")); }
+  };
+  const retryReply = (entry: TranscriptItem) => {
+    const previous = transcript.at(-2);
+    if (!entry.failed || transcript.at(-1)?.key !== entry.key || previous?.role !== "user") return;
+    void submit(previous.content, transcript.slice(0, -2));
+  };
+  const stepTitle = (step: ExecutionStep) => {
+    switch (step.code) {
+      case "MODEL_RESPONSE": return t("aiStepModelResponse");
+      case "USER_SEARCH": return t("aiStepUserSearch");
+      case "ACTION_PROPOSAL": return t("aiStepProposal");
+      case "TOOL_VALIDATION": return t("aiStepValidationFailed");
+      case "ACTION_CONFIRMATION": return step.status === "pending" ? t("aiStepWaiting")
+        : step.status === "success" ? t("aiActionCompleted") : step.status === "abort" ? t("aiStepCancelled") : t("aiActionExpired");
+    }
+  };
   const proposalName = proposal?.kind === "CREATE_USER" ? t("createUser") : proposal?.kind === "UPDATE_USER" ? t("edit") : t("deleteRecord");
   const promptItems = [
-    { key: "search", icon: <SearchOutlined />, label: t("aiPromptSearchTitle"), description: t("aiPromptSearchDescription"), disabled: !selected || !canReadUsers },
-    { key: "change", icon: <EditOutlined />, label: t("aiPromptChangeTitle"), description: t("aiPromptChangeDescription"), disabled: !selected || !canWriteUsers },
+    { key: "search", icon: <SearchOutlined />, label: t("aiPromptSearchTitle"), description: t("aiPromptSearchDescription"), disabled: !supportsTools || !canReadUsers },
+    { key: "change", icon: <EditOutlined />, label: t("aiPromptChangeTitle"), description: t("aiPromptChangeDescription"), disabled: !supportsTools || !canWriteUsers },
     { key: "capabilities", icon: <BulbOutlined />, label: t("aiPromptCapabilitiesTitle"), description: t("aiPromptCapabilitiesDescription"), disabled: !selected },
   ];
 
@@ -271,7 +318,21 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
             </div>
             : <Bubble.List
               className="ai-chat-bubbles"
-              items={items.map((item) => ({ ...item, classNames: { content: "ai-chat-bubble-content" } }))}
+              items={transcript.map((entry) => ({
+                key: entry.key, role: entry.role, content: entry.content,
+                classNames: { content: "ai-chat-bubble-content" },
+                contentRender: () => entry.role === "user" ? entry.content : <>
+                  <XMarkdown className="ai-chat-markdown" content={entry.content} escapeRawHtml openLinksInNewTab
+                    dompurifyConfig={{ FORBID_TAGS: ["img", "iframe", "form", "input", "button", "video", "audio", "style"], FORBID_ATTR: ["style"] }} />
+                  {(entry.steps?.length ?? 0) > 1 && <ThoughtChain className="ai-chat-steps" items={entry.steps?.map((step, index) => ({
+                    key: `${step.code}-${index}`, title: stepTitle(step), status: step.status === "pending" ? undefined : step.status,
+                  }))} />}
+                </>,
+                footer: entry.role === "assistant" ? <Actions className="ai-chat-actions" items={[
+                  { key: "copy", actionRender: () => <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => void copyReply(entry.content)}>{t("aiCopyReply")}</Button> },
+                  ...(entry.failed && transcript.at(-1)?.key === entry.key ? [{ key: "retry", actionRender: () => <Button type="text" size="small" icon={<ReloadOutlined />} disabled={busy || !!proposal} onClick={() => retryReply(entry)}>{t("retry")}</Button> }] : []),
+                ]} /> : undefined,
+              }))}
               autoScroll
               role={{ user: { placement: "end" }, assistant: { placement: "start" } }}
             />}
@@ -295,7 +356,7 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
           />
           <div className="ai-chat-composer-caption">
             <Typography.Text type="secondary">
-              {selected && modelName && selected.modelName === modelName && selected.capabilityCodes.includes("TOOL_CALLING")
+              {supportsTools
                 ? (canWriteUsers ? t("aiActionManualConfirm") : t("aiCapabilityUnavailable"))
                 : t("aiChatComposerHint")}
             </Typography.Text>
@@ -310,7 +371,7 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
       { title: t("version"), dataIndex: "version" },
     ]} /></div>}
 
-    {proposal && <Alert className="ai-chat-result" type="warning" showIcon message={t("aiProposal")} description={<Space orientation="vertical" className="w-full">
+    {proposal && <Alert className="ai-chat-result" type="warning" showIcon title={t("aiProposal")} description={<Space orientation="vertical" className="w-full">
       <Descriptions size="small" column={{ xs: 1, sm: 2 }} items={[
         { key: "action", label: t("actions"), children: proposalName },
         ...(proposal.username ? [{ key: "username", label: t("username"), children: proposal.username }] : []),
@@ -319,7 +380,7 @@ export function AiConsolePage({ canManageModels, canReadUsers, canWriteUsers }: 
       ]} />
       {proposal.kind === "CREATE_USER" && <div><Typography.Text>{t("aiCreatePassword")}</Typography.Text><Input.Password value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className="mt-2" /><Typography.Paragraph type="secondary" className="mt-2">{t("aiCreatePasswordHint")}</Typography.Paragraph></div>}
       <Typography.Text type="secondary">{t("aiActionManualConfirm")}</Typography.Text>
-      <Space><Button type="primary" onClick={() => void confirm()}>{t("aiProposalConfirm")}</Button><Button onClick={cancelProposal}>{t("aiProposalCancel")}</Button></Space>
+      <Space><Button type="primary" loading={confirmBusy} onClick={() => void confirm()}>{t("aiProposalConfirm")}</Button><Button disabled={confirmBusy} onClick={() => void cancelProposal()}>{t("aiProposalCancel")}</Button></Space>
     </Space>} />}
   </div>;
 }

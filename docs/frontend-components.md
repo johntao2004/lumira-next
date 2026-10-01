@@ -25,3 +25,11 @@
 - Each form supplies a versioned encode/decode whitelist. Never persist passwords, tokens, permissions or live record versions. Validate restored data before applying it.
 - Pass busy state to FormDrawer and disable submission during draft writes. Successful restore marks the consumed revision. After successful resource creation, clearConsumed deletes only that revision. Cleanup errors must not report the already successful resource submission as a failure.
 - Organization creation is the first adapter. Existing organization edits retain server values/version protection. Other public forms require separate field-safe adapters.
+
+## AI 对话
+
+- 对话页复用 Ant Design X 的 Bubble、Conversations、Prompts、Sender、Welcome、Actions 和 ThoughtChain；回复由 XMarkdown 渲染。原始 HTML 按文本转义，图片、嵌入内容和表单标签被过滤；链接在新标签中打开并隔离 opener。
+- 复制保留回复的 Markdown 原文。重试只用于当前会话最后一条失败请求，替换失败轮次；成功的查询和待确认草案不提供重复执行入口。
+- ThoughtChain 只展示后端返回的模型响应、查询、草案和确认状态，不推断模型思考过程。写操作先生成三分钟有效的草案，确认时重新检查权限和记录版本；取消通过带 CSRF 的接口撤销当前账号所属草案。
+- 工具能力按具体模型的已确认接口契约开放。目前 DeepSeek `deepseek-flash`、`deepseek-v4-pro` 接入用户查询和操作草案，其他模型保持现有对话能力；供应商类型和手工保存的能力标记不能赋予未知模型工具能力。DeepSeek 请求关闭 thinking，当前历史只保留公开对话文本，不保存内部推理内容。
+- XSDK、附件上传和 A2UI 卡片尚未接入，需先完成会话持久化、流式协议和附件后端契约，再扩展对应交互。

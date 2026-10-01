@@ -27,12 +27,14 @@ export type ActionProposal = {
   enabled: boolean | null;
   expiresAt: string;
 };
-export type ChatResponse = { message: string; users: { id: string; username: string; displayName: string; enabled: boolean; version: number }[] | null; proposal: ActionProposal | null };
+export type ExecutionStep = { code: "MODEL_RESPONSE" | "USER_SEARCH" | "ACTION_PROPOSAL" | "ACTION_CONFIRMATION" | "TOOL_VALIDATION"; status: "success" | "error" | "pending" | "abort" };
+export type ChatResponse = { message: string; users: { id: string; username: string; displayName: string; enabled: boolean; version: number }[] | null; proposal: ActionProposal | null; steps?: ExecutionStep[] };
 export type ModelOption = {
   id: string;
   name: string;
   inputModalities: string[];
   outputModalities: string[];
+  capabilityCodes?: CapabilityCode[];
 };
 export type ConnectionResult = { models: ModelOption[]; configuredModelAvailable: boolean };
 

@@ -1213,6 +1213,43 @@ input {
   white-space: pre-wrap;
 }
 
+.ai-chat-markdown {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  font-size: inherit;
+  color: inherit;
+}
+
+.ai-chat-markdown :where(pre, table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ai-chat-bubble-content .ai-chat-markdown pre,
+.ai-chat-bubble-content .ai-chat-markdown pre code {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.ai-chat-bubble-content .ai-chat-markdown th,
+.ai-chat-bubble-content .ai-chat-markdown td {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.ai-chat-steps {
+  margin-top: 16px;
+  white-space: normal;
+}
+
+.ai-chat-actions {
+  white-space: normal;
+}
+
 .ai-chat-loading {
   position: sticky;
   bottom: 8px;

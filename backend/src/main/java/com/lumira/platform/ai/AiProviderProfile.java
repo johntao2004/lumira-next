@@ -4,15 +4,14 @@ import java.util.List;
 import java.util.UUID;
 
 public record AiProviderProfile(
-    UUID id,
-    String name,
-    ProviderKind providerKind,
-    String baseUrl,
-    String modelName,
-    List<String> capabilityCodes,
-    boolean enabled,
-    long version
-) {
+        UUID id,
+        String name,
+        ProviderKind providerKind,
+        String baseUrl,
+        String modelName,
+        List<String> capabilityCodes,
+        boolean enabled,
+        long version) {
     public enum ProviderKind {
         OLLAMA,
         LM_STUDIO,
@@ -29,8 +28,17 @@ public record AiProviderProfile(
         /** Capabilities exposed by this provider adapter's endpoint contract. */
         public List<String> providerCapabilityCodes() {
             return switch (this) {
-                case OLLAMA, LM_STUDIO, OPENAI, DEEPSEEK, QWEN, ZHIPU, SILICONFLOW,
-                        OPENROUTER, MOONSHOT, CUSTOM_OPENAI -> List.of("CHAT");
+                case OLLAMA,
+                        LM_STUDIO,
+                        OPENAI,
+                        DEEPSEEK,
+                        QWEN,
+                        ZHIPU,
+                        SILICONFLOW,
+                        OPENROUTER,
+                        MOONSHOT,
+                        CUSTOM_OPENAI ->
+                        List.of("CHAT");
                 case TYPESAFE_JEV -> List.of("CHOICE", "SCORE", "NOUL");
             };
         }
@@ -52,7 +60,10 @@ public record AiProviderProfile(
         }
     }
 
-    /** The decision-model vendor is a fixed, administrator-enabled integration; no other origin is accepted. */
+    /**
+     * The decision-model vendor is a fixed, administrator-enabled integration; no other origin is
+     * accepted.
+     */
     public static final String DECISION_ORIGIN = "https://api.typesafe.ai";
 
     public boolean isDecisionModel() {
@@ -60,20 +71,30 @@ public record AiProviderProfile(
     }
 
     /**
-     * Capabilities declared by the provider adapter contract. These are provider-level
-     * endpoint capabilities, not claims about every model returned by /models.
-     * Model-specific modalities must come from provider metadata or an explicit model test.
+     * Capabilities declared by the provider adapter contract. These are provider-level endpoint
+     * capabilities, not claims about every model returned by /models. Model-specific modalities
+     * must come from provider metadata or an explicit model test.
      */
     public List<String> providerCapabilityCodes() {
         return providerKind.providerCapabilityCodes();
     }
 
     /**
-     * Preserve the record component for persisted-profile construction, while making
-     * all existing service callers observe adapter capabilities instead of legacy flags.
+     * Preserve the record component for persisted-profile construction, while making all existing
+     * service callers observe adapter and explicitly supported model capabilities instead of legacy
+     * flags.
      */
     public List<String> capabilityCodes() {
-        return providerKind.providerCapabilityCodes();
+        return supportsUserTools(modelName)
+                ? List.of("CHAT", "TOOL_CALLING")
+                : providerKind.providerCapabilityCodes();
+    }
+
+    /** Explicit model contract: https://api-docs.deepseek.com/quick_start/pricing/ . */
+    public boolean supportsUserTools(String selectedModel) {
+        return providerKind == ProviderKind.DEEPSEEK
+                && ("deepseek-flash".equals(selectedModel)
+                        || "deepseek-v4-pro".equals(selectedModel));
     }
 
     public boolean requiresCredential() {
@@ -82,7 +103,8 @@ public record AiProviderProfile(
 
     public boolean isOpenAiCompatibleCloud() {
         return switch (providerKind) {
-            case OPENAI, DEEPSEEK, QWEN, ZHIPU, SILICONFLOW, OPENROUTER, MOONSHOT, CUSTOM_OPENAI -> true;
+            case OPENAI, DEEPSEEK, QWEN, ZHIPU, SILICONFLOW, OPENROUTER, MOONSHOT, CUSTOM_OPENAI ->
+                    true;
             default -> false;
         };
     }
