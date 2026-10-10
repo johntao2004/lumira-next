@@ -29,7 +29,7 @@
     "swagger-ui": "5.33.0"
   },
   "devDependencies": {
-    "@types/node": "24.10.1",
+    "@types/node": "26.6.4",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "@types/react-syntax-highlighter": "15.5.13",
