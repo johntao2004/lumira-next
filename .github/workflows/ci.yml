@@ -9,7 +9,7 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -41,7 +41,7 @@ jobs:
       LUMIRA_TEST_DB_USER: lumira_next
       LUMIRA_TEST_DB_PASSWORD: ci-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -61,7 +61,7 @@ jobs:
     # Proves both production images still build; the server build also runs the localization generator.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -f deploy/server.Dockerfile -t lumira-server:ci .
       - run: docker build -f deploy/web.Dockerfile -t lumira-web:ci .
       - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix
@@ -80,7 +80,7 @@ jobs:
   dependencies:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
