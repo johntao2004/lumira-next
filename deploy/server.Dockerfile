@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS node-runtime
+FROM node:25-bookworm-slim AS node-runtime
 
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /workspace
