@@ -3,7 +3,10 @@ package com.lumira.platform.common;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Builds parameterized field filters for paginated resource queries. Column expressions are always repository-owned allowlists. */
+/**
+ * Builds parameterized field filters for paginated resource queries. Column expressions are always
+ * repository-owned allowlists.
+ */
 public final class PageFilterSql {
     public record Clause(String sql, Map<String, Object> parameters) {}
 
@@ -22,12 +25,20 @@ public final class PageFilterSql {
                 String to = page.filters().get(field + ".to");
                 if (from != null && !from.isBlank()) {
                     String parameter = "list_filter_" + index++;
-                    sql.append(" AND ").append(expression).append(" >= CAST(:").append(parameter).append(" AS timestamptz)");
+                    sql.append(" AND ")
+                            .append(expression)
+                            .append(" >= CAST(:")
+                            .append(parameter)
+                            .append(" AS timestamptz)");
                     parameters.put(parameter, from);
                 }
                 if (to != null && !to.isBlank()) {
                     String parameter = "list_filter_" + index++;
-                    sql.append(" AND ").append(expression).append(" <= CAST(:").append(parameter).append(" AS timestamptz)");
+                    sql.append(" AND ")
+                            .append(expression)
+                            .append(" <= CAST(:")
+                            .append(parameter)
+                            .append(" AS timestamptz)");
                     parameters.put(parameter, to);
                 }
                 continue;
@@ -37,10 +48,17 @@ public final class PageFilterSql {
             if (value == null || value.isBlank()) continue;
             String parameter = "list_filter_" + index++;
             if ("exact".equals(mode)) {
-                sql.append(" AND CAST(").append(expression).append(" AS text) = :").append(parameter);
+                sql.append(" AND CAST(")
+                        .append(expression)
+                        .append(" AS text) = :")
+                        .append(parameter);
                 parameters.put(parameter, value);
             } else {
-                sql.append(" AND strpos(lower(coalesce(CAST(").append(expression).append(" AS text), '')), lower(:").append(parameter).append(")) > 0");
+                sql.append(" AND strpos(lower(coalesce(CAST(")
+                        .append(expression)
+                        .append(" AS text), '')), lower(:")
+                        .append(parameter)
+                        .append(")) > 0");
                 parameters.put(parameter, value);
             }
         }

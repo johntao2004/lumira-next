@@ -1,4 +1,5 @@
 "use client";
+import { errorCode } from "@/platform/api/errors";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 
 import { useState } from "react";
@@ -14,6 +15,7 @@ import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { formatDateTime } from "@/platform/i18n/format";
 import { MAX_PASSWORD_BYTES } from "@/platform/auth/password-contract";
+import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import {
   createPasskeyCredential,
   isPasskeySupported,
@@ -26,6 +28,7 @@ type ActionValues = { label?: string; currentPassword?: string };
 
 const errorKeys: Record<string, MessageKey> = {
   passkeyFeatureDisabled: "passkeyDisabled",
+  passkeyRateLimited: "emailVerificationLimited",
   currentPasswordRequired: "passkeyPasswordRequired",
   wrongCurrentPassword: "wrongCurrentPassword",
   passkeyNotFound: "passkeyNotFound",
@@ -40,7 +43,8 @@ const errorKeys: Record<string, MessageKey> = {
   passkeyUserVerificationRequired: "passkeyOperationFailed",
 };
 
-function errorMessage(error: unknown): MessageKey {
+function mapPasskeyError(error: unknown): MessageKey {
+  if(errorCode(error)==="sensitiveContent")return "sensitiveContent";
   if (error instanceof Error && error.message === "passkeyUnsupported") return "passkeyUnsupported";
   if (error instanceof Error && error.message === "passkeyTimeout") return "passkeyTimeout";
   if (error instanceof DOMException && error.name === "NotAllowedError") return "passkeyCancelled";
@@ -57,8 +61,8 @@ export function PasskeysDrawer({ open, onClose }: { open: boolean; onClose: () =
   const [form] = Form.useForm<ActionValues>();
   const [action, setAction] = useState<Action | null>(null);
   const [target, setTarget] = useState<PasskeyCredential | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<MessageKey | null>(null);
+  const submitAction = useSubmitAction({ mapError: mapPasskeyError });
+  const { pending, errorMessage, setError } = submitAction;
   const query = useQuery({
     queryKey: ["passkeys"],
     queryFn: ({ signal }) => api<PasskeyCredential[]>("/auth/passkeys", { signal }),
@@ -76,7 +80,7 @@ export function PasskeysDrawer({ open, onClose }: { open: boolean; onClose: () =
   }
 
   function closeAction() {
-    if (pending) return;
+    if (submitAction.isPending()) return;
     setAction(null);
     setTarget(null);
     setError(null);
@@ -84,10 +88,8 @@ export function PasskeysDrawer({ open, onClose }: { open: boolean; onClose: () =
   }
 
   async function submit(values: ActionValues) {
-    if (!action || pending) return;
-    setPending(true);
-    setError(null);
-    try {
+    if (!action || submitAction.isPending()) return;
+    await submitAction.run(async () => {
       if (action === "add") {
         if (!isPasskeySupported()) throw new Error("passkeyUnsupported");
         const options = await mutate<PasskeyOptions>("/auth/passkeys/registration/options", "POST", { currentPassword: values.currentPassword });
@@ -102,11 +104,7 @@ export function PasskeysDrawer({ open, onClose }: { open: boolean; onClose: () =
       setTarget(null);
       form.resetFields();
       await client.invalidateQueries({ queryKey: ["passkeys"] });
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   const actionTitle = action === "add" ? t("passkeyAdd") : action === "rename" ? t("passkeyRename") : t("passkeyDelete");
@@ -142,9 +140,9 @@ export function PasskeysDrawer({ open, onClose }: { open: boolean; onClose: () =
       onCancel={closeAction}
       onOk={() => form.submit()}
     >
-      <FeedbackBubble id="passkey-operation-error" content={error ? t(error) : undefined} />
+      <FeedbackBubble id="passkey-operation-error" content={errorMessage} />
       {action === "delete" && <Alert type="warning" title={t("passkeyDeleteHint")} showIcon className="mb-4" />}
-      <Form form={form} layout="vertical" onFinish={submit} disabled={pending}>
+      <Form name="account-passkey-action" form={form} layout="vertical" onFinish={submit} disabled={pending}>
         {action !== "delete" && <Form.Item name="label" label={t("passkeyLabel")} rules={[{ required: true, whitespace: true, max: 128, message: t("passkeyLabelInvalid") }]}>
           <Input autoComplete="off" maxLength={128} />
         </Form.Item>}

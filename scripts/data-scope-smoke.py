@@ -26,7 +26,7 @@ try:
     def visible_export():
         status,body=call(limited,'/platform/users/export?search='+prefix);assert status==200,(status,body)
         rows=[line for line in body.decode('utf-8-sig').splitlines() if line]
-        assert rows[0]=='id,username,display_name,enabled,version'
+        assert rows[0]=='id,username,display_name,enabled,version,file_quota_bytes_override,file_quota_files_override'
         return {line.split(',',1)[0] for line in rows[1:]}
     assert visible()=={ids['actor']}
     assert visible_export()=={ids['actor']}

@@ -18,15 +18,16 @@ try{
  await page.locator('#data_username').fill('smtp-browser');await page.locator('#data_fromAddress').fill('noreply@example.test');
  async function choose(scope,label){await scope.getByRole('combobox',{name:'密码操作',exact:true}).click();await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByText(label,{exact:true}).click();}
  const main=page.getByRole('main');await choose(main,'更换密码');await main.getByLabel('密码',{exact:true}).fill('smtp-browser-fixture');
- async function save(reason,status=200){await main.locator('#changeReason').fill(reason);const response=observeResponse(page,r=>r.url().endsWith('/api/platform/settings/smtp')&&r.request().method()==='PUT');await main.getByRole('button',{name:'保存',exact:true}).click();assert.equal((await response).status(),status);}
- await save('SMTP browser first');created=sql("SELECT id FROM platform_setting WHERE section='smtp'");
+ assert.equal(await main.locator('#changeReason').count(),0,'SMTP form must not ask for a change reason');
+ async function save(status=200){const response=observeResponse(page,r=>r.url().endsWith('/api/platform/settings/smtp')&&r.request().method()==='PUT');await main.getByRole('button',{name:'保存',exact:true}).click();assert.equal((await response).status(),status);}
+ await save();created=sql("SELECT id FROM platform_setting WHERE section='smtp'");
  await expect(main.getByText('密码已配置',{exact:true})).toBeVisible();await expect(main.getByLabel('密码',{exact:true})).toHaveCount(0);
  await page.reload();await expect(main.getByText('密码已配置',{exact:true})).toBeVisible();assert.equal(await main.locator('#data_host').inputValue(),'smtp.example.test');
- await main.locator('#data_host').fill('other.example.test');await save('Reject target change',400);await expect(page.locator('.ant-message-notice').filter({hasText:'服务器、端口或账号已变更，请更换或清除密码。'})).toBeVisible();
- await choose(main,'清除密码');await save('SMTP browser clear');await expect(main.getByText('密码未配置',{exact:true})).toBeVisible();
+ await main.locator('#data_host').fill('other.example.test');await save(400);await expect(page.locator('.ant-message-notice').filter({hasText:'服务器、端口或账号已变更，请更换或清除密码。'})).toBeVisible();
+ await choose(main,'清除密码');await save();await expect(main.getByText('密码未配置',{exact:true})).toBeVisible();
  await main.getByRole('button',{name:'配置历史',exact:true}).click();
  await page.getByRole('row').filter({hasText:'SMTP browser first'}).getByRole('button',{name:'详情',exact:true}).click();
- const restore=page.locator('#restore-smtp');await choose(restore,'更换密码');await restore.getByLabel('密码',{exact:true}).fill('smtp-browser-restored');await restore.locator('#restore-smtp_changeReason').fill('SMTP browser restore');
+ const restore=page.locator('#restore-smtp');await choose(restore,'更换密码');await restore.getByLabel('密码',{exact:true}).fill('smtp-browser-restored');assert.equal(await restore.locator('#restore-smtp_changeReason').count(),0,'SMTP restore form must not ask for a change reason');
  const response=observeResponse(page,r=>r.url().endsWith('/api/platform/settings/smtp/rollback'));await page.locator('button[form="restore-smtp"]').click();assert.equal((await response).status(),200);
  await page.reload();await expect(main.getByText('密码已配置',{exact:true})).toBeVisible();assert.equal(await main.locator('#data_host').inputValue(),'smtp.example.test');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth),false);assert.deepEqual(errors,[]);

@@ -7,6 +7,22 @@ import java.util.UUID;
 
 /** Identity's narrow contract for validating dictionary-backed profile values. */
 public interface ProfileDictionaryPort {
+    /** Current enabled option counts for several allow-listed dictionaries in one lookup. */
+    default Map<String, Long> enabledOptionCounts(Collection<String> codes) {
+        return Map.of();
+    }
+
+    /** Resolve bounded enabled options for several allow-listed dictionaries in one lookup. */
+    default Map<String, java.util.List<PublicOption>> enabledOptions(
+            Collection<String> codes, int perDictionaryLimit) {
+        return Map.of();
+    }
+
+    /** Resolve whether a dictionary is enabled without exposing its management metadata. */
+    default boolean isEnabled(String code) {
+        return false;
+    }
+
     Set<Selection> enabledSelections(Collection<Selection> requested);
 
     /**
@@ -22,4 +38,7 @@ public interface ProfileDictionaryPort {
     record Selection(String code, UUID id) {}
 
     record SelectionMetadata(String label, boolean enabled) {}
+
+    /** Public field option shape; never contains dictionary remarks or management metadata. */
+    record PublicOption(String value, String label) {}
 }

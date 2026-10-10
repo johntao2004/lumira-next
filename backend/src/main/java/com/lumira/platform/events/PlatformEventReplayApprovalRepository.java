@@ -14,14 +14,15 @@ public class PlatformEventReplayApprovalRepository {
     }
 
     public void append(UUID eventId, String actor, String reason) {
-        jdbc.sql("""
+        jdbc.sql(
+                        """
             INSERT INTO platform_event_replay_approval(id,event_id,approved_by,reason)
             VALUES(:id,:event,:actor,:reason)
             """)
-            .param("id", UUID.randomUUID())
-            .param("event", eventId)
-            .param("actor", actor)
-            .param("reason", reason.strip())
-            .update();
+                .param("id", UUID.randomUUID())
+                .param("event", eventId)
+                .param("actor", actor)
+                .param("reason", reason.strip())
+                .update();
     }
 }

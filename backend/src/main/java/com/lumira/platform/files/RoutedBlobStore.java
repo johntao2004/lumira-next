@@ -17,24 +17,30 @@ public final class RoutedBlobStore implements BlobStore {
         this.postgres = postgres;
     }
 
-    @Override public Staged stage(UUID key, InputStream source, long maximumBytes) throws IOException {
+    @Override
+    public Staged stage(UUID key, InputStream source, long maximumBytes) throws IOException {
         return postgres.stage(key, source, maximumBytes);
     }
 
-    @Override public InputStream open(UUID key) throws IOException {
-        String backend = files.storageBackend(key).orElseThrow(() -> new NoSuchFileException(key.toString()));
+    @Override
+    public InputStream open(UUID key) throws IOException {
+        String backend =
+                files.storageBackend(key)
+                        .orElseThrow(() -> new NoSuchFileException(key.toString()));
         if ("postgres".equals(backend)) return postgres.open(key);
         if (!"local".equals(backend)) throw new IOException("unsupportedFileStorageBackend");
         try {
             return local.open(key);
         } catch (NoSuchFileException missingLocalFile) {
             // Migration may switch the metadata row and unlink the local path between these calls.
-            if (files.storageBackend(key).filter("postgres"::equals).isPresent()) return postgres.open(key);
+            if (files.storageBackend(key).filter("postgres"::equals).isPresent())
+                return postgres.open(key);
             throw missingLocalFile;
         }
     }
 
-    @Override public void delete(UUID key) throws IOException {
+    @Override
+    public void delete(UUID key) throws IOException {
         String backend = files.storageBackend(key).orElse(null);
         if (backend == null) {
             local.delete(key);
@@ -53,5 +59,10 @@ public final class RoutedBlobStore implements BlobStore {
             local.delete(key);
             files.finishLegacyLocalCleanup(key);
         }
+    }
+
+    @Override
+    public boolean deletionPending(UUID key) throws IOException {
+        return files.legacyLocalCleanupPending(key) || postgres.deletionPending(key);
     }
 }

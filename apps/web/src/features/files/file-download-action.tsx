@@ -1,27 +1,51 @@
 "use client";
 
-import { Button, Popconfirm } from "antd";
-import { useRef } from "react";
+import { Button, Popconfirm, App } from "antd";
+import { useEffect, useRef } from "react";
+import { apiBlob } from "@/platform/api/client";
+import { messageKeyFor } from "@/platform/api/errors";
+import { currentSessionRevision } from "@/platform/auth/session-lifecycle";
+import { downloadBlob } from "@/platform/files/download-blob";
+import { usePreferences } from "@/platform/providers";
 
 /** The request is created only after the user confirms the download prompt. */
-export function FileDownloadAction({ href, label, confirmation, confirmText, cancelText }: {
+export function FileDownloadAction({ href, fileName, label, confirmation, confirmText, cancelText, disabled = false }: {
   href: string;
+  fileName: string;
   label: string;
   confirmation: string;
   confirmText: string;
   cancelText: string;
+  disabled?: boolean;
 }) {
-  const downloadStarted = useRef(false);
+  const pending = useRef(false);
+  const controller = useRef<AbortController | null>(null);
+  const { t } = usePreferences();
+  const { message } = App.useApp();
 
-  function startDownload() {
-    if (downloadStarted.current) return;
-    downloadStarted.current = true;
-    const link = document.createElement("a");
-    link.href = href;
-    link.download = "";
-    document.body.append(link);
-    link.click();
-    link.remove();
+  useEffect(() => () => {
+    controller.current?.abort();
+    controller.current = null;
+  }, []);
+
+  async function startDownload() {
+    if (disabled || pending.current) return;
+    pending.current = true;
+    const request = new AbortController();
+    const revision = currentSessionRevision();
+    controller.current = request;
+    try {
+      const blob = await apiBlob(href.replace(/^\/api(?=\/)/, ""), { signal: request.signal });
+      request.signal.throwIfAborted();
+      if (revision !== currentSessionRevision()) return;
+      downloadBlob(blob, fileName);
+    } catch (error) {
+      if (request.signal.aborted || revision !== currentSessionRevision()) return;
+      void message.error(t(messageKeyFor(error, ["forbidden"])));
+    } finally {
+      if (controller.current === request) controller.current = null;
+      pending.current = false;
+    }
   }
 
   return <Popconfirm
@@ -29,9 +53,9 @@ export function FileDownloadAction({ href, label, confirmation, confirmText, can
     okText={confirmText}
     cancelText={cancelText}
     onConfirm={startDownload}
-    onOpenChange={open => { if (open) downloadStarted.current = false; }}
-    getPopupContainer={trigger => trigger.parentElement ?? document.body}
+    // Escape the fixed table cell's stacking and overflow boundaries.
+    getPopupContainer={() => document.body}
   >
-    <Button type="link">{label}</Button>
+    <Button type="link" disabled={disabled}>{label}</Button>
   </Popconfirm>;
 }

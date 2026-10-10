@@ -9,9 +9,14 @@ try{
  const csrf=await(await context.request.get('/api/auth/csrf')).json();assert.equal((await context.request.post('/api/auth/login',{form:{username:'admin',password:config.LUMIRA_BOOTSTRAP_PASSWORD},headers:{[csrf.headerName]:csrf.token}})).status(),200);
  assert.equal((await(await context.request.get('/api/platform/settings/agreements')).json()).version,0,'Refuse to overwrite configured agreements');
  const page=await context.newPage();await page.goto('/dashboard/agreements');
+ assert.equal(await page.getByRole('main').getByRole('button',{name:'配置历史',exact:true}).count(),0);
+ assert.equal(await page.getByRole('main').getByRole('button',{name:'重新载入配置',exact:true}).count(),0);
+ assert.equal(await page.locator('button[type="submit"]').count(),1,'Agreement Save action must remain visible');
+ assert.equal(await page.locator('.markdown-editor').count(),2,'Both agreement Markdown editors must remain available');
+ assert.equal(await page.locator('.markdown-editor-source').count(),2,'Both Markdown source editors must remain available');
  await page.locator('#data_userAgreementMarkdown').fill('# Agreement QA\n\n**Important**\n\n<script>window.agreementScriptRan=true</script>\n\n[Unsafe](javascript:alert(1))');
  await page.locator('#data_privacyAgreementMarkdown').fill('# Privacy QA\n\nPrivacy text.');
- await page.locator('#changeReason').fill('Agreement browser verification');
+ assert.equal(await page.locator('#changeReason').count(),0,'Agreement form must not ask for a change reason');
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/platform/settings/agreements')&&r.request().method()==='PUT');await page.locator('button[type="submit"]').click();assert.equal((await saved).status(),200);changed=true;
  const anonymous=await browser.newContext({baseURL:'http://127.0.0.1:8010'});const login=await anonymous.newPage();await login.goto('/user/login');
  await login.getByRole('button',{name:'用户协议',exact:true}).click();await login.getByRole('heading',{name:'Agreement QA',exact:true}).waitFor();

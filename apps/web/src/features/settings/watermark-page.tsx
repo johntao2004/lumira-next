@@ -3,6 +3,7 @@
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { Input, InputNumber, Select, Switch } from "antd";
 import { SettingsSection } from "@/platform/components/settings-section";
+import { SettingsEnabledControls } from "@/platform/components/settings-enabled-controls";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
 
@@ -33,6 +34,7 @@ function WatermarkFields() {
     <Form.Item name={["data", "enabled"]} label={t("enabled")} valuePropName="checked">
       <Switch />
     </Form.Item>
+    <SettingsEnabledControls>
     <Form.Item name={["data", "mode"]} label={t("watermarkMode")}>
       <Select options={[
         { value: "TEXT", label: t("watermarkModeFixed") },
@@ -94,11 +96,12 @@ function WatermarkFields() {
         <InputNumber min={0} max={1} step={0.05} />
       </Form.Item>
     </div>
+    </SettingsEnabledControls>
   </>;
 }
 
 export function WatermarkPage({ canWrite }: { canWrite: boolean }) {
-  return <SettingsSection section="watermark" canWrite={canWrite}>
+  return <SettingsSection section="watermark" canWrite={canWrite} showSecondaryActions={false}>
     <WatermarkFields />
   </SettingsSection>;
 }

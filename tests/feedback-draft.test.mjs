@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeFeedbackDraft, encodeFeedbackDraft } from '../apps/web/src/features/feedback/feedback-draft.ts';
+import { decodeFeedbackDraft, encodeFeedbackDraft } from '../plugins/feedback/frontend/feedback-draft.ts';
 
 test('feedback draft keeps only create fields and rejects incompatible payloads', () => {
   const encoded = encodeFeedbackDraft({ title: 'partial', priority: 'HIGH', category: 'BUG', detailHtml: '<p>details</p>', version: 99, ownerId: 'server-id' });

@@ -1,81 +1,95 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Alert, App, Button, Space, Typography, type TableProps } from "antd";
-import { ApiError, mutate } from "@/platform/api/client";
-import { messageKeyFor } from "@/platform/api/errors";
+import { App, Button, Space, type TableProps } from "antd";
+import { mutate } from "@/platform/api/client";
 import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
+import { fileBatchOperations, runFileBatch, selectBatchFiles, type BatchFile, type FileBatchEndpoint, type FileBatchOperation, type FileBatchScope } from "./file-batch";
+import { useSessionScope } from "@/platform/auth/use-session-scope";
 
-type BatchFile = { id: string; originalName: string; version: number; state: string };
-type Failure = { id: string; name: string; reason: MessageKey };
-const errorKeys = ["staleRecord", "forbidden", "fileQuotaExceeded"] as const satisfies readonly MessageKey[];
+type BatchActionOptions = {
+  endpoint?: FileBatchEndpoint;
+  onCleanupStarted?: (id: string) => void;
+  onAccepted?: (file: BatchFile, operation: FileBatchOperation) => Promise<void>;
+};
+const labels = {
+  trash: { action: "bulkTrashFiles", confirmation: "bulkTrashConfirm" },
+  restore: { action: "bulkRestoreFiles", confirmation: "bulkRestoreConfirm" },
+  purge: { action: "bulkPurgeFiles", confirmation: "bulkPurgeConfirm" },
+} as const satisfies Record<FileBatchOperation, { action: MessageKey; confirmation: MessageKey }>;
 
 /** Each selected file keeps the same ownership and version checks as its row action. */
-export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined, operation: "trash" | "restore", refresh: () => Promise<void>) {
+export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined, scope: FileBatchScope, refresh: () => Promise<void>, { endpoint = "/account/files", onCleanupStarted, onAccepted }: BatchActionOptions = {}) {
   const { t } = usePreferences();
   const { message } = App.useApp();
   const confirm = useCenteredModalConfirm();
+  const operationSignal = useSessionScope();
   const busy = useRef(false);
   const confirmationOpen = useRef(false);
   const [pending, setPending] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [result, setResult] = useState<{ succeeded: number; failures: Failure[] } | null>(null);
-  const eligibleState = operation === "trash" ? "READY" : "TRASHED";
-  const selected = (items ?? []).filter(file => selectedIds.includes(file.id) && file.state === eligibleState);
+  const eligibleState = scope === "files" ? "READY" : "TRASHED";
+  const selected = selectBatchFiles(items, selectedIds, scope);
+  const operations = fileBatchOperations(scope, selected.length);
 
   useEffect(() => {
-    const available = new Set((items ?? []).filter(file => file.state === eligibleState).map(file => file.id));
+    const available = new Set((items ?? []).filter(file => file.state === eligibleState && !(scope === "files" && file.protectedByReference)).map(file => file.id));
     setSelectedIds(ids => ids.every(id => available.has(id)) ? ids : ids.filter(id => available.has(id)));
-  }, [items, eligibleState]);
+  }, [items, eligibleState, scope]);
 
   function reset() {
     if (busy.current) return;
     setSelectedIds([]);
-    setResult(null);
   }
 
-  async function run(files: T[]) {
-    if (busy.current) return;
+  async function run(files: T[], operation: FileBatchOperation, signal: AbortSignal) {
+    if (busy.current || signal.aborted) return;
     busy.current = true;
     setPending(true);
-    setResult(null);
-    const failures: Failure[] = [];
     try {
-      for (const file of files) {
-        try {
-          const suffix = operation === "restore" ? "/restore" : "";
-          await mutate(`/account/files/${file.id}${suffix}?version=${file.version}`, operation === "restore" ? "POST" : "DELETE");
-        } catch (error) {
-          const mapped = error instanceof ApiError && (error.message === "fileStateConflict" || error.status === 404) ? "staleRecord" : error;
-          failures.push({ id: file.id, name: file.originalName, reason: messageKeyFor(mapped, errorKeys) });
-        }
-      }
-      const succeeded = files.length - failures.length;
-      setResult({ succeeded, failures });
-      setSelectedIds(failures.map(file => file.id));
-      if (failures.length === 0) void message.success(t("fileBatchSuccess", { count: succeeded }));
+      const batch = await runFileBatch(files, operation, (path, method) => mutate(path, method, undefined, signal), endpoint, async file => {
+        if (signal.aborted) return;
+        if (operation === "purge") onCleanupStarted?.(file.id);
+        await onAccepted?.(file, operation);
+      }, signal);
+      if (signal.aborted) return;
+      const succeeded = batch.accepted.length;
+      const failed = batch.failures.length;
+      setSelectedIds([]);
+      const summary = t("fileBatchPartial", { succeeded, failed });
+      if (failed === 0) void message.success(summary);
+      else if (succeeded === 0) void message.error(summary);
+      else void message.warning(summary);
+    } catch (error) {
+      if (!signal.aborted) throw error;
     } finally {
-      try { await refresh(); }
-      finally { busy.current = false; setPending(false); }
+      try {
+        if (!signal.aborted) await refresh();
+      } finally {
+        busy.current = false;
+        if (!signal.aborted) setPending(false);
+      }
     }
   }
 
-  function ask() {
-    if (busy.current || confirmationOpen.current || selected.length === 0) return;
+  function ask(operation: FileBatchOperation) {
+    if (busy.current || confirmationOpen.current || !operations.includes(operation)) return;
+    const signal = operationSignal();
+    if (signal.aborted) return;
     // Freeze the confirmed records, including versions, before making any writes.
     const files = [...selected];
     confirmationOpen.current = true;
     confirm({
-      title: t(operation === "trash" ? "bulkTrashConfirm" : "bulkRestoreConfirm", { count: files.length }),
+      title: t(labels[operation].confirmation, { count: files.length }),
       content: <ul style={{ maxHeight: 240, overflow: "auto", paddingInlineStart: 20, overflowWrap: "anywhere" }}>{files.map(file => <li key={file.id}>{file.originalName}</li>)}</ul>,
-      okText: t(operation === "trash" ? "bulkTrashFiles" : "bulkRestoreFiles"),
+      okText: t(labels[operation].action),
       cancelText: t("cancel"),
-      okButtonProps: { danger: operation === "trash" },
+      okButtonProps: { danger: operation !== "restore" },
       maskClosable: false,
       afterClose: () => { confirmationOpen.current = false; },
-      onOk: () => run(files),
+      onOk: () => run(files, operation, signal),
     });
   }
 
@@ -83,22 +97,12 @@ export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined,
     selectedRowKeys: selected.map(file => file.id),
     preserveSelectedRowKeys: false,
     onChange: keys => { if (!busy.current) setSelectedIds(keys.map(String)); },
-    getCheckboxProps: file => ({ disabled: pending || file.state !== eligibleState }),
+    getCheckboxProps: file => ({ disabled: pending || file.state !== eligibleState || (scope === "files" && file.protectedByReference === true) }),
   };
 
-  const actions = <Space wrap>
-    <Typography.Text>{t("selectedFiles", { count: selected.length })}</Typography.Text>
-    <Button onClick={reset} disabled={pending || selected.length === 0}>{t("clearFileSelection")}</Button>
-    <Button danger={operation === "trash"} loading={pending} disabled={pending || selected.length === 0} onClick={ask}>{t(operation === "trash" ? "bulkTrashFiles" : "bulkRestoreFiles")}</Button>
-  </Space>;
+  const actions = operations.length > 0 ? <Space wrap className="file-batch-actions">
+    {operations.map(operation => <Button key={operation} danger={operation !== "restore"} loading={pending} disabled={pending} onClick={() => ask(operation)}>{t(labels[operation].action)}</Button>)}
+  </Space> : null;
 
-  const feedback = result && result.failures.length > 0 ? <Alert
-    type={result.succeeded > 0 ? "warning" : "error"}
-    showIcon
-    message={t("fileBatchPartial", { succeeded: result.succeeded, failed: result.failures.length })}
-    description={<ul style={{ maxHeight: 240, overflow: "auto", paddingInlineStart: 20, marginBlock: 0, overflowWrap: "anywhere" }}>{result.failures.map(file => <li key={file.id}>{file.name}: {t(file.reason)}</li>)}</ul>}
-    style={{ marginBlockEnd: 16 }}
-  /> : null;
-
-  return { rowSelection, actions, feedback, pending, reset };
+  return { rowSelection, actions, feedback: null, pending, reset };
 }

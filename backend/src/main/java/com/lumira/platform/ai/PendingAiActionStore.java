@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
@@ -26,7 +28,12 @@ public class PendingAiActionStore {
             String username,
             String displayName,
             Boolean enabled,
+            Target target,
             Instant expiresAt) {}
+
+    /** Server-authorized target captured before an update or delete proposal is created. */
+    public record Target(
+            UUID id, String username, String displayName, boolean enabled, long version) {}
 
     public record Proposal(
             UUID id,
@@ -34,7 +41,18 @@ public class PendingAiActionStore {
             String username,
             String displayName,
             Boolean enabled,
-            Instant expiresAt) {}
+            Instant expiresAt,
+            Target target) {
+        public Proposal(
+                UUID id,
+                Kind kind,
+                String username,
+                String displayName,
+                Boolean enabled,
+                Instant expiresAt) {
+            this(id, kind, username, displayName, enabled, expiresAt, null);
+        }
+    }
 
     private final JdbcClient jdbc;
 
@@ -50,13 +68,35 @@ public class PendingAiActionStore {
             String username,
             String displayName,
             Boolean enabled) {
+        return create(actor, kind, userId, version, username, displayName, enabled, null);
+    }
+
+    public Proposal create(
+            String actor,
+            Kind kind,
+            UUID userId,
+            long version,
+            String username,
+            String displayName,
+            Boolean enabled,
+            Target target) {
         purgeExpiredRows();
+        if (kind == Kind.CREATE_USER && target != null
+                || kind != Kind.CREATE_USER
+                        && (target == null
+                                || !target.id().equals(userId)
+                                || target.version() != version)) {
+            throw new IllegalArgumentException("Invalid AI action target snapshot");
+        }
         UUID id = UUID.randomUUID();
         OffsetDateTime expiresAt =
                 jdbc.sql(
                                 """
-            INSERT INTO platform_ai_pending_action(id,actor,kind,user_id,version,username,display_name,enabled,expires_at)
-            VALUES(:id,:actor,:kind,:userId,:version,:username,:displayName,:enabled,clock_timestamp()+interval '3 minutes')
+            INSERT INTO platform_ai_pending_action(
+                id,actor,kind,user_id,version,username,display_name,enabled,
+                target_username,target_display_name,target_enabled,expires_at)
+            VALUES(:id,:actor,:kind,:userId,:version,:username,:displayName,:enabled,
+                :targetUsername,:targetDisplayName,:targetEnabled,clock_timestamp()+interval '3 minutes')
             RETURNING expires_at
             """)
                         .param("id", id)
@@ -67,19 +107,24 @@ public class PendingAiActionStore {
                         .param("username", username)
                         .param("displayName", displayName)
                         .param("enabled", enabled)
+                        .param("targetUsername", target == null ? null : target.username())
+                        .param("targetDisplayName", target == null ? null : target.displayName())
+                        .param("targetEnabled", target == null ? null : target.enabled())
                         .query((rs, row) -> rs.getObject("expires_at", OffsetDateTime.class))
                         .single();
         Instant expiry = expiresAt.toInstant();
-        return new Proposal(id, kind, username, displayName, enabled, expiry);
+        return new Proposal(id, kind, username, displayName, enabled, expiry, target);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PendingAction take(UUID id, String actor) {
         var action =
                 jdbc.sql(
                                 """
             DELETE FROM platform_ai_pending_action
              WHERE id=:id AND actor=:actor AND expires_at>clock_timestamp()
-            RETURNING id,actor,kind,user_id,version,username,display_name,enabled,expires_at
+            RETURNING id,actor,kind,user_id,version,username,display_name,enabled,
+                      target_username,target_display_name,target_enabled,expires_at
             """)
                         .param("id", id)
                         .param("actor", actor)
@@ -94,6 +139,7 @@ public class PendingAiActionStore {
                                                 rs.getString("username"),
                                                 rs.getString("display_name"),
                                                 (Boolean) rs.getObject("enabled"),
+                                                target(rs),
                                                 rs.getObject("expires_at", OffsetDateTime.class)
                                                         .toInstant()))
                         .optional();
@@ -103,6 +149,20 @@ public class PendingAiActionStore {
                 .param("id", id)
                 .update();
         throw new ResponseStatusException(HttpStatus.GONE, "aiActionExpired");
+    }
+
+    private static Target target(java.sql.ResultSet rs) throws java.sql.SQLException {
+        String username = rs.getString("target_username");
+        String displayName = rs.getString("target_display_name");
+        Boolean enabled = (Boolean) rs.getObject("target_enabled");
+        if (username == null && displayName == null && enabled == null) return null;
+        if (username == null || displayName == null || enabled == null) return null;
+        return new Target(
+                rs.getObject("user_id", UUID.class),
+                username,
+                displayName,
+                enabled,
+                rs.getLong("version"));
     }
 
     public void cancel(UUID id, String actor) {

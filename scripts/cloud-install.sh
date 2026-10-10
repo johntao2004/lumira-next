@@ -6,6 +6,12 @@ set -euo pipefail
   exit 1
 }
 source /etc/os-release
+if ! command -v docker >/dev/null \
+  || ! docker compose version >/dev/null 2>&1 \
+  || ! docker info --format '{{.ServerVersion}}' >/dev/null 2>&1; then
+  echo 'This development setup requires Docker Engine and Docker Compose v2, with the current VM user allowed to access the running daemon. Install/start Docker and retry; Office parsing will not fall back to the host JVM.' >&2
+  exit 1
+fi
 if [[ $EUID != 0 && ( ${ID:-} == debian || ${LUMIRA_CLOUD_USERSPACE:-} == 1 ) ]]; then
   exec bash "$(dirname "${BASH_SOURCE[0]}")/cloud-install-user.sh"
 fi
@@ -14,7 +20,7 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 as_root() { if [[ $EUID == 0 ]]; then "$@"; else sudo -n "$@"; fi; }
 as_root env DEBIAN_FRONTEND=noninteractive apt-get update
-as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg xz-utils python3
+as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg xz-utils python3 zip
 download_dir=$(mktemp -d)
 trap 'rm -rf "$download_dir"' EXIT
 if ! command -v node >/dev/null || [[ $(node -p 'process.versions.node.split(".")[0]') != 24 ]]; then

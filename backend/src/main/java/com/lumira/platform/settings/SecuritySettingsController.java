@@ -29,8 +29,9 @@ public class SecuritySettingsController {
     public SecuritySettingsService.View write(
             @BoundedBody(maxBytes = 16_384, errorCode = "invalidSecurity") @RequestBody Input input,
             Authentication actor) {
-        if (input == null) throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "invalidSecurity");
+        if (input == null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "invalidSecurity");
         return service.save(input.data(), actor.getName(), input.version(), input.changeReason());
     }
 }

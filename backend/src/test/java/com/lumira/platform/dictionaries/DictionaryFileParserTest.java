@@ -10,6 +10,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
+/** XLS and XLSX examples are sent through the configured real Office worker. */
 class DictionaryFileParserTest {
     @Test
     void returnsOriginalLineNumbersAndCapsDiagnostics() {
@@ -72,7 +73,7 @@ class DictionaryFileParserTest {
                 workbook.write(bytes);
                 assertEquals(
                         expected,
-                        parser.parse(bytes.toByteArray(), "tree." + extension, "TREE").items());
+                        parser.parse(bytes.toByteArray(), "词典-区域." + extension, "TREE").items());
                 // Reuse these verified real workbooks in the browser import suite.
                 var fixtures =
                         java.nio.file.Path.of(
@@ -129,6 +130,22 @@ class DictionaryFileParserTest {
     }
 
     @Test
+    void rejectsOversizedLegacyXlsBeforeConstructingThePoiWorkbook() {
+        var rejected =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                parser.parse(
+                                        new byte[DictionaryFileParser.MAX_BYTES + 1],
+                                        "oversized.xls",
+                                        "FLAT"));
+
+        assertEquals(
+                org.springframework.http.HttpStatus.PAYLOAD_TOO_LARGE, rejected.getStatusCode());
+        assertEquals("dictionaryDatasetTooLarge", rejected.getReason());
+    }
+
+    @Test
     void rejectsWorkbookDeclaringAbsurdColumnCount() throws Exception {
         try (Workbook workbook = new XSSFWorkbook();
                 var bytes = new ByteArrayOutputStream()) {
@@ -142,5 +159,29 @@ class DictionaryFileParserTest {
                     ResponseStatusException.class,
                     () -> parser.parse(bytes.toByteArray(), "wide.xlsx", "FLAT"));
         }
+    }
+
+    @Test
+    void rejectsDeepXlsxXmlBeforeConstructingThePoiWorkbook() throws Exception {
+        int depth = 129;
+        String xml = "<x>".repeat(depth) + "payload" + "</x>".repeat(depth);
+        byte[] archive;
+        try (var output = new ByteArrayOutputStream();
+                var zip = new java.util.zip.ZipOutputStream(output)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("xl/workbook.xml"));
+            zip.write(xml.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.finish();
+            archive = output.toByteArray();
+        }
+
+        var rejected =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> parser.parse(archive, "deep.xlsx", "FLAT"));
+
+        assertEquals(
+                org.springframework.http.HttpStatus.PAYLOAD_TOO_LARGE, rejected.getStatusCode());
+        assertEquals("dictionaryDatasetTooLarge", rejected.getReason());
     }
 }

@@ -22,6 +22,8 @@ export function buildPolicy(html) {
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
     "connect-src 'self'",
+    "frame-src 'self'",
+    "media-src 'self' data: blob:",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",

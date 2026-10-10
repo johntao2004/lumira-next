@@ -2,9 +2,9 @@ package com.lumira.platform.events;
 
 import com.lumira.platform.common.AdministrationPort;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Administrative adapter for durable event recovery; payloads never enter this API. */
@@ -17,10 +17,11 @@ public class PlatformEventOutboxAdminService {
     private final PlatformEventReplayApprovalRepository approvals;
     private final com.lumira.platform.common.AuditPort audit;
 
-    public PlatformEventOutboxAdminService(AdministrationPort guard,
-                                           PlatformEventOutboxStore store,
-                                           PlatformEventReplayApprovalRepository approvals,
-                                           com.lumira.platform.common.AuditPort audit) {
+    public PlatformEventOutboxAdminService(
+            AdministrationPort guard,
+            PlatformEventOutboxStore store,
+            PlatformEventReplayApprovalRepository approvals,
+            com.lumira.platform.common.AuditPort audit) {
         this.guard = guard;
         this.store = store;
         this.approvals = approvals;

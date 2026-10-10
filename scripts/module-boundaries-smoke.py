@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from module_boundaries import parse_backend_modules, validate_backend_module_graph
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA_ROOT = ROOT / "backend/src/main/java/com/lumira/platform"
@@ -13,82 +14,75 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-java_files = list(JAVA_ROOT.rglob("*.java"))
-backend_modules = {}
+PLUGIN_ROOTS = [p / "backend/src/main/java/com/lumira/platform" for p in (ROOT / "plugins").iterdir() if (p / "plugin.json").exists()]
+def java_relative(path):
+    for base in [JAVA_ROOT, *PLUGIN_ROOTS]:
+        if path.is_relative_to(base): return path.relative_to(base)
+    raise ValueError(path)
+def java_path(relative):
+    for base in [JAVA_ROOT, *PLUGIN_ROOTS]:
+        if (base / relative).exists(): return base / relative
+    return JAVA_ROOT / relative
+java_files = [p for base in [JAVA_ROOT, *PLUGIN_ROOTS] for p in base.rglob("*.java")]
 for path in java_files:
-    source = path.read_text()
-    for match in re.finditer(
-        r'new PlatformModule\("(?P<id>[a-z][a-z0-9-]{0,99})",\s*"[^"]+",\s*"(?P<version>[^"]+)",\s*List\.of\((?P<dependencies>[^)]*)\)(?:,\s*(?P<required>true|false))?\)',
-        source,
-        re.DOTALL,
+    if path.name.endswith("Controller.java") and re.search(
+        r"public\s+(?:[\w.]+<)?\w+Repository\.\w+", path.read_text()
     ):
-        module = match.groupdict()
-        dependencies = tuple(re.findall(r'"([a-z][a-z0-9-]{0,99})"', module["dependencies"]))
-        descriptor = (module["version"], module["required"] == "true", dependencies)
-        if module["id"] in backend_modules and backend_modules[module["id"]] != descriptor:
-            fail(f"backend module descriptor is declared inconsistently: {module['id']}")
-        backend_modules[module["id"]] = descriptor
+        fail(f"controller exposes a persistence record; add an API DTO: {path}")
+
+try:
+    host_modules = parse_backend_modules(path.read_text() for path in JAVA_ROOT.rglob("*.java"))
+    backend_modules = parse_backend_modules(path.read_text() for path in java_files)
+    # Runtime plugins enter ModuleRegistry from plugin.json through
+    # PluginRuntime.registerCatalog; include the same descriptors in the
+    # static graph and compare any plugin-side source descriptors with it.
+    plugin_ids = set()
+    for manifest_path in sorted((ROOT / "plugins").glob("*/plugin.json")):
+        manifest = json.loads(manifest_path.read_text())
+        if not isinstance(manifest, dict):
+            fail(f"invalid plugin module descriptor: {manifest_path.relative_to(ROOT)}")
+        module_id = manifest.get("id")
+        dependencies = manifest.get("dependencies", [])
+        if (
+            not isinstance(module_id, str)
+            or not re.fullmatch(r"[a-z][a-z0-9-]{0,99}", module_id)
+            or not isinstance(manifest.get("version"), str)
+            or not manifest["version"].strip()
+            or not isinstance(manifest.get("name"), str)
+            or not manifest["name"].strip()
+            or not isinstance(dependencies, list)
+        ):
+            fail(f"invalid plugin module descriptor: {manifest_path.relative_to(ROOT)}")
+        if module_id in host_modules:
+            fail(f"plugin module conflicts with host descriptor: {module_id}")
+        if module_id in plugin_ids:
+            fail(f"duplicate plugin module descriptor: {module_id}")
+        plugin_ids.add(module_id)
+        dependency_ids = []
+        for dependency in dependencies:
+            dependency_id = dependency.get("id") if isinstance(dependency, dict) else None
+            if not isinstance(dependency_id, str) or not re.fullmatch(
+                r"[a-z][a-z0-9-]{0,99}", dependency_id
+            ):
+                fail(f"invalid plugin dependency in {manifest_path.relative_to(ROOT)}")
+            dependency_ids.append(dependency_id)
+        if module_id in dependency_ids or len(dependency_ids) != len(set(dependency_ids)):
+            fail(f"invalid plugin dependency graph in {manifest_path.relative_to(ROOT)}")
+        descriptor = (manifest["version"], False, tuple(dependency_ids))
+        source_descriptor = backend_modules.get(module_id)
+        if source_descriptor is not None and source_descriptor != descriptor:
+            fail(
+                f"plugin.json and backend module descriptor disagree for {module_id}: "
+                f"manifest={descriptor} source={source_descriptor}"
+            )
+        backend_modules[module_id] = descriptor
+    # Keep static extraction equivalent to ModuleRegistry validation before
+    # Spring starts, including runtime plugin descriptors, required-module,
+    # dependency, and cycle constraints.
+    validate_backend_module_graph(backend_modules)
+except (OSError, json.JSONDecodeError, ValueError) as error:
+    fail(str(error))
 descriptors = set(backend_modules)
-if not backend_modules:
-    fail("no backend module descriptors found")
-
-# Keep the static extraction check equivalent to ModuleRegistry's runtime
-# validation. This lets CI reject an invalid graph before Spring starts and
-# keeps the frontend manifest comparison below meaningful.
-for module_id, (_, required, dependencies) in backend_modules.items():
-    for dependency in dependencies:
-        if dependency not in backend_modules:
-            fail(f"backend module has missing dependency: {module_id} -> {dependency}")
-        if required and not backend_modules[dependency][1]:
-            fail(f"required backend module depends on optional module: {module_id} -> {dependency}")
-
-visiting = set()
-visited = set()
-
-
-def visit_module(module_id: str) -> None:
-    if module_id in visited:
-        return
-    if module_id in visiting:
-        fail(f"backend module dependency cycle includes: {module_id}")
-    visiting.add(module_id)
-    for dependency in backend_modules[module_id][2]:
-        visit_module(dependency)
-    visiting.remove(module_id)
-    visited.add(module_id)
-
-
-for module_id in backend_modules:
-    visit_module(module_id)
-
-# Keep the static extraction check equivalent to ModuleRegistry's runtime
-# validation. This lets CI reject an invalid graph before Spring starts and
-# keeps the frontend manifest comparison below meaningful.
-for module_id, (_, required, dependencies) in backend_modules.items():
-    for dependency in dependencies:
-        if dependency not in backend_modules:
-            fail(f"backend module has missing dependency: {module_id} -> {dependency}")
-        if required and not backend_modules[dependency][1]:
-            fail(f"required backend module depends on optional module: {module_id} -> {dependency}")
-
-visiting = set()
-visited = set()
-
-
-def visit_module(module_id: str) -> None:
-    if module_id in visited:
-        return
-    if module_id in visiting:
-        fail(f"backend module dependency cycle includes: {module_id}")
-    visiting.add(module_id)
-    for dependency in backend_modules[module_id][2]:
-        visit_module(dependency)
-    visiting.remove(module_id)
-    visited.add(module_id)
-
-
-for module_id in backend_modules:
-    visit_module(module_id)
 
 ownership_path = ROOT / "backend/src/main/resources/db/module-ownership.json"
 try:
@@ -147,6 +141,7 @@ package_owners = {
     "feedback": "feedback",
     "sensitive": "sensitive-words",
     "localization": "localization",
+    "mfa": "mfa",
     "mail": "communication",
     "sms": "communication",
     "communication": "communication",
@@ -155,6 +150,7 @@ package_owners = {
     "events": "events",
     "files": "files",
     "moduleadmin": "platform",
+    "plugins": "platform",
     "monitoring": "monitoring",
     "navigation": "navigation",
     "notifications": "notifications",
@@ -169,7 +165,7 @@ package_owners = {
     "common": "kernel",
 }
 for path in java_files:
-    relative_parts = path.relative_to(JAVA_ROOT).parts
+    relative_parts = java_relative(path).parts
     # The Spring Boot launcher is the composition root; it is allowed to know
     # every module and is checked separately by the application build.
     if len(relative_parts) == 1:
@@ -189,11 +185,11 @@ for path in java_files:
                 f"{path.relative_to(ROOT)}"
             )
 
-central = (JAVA_ROOT / "modules/ModuleConfiguration.java").read_text()
+central = java_path("modules/ModuleConfiguration.java").read_text()
 if "new PlatformModule(" in central:
     fail("the kernel configuration must not own feature descriptors")
 
-for path in JAVA_ROOT.rglob("*Controller.java"):
+for path in [p for p in java_files if p.name.endswith("Controller.java")]:
     source = path.read_text()
     owners = re.findall(r'@(?:com\.lumira\.platform\.modules\.)?ModuleEndpoint\("([^"]+)"\)', source)
     if not owners:
@@ -201,7 +197,7 @@ for path in JAVA_ROOT.rglob("*Controller.java"):
     unknown = set(owners) - descriptors
     if unknown:
         fail(f"controller references unknown module {sorted(unknown)}: {path.relative_to(ROOT)}")
-    relative = path.relative_to(JAVA_ROOT).as_posix()
+    relative = java_relative(path).as_posix()
     expected_owner = {
         # Session administration is an identity implementation exposed by the
         # directory bounded context; keep the exception explicit until the
@@ -296,35 +292,33 @@ required_adapters = {
     "AiUserDirectoryPort": "users/AiUserDirectoryAdapter.java",
 }
 for port, relative in required_adapters.items():
-    if port not in (JAVA_ROOT / relative).read_text():
+    if port not in java_path(relative).read_text():
         fail(f"missing adapter for module port {port}: {relative}")
 
 for relative in ("mail/MailDeliveryStore.java", "sms/SmsDeliveryStore.java"):
-    source = (JAVA_ROOT / relative).read_text()
+    source = java_path(relative).read_text()
     if "extends DurableDeliveryStore" not in source:
         fail(f"delivery store bypasses the shared communication state machine: {relative}")
 
 for relative in ("mail/MailDeliveryWorker.java", "sms/SmsDeliveryWorker.java"):
-    if "extends DurableDeliveryWorker" not in (JAVA_ROOT / relative).read_text():
+    if "extends DurableDeliveryWorker" not in java_path(relative).read_text():
         fail(f"delivery worker bypasses the shared communication orchestration: {relative}")
 
 for relative in ("moduleadmin/ModuleAccessInterceptor.java", "moduleadmin/ModuleAccessConfiguration.java"):
-    source = (JAVA_ROOT / relative).read_text()
+    source = java_path(relative).read_text()
     if "ModuleStateStore" in source:
         fail(f"HTTP module gate depends on the state storage implementation: {relative}")
 
 for relative in ("navigation/NavigationMenuService.java", "web/PlatformController.java"):
-    source = (JAVA_ROOT / relative).read_text()
+    source = java_path(relative).read_text()
     if "ModuleStateStore" in source:
         fail(f"platform consumer depends on the module state storage implementation: {relative}")
 
-if "ModuleStateStore" in (JAVA_ROOT / "modules/ModulePackageService.java").read_text():
-    fail("module package lifecycle depends on the module state storage implementation")
 
-if "DictionaryLookupRepository" in (JAVA_ROOT / "settings/ProfileFieldsController.java").read_text():
+if "DictionaryLookupRepository" in java_path("settings/ProfileFieldsController.java").read_text():
     fail("settings controller depends on the dictionary storage implementation")
 
-if "ModuleStateStore" in (JAVA_ROOT / "moduleadmin/ModuleAdminController.java").read_text():
+if "ModuleStateStore" in java_path("moduleadmin/ModuleAdminController.java").read_text():
     fail("module administration controller exposes the state storage model")
 
 workspace = (WEB_ROOT / "platform/shell/workspace.tsx").read_text()
@@ -337,7 +331,8 @@ for line in workspace.splitlines():
         fail("workspace imports a business page directly")
 
 registry = (WEB_ROOT / "platform/modules/registry.tsx").read_text()
-manifest_paths = list((WEB_ROOT / "features").rglob("manifest.ts"))
+registry_contracts = (WEB_ROOT / "platform/modules/contracts.ts").read_text()
+manifest_paths = [*WEB_ROOT.joinpath("features").rglob("manifest.ts"), *ROOT.joinpath("plugins").glob("*/frontend/manifest.ts")]
 manifest_sources = "".join(path.read_text() for path in manifest_paths)
 
 # Resource tables share one paging contract.  Catch a feature silently
@@ -377,7 +372,11 @@ for relative in (
     "localization/module.tsx",
     "communication/module.tsx",
 ):
-    source = (WEB_ROOT / "features" / relative).read_text()
+    frontend_path = WEB_ROOT / "features" / relative
+    if not frontend_path.exists():
+        pkg, filename = relative.split("/",1)
+        frontend_path = ROOT / "plugins" / {"sensitive":"sensitive-words"}.get(pkg,pkg) / "frontend" / filename
+    source = frontend_path.read_text()
     if re.search(r'import\s+\{[^}]*Page[^}]*\}\s+from\s+["\']', source):
         fail(f"frontend module statically imports a page: {relative}")
     if "lazy(" not in source:
@@ -406,7 +405,7 @@ for module_id in ("identity", "platform", "communication", "audit-console", "fee
         (path.read_text() for path in (WEB_ROOT / "features").rglob("module.tsx"))
     ) + manifest_sources:
         fail(f"frontend module descriptor is missing: {module_id}")
-if "Duplicate frontend route" not in registry or "Uncatalogued frontend page" not in registry:
+if "createFrontendPageRegistry" not in registry or "Duplicate frontend route" not in registry_contracts or "Uncatalogued frontend page" not in registry_contracts:
     fail("frontend registry does not enforce route/page ownership")
 
 print(

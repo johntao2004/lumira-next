@@ -5,7 +5,6 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
-import com.tngtech.archunit.core.importer.ImportOption;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -38,14 +37,16 @@ class ArchitectureTest {
                     Map.entry("feedback", Set.of("content", "dictionaries", "notifications")),
                     Map.entry("files", Set.of("identity", "settings")),
                     Map.entry("identity", Set.of()),
-                    Map.entry("localization", Set.of("ai")),
+                    Map.entry("localization", Set.of()),
+                    Map.entry("mfa", Set.of("identity")),
                     Map.entry("mail", Set.of("communication")),
-                    Map.entry("moduleadmin", Set.of()),
+                    Map.entry("moduleadmin", Set.of("plugins")),
+                    Map.entry("plugins", Set.of()),
                     Map.entry("monitoring", Set.of()),
                     Map.entry("navigation", Set.of()),
                     Map.entry("notifications", Set.of()),
                     Map.entry("organizations", Set.of()),
-                    Map.entry("roles", Set.of("files")),
+                    Map.entry("roles", Set.of("files", "identity")),
                     Map.entry("sensitive", Set.of("dictionaries")),
                     Map.entry("settings", Set.of("dictionaries", "identity")),
                     Map.entry("sms", Set.of("communication")),
@@ -56,10 +57,19 @@ class ArchitectureTest {
 
     @BeforeAll
     static void importProduction() {
+        var paths = new java.util.ArrayList<java.nio.file.Path>();
+        paths.add(java.nio.file.Path.of("target/classes"));
+        for (String id : java.util.List.of("feedback", "localization", "sensitive-words", "mfa")) {
+            // Test compilation includes plugin implementations without packaging them in the host.
+            paths.add(
+                    java.nio.file.Path.of(
+                            "target/test-classes/com/lumira/platform/"
+                                    + (id.equals("sensitive-words") ? "sensitive" : id)));
+        }
         production =
                 new ClassFileImporter()
-                        .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-                        .importPackages(ROOT);
+                        .withImportOption(location -> !location.toString().contains("Test.class"))
+                        .importPaths(paths);
     }
 
     @Test
@@ -117,6 +127,22 @@ class ArchitectureTest {
                 .dependOnClassesThat()
                 .resideInAnyPackage(features)
                 .check(production);
+    }
+
+    @Test
+    void controllersDoNotExposeRepositoryRecordsInResponseSignatures() {
+        for (var controller : production) {
+            if (!controller.isAnnotatedWith(
+                    org.springframework.web.bind.annotation.RestController.class)) continue;
+            for (var method : controller.getMethods()) {
+                for (var type : method.getReturnType().getAllInvolvedRawTypes()) {
+                    if (type.getName().contains("Repository$")) {
+                        throw new AssertionError(
+                                method.getFullName() + " exposes " + type.getName());
+                    }
+                }
+            }
+        }
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.lumira.platform.users;
 
 import com.lumira.platform.common.PageRequest;
+import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,14 +23,21 @@ public class UserExportController {
     }
 
     @GetMapping(produces = "text/csv")
-    public ResponseEntity<byte[]> export(@RequestParam(defaultValue = "") String search,
-                                         @RequestParam java.util.Map<String, String> parameters,
-                                         Authentication auth) {
-        PageRequest request = PageRequest.fromQueryParameters(1, 100, search, parameters);
+    public ResponseEntity<byte[]> export(
+            @RequestParam(defaultValue = "") String search,
+            @RequestParam java.util.Map<String, String> parameters,
+            Authentication auth) {
+        PageRequest pageRequest = PageRequest.fromQueryParameters(1, 100, search, parameters);
         return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"users.csv\"")
-            .header(HttpHeaders.CACHE_CONTROL, "no-store")
-            .body(service.exportCsv(request, auth.getName()));
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"users.csv\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(
+                        service.exportCsv(
+                                pageRequest,
+                                auth.getName(),
+                                AuthenticationRequestContext.current() == null
+                                        ? null
+                                        : AuthenticationRequestContext.current().authorization()));
     }
 }

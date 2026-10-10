@@ -28,3 +28,10 @@ export function formatDateTime(
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.valueOf()) ? "—" : formatter(locale, options).format(date);
 }
+
+/** Format quota values with the shared binary units and existing display precision. */
+export function formatQuotaBytes(bytes: number, locale: string): string {
+  const unit = bytes >= 1024 ** 3 ? 3 : bytes >= 1024 ** 2 ? 2 : bytes >= 1024 ? 1 : 0;
+  const formatted = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(bytes / 1024 ** unit);
+  return `${formatted} ${["B", "KiB", "MiB", "GiB"][unit]}`;
+}

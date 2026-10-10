@@ -7,10 +7,22 @@ import org.springframework.stereotype.Service;
 @Service
 public class SmtpConnectionSource {
     private final MailConfigurationPort configurations;
-    public SmtpConnectionSource(MailConfigurationPort configurations){this.configurations=configurations;}
-    public SmtpConnection load(){
-        var configuration=configurations.load();
-        try{return new SmtpConnection(configuration);}
-        catch(RuntimeException|Error failure){configuration.clear();throw failure;}
+
+    public SmtpConnectionSource(MailConfigurationPort configurations) {
+        this.configurations = configurations;
+    }
+
+    public boolean ready() {
+        return configurations.ready();
+    }
+
+    public SmtpConnection load() {
+        var configuration = configurations.load();
+        try {
+            return new SmtpConnection(configuration);
+        } catch (RuntimeException | Error failure) {
+            configuration.clear();
+            throw failure;
+        }
     }
 }

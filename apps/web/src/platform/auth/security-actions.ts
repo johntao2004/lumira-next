@@ -13,4 +13,9 @@ export const accountSecurityActions:Record<string,MessageKey>={
  "account.emailVerified":"emailVerified",
  "account.emailVerificationFailed":"invalidVerificationToken",
  "session.revoke":"logout",
+ "mfa.enabled":"mfaBind",
+ "mfa.disabled":"mfaDisable",
+ "mfa.renamed":"mfaRename",
+ "mfa.recoveryRegenerated":"mfaRegenerate",
+ "mfa.adminReset":"mfaReset",
 };

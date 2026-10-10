@@ -1,10 +1,11 @@
+import { loadQaRunContext } from './qa-run-guard.mjs';
 import {chromium,expect} from '@playwright/test';
-import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {writeFileSync,mkdirSync} from 'node:fs';
 import assert from 'node:assert/strict';
-import {messages} from '../apps/web/src/platform/i18n/messages.ts';
+import {loadLocaleMessages} from '../apps/web/src/platform/i18n/messages.ts';
 import {providerDefaultBaseUrl,providerKindLabel} from '../apps/web/src/features/ai/types.ts';
-const config=JSON.parse(readFileSync('.runtime/local.json','utf8'));
-const browser=await chromium.launch({headless:true});const context=await browser.newContext({baseURL:'http://127.0.0.1:8010',viewport:{width:1254,height:869}});const page=await context.newPage();const errors=[];const writes=[];const checks=[];const t=messages['zh-CN'];const folder='.runtime/qa/provider-form-defaults';mkdirSync(folder,{recursive:true});
+const { config, baseURL } = loadQaRunContext();
+const browser=await chromium.launch({headless:true});const context=await browser.newContext({baseURL:baseURL,viewport:{width:1254,height:869}});const page=await context.newPage();const errors=[];const writes=[];const checks=[];const t=await loadLocaleMessages('zh-CN');const folder='.runtime/qa/provider-form-defaults';mkdirSync(folder,{recursive:true});
 page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(new URL(r.url()).pathname==='/api/platform/ai/providers'&&r.method()!=='GET')writes.push(r.method());});
 const pass=name=>{checks.push({name,status:'passed'});console.log('PASS',name);};const drawer=()=>page.getByRole('dialog');
 const item=label=>drawer().locator('.ant-form-item').filter({has:page.locator('label').filter({hasText:new RegExp(`^${label}$`)})});
@@ -14,8 +15,8 @@ async function cancel(){await drawer().getByRole('button',{name:/取\s*消/}).cl
 let baseline;let logoutStatus;
 try{
  await page.goto('/user/login');await page.getByLabel('用户名',{exact:true}).fill(config.LUMIRA_BOOTSTRAP_USERNAME??'admin');await page.getByLabel('密码',{exact:true}).fill(config.LUMIRA_BOOTSTRAP_PASSWORD);await page.getByRole('button',{name:/登\s*录/}).click();await page.waitForURL('**/dashboard/**');await page.goto('/dashboard/ai-models');await page.getByRole('heading',{name:'模型接入',exact:true}).waitFor();baseline=await(await context.request.get('/api/platform/ai/providers')).json();
- await page.getByRole('button',{name:'添加模型服务',exact:true}).click();await blank();assert.deepEqual((await drawer().locator('.ant-form-item-label label').allTextContents()).slice(0,3),['服务类型','服务地址','显示名称']);await page.screenshot({path:`${folder}/initial-empty.png`});pass('new drawer empty and order kind-url-name');
- await drawer().getByRole('button',{name:/保\s*存/}).click();await expect(drawer().locator('#providerKind_help')).toBeVisible();await page.waitForTimeout(200);assert.deepEqual(writes,[]);pass('blank form validation prevents provider creation');
+ await page.getByRole('button',{name:'添加模型服务',exact:true}).click();await blank();const initialLabels=(await drawer().locator('.ant-form-item-label label').allTextContents()).map(label=>label.trim());assert.deepEqual(initialLabels.slice(0,4),['启用此服务','服务类型','服务地址','显示名称']);assert.deepEqual(initialLabels.filter(label=>label!=='启用此服务').slice(0,3),['服务类型','服务地址','显示名称']);await page.screenshot({path:`${folder}/initial-empty.png`});pass('new drawer empty and order enabled-kind-url-name');
+ const blankSave=drawer().getByRole('button',{name:/保\s*存/});await expect(blankSave).toBeDisabled();assert.deepEqual(writes,[]);pass('blank form keeps save disabled and prevents provider creation');
  await choose('OLLAMA');await expect(drawer().locator('#name')).toHaveValue('Ollama');await expect(drawer().locator('#baseUrl')).toHaveValue(providerDefaultBaseUrl.OLLAMA);await expect(drawer().locator('#baseUrl')).toBeEnabled();await expect(drawer().locator('#credentialValue')).toHaveValue('');await page.screenshot({path:`${folder}/ollama-populated.png`});pass('first type selection populates name and editable URL');
  await choose('LM_STUDIO');await expect(drawer().locator('#name')).toHaveValue('LM Studio');await expect(drawer().locator('#baseUrl')).toHaveValue(providerDefaultBaseUrl.LM_STUDIO);pass('switching type replaces automatically filled defaults');
  await drawer().locator('#name').fill('My custom provider');await drawer().locator('#baseUrl').fill('http://127.0.0.1:29999/v1');await expect(drawer().locator('#baseUrl')).toHaveValue('http://127.0.0.1:29999/v1');await drawer().locator('#credentialValue').fill('synthetic-unsaved-key');await choose('OPENAI');await expect(drawer().locator('#name')).toHaveValue('My custom provider');await expect(drawer().locator('#baseUrl')).toHaveValue(providerDefaultBaseUrl.OPENAI);await expect(drawer().locator('#credentialValue')).toHaveValue('');await expect(drawer().locator('#modelName')).toHaveValue('');pass('custom name retained, address editable, switched connection clears key/model');

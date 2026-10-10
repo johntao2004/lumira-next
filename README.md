@@ -10,7 +10,7 @@ Umi Max 4.7.20 / Mako / React 19.2.8 / Ant Design 6.6.3 / TypeScript 7.0.2；Jav
 
 Codex 云端开发使用独立 Ubuntu 或 Debian 环境，安装入口为 `LUMIRA_CLOUD_DEV=1 bash scripts/cloud-install.sh`，任务启动入口为 `bash scripts/cloud-start.sh`。完整配置见 [云端开发说明](docs/cloud-development.md)。下列 Homebrew 命令用于本机 macOS。
 
-前置：原生 Node.js 24 LTS、JDK 25、PostgreSQL 18、pnpm 10.33.0。macOS 可用 Homebrew 安装系统运行时；Node 24 是 keg-only，需将它放在 PATH 前端：
+前置：原生 Node.js 24 LTS、JDK 25、PostgreSQL 18、pnpm 10.33.0，以及运行中的 Docker Engine 和 Docker Compose v2。当前用户必须能访问 Docker daemon。DOC/DOCX/XLS/XLSX 解析只在 Docker Office worker 中执行；Docker 不可用时本地和云端启动均会失败，不会回退到宿主 JVM。macOS 可用 Homebrew 安装系统运行时；Node 24 是 keg-only，需将它放在 PATH 前端：
 
 ```sh
 brew install node@24 openjdk@25 postgresql@18
@@ -18,13 +18,14 @@ export PATH="$(brew --prefix node@24)/bin:$PATH"
 export JAVA_HOME="$(brew --prefix openjdk@25)/libexec/openjdk.jdk/Contents/Home"
 ```
 
-`scripts/start.mjs` 要求当前 Node 主版本为 24，并使用当前系统 Node 与 `JAVA_HOME` 启动服务。项目不携带 Node/JDK 工具链。
+`scripts/start.mjs` 要求当前 Node 主版本为 24，并使用当前系统 Node 与 `JAVA_HOME` 启动服务。它会在 `.runtime/office-worker/` 单独生成权限受限的 worker token，启动只映射到回环地址的 Office worker 容器，并把 worker 地址和 token 只传给后端进程；不会改写 `.runtime/local.json`。`scripts/stop.mjs` 只停止该本地 Compose 项目。项目不携带 Node/JDK 工具链。
 
 ```sh
 pnpm install
 pnpm typecheck
 pnpm build
-./backend/mvnw -f backend/pom.xml verify
+pnpm plugins:build
+pnpm test:java
 # 创建独立 PostgreSQL 角色/数据库，仅首次需要
 PSQL_BIN=/opt/homebrew/opt/postgresql@18/bin/psql node scripts/init-local.mjs
 # 服务首次启动会由 Flyway 自动导入单文件基线
@@ -33,6 +34,8 @@ node scripts/stop.mjs
 ```
 
 本地默认使用 Umi Max 开发服务器和 Mako 增量构建。完成 `pnpm build` 后，可用 `LUMIRA_WEB_MODE=production node scripts/start.mjs` 验证 `apps/web/dist` 静态产物。
+
+开发预览的分包输出到 `.runtime/web-dev`，生产构建输出到 `apps/web/dist`，两者独立，运行 `pnpm build` 不会清理正在使用的开发分包。`pnpm typecheck` 在项目预览运行时复用其 Umi 生成文件；预览未运行时自动执行 setup。手动执行 `pnpm --dir apps/web setup` 前应停止开发预览，因为 Umi setup 会清空并重建开发生成目录。
 
 数据库管理员也可以直接导入同一份 SQL；导入后首次启动需要让 Flyway 建立基线记录：
 
@@ -52,6 +55,7 @@ SPRING_FLYWAY_BASELINE_ON_MIGRATE=true SPRING_FLYWAY_BASELINE_VERSION=1 node scr
 ## 验证
 
 ```sh
+pnpm check:java-format
 pnpm test
 pnpm test:module-packages
 pnpm test:browser
@@ -59,7 +63,17 @@ pnpm db:schema-smoke
 python3 scripts/smoke.py
 ```
 
-smoke.py 在本地新底座验证匿名拒绝、CSRF、错误密码、正确登录、模块列表、用户摘要与退出后失效。它读取本地随机凭据，不输出秘密。
+`smoke.py` 在本地新底座验证匿名拒绝、CSRF、错误密码、正确登录、模块列表、用户摘要与退出后失效。它读取配置中的凭据，不输出秘密；该脚本会临时撤销并恢复管理员权限、创建并清理分页测试用户，因此会写入其配置指向的数据库，不能当作只读检查。
+
+默认配置为 `.runtime/local.json`，HTTP 地址为 `http://127.0.0.1:8010`。可通过 `LUMIRA_SMOKE_CONFIG` 指定配置文件、通过 `BASE_URL` 指定应用地址；运行时应让两者指向同一 QA 环境。`psql` 会从配置的 `LUMIRA_DB_URL`（JDBC URL）解析数据库 host、port 和名称：
+
+```sh
+LUMIRA_SMOKE_CONFIG=.runtime/qa.json BASE_URL=http://127.0.0.1:8096 python3 scripts/smoke.py
+```
+
+`scripts/passkey-smoke.py` 共用这些 HTTP 配置和认证辅助函数。
+
+命名、目录职责、CRUD 复用与自动质量检查见 [源码约定](docs/code-conventions.md)。`pnpm check:java-format` 使用 Spotless 全量检查宿主后端与独立插件后端的 Java 源码；`pnpm check:quality` 检查命名和新增重复代码，CI 与 `pnpm test` 均执行此检查。
 
 范围、接口及后续切换条件见 [架构与迁移说明](docs/architecture.md)。当前交付为可运行底座第一阶段，不是全量业务迁移结果，不应删除旧系统。
 
@@ -69,25 +83,29 @@ smoke.py 在本地新底座验证匿名拒绝、CSRF、错误密码、正确登�
 
 管理员全部文件中心（`/dashboard/files-all`）按所属账号检索平台文件，复用 BlobStore 流式下载、版本化删除、文件引用保护和审计；通知中心（`/dashboard/notifications`）支持向全部或指定账号发布站内通知，使用统一 PlatformForm/FormDrawer/ResourceTable 和独立的全局通知权限。邮件和短信仍通过各自的持久化投递队列处理，不把外部渠道凭据写入通知记录。
 
+我的文件与管理员全部文件中心共用在线预览，支持图片、分页 PDF、Word 文字和常见文本格式，详见 [文件在线预览](docs/file-preview.md)。
+
+顶栏个人通知弹层默认展示未读通知，可切换已读通知并分别分页。`GET /api/account/notifications` 支持可选的 `read=false`（仅未读）和 `read=true`（仅已读）；未提供 `read` 时保留原有 `unread=true` 仅未读、`unread=false` 全部通知的语义。筛选在服务端分页前执行，两类列表都只返回当前账号尚未过期的通知。
+
 Outbox 提供按事件类型显式注册的消费器边界、虚拟线程并发租约 worker 和已投递记录保留清理；没有注册消费器时不会自动确认事件。全局事件权限可在 `/dashboard/event-outbox` 对死信执行必填原因的人工重放，审批历史单独落库并写入审计；赛事消费者、外部消息总线和生产故障切换仍需独立接入与验收。
 
 审计流提供全局分页查询、账号安全记录和来源上下文；登录限流/超长密码拒绝在识别到账号时也会写入安全事件。`AuditRetention` 按可配置保留期以有界批次清理过期审计，避免高并发下审计表无限增长；默认保留 365 天，生产需结合合规要求设置 `LUMIRA_AUDIT_RETENTION`。
 
-安全策略（`/dashboard/security`）统一维护密码规则、登录/找回密码的账号与来源限流，以及验证码有效期、冷却时间、请求配额和失败上限。配置使用 PostgreSQL 版本历史、审计和回滚，认证与验证码存储读取同一策略，登录热路径使用 2 秒有界缓存。会话 Cookie 生命周期与 CAPTCHA/MFA 供应商没有伪造配置项，需接入实际运行时基础设施后单独验收。
+安全策略（`/dashboard/security`）统一维护密码规则、登录/找回密码的账号与来源限流，以及验证码有效期、冷却时间、请求配额和失败上限。配置使用 PostgreSQL 持久化、版本冲突校验和审计，安全策略页只提供保存操作；认证与验证码存储读取同一策略，登录热路径使用 2 秒有界缓存。TOTP 二次认证通过独立热插拔插件提供，不伪装成短信/邮件供应商配置；绑定、恢复、管理员重置和 fail-closed 边界见 [二次认证说明](docs/mfa.md)。
 
-导航管理（`/dashboard/navigation`）使用基线中的版本化菜单树作为双层/分区导航的运行时来源，支持内置菜单保护、自定义分组、排序、启停、软删除、版本冲突和按权限/模块过滤。PAGE 标识与路径有数据库唯一约束，componentKey 只解析到前端代码注册表；安全的自定义 PAGE 可进入 `/dashboard/{slug}`，未注册组件时展示受控占位页，不执行数据库 HTML 或代码。模块页提供声明式模块包登记、摘要幂等、代码版本/依赖检查、激活/拒绝和乐观版本护栏；仍需部署侧完成制品发布、数据库变更和多实例滚动升级，运行进程不会执行上传代码。反馈创建抽屉复用账号级草稿保存/恢复/消费修订清理。
+导航管理（`/dashboard/navigation`）使用基线中的版本化菜单树作为双层/分区导航的运行时来源，支持内置菜单保护、自定义分组、排序、启停、软删除、版本冲突和按权限/模块过滤。PAGE 标识与路径有数据库唯一约束，componentKey 只解析到前端代码注册表；安全的自定义 PAGE 可进入 `/dashboard/{slug}`，未注册组件时展示受控占位页，不执行数据库 HTML 或代码。模块页支持完整插件包导入、依赖与冲突预检、在线安装/卸载和状态版本护栏。工单反馈、本地化、敏感词和 TOTP 二次认证位于根目录 plugins/，使用 PF4J/Spring 子容器和前端动态注册，无需重构建或重启宿主；详见 [插件开发与运行](docs/plugins.md)。反馈创建抽屉复用账号级草稿保存/恢复/消费修订清理。
 
-敏感词策略（`/dashboard/sensitive-words`）由平台基线提供分页管理、批量导入、启停和文本检查；后端使用不可变 Aho-Corasick 匹配快照，反馈公共提交在持久化前执行阻断，匹配结果仅返回脱敏片段。该模块受独立全局权限和审计约束，普通账号不会读取词典。
+敏感词策略（`/dashboard/sensitive-words`）提供角色管控、共享词库、命中记录和独立策略试运行。所有角色共用词库，角色只配置是否管控，词条决定阻断或仅记录；服务端在业务 JSON 文本及上传文件名提交时统一执行，多个有效角色中任一启用即管控。管理权限独立校验，普通账号不能读取词库，命中记录不保存提交原文。具体边界与默认策略见 [全局敏感词管控](docs/content-policy.md)。
 
-运行时本地化（`/dashboard/localization`）由平台基线提供文案键的版本化 CRUD、JSON 批量导入、启停、发布版本和公开语言包读取。后台文案保存后由短 TTL 缓存原子刷新，发布记录可追踪版本；前端 Provider 在静态八语言词典之上加载覆盖，接口不可用时自动回退静态文案。
+运行时本地化插件（`/dashboard/localization`）接管平台基线数据，提供文案键的版本化 CRUD、JSON 批量导入、启停、发布版本和公开语言包读取。后台文案保存后由短 TTL 缓存原子刷新，发布记录可追踪版本；前端 Provider 在静态八语言词典之上加载覆盖，接口不可用时自动回退静态文案。
 
-账号手机与短信（平台基线能力）由 `/dashboard/sms`、`/dashboard/sms-deliveries` 和账号菜单入口提供。短信供应商配置只保存非敏感字段，凭据进入加密 SecretStore；验证码先写入加密的 PostgreSQL 投递队列，再由带租约令牌的虚拟线程 worker 发送到 HTTPS/本地回环 JSON webhook。手机号绑定要求当前密码、E.164 格式、冷却/日上限/失败次数和一次性验证码；未配置短信服务时明确返回不可用，不生成半成品验证码。运维人员可按状态和任务 ID查看脱敏队列元数据，运行监控同步展示待发送与失败数量，凭据和验证码不会进入日志或接口响应。
+账号手机与短信（平台基线能力）由 `/dashboard/sms`、`/dashboard/sms-deliveries` 和账号菜单入口提供。短信供应商配置只保存非敏感字段，凭据进入加密 SecretStore；验证码先写入加密的 PostgreSQL 投递队列，再由带租约令牌的虚拟线程 worker 按腾讯云、阿里云中国站/国际站、华为云、Twilio 的官方协议发送，后台兼容历史 JSON webhook。表单按供应商和国内/国际范围展示字段，自动填入服务地址、模板参数及签名所需数据；账号密钥、签名和审核模板由管理员提供。手机号绑定要求当前密码、E.164 格式、冷却/日上限/失败次数和一次性验证码；未配置短信服务时明确返回不可用，不生成半成品验证码。运维人员可按状态和任务 ID查看脱敏队列元数据，运行监控同步展示待发送与失败数量，凭据和验证码不会进入日志或接口响应。
 
 短信队列与手机号验证的接口、状态机和验收边界见 [短信投递说明](docs/sms-delivery.md) 与 [账号手机号说明](docs/account-phone.md)。
 
 ### 多语言
 
-新脚手架支持简体中文、繁体中文、英语、日语、韩语、法语、西班牙语和德语。登录页与后台共用语言菜单，选择保存在当前浏览器，刷新后保留；Ant Design 内置文案、表单校验、导航、表格及错误页同步切换。用户名称与业务数据保留原始内容。
+新脚手架支持简体中文、繁体中文、英语、日语、韩语、法语、西班牙语和德语。登录页与后台共用语言菜单；未登录时保存在当前浏览器，登录后用户主动选择的语言会保存到账号，其他浏览器登录或刷新时读取已保存的账号偏好。账号尚无偏好时沿用当前浏览器缓存且不自动写入账号。Ant Design 内置文案、表单校验、导航、表格及错误页同步切换。用户名称与业务数据保留原始内容，接口与缺省行为见 [账号语言偏好](docs/account-locale.md)。
 
 词典位于 `apps/web/src/platform/i18n/messages.ts`；平台管理员可在本地化页面维护运行时覆盖。新增语言需同时配置 `providers.tsx` 的 Ant Design locale、后端受支持语言集合，并运行 `pnpm test` 检查翻译键与占位符完整性。
 

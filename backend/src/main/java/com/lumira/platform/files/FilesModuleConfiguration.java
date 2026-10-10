@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class FilesModuleConfiguration {
     @Bean
     PlatformModule filesModule() {
-        return new PlatformModule("files", "文件与媒体", "1.0.0", List.of("identity", "platform", "settings"), true);
+        return new PlatformModule(
+                "files", "文件与媒体", "1.0.0", List.of("identity", "platform", "settings"), true);
     }
 }

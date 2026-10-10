@@ -20,14 +20,21 @@ export default defineConfig({
   title: "Lumira",
   headScripts: [{ content: preferenceBootstrap }],
   npmClient: "pnpm",
+  // Mako writes development chunks to disk. A production build must not clean
+  // the directory used by a running preview's lazy-loaded routes.
+  outputPath:
+    process.env.NODE_ENV === "development" ? "../../.runtime/web-dev" : "dist",
   hash: true,
   history: { type: "browser" },
+  devtool: process.env.NODE_ENV === "production" ? false : undefined,
   mako: {
     optimization: { skipModules: true },
   },
   routes: [
     { path: "/", redirect: "/dashboard/home" },
     { path: "/user/login", component: "@/pages/user/login" },
+    { path: "/user/register", component: "@/pages/user/register" },
+    { path: "/user/wechat-result", component: "@/pages/user/wechat-result" },
     { path: "/dashboard/:section", component: "@/pages/dashboard/section" },
     { path: "*", component: "@/pages/not-found" },
   ],

@@ -15,7 +15,7 @@ def avatar(actor):return json.loads(call(actor,'/account/avatar')[1])
 try:
     for id,username in [(owner,name),(other,second)]:sql(f"INSERT INTO platform_user(id,username,display_name,password_hash) SELECT '{id}','{username}','Avatar QA',password_hash FROM platform_user WHERE username='admin'")
     for actor,username in [(a,name),(b,second),(c,name)]:assert login(actor,username,config['LUMIRA_BOOTSTRAP_PASSWORD'])==200
-    assert avatar(a)=={'fileId':None,'version':0}
+    assert avatar(a)=={'fileId':None,'version':0,'generated':False}
     assert call(client(),'/account/avatar')[0]==401
     assert upload(a,0,csrf=False)[0]==403
     assert upload(a,0,b'<svg/>')[0]==400
@@ -53,7 +53,7 @@ try:
     assert sql(f"SELECT count(*) FROM platform_file WHERE owner_id='{owner}' AND state='UPLOADING'")=='0'
     assert call(a,'/account/avatar?version=1','DELETE',headers=token(a))[0]==409
     status,body=call(a,'/account/avatar?version=2','DELETE',headers=token(a));assert status==200
-    assert json.loads(body)=={'fileId':None,'version':3} and avatar(a)['version']==3
+    assert json.loads(body)=={'fileId':None,'version':3,'generated':False} and avatar(a)['version']==3
     assert call(a,'/account/avatar/content?version=2')[0]==404
     assert upload(a,0)[0]==409  # Removing does not reset the version (ABA protection).
     assert sql(f"SELECT count(*) FROM platform_audit WHERE actor='{name}' AND action='account.avatarUpdated'")=='2'

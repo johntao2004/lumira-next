@@ -26,7 +26,10 @@ public final class PasskeyRequests {
             String type,
             Response response,
             String authenticatorAttachment) {
-        public record Response(String clientDataJSON, String authenticatorData,
-                               String signature, String userHandle) {}
+        public record Response(
+                String clientDataJSON,
+                String authenticatorData,
+                String signature,
+                String userHandle) {}
     }
 }

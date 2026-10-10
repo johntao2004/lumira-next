@@ -4,6 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.identity.api.MaintenancePolicyPort;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +30,12 @@ class SecurityHeadersTest {
     @MockitoBean LoginAudit loginAudit;
     @MockitoBean ClientAddressResolver addresses;
     @MockitoBean MaintenancePolicyPort maintenance;
+    @MockitoBean AuthenticationPolicyService authenticationPolicies;
+    @MockitoBean AuthenticationPolicyWriteLock authenticationPolicyWriteLock;
+    @MockitoBean TransactionTemplate transactionTemplate;
+    @MockitoBean SecondFactorLoginService secondFactor;
+    @MockitoBean RolePreviewContextService rolePreviewContexts;
+    @MockitoBean CaptchaProofAccess captchaProofAccess;
 
     @Test
     void publicResponseIsLockedDown() throws Exception {

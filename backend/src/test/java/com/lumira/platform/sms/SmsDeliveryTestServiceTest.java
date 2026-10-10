@@ -14,14 +14,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 class SmsDeliveryTestServiceTest {
-    @Test void requiresTheExistingGlobalSettingsWritePermission() {
+    @Test
+    void requiresTheExistingGlobalSettingsWritePermission() {
         var settings = mock(SmsSettingsService.class);
         var source = mock(SmsConnectionSource.class);
         var gateway = mock(SmsGateway.class);
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
-            .when(guard).require("reader", "platform:settings:write");
+                .when(guard)
+                .require("reader", "platform:settings:write");
 
         var service = new SmsDeliveryTestService(settings, source, gateway, guard, audit);
         assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("reader"));
@@ -29,29 +31,57 @@ class SmsDeliveryTestServiceTest {
         verify(guard, never()).requireGlobal(any(), any());
     }
 
-    @Test void rejectsRemoteReceiversAndDoesNotLoadOrChangeCredentials() {
+    @Test
+    void rejectsRemoteReceiversAndDoesNotLoadOrChangeCredentials() {
         var settings = mock(SmsSettingsService.class);
         var source = mock(SmsConnectionSource.class);
-        when(settings.readSettings()).thenReturn(new SmsConfigurationPort.Settings(false,
-            "webhook", "https://sms.example.test/send", "Lumira", "Code {code}", 10));
+        when(settings.readSettings())
+                .thenReturn(
+                        new SmsConfigurationPort.Settings(
+                                false,
+                                "webhook",
+                                "https://sms.example.test/send",
+                                "Lumira",
+                                "Code {code}",
+                                10));
         var gateway = mock(SmsGateway.class);
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
 
-        var failure = assertThrows(ResponseStatusException.class,
-            () -> new SmsDeliveryTestService(settings, source, gateway, guard, audit).sendLocalTest("admin"));
+        var failure =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                new SmsDeliveryTestService(settings, source, gateway, guard, audit)
+                                        .sendLocalTest("admin"));
         assertEquals("smsLocalTestUnavailable", failure.getReason());
         verifyNoInteractions(source, gateway, audit);
         verify(settings).readSettings();
     }
 
-    @Test void localTestUsesTheStoredCredentialAndFixedSyntheticPayload() {
+    @Test
+    void localTestUsesTheStoredCredentialAndFixedSyntheticPayload() {
         var settings = mock(SmsSettingsService.class);
-        when(settings.readSettings()).thenReturn(new SmsConfigurationPort.Settings(true,
-            "webhook", "http://127.0.0.1:18080/send", "Lumira", "Code {code}", 10));
+        when(settings.readSettings())
+                .thenReturn(
+                        new SmsConfigurationPort.Settings(
+                                true,
+                                "webhook",
+                                "http://127.0.0.1:18080/send",
+                                "Lumira",
+                                "Code {code}",
+                                10));
         byte[] credential = "synthetic-fixture-key".getBytes(StandardCharsets.UTF_8);
-        var connection = new SmsConnection(new com.lumira.platform.common.SmsConfigurationPort.Settings(true,
-            "webhook", "http://127.0.0.1:18080/send", "Lumira", "Code {code}", 10), credential);
+        var connection =
+                new SmsConnection(
+                        new com.lumira.platform.common.SmsConfigurationPort.Settings(
+                                true,
+                                "webhook",
+                                "http://127.0.0.1:18080/send",
+                                "Lumira",
+                                "Code {code}",
+                                10),
+                        credential);
         var source = mock(SmsConnectionSource.class);
         when(source.load()).thenReturn(connection);
         var gateway = mock(SmsGateway.class);
@@ -59,7 +89,9 @@ class SmsDeliveryTestServiceTest {
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
 
-        var result = new SmsDeliveryTestService(settings, source, gateway, guard, audit).sendLocalTest("admin");
+        var result =
+                new SmsDeliveryTestService(settings, source, gateway, guard, audit)
+                        .sendLocalTest("admin");
 
         assertEquals(SmsGateway.Result.ACCEPTED.name(), result.result());
         var connectionArgument = org.mockito.ArgumentCaptor.forClass(SmsConnection.class);
@@ -67,7 +99,9 @@ class SmsDeliveryTestServiceTest {
         verify(gateway).send(connectionArgument.capture(), payload.capture());
         assertSame(connection, connectionArgument.getValue());
         assertEquals("+15555550123", payload.getValue().recipient());
-        assertEquals("Lumira local SMS transport test. No account code is included.", payload.getValue().text());
+        assertEquals(
+                "Lumira local SMS transport test. No account code is included.",
+                payload.getValue().text());
         assertArrayEquals(new byte[credential.length], credential);
         verify(guard).require("admin", "platform:settings:write");
         verify(guard).requireGlobal("admin", "platform:settings:write");
@@ -76,19 +110,34 @@ class SmsDeliveryTestServiceTest {
         assertNotNull(auditTarget.getValue());
     }
 
-    @Test void missingStoredCredentialFailsBeforeGatewayNetworkCall() {
+    @Test
+    void missingStoredCredentialFailsBeforeGatewayNetworkCall() {
         var settings = mock(SmsSettingsService.class);
-        when(settings.readSettings()).thenReturn(new SmsConfigurationPort.Settings(true,
-            "webhook", "http://127.0.0.1:18080/send", "Lumira", "Code {code}", 10));
+        when(settings.readSettings())
+                .thenReturn(
+                        new SmsConfigurationPort.Settings(
+                                true,
+                                "webhook",
+                                "http://127.0.0.1:18080/send",
+                                "Lumira",
+                                "Code {code}",
+                                10));
         var source = mock(SmsConnectionSource.class);
-        doThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "smsCredentialRequired"))
-            .when(source).load();
+        doThrow(
+                        new ResponseStatusException(
+                                HttpStatus.SERVICE_UNAVAILABLE, "smsCredentialRequired"))
+                .when(source)
+                .load();
         var gateway = mock(SmsGateway.class);
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
 
-        var failure = assertThrows(ResponseStatusException.class,
-            () -> new SmsDeliveryTestService(settings, source, gateway, guard, audit).sendLocalTest("admin"));
+        var failure =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                new SmsDeliveryTestService(settings, source, gateway, guard, audit)
+                                        .sendLocalTest("admin"));
 
         assertEquals("smsCredentialRequired", failure.getReason());
         verify(source).load();

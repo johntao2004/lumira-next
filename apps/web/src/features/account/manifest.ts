@@ -6,5 +6,9 @@ export const identityManifest = {
   version: "1.0.0",
   required: true,
   dependencies: [],
-  routes: [],
+  routes: [
+    { id: "account-security", label: "accountSecurity", permission: null, group: "overview", order: 25 },
+    { id: "account-role-preview", label: "rolePreview", permission: null, hidden: true, group: "overview", order: 26 },
+    { id: "account-wechat", label: "wechatBinding", permission: null, hidden: true, group: "overview", order: 27 },
+  ],
 } as const satisfies FrontendModuleManifest;

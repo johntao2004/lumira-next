@@ -29,9 +29,9 @@ try {
   await expect(main.getByText('概览', { exact: true })).toBeVisible();
   await main.getByRole('button', { name: /新增导航/ }).click();
   const editor = page.locator('.platform-form-drawer');
-  await editor.locator('#menuCode').fill(code);
-  await editor.locator('#labelKey').fill('qaNavigation');
-  await editor.locator('#labelDefault').fill('QA 临时分组');
+  await editor.locator('#navigation-editor_menuCode').fill(code);
+  await editor.locator('#navigation-editor_labelKey').fill('qaNavigation');
+  await editor.locator('#navigation-editor_labelDefault').fill('QA 临时分组');
   await editor.locator('.ant-select').first().click();
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');

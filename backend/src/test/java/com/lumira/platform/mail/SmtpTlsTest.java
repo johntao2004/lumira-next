@@ -1,9 +1,15 @@
 package com.lumira.platform.mail;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.lumira.platform.TestMigration;
+import com.lumira.platform.common.CaptchaProofPort;
 import com.lumira.platform.common.MailConfigurationPort;
+import com.lumira.platform.identity.CaptchaProofAccess;
+import com.lumira.platform.identity.PasswordRecoveryService;
 import com.lumira.platform.settings.SmtpSettings;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
@@ -18,6 +24,7 @@ import javax.net.ssl.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 /** Disposable loopback fixture. Trust override exists only in this test, never production. */
 class SmtpTlsTest {
@@ -218,6 +225,21 @@ class SmtpTlsTest {
                             return session.getTransport("smtp");
                         })
                 : new SmtpGateway();
+    }
+
+    private static CaptchaProofAccess recoveryCaptcha() {
+        var access = mock(CaptchaProofAccess.class);
+        var port = mock(CaptchaProofPort.class);
+        when(access.begin(any(), any(), any(), any()))
+                .thenAnswer(
+                        invocation -> {
+                            CaptchaProofPort.Action action = invocation.getArgument(0);
+                            return new CaptchaProofAccess.Gate(
+                                    port,
+                                    action,
+                                    new CaptchaProofPort.Requirement(false, "smtp-fixture", null));
+                        });
+        return access;
     }
 
     private SmtpGateway.Result send(Fixture fixture, boolean implicit, boolean trust, String host) {
@@ -442,7 +464,7 @@ class SmtpTlsTest {
             var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
             var client = org.springframework.jdbc.core.simple.JdbcClient.create(ds);
             jdbc.execute(
-                    "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT,password_hash TEXT,enabled BOOLEAN)");
+                    "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT,password_hash TEXT,enabled BOOLEAN,deleted_at TIMESTAMPTZ)");
             jdbc.execute(
                     "CREATE TABLE platform_authority(user_id UUID,authority TEXT,PRIMARY KEY(user_id,authority))");
             jdbc.execute("CREATE TABLE spring_session(principal_name TEXT)");
@@ -461,7 +483,7 @@ class SmtpTlsTest {
             var encoder = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
             UUID owner = UUID.randomUUID(), setting = UUID.randomUUID();
             jdbc.update(
-                    "INSERT INTO platform_user VALUES(?,'recovery-fixture',?,true)",
+                    "INSERT INTO platform_user(id,username,password_hash,enabled) VALUES(?,'recovery-fixture',?,true)",
                     owner,
                     encoder.encode("old-password-fixture"));
             jdbc.update(
@@ -516,12 +538,15 @@ class SmtpTlsTest {
                                 }
                             });
             var recovery =
-                    new com.lumira.platform.identity.PasswordRecoveryService(
+                    new PasswordRecoveryService(
                             client,
                             new com.lumira.platform.identity.PasswordResetStore(client),
                             new MailSenderAdapter(store, source),
                             audit,
-                            encoder);
+                            encoder,
+                            null,
+                            recoveryCaptcha(),
+                            manager);
             try (var fixture = new Fixture(true, false, false)) {
                 var settings =
                         new SmtpSettings(
@@ -548,7 +573,13 @@ class SmtpTlsTest {
                 } finally {
                     Arrays.fill(credential, (byte) 0);
                 }
-                tx.executeWithoutResult(status -> recovery.request("recovery-fixture", "zh-CN"));
+                tx.executeWithoutResult(
+                        status ->
+                                recovery.request(
+                                        "recovery-fixture",
+                                        "zh-CN",
+                                        null,
+                                        new MockHttpServletRequest()));
                 assertEquals(
                         1,
                         jdbc.queryForObject(
@@ -587,7 +618,9 @@ class SmtpTlsTest {
                                             recovery.confirm(
                                                     "recovery-fixture",
                                                     token,
-                                                    "new-password-fixture")));
+                                                    "new-password-fixture",
+                                                    null,
+                                                    new MockHttpServletRequest())));
                     assertEquals(
                             Boolean.FALSE,
                             tx.execute(
@@ -595,7 +628,9 @@ class SmtpTlsTest {
                                             recovery.confirm(
                                                     "recovery-fixture",
                                                     token,
-                                                    "new-password-fixture")));
+                                                    "new-password-fixture",
+                                                    null,
+                                                    new MockHttpServletRequest())));
                     assertTrue(
                             encoder.matches(
                                     "new-password-fixture",

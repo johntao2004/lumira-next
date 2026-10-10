@@ -1,7 +1,7 @@
 package com.lumira.platform.mail;
 
-import com.lumira.platform.communication.DurableDeliveryStore;
 import com.lumira.platform.common.SecretKeys;
+import com.lumira.platform.communication.DurableDeliveryStore;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;

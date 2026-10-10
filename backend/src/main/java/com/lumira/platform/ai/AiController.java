@@ -97,6 +97,12 @@ public class AiController {
         return assistant.chat(input, auth.getName());
     }
 
+    @GetMapping("/attachments/{id}")
+    public AiAssistantService.AttachmentMetadata attachment(
+            @PathVariable UUID id, Authentication auth) {
+        return assistant.attachment(id, auth.getName());
+    }
+
     @PostMapping("/actions/{id}/confirm")
     public AiAssistantService.ActionResult confirm(
             @PathVariable UUID id,

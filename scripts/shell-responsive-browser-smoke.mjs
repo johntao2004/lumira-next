@@ -1,15 +1,16 @@
+import { loadQaRunContext } from './qa-run-guard.mjs';
 import { chromium, expect } from '@playwright/test';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { languages, translate } from '../apps/web/src/platform/i18n/messages.ts';
+import { languages, loadLocaleMessages, translate } from '../apps/web/src/platform/i18n/messages.ts';
 import { PREFERENCES_COOKIE, serializePreferences, defaultPreferences } from '../apps/web/src/platform/preferences/model.ts';
 
-const config = JSON.parse(readFileSync('.runtime/local.json', 'utf8'));
+const { config, baseURL } = loadQaRunContext();
 const browser = await chromium.launch({
   headless: true,
   ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {}),
 });
-const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8010' });
+const context = await browser.newContext({ baseURL: baseURL });
 
 try {
   const csrf = await (await context.request.get('/api/auth/csrf')).json();
@@ -22,10 +23,11 @@ try {
   page.on('pageerror', error => errors.push(error.message));
 
   async function load(locale, width, dark = false) {
+    await loadLocaleMessages(locale);
     await context.addCookies([{
       name: PREFERENCES_COOKIE,
       value: serializePreferences({ ...defaultPreferences, locale, dark }),
-      url: 'http://127.0.0.1:8010',
+      url: baseURL,
     }]);
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/dashboard/home');
@@ -49,12 +51,11 @@ try {
   for (const width of [390, 768, 1024, 1440]) {
     for (const dark of [false, true]) {
       await load('zh-CN', width, dark);
-      const header = await page.locator(width <= 767 ? 'header.ant-pro-layout-header' : '.workspace-utility-header').boundingBox();
-      const account = await page.locator(width <= 767
-        ? 'header.ant-pro-layout-header .pro-account-trigger'
-        : '.workspace-utility-header .pro-account-trigger').boundingBox();
-      assert.ok(header && account, `ProLayout header and account must render at ${width}px`);
-      assert.ok(account.x >= header.x && account.x + account.width <= header.x + header.width + 1, `header action escaped at ${width}px`);
+      const header = page.locator('[data-testid="pro-layout-global-header"]');
+      const headerBox = await header.boundingBox();
+      const accountBox = await header.locator('.pro-account-trigger').boundingBox();
+      assert.ok(headerBox && accountBox, `ProLayout global header and account must render at ${width}px`);
+      assert.ok(accountBox.x >= headerBox.x && accountBox.x + accountBox.width <= headerBox.x + headerBox.width + 1, `header action escaped at ${width}px`);
     }
   }
 
@@ -65,7 +66,7 @@ try {
   const navigationDrawer = page.getByRole('dialog');
   await expect(navigationDrawer).toBeVisible();
   const drawerBox = await navigationDrawer.boundingBox();
-  assert.ok(drawerBox && Math.abs(drawerBox.width - 208) <= 1, `mobile navigation drawer must be 208px, got ${drawerBox?.width}`);
+  assert.ok(drawerBox && Math.abs(drawerBox.width - 256) <= 1, `mobile navigation drawer must match the standard 256px ProLayout sider, got ${drawerBox?.width}`);
   await expect(navigationDrawer.getByRole('link', { name: '工作台', exact: true })).toBeVisible();
   await expect(navigationDrawer.getByRole('link', { name: '品牌设置', exact: true })).not.toBeVisible();
   await navigationDrawer.getByText('平台管理', { exact: true }).click();
@@ -87,13 +88,15 @@ try {
   await load('zh-CN', 1440);
   const desktopSider = page.locator('.ant-layout-sider');
   await expect(desktopSider).toBeVisible();
+  await expect.poll(() => desktopSider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(256);
+  await desktopSider.locator('.ant-pro-sider-collapsed-button').click();
   await expect.poll(() => desktopSider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(64);
   await desktopSider.locator('.ant-pro-sider-collapsed-button').click();
-  await expect.poll(() => desktopSider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(208);
+  await expect.poll(() => desktopSider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(256);
   await expect(desktopSider.getByRole('link', { name: '工作台', exact: true })).toBeVisible();
   await desktopSider.getByText('平台管理', { exact: true }).click();
   await expect(desktopSider.getByRole('link', { name: '品牌设置', exact: true })).toBeVisible();
-  await expect(page.locator('.workspace-utility-header .pro-account-trigger')).toBeVisible();
+  await expect(page.locator('[data-testid="pro-layout-global-header"] .pro-account-trigger')).toBeVisible();
   await page.screenshot({ path: '.runtime/browser-checks/pro-layout-desktop.png', fullPage: true });
 
   assert.deepEqual(errors, []);

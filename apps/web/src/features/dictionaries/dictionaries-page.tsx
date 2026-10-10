@@ -6,12 +6,12 @@ import { DictionaryFields,dictionaryDefaults } from "./dictionary-fields";
 import { DictionaryItemsPage } from "./dictionary-items-page";
 import { useListLocation,useLocationParams } from "@/platform/routing/use-list-location";
 import { locationId } from "@/platform/routing/list-location";
-import { useState } from "react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import {Button, Space, Spin, Tag} from "antd";
 import { TableActions } from "@/platform/components/table-actions";
 import { api,mutate } from "@/platform/api/client";
-import { messageKeyFor } from "@/platform/api/errors";
+import { useCrudDrawer } from "@/platform/forms/use-crud-drawer";
+import { saveRecord, pageAfterRemoval } from "@/platform/api/records";
 import { ResourceTable } from "@/platform/components/resource-table";
 import type { PageResult } from "@/platform/api/pagination";
 import { FormDrawer } from "@/platform/components/form-drawer";
@@ -33,13 +33,11 @@ export function DictionariesPage({canWrite}:{canWrite:boolean}) {
   const dictionaryId=locationId(params.get("dictionary"));
   const itemType=useQuery({queryKey:["dictionary",dictionaryId],enabled:!!dictionaryId,queryFn:({signal})=>api<Dictionary>(`/platform/dictionaries/${dictionaryId}`,{signal})});
   const showItems=(id:string|null)=>updateLocation({dictionary:id,"items.page":null,"items.search":null,"items.parent":null});
-  const [selected,setSelected]=useState<string|null|undefined>();
-  const [pending,setPending]=useState(false);const [error,setError]=useState<MessageKey|null>(null);
+  const {selected,setSelected,pending,error,close,saved,run}=useCrudDrawer<string>({errorKeys:dictionaryErrorKeys,errorAliases:dictionaryErrorAliases});
   const query=useQuery({queryKey:["dictionaries",request],queryFn:({signal})=>api<PageResult<Dictionary>>(`/platform/dictionaries?${listRequestParams(request)}`,{signal})});
   const detail=useQuery({queryKey:["dictionary",selected],enabled:typeof selected==="string",queryFn:({signal})=>api<Dictionary>(`/platform/dictionaries/${selected}`,{signal})});
   const policyLocked=!!selected && !!detail.data && policyDictionaryCodes.has(detail.data.code);
   const ready=selected===null || (!!detail.data && !detail.isFetching && !detail.error);
-  const close=()=>{setSelected(undefined);setError(null);};
   const refresh=()=>Promise.all([client.invalidateQueries({queryKey:["dictionaries"]}),client.invalidateQueries({queryKey:["feedback-options"]}),client.invalidateQueries({queryKey:["dictionary-options"]}),client.invalidateQueries({queryKey:["resource-select"]}),client.invalidateQueries({queryKey:["resource-select-detail"]})]);
   if(dictionaryId) {
     if(itemType.isPending)return <Spin />;
@@ -50,17 +48,15 @@ export function DictionariesPage({canWrite}:{canWrite:boolean}) {
     <ResourceTable<Dictionary> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={()=>void query.refetch()}
       actions={canWrite && <Space><Button type="primary" onClick={()=>setSelected(null)}>{t("createDictionary")}</Button><DictionaryImport /><DictionaryFileImport /></Space>}
       columns={[{title:t("dictionaryCode"),dataIndex:"code",search:true},{title:t("name"),dataIndex:"name", search: true},{title:t("dictionaryStructure"),dataIndex:"structure",valueEnum:{TREE:{text:t("treeDictionary")},FLAT:{text:t("flatDictionary")}},render:(_,row)=>t(row.structure==="TREE"?"treeDictionary":"flatDictionary")},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,row)=><Tag color={row.enabled?"success":"default"}>{t(row.enabled?"enabled":"disabled")}</Tag>},
-        {title:t("actions"),search:false,render:(_,row)=><TableActions><DictionaryExport id={row.id} /><Button type="link" onClick={()=>showItems(row.id)}>{t("dictionaryItems")}</Button><Button type="link" onClick={()=>setSelected(row.id)}>{t(canWrite?"edit":"details")}</Button>{canWrite && !policyDictionaryCodes.has(row.code) && <DeleteAction name={row.name} onDelete={async()=>{
-          await mutate(`/platform/dictionaries/${row.id}?version=${row.version}`,"DELETE",{});if(query.data?.items.length===1 && request.page>1)setRequest({...request,page:request.page-1});await refresh();
+        {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions><DictionaryExport id={row.id} /><Button type="link" onClick={()=>showItems(row.id)}>{t("dictionaryItems")}</Button><Button type="link" onClick={()=>setSelected(row.id)}>{t(canWrite?"edit":"details")}</Button>{canWrite && !policyDictionaryCodes.has(row.code) && <DeleteAction name={row.name} onDelete={async()=>{
+          await mutate(`/platform/dictionaries/${row.id}?version=${row.version}`,"DELETE",{});setRequest(pageAfterRemoval(request,query.data?.items.length));await refresh();
         }}/>}</TableActions>}]} />
     <FormDrawer open={selected!==undefined} title={t(selected?"dictionaries":"createDictionary")} formId="dictionary-editor" pending={pending} submitDisabled={!ready || !canWrite} onClose={close}>
       <FeedbackBubble id="dictionary-editor-error" content={error ? t(error) : detail.error && selected !== null ? t("unavailable") : undefined}/>
       {selected && detail.isFetching && <Spin />}
-      {ready && <Form key={selected??"new"} id="dictionary-editor" layout="vertical" disabled={pending || !canWrite} initialValues={selected?detail.data:dictionaryDefaults} onFinish={async values=>{
-        setPending(true);setError(null);
-        try {await mutate(selected?`/platform/dictionaries/${selected}`:"/platform/dictionaries",selected?"PUT":"POST",{...values,version:selected?detail.data?.version:undefined});close();await refresh();}
-        catch(e) {setError(messageKeyFor(e,dictionaryErrorKeys,"unavailable",dictionaryErrorAliases));}finally{setPending(false);}
-      }}>
+      {ready && <Form key={selected??"new"} id="dictionary-editor" layout="vertical" disabled={pending || !canWrite} initialValues={selected?detail.data:dictionaryDefaults} onFinish={values=>run(async()=>{
+await saveRecord("/platform/dictionaries",selected,{...values,version:selected?detail.data?.version:undefined});saved();await refresh();
+      })}>
         <DictionaryFields codeReadOnly={!!selected} policyLocked={policyLocked} policyEnabledLocked={policyLocked && !!detail.data?.enabled}/>
       </Form>}
     </FormDrawer>

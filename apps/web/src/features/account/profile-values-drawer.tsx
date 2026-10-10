@@ -3,13 +3,13 @@ import { PlatformForm as Form } from "@/platform/components/platform-form";
 import {ProfileCompletion} from "./profile-completion";
 import {DictionarySelect} from "@/platform/components/dictionary-select";
 import {Button, Empty, Input, InputNumber, Select, Spin} from "antd";
-import {useState} from "react";
 import {useQuery,useQueryClient} from "@tanstack/react-query";
-import {api,ApiError,mutate} from "@/platform/api/client";
+import {api,mutate} from "@/platform/api/client";
+import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import {FormDrawer} from "@/platform/components/form-drawer";
 import {usePreferences} from "@/platform/providers";
-import type {MessageKey} from "@/platform/i18n/messages";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
+import { preserveProfileFieldValues } from "@/platform/profile-fields/values";
 type Field={key:string;label:string;description:string;type:'TEXT'|'TEXTAREA'|'NUMBER'|'DATE'|'SELECT';required:boolean;placeholder:string;groupKey:string;groupLabel:string;options:string[];dictionaryCode?:string|null};
 type DictionarySelection={itemId:string;label:string;enabled:boolean};
 type Snapshot={version:number;schemaVersion:number;fields:Field[];values:Record<string,string>;dictionarySelections?:Record<string,DictionarySelection>};
@@ -33,17 +33,15 @@ function ProfileValueFields({fields,values,dictionarySelections}:{fields:Field[]
  {field.type==='SELECT'&&field.dictionaryCode?<DictionarySelect code={field.dictionaryCode} currentSelection={currentSelection}/>:field.type==='SELECT'?<Select allowClear placeholder={field.placeholder} options={field.options.map(value=>({value,label:value}))}/>:field.type==='NUMBER'?<InputNumber stringMode placeholder={field.placeholder}/>:field.type==='TEXTAREA'?<Input.TextArea rows={4} maxLength={2000} placeholder={field.placeholder}/>:<Input type={field.type==='DATE'?'date':'text'} maxLength={200} placeholder={field.placeholder}/>}</Form.Item>})}</fieldset>)}</>;
 }
 export function ProfileValuesDrawer({open,onClose}:{open:boolean;onClose:()=>void}){
- const {t}=usePreferences();const client=useQueryClient();const [pending,setPending]=useState(false),[error,setError]=useState<MessageKey|null>(null);
+ const {t}=usePreferences();const client=useQueryClient();const {pending,error,setError,run}=useSubmitAction({errorKeys:["staleRecord","invalidProfileValues"]});
  const query=useQuery({queryKey:['profile-values'],queryFn:({signal})=>api<Snapshot>('/account/profile-values',{signal}),enabled:open,staleTime:0});
  const initialValues=query.data?profileFormValues(query.data):undefined;
  return <FormDrawer open={open} title={t('fieldCustomGroup')} formId="account-profile-values" pending={pending} submitDisabled={!query.data||query.isFetching||!!query.error||query.data.fields.length===0} onClose={()=>{setError(null);onClose();}}>
  <ProfileCompletion open={open}/>
  {query.isFetching&&<Spin/>}<FeedbackBubble id="account-profile-values-error" content={error ? t(error) : query.error ? t("unavailable") : undefined}/>
  {!query.data&&query.error&&<Button onClick={()=>void query.refetch()}>{t('retry')}</Button>}
- {query.data&&!query.isFetching&&initialValues&&<Form id="account-profile-values" key={`${query.data.version}-${query.data.schemaVersion}`} layout="vertical" disabled={pending} initialValues={initialValues} onFinish={async values=>{
-  if(pending)return;setPending(true);setError(null);
-  try{await mutate('/account/profile-values','PUT',{version:query.data.version,schemaVersion:query.data.schemaVersion,values:Object.fromEntries(query.data.fields.map(field=>[field.key,values[field.key]??'']))});onClose();await Promise.all([client.invalidateQueries({queryKey:['profile-completion']}),client.invalidateQueries({queryKey:['profile-values']}),client.invalidateQueries({queryKey:['profile']}),client.invalidateQueries({queryKey:['users']})]);}
-  catch(e){const key=e instanceof ApiError?e.message:'unavailable';setError(key==='staleRecord'||key==='invalidProfileValues'?key:'unavailable');}finally{setPending(false);}
- }}>{query.data.fields.length?<ProfileValueFields fields={query.data.fields} values={initialValues} dictionarySelections={query.data.dictionarySelections}/>:<Empty description={t('noCustomProfileFields')}/>}</Form>}
+ {query.data&&!query.isFetching&&initialValues&&<Form id="account-profile-values" key={`${query.data.version}-${query.data.schemaVersion}`} layout="vertical" disabled={pending} initialValues={initialValues} onFinish={values=>run(async()=>{
+await mutate('/account/profile-values','PUT',{version:query.data.version,schemaVersion:query.data.schemaVersion,values:preserveProfileFieldValues(values,query.data.fields,initialValues)});onClose();await Promise.all([client.invalidateQueries({queryKey:['profile-completion']}),client.invalidateQueries({queryKey:['profile-values']}),client.invalidateQueries({queryKey:['profile']}),client.invalidateQueries({queryKey:['users']})]);
+ })}>{query.data.fields.length?<ProfileValueFields fields={query.data.fields} values={initialValues} dictionarySelections={query.data.dictionarySelections}/>:<Empty description={t('noCustomProfileFields')}/>}</Form>}
  </FormDrawer>;
 }

@@ -1,10 +1,11 @@
 package com.lumira.platform.navigation;
 
+import com.lumira.platform.modules.ModuleEndpoint;
+import com.lumira.platform.navigation.api.NavigationMenuResponse;
 import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import com.lumira.platform.modules.ModuleEndpoint;
 
 @RestController
 @RequestMapping("/api/platform/navigation")
@@ -23,34 +24,45 @@ public class NavigationController {
     }
 
     @GetMapping("/menus")
-    public List<NavigationMenuRepository.Menu> list(Authentication auth) {
-        return service.adminList(auth.getName());
+    public List<NavigationMenuResponse> list(Authentication auth) {
+        return service.adminList(auth.getName()).stream()
+                .map(NavigationMenuResponse::from)
+                .toList();
     }
 
     @GetMapping("/menus/{id}")
-    public NavigationMenuRepository.Menu find(@PathVariable UUID id, Authentication auth) {
-        return service.find(id, auth.getName());
+    public NavigationMenuResponse find(@PathVariable UUID id, Authentication auth) {
+        return NavigationMenuResponse.from(service.find(id, auth.getName()));
     }
 
     @PostMapping("/menus")
     @ResponseStatus(HttpStatus.CREATED)
-    public NavigationMenuRepository.Menu create(@RequestBody NavigationMenuService.Input input, Authentication auth) {
-        return service.create(input, auth.getName());
+    public NavigationMenuResponse create(
+            @RequestBody NavigationMenuService.Input input, Authentication auth) {
+        return NavigationMenuResponse.from(service.create(input, auth.getName()));
     }
 
     @PutMapping("/menus/{id}")
-    public NavigationMenuRepository.Menu update(@PathVariable UUID id, @RequestBody NavigationMenuService.Input input, Authentication auth) {
-        return service.update(id, input, auth.getName());
+    public NavigationMenuResponse update(
+            @PathVariable UUID id,
+            @RequestBody NavigationMenuService.Input input,
+            Authentication auth) {
+        return NavigationMenuResponse.from(service.update(id, input, auth.getName()));
     }
 
     @PatchMapping("/menus/{id}/status")
-    public NavigationMenuRepository.Menu status(@PathVariable UUID id, @RequestBody StatusInput input, Authentication auth) {
-        return service.status(id, input.version(), input.enabled(), auth.getName());
+    public NavigationMenuResponse status(
+            @PathVariable UUID id, @RequestBody StatusInput input, Authentication auth) {
+        return NavigationMenuResponse.from(
+                service.status(id, input.version(), input.enabled(), auth.getName()));
     }
 
     @PutMapping("/menus/reorder")
-    public List<NavigationMenuRepository.Menu> reorder(@RequestBody List<NavigationMenuService.ReorderItem> input, Authentication auth) {
-        return service.reorder(input, auth.getName());
+    public List<NavigationMenuResponse> reorder(
+            @RequestBody List<NavigationMenuService.ReorderItem> input, Authentication auth) {
+        return service.reorder(input, auth.getName()).stream()
+                .map(NavigationMenuResponse::from)
+                .toList();
     }
 
     @DeleteMapping("/menus/{id}")

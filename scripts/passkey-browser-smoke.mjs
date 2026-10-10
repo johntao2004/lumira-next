@@ -38,7 +38,7 @@ try {
   await expect(page.getByRole('tab', { name: '通行密钥设置', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByLabel('启用通行密钥', { exact: true })).toBeVisible();
   await page.locator('#data_rpName').fill('Passkey browser QA');
-  await page.locator('#changeReason').fill('Passkey browser configuration');
+  assert.equal(await page.locator('#changeReason').count(), 0, 'Passkey form must not ask for a change reason');
   const save = page.waitForResponse(response => response.url().endsWith('/api/platform/settings/passkey') && response.request().method() === 'PUT');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   assert.equal((await save).status(), 200);

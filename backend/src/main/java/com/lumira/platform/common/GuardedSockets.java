@@ -36,28 +36,40 @@ public final class GuardedSockets {
     static final class GuardedSocket extends Socket {
         private final Predicate<InetAddress> allowed;
         private final AddressResolver resolver;
+        private final DeadlineExchange.Scope deadline;
 
         GuardedSocket(Predicate<InetAddress> allowed) {
-            this(allowed, InetAddress::getAllByName);
+            this(allowed, InetAddress::getAllByName, null);
         }
 
         GuardedSocket(Predicate<InetAddress> allowed, AddressResolver resolver) {
+            this(allowed, resolver, null);
+        }
+
+        GuardedSocket(
+                Predicate<InetAddress> allowed,
+                AddressResolver resolver,
+                DeadlineExchange.Scope deadline) {
             this.allowed = allowed;
             this.resolver = resolver;
+            this.deadline = deadline;
         }
 
         @Override
         public void connect(SocketAddress endpoint, int timeout) throws IOException {
+            if (deadline != null) deadline.check();
             if (!(endpoint instanceof InetSocketAddress target) || target.getPort() < 0) {
                 throw new ConnectException("Destination not permitted");
             }
             String host = target.getHostString();
             InetAddress[] addresses = resolveTarget(host, target.getAddress());
+            if (deadline != null) deadline.check();
             if (addresses.length == 0) throw new ConnectException("Destination not permitted");
             for (InetAddress address : addresses) {
                 if (address == null || !allowed.test(address))
                     throw new ConnectException("Destination not permitted");
             }
+            if (deadline != null) deadline.check();
             // Validate every answer, then pin this socket to one address. A failed Socket.connect
             // cannot be reliably retried on the same Socket instance.
             super.connect(new InetSocketAddress(addresses[0], target.getPort()), timeout);
@@ -133,25 +145,41 @@ public final class GuardedSockets {
         private final Predicate<InetAddress> allowed;
         private final AddressResolver resolver;
         private final int connectTimeoutMillis;
+        private final DeadlineExchange.Scope deadline;
 
         public Factory(SSLSocketFactory tls, Predicate<InetAddress> allowed) {
-            this(tls, allowed, InetAddress::getAllByName, 5_000);
+            this(tls, allowed, InetAddress::getAllByName, 5_000, null);
         }
 
         public Factory(
                 SSLSocketFactory tls, Predicate<InetAddress> allowed, AddressResolver resolver) {
-            this(tls, allowed, resolver, 5_000);
+            this(tls, allowed, resolver, 5_000, null);
+        }
+
+        public Factory(
+                SSLSocketFactory tls,
+                Predicate<InetAddress> allowed,
+                AddressResolver resolver,
+                DeadlineExchange.Scope deadline) {
+            this(tls, allowed, resolver, 5_000, deadline);
         }
 
         private Factory(
                 SSLSocketFactory tls,
                 Predicate<InetAddress> allowed,
                 AddressResolver resolver,
-                int connectTimeoutMillis) {
+                int connectTimeoutMillis,
+                DeadlineExchange.Scope deadline) {
             this.tls = tls;
             this.allowed = allowed;
             this.resolver = resolver;
             this.connectTimeoutMillis = connectTimeoutMillis;
+            this.deadline = deadline;
+        }
+
+        private GuardedSocket newSocket() throws IOException {
+            var socket = new GuardedSocket(allowed, resolver, deadline);
+            return deadline == null ? socket : deadline.track(socket);
         }
 
         /**
@@ -159,13 +187,13 @@ public final class GuardedSockets {
          * #createSocket(Socket, String, int, boolean)}.
          */
         @Override
-        public Socket createSocket() {
-            return new GuardedSocket(allowed, resolver);
+        public Socket createSocket() throws IOException {
+            return newSocket();
         }
 
         @Override
         public Socket createSocket(String host, int port) throws IOException {
-            var plain = new GuardedSocket(allowed, resolver);
+            var plain = newSocket();
             try {
                 plain.connect(InetSocketAddress.createUnresolved(host, port), connectTimeoutMillis);
                 return tls.createSocket(plain, host, port, true);
@@ -278,6 +306,29 @@ public final class GuardedSockets {
                 PublicCloudDns::resolvePublic);
     }
 
+    public static Response exchangePublicCloud(
+            URI uri,
+            String method,
+            Map<String, String> headers,
+            byte[] body,
+            Duration timeout,
+            int maxResponseBytes,
+            DeadlineExchange.Scope deadline)
+            throws IOException {
+        return exchangeWithTimeouts(
+                uri,
+                method,
+                headers,
+                body,
+                Duration.ofSeconds(5),
+                timeout,
+                maxResponseBytes,
+                (SSLSocketFactory) SSLSocketFactory.getDefault(),
+                PublicHosts::isPublicAddress,
+                PublicCloudDns::resolvePublic,
+                deadline);
+    }
+
     static Response exchangePinned(
             URI uri,
             String method,
@@ -323,7 +374,8 @@ public final class GuardedSockets {
                 maxResponseBytes,
                 tls,
                 allowed,
-                resolver);
+                resolver,
+                null);
     }
 
     private static Response exchange(
@@ -347,7 +399,8 @@ public final class GuardedSockets {
                 maxResponseBytes,
                 tls,
                 allowed,
-                resolver);
+                resolver,
+                null);
     }
 
     private static Response exchangeWithTimeouts(
@@ -360,7 +413,8 @@ public final class GuardedSockets {
             int maxResponseBytes,
             SSLSocketFactory tls,
             Predicate<InetAddress> allowed,
-            AddressResolver resolver)
+            AddressResolver resolver,
+            DeadlineExchange.Scope deadline)
             throws IOException {
         if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null)
             throw new IOException("HTTPS destination required");
@@ -371,7 +425,12 @@ public final class GuardedSockets {
             int readTimeoutMillis =
                     (int) Math.min(Integer.MAX_VALUE, Math.max(1L, readTimeout.toMillis()));
             connection.setSSLSocketFactory(
-                    new Factory(tls, allowed, resolver, Math.min(5_000, connectTimeoutMillis)));
+                    new Factory(
+                            tls,
+                            allowed,
+                            resolver,
+                            Math.min(5_000, connectTimeoutMillis),
+                            deadline));
             connection.setInstanceFollowRedirects(false);
             connection.setUseCaches(false);
             connection.setConnectTimeout(Math.min(5_000, connectTimeoutMillis));
@@ -388,7 +447,12 @@ public final class GuardedSockets {
             int status = connection.getResponseCode();
             InputStream stream =
                     status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            byte[] content = stream == null ? new byte[0] : readBounded(stream, maxResponseBytes);
+            byte[] content =
+                    stream == null
+                            ? new byte[0]
+                            : readBounded(
+                                    deadline == null ? stream : deadline.track(stream),
+                                    maxResponseBytes);
             return new Response(status, content);
         } catch (java.net.SocketTimeoutException timedOut) {
             throw new HttpTimeoutException("request timed out");

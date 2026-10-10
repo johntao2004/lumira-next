@@ -20,19 +20,37 @@ class SecuritySettingsTest {
 
     @Test
     void requirementsAreAppliedWithoutAllowingInvalidBounds() {
-        var policy = new SecuritySettings(
-                12, true, true, true, false,
-                2, 4, 2, 4, 600, 60, 3, 5, 3);
+        var policy =
+                new SecuritySettings(12, true, true, true, false, 2, 4, 2, 4, 600, 60, 3, 5, 3);
         policy.validate();
         assertFalse(policy.passwordValid("onlylowercasepassword"));
         assertFalse(policy.passwordValid("Onlylowercasepassword"));
         assertFalse(policy.passwordValid("Onlylowercase1"));
         assertFalse(policy.passwordValid("AAaa!!password"));
+        assertFalse(policy.passwordValid("Q!r7aBc9x-Z9"));
+        assertFalse(policy.passwordValid("Q!r73219x-Z9"));
         assertTrue(policy.passwordValid("Aa-long-pword!"));
 
-        var invalid = new SecuritySettings(
-                7, false, false, false, true,
-                2, 4, 2, 4, 600, 60, 3, 5, 3);
+        var invalid =
+                new SecuritySettings(7, false, false, false, true, 2, 4, 2, 4, 600, 60, 3, 5, 3);
         assertThrows(ResponseStatusException.class, invalid::validate);
+    }
+
+    @Test
+    void verificationPolicySupportsTheDatabaseAlignedUpperBounds() {
+        var boundary =
+                new SecuritySettings(
+                        8, false, false, false, true, 1, 1, 1, 1, 60, 1, 10_000, 10_000, 20);
+        assertDoesNotThrow(boundary::validate);
+
+        var tooManyRequests =
+                new SecuritySettings(
+                        8, false, false, false, true, 1, 1, 1, 1, 60, 1, 10_001, 10_000, 20);
+        assertThrows(ResponseStatusException.class, tooManyRequests::validate);
+
+        var tooManyFailures =
+                new SecuritySettings(
+                        8, false, false, false, true, 1, 1, 1, 1, 60, 1, 10_000, 10_000, 21);
+        assertThrows(ResponseStatusException.class, tooManyFailures::validate);
     }
 }

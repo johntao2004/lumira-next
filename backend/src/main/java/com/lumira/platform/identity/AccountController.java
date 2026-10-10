@@ -30,7 +30,9 @@ public class AccountController {
 
     @PutMapping("/profile")
     public ProfileService.View updateProfile(
-            @com.lumira.platform.common.BoundedBody(maxBytes = 16384, errorCode = "invalidProfile")
+            @com.lumira.platform.common.BoundedBody(
+                            maxBytes = 128 * 1024,
+                            errorCode = "invalidProfile")
                     @RequestBody
                     ProfileService.Input input,
             Authentication auth) {

@@ -70,7 +70,7 @@ export function OutboxPage({ canReplay = false }: { canReplay?: boolean }) {
       { title: t("eventLastError"), dataIndex: "lastError", render: (_, entry) => entry.lastError ?? "—" },
       { title: t("eventCreatedAt"), dataIndex: "createdAt", valueType: "dateTimeRange", render: (_, entry) => formatTime(entry.createdAt) },
       { title: t("eventDeliveredAt"), dataIndex: "deliveredAt", valueType: "dateTimeRange", render: (_, entry) => formatTime(entry.deliveredAt) },
-      ...(canReplay ? [{ title: t("actions"), search: false, render: (_: unknown, entry: Entry) => entry.status === "DEAD_LETTER" ? <TableActions><Button type="link" onClick={() => { setReplayTarget(entry); setReplayReason(""); }}>{t("eventReplay")}</Button></TableActions> : null } as ProColumns<Entry>] : []),
+      ...(canReplay ? [{ title: t("actions"), key: "actions", search: false, render: (_: unknown, entry: Entry) => entry.status === "DEAD_LETTER" ? <TableActions><Button type="link" onClick={() => { setReplayTarget(entry); setReplayReason(""); }}>{t("eventReplay")}</Button></TableActions> : null } as ProColumns<Entry>] : []),
       ]}
     />
     <Modal open={!!replayTarget} title={t("eventReplay")} onCancel={closeReplay} onOk={() => void submitReplay()} okText={t("eventReplay")} cancelText={t("cancel")} okButtonProps={{ loading: replayPending, disabled: !replayReason.trim() }} cancelButtonProps={{ disabled: replayPending }} destroyOnHidden>

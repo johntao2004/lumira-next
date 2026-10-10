@@ -20,6 +20,16 @@ spring:
   threads:
     virtual:
       enabled: true
+springdoc:
+  api-docs:
+    enabled: true
+    path: /api/platform/api-docs
+  cache:
+    disabled: true
+  paths-to-match: /api/**
+  paths-to-exclude: /api/platform/api-docs,/api/platform/api-docs/**,/api/platform/api-docs.yaml,/api/internal,/api/internal/**,/api/health,/api/health/**,/internal,/internal/**,/health,/health/**,/actuator/**
+  swagger-ui:
+    enabled: false
 server:
   address: ${LUMIRA_BIND:127.0.0.1}
   port: ${LUMIRA_PORT:8090}
@@ -48,8 +58,17 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,db,pluginRuntime
+        liveness:
+          include: livenessState
       show-details: never
 lumira:
+  plugins:
+    path: ${LUMIRA_PLUGINS_PATH:.runtime/plugins}
+    fixed-graph: ${LUMIRA_PLUGINS_FIXED_GRAPH:false}
+    approved-graph: ${LUMIRA_PLUGINS_APPROVED_GRAPH:plugins/approved-graph.json}
   metrics:
     # Bearer token required for /actuator/prometheus (min 32 chars); unset means the endpoint is disabled.
     token: ${LUMIRA_METRICS_TOKEN:}

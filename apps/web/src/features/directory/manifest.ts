@@ -11,4 +11,7 @@ export const directoryManifest = {
     { id: "roles", label: "roles", permission: "platform:roles:read", group: "user-management", order: 30 },
     { id: "organizations", label: "organizations", permission: "platform:organizations:read", group: "user-management", order: 40 },
   ],
+  tabGroups: [
+    { id: "user-activity", routes: ["users", "online-users"], anchor: "users", collapse: "when-all-visible" },
+  ],
 } as const satisfies FrontendModuleManifest;

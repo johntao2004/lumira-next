@@ -1,13 +1,18 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourcePath = path.join(root, "apps/web/src/platform/i18n/messages.ts");
+const localeDirectory = path.join(root, "apps/web/src/platform/i18n/messages");
 const outputPath = path.resolve(process.argv[2] ?? path.join(root, "backend/target/generated-resources/localization/builtin-messages.json"));
 const source = readFileSync(sourcePath, "utf8");
-const declaration = /export\s+const\s+messages\s*=\s*/u.exec(source);
-if (!declaration) throw new Error("Could not locate the static messages declaration");
+const localeDeclaration = /export\s+const\s+staticLocales\s*=\s*(\[[^\]]*\])\s+as\s+const\b/u.exec(source);
+if (!localeDeclaration) throw new Error("Could not locate the static locale declaration");
+const staticLocales = JSON.parse(localeDeclaration[1]);
+if (!Array.isArray(staticLocales) || staticLocales.length === 0 || staticLocales.some((locale) => typeof locale !== "string")) {
+  throw new Error("Static locales must be a non-empty string list");
+}
 
 class LiteralObjectReader {
   constructor(text, start) {
@@ -102,6 +107,34 @@ class LiteralObjectReader {
     return match[0];
   }
 
+  stringDictionary(locale, separatorMessage) {
+    this.consume("{");
+    const messages = Object.create(null);
+    while (true) {
+      this.skipTrivia();
+      if (this.text[this.index] === "}") {
+        this.index++;
+        break;
+      }
+      const key = this.propertyName();
+      if (Object.hasOwn(messages, key)) this.fail(`duplicate key ${key} in ${locale}`);
+      this.consume(":");
+      messages[key] = this.string();
+      this.skipTrivia();
+      if (this.text[this.index] === ",") this.index++;
+      else if (this.text[this.index] !== "}") this.fail(separatorMessage);
+    }
+    if (Object.keys(messages).length === 0) this.fail(`empty locale dictionary ${locale}`);
+    return messages;
+  }
+
+  localeDictionary(locale) {
+    const messages = this.stringDictionary(locale, `expected comma or end of ${locale} dictionary`);
+    this.skipTrivia();
+    if (!/^as\s+const\b/u.test(this.text.slice(this.index))) this.fail(`${locale} must remain an "as const" string dictionary`);
+    return messages;
+  }
+
   dictionary() {
     this.consume("{");
     const locales = Object.create(null);
@@ -114,24 +147,7 @@ class LiteralObjectReader {
       const locale = this.propertyName();
       if (Object.hasOwn(locales, locale)) this.fail(`duplicate locale ${locale}`);
       this.consume(":");
-      this.consume("{");
-      const messages = Object.create(null);
-      while (true) {
-        this.skipTrivia();
-        if (this.text[this.index] === "}") {
-          this.index++;
-          break;
-        }
-        const key = this.propertyName();
-        if (Object.hasOwn(messages, key)) this.fail(`duplicate key ${key} in ${locale}`);
-        this.consume(":");
-        messages[key] = this.string();
-        this.skipTrivia();
-        if (this.text[this.index] === ",") this.index++;
-        else if (this.text[this.index] !== "}") this.fail("expected comma or end of locale dictionary");
-      }
-      if (Object.keys(messages).length === 0) this.fail(`empty locale dictionary ${locale}`);
-      locales[locale] = messages;
+      locales[locale] = this.stringDictionary(locale, "expected comma or end of locale dictionary");
       this.skipTrivia();
       if (this.text[this.index] === ",") this.index++;
       else if (this.text[this.index] !== "}") this.fail("expected comma or end of messages dictionary");
@@ -152,8 +168,32 @@ class LiteralObjectReader {
   }
 }
 
-const reader = new LiteralObjectReader(source, declaration.index + declaration[0].length);
-const catalog = reader.dictionary();
+const localeFiles = readdirSync(localeDirectory)
+  .filter((file) => file.endsWith(".ts"))
+  .map((file) => file.slice(0, -3))
+  .sort();
+const expectedLocaleFiles = staticLocales.map((locale) => locale.toLowerCase()).sort();
+if (JSON.stringify(expectedLocaleFiles) !== JSON.stringify(localeFiles)) {
+  throw new Error(`Static locale list does not match message modules: ${localeFiles.join(", ")}`);
+}
+const locales = Object.create(null);
+for (const locale of staticLocales) {
+  const localeSource = readFileSync(path.join(localeDirectory, `${locale.toLowerCase()}.ts`), "utf8");
+  const declaration = /export\s+const\s+messages\s*=\s*/u.exec(localeSource);
+  if (!declaration) throw new Error(`Could not locate the ${locale} messages declaration`);
+  const reader = new LiteralObjectReader(localeSource, declaration.index + declaration[0].length);
+  locales[locale] = reader.localeDictionary(locale);
+}
+const sourceLocale = staticLocales.includes("en") ? "en" : null;
+if (!sourceLocale) throw new Error("English source locale is missing");
+const keys = new Set(Object.keys(locales[sourceLocale]));
+for (const [locale, messages] of Object.entries(locales)) {
+  const unknown = Object.keys(messages).find((key) => !keys.has(key));
+  if (unknown) throw new Error(`Locale ${locale} contains a key not defined by ${sourceLocale}: ${unknown}`);
+  const missing = [...keys].find((key) => !Object.hasOwn(messages, key));
+  if (missing) throw new Error(`Locale ${locale} is missing a key defined by ${sourceLocale}: ${missing}`);
+}
+const catalog = { sourceLocale, locales, count: keys.size };
 const payload = {
   formatVersion: 1,
   sourceLocale: catalog.sourceLocale,

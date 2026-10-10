@@ -1,9 +1,9 @@
 package com.lumira.platform.identity;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.lumira.platform.identity.api.PasswordContract;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 class PasswordContractTest {
     @Test
@@ -18,6 +18,8 @@ class PasswordContractTest {
     void preventsBcryptTruncationDuringLegacyReads() {
         assertTrue(PasswordContract.compatibleWithStoredHash("x".repeat(72), "$2b$04$fixture"));
         assertFalse(PasswordContract.compatibleWithStoredHash("x".repeat(73), "$2b$04$fixture"));
-        assertTrue(PasswordContract.compatibleWithStoredHash("x".repeat(256), "{argon2id@lumira_v1}$argon2id$fixture"));
+        assertTrue(
+                PasswordContract.compatibleWithStoredHash(
+                        "x".repeat(256), "{argon2id@lumira_v1}$argon2id$fixture"));
     }
 }

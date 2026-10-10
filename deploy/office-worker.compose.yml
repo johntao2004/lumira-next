@@ -1,0 +1,39 @@
+name: lumira-next-office-worker
+services:
+  office-worker:
+    container_name: ${LUMIRA_OFFICE_WORKER_CONTAINER_NAME:-lumira-next-office-worker}
+    restart: unless-stopped
+    image: ${LUMIRA_OFFICE_WORKER_IMAGE:-lumira-office-worker:local}
+    build:
+      context: ..
+      dockerfile: deploy/office-worker.Dockerfile
+    environment:
+      LUMIRA_OFFICE_WORKER_TOKEN: ${LUMIRA_OFFICE_WORKER_TOKEN:?Set a private worker token}
+      LUMIRA_OFFICE_WORKER_TEST_MODE: ${LUMIRA_OFFICE_WORKER_TEST_MODE:-false}
+    labels:
+      com.lumira.office-worker.owner: ${LUMIRA_OFFICE_WORKER_OWNER:?Set a checkout-specific worker owner}
+    ports:
+      - 127.0.0.1:${LUMIRA_OFFICE_WORKER_HOST_PORT:-18091}:18091
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: "1.0"
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: [CMD, java, -XX:ActiveProcessorCount=1, -XX:+UseSerialGC, -XX:CICompilerCount=2, -Xss512k, -Xms8m, -Xmx32m, -XX:MaxMetaspaceSize=64m, -jar, /app/app.jar, --office-worker-healthcheck]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - office-worker
+networks:
+  office-worker:
+    name: ${LUMIRA_OFFICE_WORKER_NETWORK:-lumira-next-office-worker-private}
+    external: ${LUMIRA_OFFICE_WORKER_NETWORK_EXTERNAL:-false}

@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class DictionariesModuleConfiguration {
     @Bean
     PlatformModule dictionariesModule() {
-        return new PlatformModule("dictionaries", "字典管理", "1.0.0", List.of("identity", "platform"), true);
+        return new PlatformModule(
+                "dictionaries", "字典管理", "1.0.0", List.of("identity", "platform"), true);
     }
 }

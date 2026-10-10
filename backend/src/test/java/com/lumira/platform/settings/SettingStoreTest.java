@@ -24,9 +24,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 class SettingStoreTest {
     private final JdbcClient jdbc = mock(JdbcClient.class);
-    private final JdbcClient.StatementSpec statement = mock(JdbcClient.StatementSpec.class, RETURNS_SELF);
-    private final JdbcClient.MappedQuerySpec<SettingStore.Snapshot> result = mock(JdbcClient.MappedQuerySpec.class);
-    private final JdbcClient.MappedQuerySpec<Boolean> existsResult = mock(JdbcClient.MappedQuerySpec.class);
+    private final JdbcClient.StatementSpec statement =
+            mock(JdbcClient.StatementSpec.class, RETURNS_SELF);
+    private final JdbcClient.MappedQuerySpec<SettingStore.Snapshot> result =
+            mock(JdbcClient.MappedQuerySpec.class);
+    private final JdbcClient.MappedQuerySpec<Boolean> existsResult =
+            mock(JdbcClient.MappedQuerySpec.class);
     private final AdministrationPort guard = mock(AdministrationPort.class);
     private final AuditPort audit = mock(AuditPort.class);
     private final SettingStore store = new SettingStore(jdbc, guard, audit);
@@ -45,8 +48,13 @@ class SettingStoreTest {
         when(result.optional()).thenReturn(Optional.of(saved));
 
         assertSame(saved, store.save("watermark", "{}", "admin", 0, "Enable watermark"));
-        verify(jdbc).sql(argThat(sql -> sql.contains("INSERT INTO platform_setting")
-                && sql.contains("ON CONFLICT(section) DO NOTHING")));
+        verify(jdbc)
+                .sql(
+                        argThat(
+                                sql ->
+                                        sql.contains("INSERT INTO platform_setting")
+                                                && sql.contains(
+                                                        "ON CONFLICT(section) DO NOTHING")));
         verify(audit).append("admin", "setting.update", saved.id());
     }
 
@@ -56,8 +64,13 @@ class SettingStoreTest {
         when(result.optional()).thenReturn(Optional.of(saved));
 
         assertSame(saved, store.save("watermark", "{}", "admin", 5, "Update watermark"));
-        verify(jdbc).sql(argThat(sql -> sql.contains("UPDATE platform_setting")
-                && sql.contains("WHERE section=:section AND version=:expectedVersion")));
+        verify(jdbc)
+                .sql(
+                        argThat(
+                                sql ->
+                                        sql.contains("UPDATE platform_setting")
+                                                && sql.contains(
+                                                        "WHERE section=:section AND version=:expectedVersion")));
         verify(statement, times(2)).param("expectedVersion", 5L);
     }
 
@@ -72,14 +85,14 @@ class SettingStoreTest {
     }
 
     @Test
-    void securityAndPasskeySettingsStillRequireAnExplicitReason() {
-        for (String section : java.util.List.of("security", "passkey")) {
-            var error = assertThrows(ResponseStatusException.class,
-                    () -> store.save(section, "{}", "admin", 0, "  "));
-            assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
-            assertEquals("invalidChangeReason", error.getReason());
-        }
-        verify(jdbc, never()).sql(anyString());
+    void securityAndPasskeySettingsUseAnAuditDefaultWhenNoReasonIsSubmitted() {
+        var saved = new SettingStore.Snapshot(UUID.randomUUID(), 1, "{}");
+        when(result.optional()).thenReturn(Optional.of(saved));
+
+        store.save("security", "{}", "admin", 0, null);
+        store.save("passkey", "{}", "admin", 0, " ");
+
+        verify(statement, times(2)).param("reason", SettingStore.SYSTEM_SAVE_REASON);
     }
 
     @Test
@@ -96,10 +109,13 @@ class SettingStoreTest {
     void reportsStaleWritesWithoutAppendingAnAuditEntry() {
         when(result.optional()).thenReturn(Optional.empty());
 
-        var error = assertThrows(ResponseStatusException.class,
-                () -> store.save("watermark", "{}", "admin", 4, "Stale update"));
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> store.save("watermark", "{}", "admin", 4, "Stale update"));
         assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
         assertEquals("staleRecord", error.getReason());
-        verify(audit, never()).append(anyString(), anyString(), org.mockito.ArgumentMatchers.any(UUID.class));
+        verify(audit, never())
+                .append(anyString(), anyString(), org.mockito.ArgumentMatchers.any(UUID.class));
     }
 }

@@ -17,6 +17,19 @@ public class DictionaryLookupService implements ProfileDictionaryPort, Dictionar
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     @Override
+    public java.util.Map<String, Long> enabledOptionCounts(java.util.Collection<String> codes) {
+        return repository.enabledProfileOptionCounts(codes);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    @Override
+    public java.util.Map<String, java.util.List<ProfileDictionaryPort.PublicOption>> enabledOptions(
+            java.util.Collection<String> codes, int perDictionaryLimit) {
+        return repository.enabledProfileOptions(codes, perDictionaryLimit);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    @Override
     public java.util.Set<ProfileDictionaryPort.Selection> enabledSelections(
             java.util.Collection<ProfileDictionaryPort.Selection> requested) {
         return repository.enabledSelections(requested);

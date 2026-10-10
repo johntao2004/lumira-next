@@ -2,6 +2,8 @@
 
 此配置用于 Codex 云端的独立 Ubuntu 或 Debian 开发环境。数据库和管理员密码在云端生成；不复制本机 `.runtime`、数据库或上传文件。它不是生产部署配置。
 
+云端开发还需要 Docker Engine 与 Docker Compose v2，并要求当前 VM 用户可访问正在运行的 daemon。安装入口会先检查这两项；它不会在 VM 中自动安装 Docker。请先在一次性 VM 安装并启动 Docker，使用同一用户确认 `docker info` 和 `docker compose version` 成功，再运行 Lumira 安装脚本。Office 解析不使用宿主 JVM 回退。
+
 ## 环境配置
 
 先将需要继续开发的源码提交并同步到 GitHub。创建云端环境时选择对应仓库，安装脚本填写：
@@ -36,13 +38,14 @@ http://127.0.0.1:8010/user/login 均返回 HTTP 200，再开始依赖服务的�
 
 云端独立 PostgreSQL 18 集群必须使用 5432；端口冲突或配置指向其他数据库时停止并报错，不重置数据库。普通用户集群位于 `.runtime/cloud-postgres`，只监听回环地址；Unix socket 目录权限 0700，TCP 使用 SCRAM 密码认证。应用配置和密钥保存在权限受限的 `.runtime/local.json`。新环境首次启动会自动应用 Flyway 迁移，并在确认没有旧密文时生成开发加密密钥。已有密码及密钥不会替换。
 
-安装脚本执行前端类型检查、测试、构建和启用数据库集成测试的 Maven verify。启动脚本刷新锁文件依赖、构建当前后端、启动两个服务并检查健康；不要将安装时的构建结果当作新任务当前源码的验证结果。
+安装脚本执行前端类型检查、测试、构建和启用数据库集成测试的 Maven verify。Maven Office 格式回归通过真实的 1 GiB cgroup 限制 worker 执行；`scripts/office-worker-test.mjs` 先从当前源码重新 package 后端 JAR，再创建独立临时 worker/token 并在验证后停止，或使用成对传入的 `LUMIRA_OFFICE_WORKER_URL` 与 `LUMIRA_OFFICE_WORKER_TOKEN` 指向一次性 QA worker。启动脚本刷新锁文件依赖、构建当前后端，启动一个 Docker Office worker 和两个应用服务并检查健康；worker token 单独保存在 `.runtime/office-worker/`，不写入 `.runtime/local.json`。独立 worker Dockerfile 在 builder stage 从 Docker build context 中的当前源码构建 JAR，因此干净 checkout 不要求预先存在 `backend/target`；Maven Wrapper 会校验发行包 SHA-256。不要将安装时的构建结果当作新任务当前源码的验证结果。
 
 ## 开发任务命令
 
 ```sh
 bash scripts/cloud-start.sh
 bash scripts/cloud-check.sh
+pnpm test:java
 source scripts/cloud-env.sh
 node scripts/status.mjs
 python3 scripts/smoke.py

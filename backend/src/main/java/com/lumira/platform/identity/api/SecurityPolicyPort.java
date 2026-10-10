@@ -20,8 +20,7 @@ public interface SecurityPolicyPort {
             Integer verificationDailyLimit,
             Integer verificationFailureLimit) {
         public static Policy defaults() {
-            return new Policy(12, false, false, false, true,
-                    30, 120, 10, 60, 600, 60, 10, 10, 5);
+            return new Policy(12, false, false, false, true, 30, 120, 10, 60, 600, 60, 10, 10, 5);
         }
 
         public boolean passwordValid(String value) {
@@ -31,20 +30,40 @@ public interface SecurityPolicyPort {
             boolean lower = false;
             boolean special = false;
             boolean repeated = false;
+            boolean sequential = false;
             int previous = -1;
-            for (int offset = 0; offset < value.length();) {
+            int beforePreviousFolded = -1;
+            int previousFolded = -1;
+            for (int offset = 0; offset < value.length(); ) {
                 int codePoint = value.codePointAt(offset);
                 upper |= Character.isUpperCase(codePoint);
                 lower |= Character.isLowerCase(codePoint);
                 special |= !Character.isLetterOrDigit(codePoint);
                 repeated |= previous == codePoint;
+                int folded = Character.toLowerCase(codePoint);
+                sequential |= isSequence(beforePreviousFolded, previousFolded, folded);
                 previous = codePoint;
+                beforePreviousFolded = previousFolded;
+                previousFolded = folded;
                 offset += Character.charCount(codePoint);
             }
             return (!passwordRequireUppercase || upper)
                     && (!passwordRequireLowercase || lower)
                     && (!passwordRequireSpecialCharacter || special)
-                    && (passwordAllowConsecutiveCharacters || !repeated);
+                    && (passwordAllowConsecutiveCharacters || !(repeated || sequential));
+        }
+
+        /** Three adjacent letters or digits in ascending/descending code-point order. */
+        private static boolean isSequence(int first, int second, int third) {
+            boolean sameClass =
+                    (Character.isLetter(first)
+                                    && Character.isLetter(second)
+                                    && Character.isLetter(third))
+                            || (Character.isDigit(first)
+                                    && Character.isDigit(second)
+                                    && Character.isDigit(third));
+            int step = second - first;
+            return sameClass && (step == 1 || step == -1) && third - second == step;
         }
     }
 }

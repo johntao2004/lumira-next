@@ -6,7 +6,12 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-public record PageRequest(int page, int pageSize, String search, Map<String, String> filters, Map<String, String> filterModes) {
+public record PageRequest(
+        int page,
+        int pageSize,
+        String search,
+        Map<String, String> filters,
+        Map<String, String> filterModes) {
     private static final Pattern FILTER_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,100}");
 
     public PageRequest(int page, int pageSize, String search) {
@@ -27,31 +32,43 @@ public record PageRequest(int page, int pageSize, String search, Map<String, Str
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Too many list filters");
         }
         for (var entry : filters.entrySet()) {
-            if (!FILTER_NAME.matcher(entry.getKey()).matches() || entry.getValue() == null || entry.getValue().length() > 512) {
+            if (!FILTER_NAME.matcher(entry.getKey()).matches()
+                    || entry.getValue() == null
+                    || entry.getValue().length() > 512) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid list filter");
             }
         }
         for (var entry : filterModes.entrySet()) {
-            if (!FILTER_NAME.matcher(entry.getKey()).matches() || !SetHolder.MODES.contains(entry.getValue())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid list filter mode");
+            if (!FILTER_NAME.matcher(entry.getKey()).matches()
+                    || !SetHolder.MODES.contains(entry.getValue())) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Invalid list filter mode");
             }
         }
     }
 
     /** Parse the `filter.*` and `filterMode.*` query parameters shared by resource tables. */
-    public static PageRequest fromQueryParameters(int page, int pageSize, String search, Map<String, String> parameters) {
+    public static PageRequest fromQueryParameters(
+            int page, int pageSize, String search, Map<String, String> parameters) {
         var filters = new LinkedHashMap<String, String>();
         var modes = new LinkedHashMap<String, String>();
-        if (parameters != null) parameters.forEach((key, value) -> {
-            if (key.startsWith("filter.")) filters.put(key.substring("filter.".length()), value);
-            else if (key.startsWith("filterMode.")) modes.put(key.substring("filterMode.".length()), value);
-        });
+        if (parameters != null)
+            parameters.forEach(
+                    (key, value) -> {
+                        if (key.startsWith("filter."))
+                            filters.put(key.substring("filter.".length()), value);
+                        else if (key.startsWith("filterMode."))
+                            modes.put(key.substring("filterMode.".length()), value);
+                    });
         return new PageRequest(page, pageSize, search, filters, modes);
     }
 
-    public long offset() { return (long) (page - 1) * pageSize; }
+    public long offset() {
+        return (long) (page - 1) * pageSize;
+    }
 
     private static final class SetHolder {
-        private static final java.util.Set<String> MODES = java.util.Set.of("contains", "exact", "range");
+        private static final java.util.Set<String> MODES =
+                java.util.Set.of("contains", "exact", "range");
     }
 }

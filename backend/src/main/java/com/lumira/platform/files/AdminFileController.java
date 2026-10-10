@@ -2,6 +2,7 @@ package com.lumira.platform.files;
 
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.files.api.ManagedFileResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -20,7 +21,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Global file center. Metadata is permission protected; payloads are streamed without buffering. */
+/**
+ * Global file center. Metadata is permission protected; payloads are streamed without buffering.
+ */
 @com.lumira.platform.modules.ModuleEndpoint("files")
 @RestController
 @RequestMapping("/api/platform/files")
@@ -32,34 +35,55 @@ public class AdminFileController {
     }
 
     @GetMapping
-    public PageResult<FileRepository.ManagedEntry> list(
+    public PageResult<ManagedFileResponse> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(defaultValue = "") String search,
-            @RequestParam java.util.Map<String,String> parameters,
+            @RequestParam java.util.Map<String, String> parameters,
             Authentication actor) {
-        return files.listManaged(actor.getName(), PageRequest.fromQueryParameters(page, pageSize, search, parameters));
+        return files.listManaged(
+                        actor.getName(),
+                        PageRequest.fromQueryParameters(page, pageSize, search, parameters))
+                .map(ManagedFileResponse::from);
     }
 
     @GetMapping("/trash")
-    public PageResult<FileRepository.ManagedEntry> trash(
+    public PageResult<ManagedFileResponse> trash(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(defaultValue = "") String search,
-            @RequestParam java.util.Map<String,String> parameters,
+            @RequestParam java.util.Map<String, String> parameters,
             Authentication actor) {
-        return files.listManagedTrash(actor.getName(), PageRequest.fromQueryParameters(page, pageSize, search, parameters));
+        return files.listManagedTrash(
+                        actor.getName(),
+                        PageRequest.fromQueryParameters(page, pageSize, search, parameters))
+                .map(ManagedFileResponse::from);
+    }
+
+    @GetMapping("/{id}/preview")
+    public ResponseEntity<FilePreview> preview(
+            @PathVariable UUID id, @RequestParam(defaultValue = "1") int page, Authentication actor)
+            throws IOException {
+        return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.noStore())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(files.previewManaged(actor.getName(), id, page));
     }
 
     @GetMapping("/{id}/content")
-    public ResponseEntity<InputStreamResource> download(@PathVariable UUID id, Authentication actor) throws IOException {
+    public ResponseEntity<InputStreamResource> download(@PathVariable UUID id, Authentication actor)
+            throws IOException {
         var entry = files.findManaged(actor.getName(), id);
         var input = files.openManaged(actor.getName(), id);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .contentLength(entry.sizeBytes() == null ? 0 : entry.sizeBytes())
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        ContentDisposition.attachment().filename(entry.originalName(), StandardCharsets.UTF_8).build().toString())
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(entry.originalName(), StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
                 .header("X-Content-Type-Options", "nosniff")
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(new InputStreamResource(input));

@@ -22,6 +22,11 @@ public final class MailSenderAdapter implements MailSender {
     }
 
     @Override
+    public boolean ready() {
+        return source.ready();
+    }
+
+    @Override
     public void ensureAvailable() {
         try (var ignored = source.load()) {
             // Loading the connection validates the current non-secret and secret configuration.
@@ -29,7 +34,9 @@ public final class MailSenderAdapter implements MailSender {
     }
 
     @Override
-    public boolean enqueue(UUID operationId, String recipient, String subject, String text, int lifetimeSeconds) {
-        return queue.enqueue(operationId, new OutgoingMail(recipient, subject, text), lifetimeSeconds);
+    public boolean enqueue(
+            UUID operationId, String recipient, String subject, String text, int lifetimeSeconds) {
+        return queue.enqueue(
+                operationId, new OutgoingMail(recipient, subject, text), lifetimeSeconds);
     }
 }

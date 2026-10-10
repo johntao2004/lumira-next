@@ -4,7 +4,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,13 +22,7 @@ public record PasskeySettings(
 
     public static PasskeySettings defaults() {
         return new PasskeySettings(
-                false,
-                false,
-                false,
-                "127.0.0.1",
-                "Lumira",
-                List.of("http://127.0.0.1:8010"),
-                120);
+                false, false, false, "127.0.0.1", "Lumira", List.of("http://127.0.0.1:8010"), 120);
     }
 
     public PasskeySettings normalized() {
@@ -56,17 +49,27 @@ public record PasskeySettings(
 
     public void validate() {
         PasskeySettings value = normalized();
-        if (value.enabled == null || value.passwordlessEnabled == null || value.selfBindingEnabled == null
-                || value.rpId == null || value.rpId.isBlank() || value.rpName == null
-                || value.rpName.isBlank() || value.allowedOrigins == null || value.allowedOrigins.isEmpty()
+        if (value.enabled == null
+                || value.passwordlessEnabled == null
+                || value.selfBindingEnabled == null
+                || value.rpId == null
+                || value.rpId.isBlank()
+                || value.rpName == null
+                || value.rpName.isBlank()
+                || value.allowedOrigins == null
+                || value.allowedOrigins.isEmpty()
                 || value.challengeTtlSeconds == null) {
             invalid();
         }
-        if (value.rpId.length() > 253 || !RP_ID.matcher(value.rpId).matches()
-                || value.rpId.startsWith(".") || value.rpId.endsWith(".") || value.rpId.contains("..")) {
+        if (value.rpId.length() > 253
+                || !RP_ID.matcher(value.rpId).matches()
+                || value.rpId.startsWith(".")
+                || value.rpId.endsWith(".")
+                || value.rpId.contains("..")) {
             invalid();
         }
-        if (value.rpName.length() > 255 || value.rpName.codePoints().anyMatch(Character::isISOControl)) {
+        if (value.rpName.length() > 255
+                || value.rpName.codePoints().anyMatch(Character::isISOControl)) {
             invalid();
         }
         if (value.allowedOrigins.size() > 32) invalid();
@@ -76,12 +79,20 @@ public record PasskeySettings(
     }
 
     private static void validateOrigin(String origin) {
-        if (origin == null || origin.length() > 512 || origin.codePoints().anyMatch(Character::isISOControl)) invalid();
+        if (origin == null
+                || origin.length() > 512
+                || origin.codePoints().anyMatch(Character::isISOControl)) invalid();
         try {
             URI uri = URI.create(origin);
-            if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
-                    || uri.getHost() == null || uri.getUserInfo() != null || uri.getQuery() != null
-                    || uri.getFragment() != null || (uri.getPath() != null && !uri.getPath().isEmpty() && !"/".equals(uri.getPath()))) {
+            if (!("http".equalsIgnoreCase(uri.getScheme())
+                            || "https".equalsIgnoreCase(uri.getScheme()))
+                    || uri.getHost() == null
+                    || uri.getUserInfo() != null
+                    || uri.getQuery() != null
+                    || uri.getFragment() != null
+                    || (uri.getPath() != null
+                            && !uri.getPath().isEmpty()
+                            && !"/".equals(uri.getPath()))) {
                 invalid();
             }
         } catch (IllegalArgumentException invalidOrigin) {

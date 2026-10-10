@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class MonitoringController {
     private final MonitoringService service;
 
-    public MonitoringController(MonitoringService service) { this.service = service; }
+    public MonitoringController(MonitoringService service) {
+        this.service = service;
+    }
 
     @GetMapping("/summary")
     public MonitoringService.Snapshot summary(Authentication actor) {

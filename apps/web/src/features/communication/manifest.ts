@@ -7,7 +7,10 @@ export const communicationManifest = {
   required: true,
   dependencies: ["identity", "platform", "settings"],
   routes: [
-    { id: "mail-deliveries", label: "deliveryRecords", permission: "platform:audit:read", group: "operations", order: 40 },
+    { id: "mail-deliveries", label: "deliveryRecords", tabLabel: "mailDeliveries", permission: "platform:audit:read", group: "operations", order: 40 },
     { id: "sms-deliveries", label: "smsDeliveries", permission: "platform:audit:read", group: "operations", order: 50 },
+  ],
+  tabGroups: [
+    { id: "delivery-records", routes: ["mail-deliveries", "sms-deliveries"], anchor: "mail-deliveries", collapse: "when-all-visible" },
   ],
 } as const satisfies FrontendModuleManifest;

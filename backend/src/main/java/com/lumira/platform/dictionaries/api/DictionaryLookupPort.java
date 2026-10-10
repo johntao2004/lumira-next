@@ -9,5 +9,6 @@ public interface DictionaryLookupPort {
 
     boolean isEnabled(String code);
 
-    record PolicyItem(String dictionaryCode, String value, String label, String remark, int sortOrder) {}
+    record PolicyItem(
+            String dictionaryCode, String value, String label, String remark, int sortOrder) {}
 }

@@ -2,4 +2,6 @@
 **/node_modules
 **/.next
 **/target
+apps/web/dist
+plugins/*/dist
 .git

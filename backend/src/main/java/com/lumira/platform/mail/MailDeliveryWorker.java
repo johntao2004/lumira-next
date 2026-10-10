@@ -9,11 +9,26 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 /** SMTP adapter; delivery orchestration lives in the communication kernel. */
 @Component
-public class MailDeliveryWorker extends DurableDeliveryWorker<OutgoingMail, SmtpConnection, SmtpGateway.Result> {
-    public MailDeliveryWorker(MailDeliveryStore store, SmtpConnectionSource source, SmtpGateway gateway,
-                              AuditPort audit, PlatformTransactionManager manager) {
-        super(store, source::load, gateway::send, store::complete, SmtpGateway.Result::name, store::recoverExpiredEntries,
-                () -> SmtpGateway.Result.DELIVERY_UNCERTAIN, audit, manager, "mail", 60_000);
+public class MailDeliveryWorker
+        extends DurableDeliveryWorker<OutgoingMail, SmtpConnection, SmtpGateway.Result> {
+    public MailDeliveryWorker(
+            MailDeliveryStore store,
+            SmtpConnectionSource source,
+            SmtpGateway gateway,
+            AuditPort audit,
+            PlatformTransactionManager manager) {
+        super(
+                store,
+                source::load,
+                gateway::send,
+                store::complete,
+                SmtpGateway.Result::name,
+                store::recoverExpiredEntries,
+                () -> SmtpGateway.Result.DELIVERY_UNCERTAIN,
+                audit,
+                manager,
+                "mail",
+                60_000);
     }
 
     @Scheduled(fixedDelay = 2_000, initialDelay = 10_000)

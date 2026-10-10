@@ -2,6 +2,7 @@ import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { processGroupRunning } from "./process-group.mjs";
+import { stopOfficeWorker } from "./office-worker-runtime.mjs";
 const file = fileURLToPath(
   new URL("../.runtime/processes.json", import.meta.url),
 );
@@ -24,4 +25,5 @@ if (existsSync(file)) {
   }
   unlinkSync(file);
 }
+await stopOfficeWorker();
 console.log("Stopped scaffold processes only.");

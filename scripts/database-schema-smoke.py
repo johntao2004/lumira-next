@@ -49,18 +49,19 @@ expected_builtin_sections = {
     'smtp', 'sms', 'profile-fields', 'agreements', 'watermark', 'maintenance',
     'security', 'passkey', 'audit', 'mail-deliveries', 'sms-deliveries',
     'event-outbox', 'feedback', 'navigation', 'sensitive-words', 'localization',
-    'ai-capabilities', 'ai-console', 'ai-judgment', 'ai-models',
+    'ai-console', 'ai-models',
 }
 actual_builtin_sections = set(filter(None, sql("SELECT section_key FROM platform_navigation_menu WHERE built_in AND NOT deleted AND menu_type='PAGE' ORDER BY section_key").splitlines()))
 assert actual_builtin_sections == expected_builtin_sections, (expected_builtin_sections - actual_builtin_sections, actual_builtin_sections - expected_builtin_sections)
-assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted")) == 38
+assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted")) == 36
 assert int(sql("SELECT count(*) FROM platform_dictionary_item")) >= 18
 assert int(sql("SELECT count(*) FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='work_order_feedback_category' AND d.enabled AND i.enabled AND i.value IN ('QUESTION','BUG','FEATURE','ACCOUNT','OTHER')")) == 5
 assert int(sql("SELECT count(*) FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='sensitive_word_category' AND i.value IN ('DEFAULT','IMPORTED')")) == 2
 assert int(sql("SELECT count(*) FROM (SELECT DISTINCT w.category AS value FROM platform_sensitive_word w WHERE w.deleted=false EXCEPT SELECT i.value FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='sensitive_word_category') seeded_categories")) == 0
 assert int(sql("SELECT count(*) FROM platform_localization_locale WHERE enabled AND built_in AND locale_code IN ('zh-CN','zh-TW','en','ja','ko','fr','es','de')")) == 8
 assert int(sql("SELECT count(*) FROM platform_localization_locale WHERE enabled AND (source_locale NOT IN (SELECT locale_code FROM platform_localization_locale WHERE enabled) OR fallback_locale NOT IN (SELECT locale_code FROM platform_localization_locale WHERE enabled))")) == 0
-assert sql("SELECT string_agg(module_id, ',' ORDER BY module_id) FROM platform_module_state") == 'audit-console,feedback,localization,sensitive-words'
+# New imported plugins may add persistent state rows; the upgrade seeds must remain.
+assert {'audit-console','feedback','localization','sensitive-words'} <= set(sql("SELECT module_id FROM platform_module_state").splitlines())
 assert int(sql("SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('platform_visible_users','platform_visible_organizations')")) == 2
 assert int(sql("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('platform_navigation_page_path_uq','platform_navigation_page_section_uq','platform_sms_pending','platform_sms_leases','platform_module_package_active_uq','platform_module_package_lookup','platform_passkey_challenge_expiry','platform_passkey_credential_user','platform_feedback_category_recent','platform_sensitive_word_category_recent')")) == 10
 assert int(sql("SELECT count(*) FROM pg_constraint WHERE conname IN ('platform_file_orphan_owner_consistency','platform_event_outbox_check','platform_sms_delivery_check','platform_navigation_shape_ck','platform_event_replay_approval_reason_check','platform_module_package_artifact_ref_check','platform_module_package_status_check','platform_module_package_identity_uq','platform_passkey_challenge_kind_check','platform_passkey_credential_sign_count_check','platform_feedback_category_check')")) == 11

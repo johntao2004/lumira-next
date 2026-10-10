@@ -13,7 +13,8 @@ public class ClientAddressResolver {
     public static final String HEADER = "X-Lumira-Client-IP";
     private final Set<String> trusted;
 
-    public ClientAddressResolver(@Value("${lumira.login.trusted-proxy-addresses:}") String addresses) {
+    public ClientAddressResolver(
+            @Value("${lumira.login.trusted-proxy-addresses:}") String addresses) {
         var parsed = new HashSet<String>();
         for (var address : addresses.split(",")) {
             if (!address.isBlank()) parsed.add(literal(address.strip()));
@@ -22,7 +23,8 @@ public class ClientAddressResolver {
     }
 
     private static String literal(String address) {
-        if (address.contains("%")) throw new IllegalArgumentException("Scoped client addresses are not supported");
+        if (address.contains("%"))
+            throw new IllegalArgumentException("Scoped client addresses are not supported");
         return InetAddress.ofLiteral(address).getHostAddress();
     }
 

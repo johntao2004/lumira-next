@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -100,6 +101,41 @@ class ModelConnectionServiceTest {
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, failure.getStatusCode());
         assertEquals("aiProviderRequestTimedOut", failure.getReason());
         assertFalse(failure.getMessage().contains("provider"));
+    }
+
+    @Test
+    void totalDeadlineClosesAResponseBodyThatKeepsDripping() throws Exception {
+        AtomicInteger written = new AtomicInteger();
+        startServer(
+                exchange -> {
+                    try {
+                        exchange.sendResponseHeaders(200, 10);
+                        for (int index = 0; index < 10; index++) {
+                            exchange.getResponseBody().write(' ');
+                            exchange.getResponseBody().flush();
+                            written.incrementAndGet();
+                            Thread.sleep(30);
+                        }
+                    } catch (IOException disconnected) {
+                        // The total request deadline actively closes a body that never completes.
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        exchange.close();
+                    }
+                });
+        long started = System.nanoTime();
+
+        ResponseStatusException failure =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> service(Duration.ofMillis(100)).probe(profile(baseUrl(), "fixture")));
+
+        long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
+        assertEquals(HttpStatus.GATEWAY_TIMEOUT, failure.getStatusCode());
+        assertEquals("aiProviderRequestTimedOut", failure.getReason());
+        assertTrue(elapsedMillis < 1000, "deadline should cover the response body");
+        assertTrue(written.get() < 10, "the client should close the incomplete response");
     }
 
     @Test

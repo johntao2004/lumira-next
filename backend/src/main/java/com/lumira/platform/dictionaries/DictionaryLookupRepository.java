@@ -3,6 +3,7 @@ package com.lumira.platform.dictionaries;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.dictionaries.api.DictionaryLookupPort;
 import com.lumira.platform.identity.api.ProfileDictionaryPort;
+import com.lumira.platform.identity.api.ProfileRegistrationLimits;
 import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -33,6 +34,97 @@ public class DictionaryLookupRepository {
                 .list();
     }
 
+    /**
+     * Read option ids and labels for a whole projected profile schema in one query. Disabled
+     * dictionaries, items, and descendants of disabled items are excluded at every depth.
+     */
+    public Map<String, Long> enabledProfileOptionCounts(Collection<String> codes) {
+        if (codes == null || codes.isEmpty()) return Map.of();
+        var requested =
+                codes.stream()
+                        .filter(Objects::nonNull)
+                        .filter(code -> !code.isBlank())
+                        .distinct()
+                        .toList();
+        if (requested.isEmpty()) return Map.of();
+        var result = new LinkedHashMap<String, Long>();
+        requested.forEach(code -> result.put(code, 0L));
+        jdbc.sql(
+                        """
+                    WITH RECURSIVE available AS (
+                      SELECT d.code AS dictionary_code,i.id,i.parent_id,i.dictionary_id
+                      FROM platform_dictionary d JOIN platform_dictionary_item i ON i.dictionary_id=d.id
+                      WHERE d.code IN (:codes) AND d.enabled AND i.enabled AND i.parent_id IS NULL
+                      UNION ALL
+                      SELECT a.dictionary_code,i.id,i.parent_id,i.dictionary_id
+                      FROM platform_dictionary_item i JOIN available a
+                        ON i.dictionary_id=a.dictionary_id AND i.parent_id=a.id
+                      WHERE i.enabled
+                    )
+                    SELECT dictionary_code,count(*) AS option_count FROM available GROUP BY dictionary_code
+                    """)
+                .param("codes", Set.copyOf(requested))
+                .query(
+                        (rs, row) ->
+                                Map.entry(
+                                        rs.getString("dictionary_code"),
+                                        rs.getLong("option_count")))
+                .list()
+                .forEach(entry -> result.put(entry.getKey(), entry.getValue()));
+        return Map.copyOf(result);
+    }
+
+    public Map<String, List<ProfileDictionaryPort.PublicOption>> enabledProfileOptions(
+            Collection<String> codes, int perDictionaryLimit) {
+        if (perDictionaryLimit < 1
+                || perDictionaryLimit > ProfileRegistrationLimits.OPTION_QUERY_LIMIT)
+            throw new IllegalArgumentException("perDictionaryLimit");
+        if (codes == null || codes.isEmpty()) return Map.of();
+        var requested =
+                codes.stream()
+                        .filter(Objects::nonNull)
+                        .filter(code -> !code.isBlank())
+                        .distinct()
+                        .toList();
+        if (requested.isEmpty()) return Map.of();
+        var rows =
+                jdbc.sql(
+                                """
+                    WITH RECURSIVE available AS (
+                      SELECT d.code AS dictionary_code,i.id,i.parent_id,i.dictionary_id,i.sort_order,i.value,i.label
+                      FROM platform_dictionary d JOIN platform_dictionary_item i ON i.dictionary_id=d.id
+                      WHERE d.code IN (:codes) AND d.enabled AND i.enabled AND i.parent_id IS NULL
+                      UNION ALL
+                      SELECT a.dictionary_code,i.id,i.parent_id,i.dictionary_id,i.sort_order,i.value,i.label
+                      FROM platform_dictionary_item i JOIN available a
+                        ON i.dictionary_id=a.dictionary_id AND i.parent_id=a.id
+                      WHERE i.enabled
+                    ), ranked AS (
+                      SELECT dictionary_code,id,value,label,sort_order,
+                             row_number() OVER (PARTITION BY dictionary_code ORDER BY sort_order,value,id) AS option_rank
+                      FROM available
+                    )
+                    SELECT dictionary_code,id,value,label FROM ranked
+                    WHERE option_rank<=:limit
+                    ORDER BY dictionary_code,sort_order,value,id
+                    """)
+                        .param("codes", Set.copyOf(requested))
+                        .param("limit", perDictionaryLimit)
+                        .query(
+                                (rs, row) ->
+                                        Map.entry(
+                                                rs.getString("dictionary_code"),
+                                                new ProfileDictionaryPort.PublicOption(
+                                                        rs.getObject("id", UUID.class).toString(),
+                                                        rs.getString("label"))))
+                        .list();
+        var grouped = new LinkedHashMap<String, List<ProfileDictionaryPort.PublicOption>>();
+        for (var row : rows)
+            grouped.computeIfAbsent(row.getKey(), ignored -> new ArrayList<>()).add(row.getValue());
+        grouped.replaceAll((code, values) -> List.copyOf(values));
+        return Map.copyOf(grouped);
+    }
+
     public record Option(UUID id, UUID parentId, String value, String label, int sortOrder) {}
 
     private final tools.jackson.databind.ObjectMapper mapper;
@@ -52,65 +144,16 @@ public class DictionaryLookupRepository {
     /** Walk only selected ancestor chains, once per unique dictionary/item pair. */
     public Set<ProfileDictionaryPort.Selection> enabledSelections(
             Collection<ProfileDictionaryPort.Selection> requested) {
-        if (requested.isEmpty()) return Set.of();
-        String sql =
-                """
-            WITH RECURSIVE requested AS (
-              SELECT DISTINCT code,id FROM jsonb_to_recordset(CAST(:requested AS jsonb)) AS r(code text,id uuid)
-            ), paths AS (
-              SELECT r.code,r.id AS selected,i.id,i.parent_id,i.dictionary_id,i.enabled,ARRAY[i.id] AS visited
-              FROM requested r JOIN platform_dictionary d ON d.code=r.code AND d.enabled
-              JOIN platform_dictionary_item i ON i.dictionary_id=d.id AND i.id=r.id
-              UNION ALL
-              SELECT a.code,a.selected,p.id,p.parent_id,p.dictionary_id,p.enabled,a.visited||p.id
-              FROM paths a JOIN platform_dictionary_item p ON p.id=a.parent_id AND p.dictionary_id=a.dictionary_id
-              WHERE NOT p.id=ANY(a.visited)
-            ) SELECT code,selected FROM paths GROUP BY code,selected
-              HAVING bool_and(enabled) AND bool_or(parent_id IS NULL)
-            """;
-        return Set.copyOf(
-                jdbc.sql(sql)
-                        .param("requested", mapper.writeValueAsString(requested))
-                        .query(
-                                (rs, n) ->
-                                        new ProfileDictionaryPort.Selection(
-                                                rs.getString("code"),
-                                                rs.getObject("selected", UUID.class)))
-                        .list());
+        return selectionMetadata(requested).entrySet().stream()
+                .filter(entry -> entry.getValue().enabled())
+                .map(Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    /**
-     * Validate unchanged stored values while tolerating disabled dictionaries, items, and
-     * ancestors. The selected item must still belong to the dictionary code currently configured
-     * for its profile field, and the intact parent chain must reach a root.
-     */
+    /** Unchanged selections may be disabled, but must still have an intact root chain. */
     public Set<ProfileDictionaryPort.Selection> existingSelections(
             Collection<ProfileDictionaryPort.Selection> requested) {
-        if (requested.isEmpty()) return Set.of();
-        String sql =
-                """
-            WITH RECURSIVE requested AS (
-              SELECT DISTINCT code,id FROM jsonb_to_recordset(CAST(:requested AS jsonb)) AS r(code text,id uuid)
-            ), paths AS (
-              SELECT r.code,r.id AS selected,i.id,i.parent_id,i.dictionary_id,i.enabled,ARRAY[i.id] AS visited
-              FROM requested r JOIN platform_dictionary d ON d.code=r.code
-              JOIN platform_dictionary_item i ON i.dictionary_id=d.id AND i.id=r.id
-              UNION ALL
-              SELECT a.code,a.selected,p.id,p.parent_id,p.dictionary_id,p.enabled,a.visited||p.id
-              FROM paths a JOIN platform_dictionary_item p ON p.id=a.parent_id AND p.dictionary_id=a.dictionary_id
-              WHERE NOT p.id=ANY(a.visited)
-            ) SELECT code,selected FROM paths GROUP BY code,selected
-              HAVING bool_or(parent_id IS NULL)
-            """;
-        return Set.copyOf(
-                jdbc.sql(sql)
-                        .param("requested", mapper.writeValueAsString(requested))
-                        .query(
-                                (rs, n) ->
-                                        new ProfileDictionaryPort.Selection(
-                                                rs.getString("code"),
-                                                rs.getObject("selected", UUID.class)))
-                        .list());
+        return selectionMetadata(requested).keySet();
     }
 
     /**

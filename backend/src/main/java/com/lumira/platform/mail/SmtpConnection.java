@@ -7,10 +7,33 @@ import java.util.Objects;
 public final class SmtpConnection implements AutoCloseable {
     private final MailConfigurationPort.Configuration configuration;
     private boolean closed;
-    public SmtpConnection(MailConfigurationPort.Configuration configuration){this.configuration=Objects.requireNonNull(configuration,"mail configuration");}
-    public SmtpConnection(MailConfigurationPort.Settings settings,byte[] password){this(new MailConfigurationPort.Configuration(settings,password));}
-    public MailConfigurationPort.Settings settings(){if(closed)throw new IllegalStateException("Connection closed");return configuration.settings();}
-    byte[] password(){if(closed)throw new IllegalStateException("Connection closed");return configuration.password();}
-    @Override public void close(){configuration.clear();closed=true;}
-    @Override public String toString(){return "SmtpConnection[redacted]";}
+
+    public SmtpConnection(MailConfigurationPort.Configuration configuration) {
+        this.configuration = Objects.requireNonNull(configuration, "mail configuration");
+    }
+
+    public SmtpConnection(MailConfigurationPort.Settings settings, byte[] password) {
+        this(new MailConfigurationPort.Configuration(settings, password));
+    }
+
+    public MailConfigurationPort.Settings settings() {
+        if (closed) throw new IllegalStateException("Connection closed");
+        return configuration.settings();
+    }
+
+    byte[] password() {
+        if (closed) throw new IllegalStateException("Connection closed");
+        return configuration.password();
+    }
+
+    @Override
+    public void close() {
+        configuration.clear();
+        closed = true;
+    }
+
+    @Override
+    public String toString() {
+        return "SmtpConnection[redacted]";
+    }
 }

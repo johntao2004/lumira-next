@@ -164,10 +164,10 @@ async function createRole(page, { code, name, storageGiB = null, fileCount = nul
   await page.getByRole("button", { name: "新增角色", exact: true }).click();
   const form = page.locator("form#role-editor");
   await form.waitFor();
-  await form.locator("#code").fill(code);
-  await form.locator("#name").fill(name);
-  if (storageGiB !== null) await form.locator("#fileQuotaStorageGiB").fill(String(storageGiB));
-  if (fileCount !== null) await form.locator("#fileQuotaFilesLimit").fill(String(fileCount));
+  await form.locator('[id$="_code"]').fill(code);
+  await form.locator('[id$="_name"]').fill(name);
+  if (storageGiB !== null) await form.locator('[id$="_fileQuotaStorageGiB"]').fill(String(storageGiB));
+  if (fileCount !== null) await form.locator('[id$="_fileQuotaFilesLimit"]').fill(String(fileCount));
   if (includeUserRead) {
     const users = await permissionCard(form, "用户管理");
     await users.getByRole("checkbox").first().check();
@@ -196,9 +196,9 @@ async function createUser(page, user) {
   await page.getByRole("button", { name: "新增用户", exact: true }).click();
   const form = page.locator("form#user-editor");
   await form.waitFor();
-  await form.locator("#username").fill(user.username);
-  await form.locator("#displayName").fill(user.displayName);
-  await form.locator("#password").fill(user.password);
+  await form.locator('[id$="_username"]').fill(user.username);
+  await form.locator('[id$="_displayName"]').fill(user.displayName);
+  await form.locator('[id$="_password"]').fill(user.password);
   const created = page.waitForResponse(response =>
     new URL(response.url()).pathname === "/api/platform/users" && response.request().method() === "POST",
   );
@@ -340,8 +340,8 @@ async function ensureDictionaryAndItem(page) {
     await page.getByRole("button", { name: "新增字典", exact: true }).click();
     const form = page.locator("form#dictionary-editor");
     await form.waitFor();
-    await form.locator("#code").fill(dictionaryCode);
-    await form.locator("#name").fill(dictionaryName);
+    await form.locator('[id$="_code"]').fill(dictionaryCode);
+    await form.locator('[id$="_name"]').fill(dictionaryName);
     const created = page.waitForResponse(response =>
       new URL(response.url()).pathname === "/api/platform/dictionaries" && response.request().method() === "POST",
     );
@@ -363,8 +363,8 @@ async function ensureDictionaryAndItem(page) {
     await page.getByRole("button", { name: "新增字典项", exact: true }).click();
     const form = page.locator("form#dictionary-item-editor");
     await form.waitFor();
-    await form.locator("#value").fill(dictionaryItemValue);
-    await form.locator("#label").fill(dictionaryItemLabel);
+    await form.locator('[id$="_value"]').fill(dictionaryItemValue);
+    await form.locator('[id$="_label"]').fill(dictionaryItemLabel);
     const created = page.waitForResponse(response =>
       new URL(response.url()).pathname === `/api/platform/dictionaries/${dictionary.id}/items` && response.request().method() === "POST",
     );

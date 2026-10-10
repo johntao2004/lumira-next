@@ -6,8 +6,8 @@ import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Read-only effective quota and proposed role-policy preview for user management. */
@@ -27,9 +27,13 @@ public class UserFileQuotaController {
     }
 
     @GetMapping("/preview")
-    public FileService.UserQuotaPreview preview(@PathVariable UUID userId,
-            @RequestParam(required = false) List<UUID> roleIds, Authentication actor) {
-        return files.previewUserQuota(actor.getName(), userId,
+    public FileService.UserQuotaPreview preview(
+            @PathVariable UUID userId,
+            @RequestParam(required = false) List<UUID> roleIds,
+            Authentication actor) {
+        return files.previewUserQuota(
+                actor.getName(),
+                userId,
                 roleIds == null ? new HashSet<>() : new HashSet<>(roleIds));
     }
 }

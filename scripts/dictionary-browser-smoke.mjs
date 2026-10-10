@@ -14,8 +14,8 @@ try {
  await page.goto('/dashboard/dictionaries');
  await page.getByRole('button',{name:'导入字典 · TXT / Excel',exact:true}).click();
  const drawer=page.getByRole('dialog');
- await drawer.locator('input[id="code"]').fill(code);
- await drawer.locator('input[id="name"]').fill('Browser file QA');
+ await drawer.locator('input[id="dictionary-file-import_code"]').fill(code);
+ await drawer.locator('input[id="dictionary-file-import_name"]').fill('Browser file QA');
  const file=format==='txt'?{name:'dictionary.txt',mimeType:'text/plain',buffer:Buffer.from('itemValue\titemLabel\nalpha\tAlpha\nbeta\tBeta\n')}:{name:`tree.${format}`,mimeType:'application/octet-stream',buffer:readFileSync(`backend/target/browser-fixtures/tree.${format}`)};
  await drawer.locator('input[type="file"]').setInputFiles({...file,name:'invalid.txt',buffer:Buffer.from('itemValue\titemLabel\n\nbad\t\n')});
  await drawer.getByRole('button',{name:'预览并校验',exact:true}).click();
@@ -39,7 +39,7 @@ try {
  await expect(previewButton).toHaveAttribute('aria-busy','false');
  await expect(previewButton).toBeEnabled();
  const save=drawer.getByRole('button',{name:/保.*存/});assert.equal(await save.isEnabled(),true);
- await drawer.locator('input[id="name"]').fill('Browser file QA updated');assert.equal(await save.isDisabled(),true);
+ await drawer.locator('input[id="dictionary-file-import_name"]').fill('Browser file QA updated');assert.equal(await save.isDisabled(),true);
  await drawer.getByRole('button',{name:'预览并校验',exact:true}).click();
  await drawer.getByRole('cell',{name:format==='txt'?'Alpha':'Child',exact:true}).waitFor();
  const imported=observeResponse(page,r=>r.url().includes('/file-import?')&&r.request().method()==='POST');

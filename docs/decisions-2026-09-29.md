@@ -34,7 +34,7 @@
 
 - **量化**：`messages.ts` 共 504 KB 原文 / 151 KB gzip，8 种语言，单语言约 19 KB gzip。懒加载至多节省约 130 KB gzip，而 `translate()` 是同步调用、被约 45 个文件引用，改造会引入加载态与闪烁风险；相比数 MB 的 vendors 分块，收益偏小。
 - **结论**：暂不做。**触发条件**：语言数量增至 ≥ 12，或首屏体积成为已被度量的问题，或引入按需语言包下发（已有后端本地化 bundle 接口）。
-- **CRUD 骨架去重**：不做一次性大重构（无浏览器回归保障时风险高）。规则：**某页面因需求被修改时，顺带抽取 `useCrudDrawer` 并复用**，每次都跑对应的 `scripts/*-browser-smoke.mjs`。
+- **CRUD 骨架去重**：不做一次性大重构（无浏览器回归保障时风险高）。规则：**某页面因需求被修改时，复用公共 `useCrudDrawer` / `useSubmitAction`**（使用约定见 [源码约定](code-conventions.md)），每次都跑对应的 `scripts/*-browser-smoke.mjs`。
 
 ## D6 代码格式化：Spotless 采用 `ratchetFrom`（已落地）
 

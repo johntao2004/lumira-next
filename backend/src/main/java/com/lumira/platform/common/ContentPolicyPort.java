@@ -1,8 +1,12 @@
 package com.lumira.platform.common;
 
-/** Optional content-policy hook.  The feedback module can run without a policy provider. */
+/** Platform content policy, independent of any page or business module. */
 public interface ContentPolicyPort {
     ScanResult evaluate(String text);
+
+    default ScanResult evaluate(String actor, String text, String source) {
+        return evaluate(text);
+    }
 
     record ScanResult(boolean blocked) {}
 }

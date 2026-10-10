@@ -24,6 +24,9 @@ services:
       LUMIRA_DB_USER: lumira_next
       LUMIRA_DB_PASSWORD: ${LUMIRA_DB_PASSWORD:?Set database password}
       LUMIRA_BOOTSTRAP_PASSWORD: ${LUMIRA_BOOTSTRAP_PASSWORD:?Set initial administrator password}
+      LUMIRA_OFFICE_WORKER_URL: http://office-worker:18091
+      LUMIRA_OFFICE_WORKER_TOKEN: ${LUMIRA_OFFICE_WORKER_TOKEN:?Set a dedicated Office worker token}
+      LUMIRA_PLUGINS_FIXED_GRAPH: "true"
       # Optional: bearer token (>=32 chars) that enables /actuator/prometheus for scrapers on the private network.
       LUMIRA_METRICS_TOKEN: ${LUMIRA_METRICS_TOKEN:-}
       LUMIRA_TRUSTED_PROXY_ADDRESSES: ${LUMIRA_EDGE_ADDRESS:-172.30.78.2}
@@ -42,11 +45,41 @@ services:
     depends_on:
       database:
         condition: service_healthy
+      office-worker:
+        condition: service_healthy
     volumes:
       - files_data:/data/files
     networks:
       - default
       - proxy
+      - office-internal
+  office-worker:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: deploy/office-worker.Dockerfile
+    environment:
+      LUMIRA_OFFICE_WORKER_TOKEN: ${LUMIRA_OFFICE_WORKER_TOKEN:?Set a dedicated Office worker token}
+      LUMIRA_OFFICE_WORKER_TEST_MODE: "false"
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: "1.0"
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: [CMD, java, -XX:ActiveProcessorCount=1, -XX:+UseSerialGC, -XX:CICompilerCount=2, -Xss512k, -Xms8m, -Xmx32m, -XX:MaxMetaspaceSize=64m, -jar, /app/app.jar, --office-worker-healthcheck]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - office-internal
   web:
     restart: unless-stopped
     build:
@@ -72,6 +105,8 @@ services:
       server:
         condition: service_healthy
 networks:
+  office-internal:
+    internal: true
   proxy:
     ipam:
       config:

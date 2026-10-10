@@ -1,0 +1,239 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, Checkbox, Input, Pagination, Select, Space, Spin, Switch, Tag, Typography } from "antd";
+import { api, mutate } from "@/platform/api/client";
+import { listRequestParams, type PageResult } from "@/platform/api/pagination";
+import { AsyncButton } from "@/platform/components/async-button";
+import { FeedbackBubble } from "@/platform/components/feedback-bubble";
+import { QueryFailure } from "@/platform/components/query-failure";
+import { PlatformForm as Form } from "@/platform/components/platform-form";
+import { SettingsEnabledControls } from "@/platform/components/settings-enabled-controls";
+import { useSubmitAction } from "@/platform/forms/use-submit-action";
+import type { MessageKey } from "@/platform/i18n/messages";
+import { usePreferences } from "@/platform/providers";
+
+type RegistrationReadiness = {
+  emailAvailable: boolean;
+  smsAvailable: boolean;
+  phoneRecoverySupported: boolean;
+  agreementsAvailable: boolean;
+  defaultRoleEligible: boolean;
+  maintenance: boolean;
+  captchaAvailable: boolean;
+};
+
+type RegistrationChannel = "EMAIL" | "SMS";
+
+type RegistrationSettings = {
+  version: number;
+  enabled: boolean;
+  channels: RegistrationChannel[];
+  defaultRoleId: string | null;
+  readiness: RegistrationReadiness;
+};
+
+type RegistrationRoleCandidate = {
+  id: string;
+  code: string;
+  name: string;
+  version: number;
+  eligible: boolean;
+  reason: string | null;
+};
+
+type RegistrationSettingsForm = {
+  enabled: boolean;
+  channels: RegistrationChannel[];
+  defaultRoleId: string | null;
+};
+
+const settingsErrors = [
+  "staleRecord", "invalidRegistrationPolicy", "registrationRoleIneligibleError",
+  "phoneRecoveryUnavailable", "forbidden", "unavailable",
+] as const satisfies readonly MessageKey[];
+
+const roleReasonKeys: Record<string, MessageKey> = {
+  registrationRoleDisabled: "registrationRoleDisabled",
+  registrationRoleAdministrator: "registrationRoleAdministrator",
+  registrationRoleScopeNotAllowed: "registrationRoleScopeNotAllowed",
+  registrationRolePermissionsNotAllowed: "registrationRolePermissionsNotAllowed",
+};
+
+export function RegistrationPage({ canWrite, canReadRoles }: { canWrite: boolean; canReadRoles: boolean }) {
+  const { t } = usePreferences();
+  const client = useQueryClient();
+  const [form] = Form.useForm<RegistrationSettingsForm>();
+  const [roleSearch, setRoleSearch] = useState("");
+  const [roleSearchDraft, setRoleSearchDraft] = useState("");
+  const [rolePage, setRolePage] = useState(1);
+  const [rolePageSize, setRolePageSize] = useState(20);
+  const [saved, setSaved] = useState(false);
+  const query = useQuery({
+    queryKey: ["settings", "registration"],
+    queryFn: ({ signal }) => api<RegistrationSettings>("/platform/settings/registration", { signal }),
+  });
+  const roles = useQuery({
+    queryKey: ["settings", "registration", "roles", rolePage, rolePageSize, roleSearch],
+    queryFn: ({ signal }) => api<PageResult<RegistrationRoleCandidate>>(
+      `/platform/settings/registration/roles?${listRequestParams({ page: rolePage, pageSize: rolePageSize, search: roleSearch })}`,
+      { signal },
+    ),
+    enabled: canReadRoles,
+  });
+  const action = useSubmitAction({
+    errorKeys: settingsErrors,
+    onError: async key => { if (key === "staleRecord") await query.refetch(); },
+  });
+  const enabled = Form.useWatch("enabled", form);
+  const channels = Form.useWatch("channels", form) ?? [];
+  const selectedRoleId = Form.useWatch("defaultRoleId", form);
+
+  useEffect(() => {
+    if (!query.data) return;
+    form.setFieldsValue({
+      enabled: query.data.enabled,
+      channels: query.data.channels,
+      defaultRoleId: query.data.defaultRoleId,
+    });
+  }, [form, query.data]);
+
+  async function save(values: RegistrationSettingsForm) {
+    if (!canWrite || !query.data) return;
+    await action.run(async () => {
+      const result = await mutate<RegistrationSettings>("/platform/settings/registration", "PUT", {
+        version: query.data!.version,
+        enabled: values.enabled,
+        channels: values.channels ?? [],
+        defaultRoleId: values.defaultRoleId || null,
+      });
+      client.setQueryData(["settings", "registration"], result);
+      form.setFieldsValue({
+        enabled: result.enabled,
+        channels: result.channels,
+        defaultRoleId: result.defaultRoleId,
+      });
+      setSaved(true);
+    });
+  }
+
+  if (query.isPending) return <Spin />;
+  if (query.error) return <QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} />;
+  if (!query.data) return null;
+
+  const candidates = roles.data?.items ?? [];
+  const selectedCandidate = candidates.find(candidate => candidate.id === selectedRoleId);
+  const roleOptions = candidates.map(candidate => ({
+    value: candidate.id,
+    disabled: !candidate.eligible,
+    label: <Space size={6} wrap>
+      <span>{candidate.name} ({candidate.code})</span>
+      {candidate.eligible
+        ? <Tag color="success">{t("registrationRoleEligible")}</Tag>
+        : <Typography.Text type="danger">{t(roleReasonKeys[candidate.reason ?? ""] ?? "registrationRoleIneligible")}</Typography.Text>}
+    </Space>,
+  }));
+  if (selectedRoleId && !candidates.some(candidate => candidate.id === selectedRoleId)) {
+    roleOptions.unshift({
+      value: selectedRoleId,
+      disabled: true,
+      label: <span>{t("registrationRoleCurrentId", { id: selectedRoleId })}</span>,
+    });
+  }
+  const readiness: Array<{ key: keyof RegistrationReadiness; label: MessageKey; ready: boolean }> = [
+    { key: "emailAvailable", label: "registrationReadinessEmail", ready: query.data.readiness.emailAvailable },
+    { key: "smsAvailable", label: "registrationReadinessSms", ready: query.data.readiness.smsAvailable },
+    { key: "phoneRecoverySupported", label: "registrationReadinessPhoneRecovery", ready: query.data.readiness.phoneRecoverySupported },
+    { key: "agreementsAvailable", label: "registrationReadinessAgreements", ready: query.data.readiness.agreementsAvailable },
+    { key: "defaultRoleEligible", label: "registrationReadinessDefaultRole", ready: query.data.readiness.defaultRoleEligible },
+    { key: "captchaAvailable", label: "registrationReadinessCaptcha", ready: query.data.readiness.captchaAvailable },
+    { key: "maintenance", label: "registrationReadinessMaintenance", ready: !query.data.readiness.maintenance },
+  ];
+
+  return <>
+    <Form
+      className="settings-form registration-settings-form"
+      form={form}
+      layout="vertical"
+      disabled={!canWrite || action.pending}
+      onValuesChange={() => setSaved(false)}
+      onFinish={save}
+    >
+      <Form.Item name="enabled" label={t("registrationEnabled")} valuePropName="checked" extra={t("registrationEnabledHint")}>
+        <Switch />
+      </Form.Item>
+      <SettingsEnabledControls name="enabled">
+      <Form.Item name="channels" label={t("registrationChannels")}>
+        <Checkbox.Group>
+          <Space wrap>
+            <Checkbox value="EMAIL">{t("registrationChannelEmail")}</Checkbox>
+              <Checkbox value="SMS" disabled={!enabled || (!query.data.readiness.phoneRecoverySupported && !channels.includes("SMS"))}>{t("registrationChannelSms")}</Checkbox>
+          </Space>
+        </Checkbox.Group>
+      </Form.Item>
+      </SettingsEnabledControls>
+      {!query.data.readiness.phoneRecoverySupported && <Alert className="mb-4" type="warning" showIcon title={t("registrationPhoneRecoveryUnavailable")} />}
+
+      <Typography.Title level={5}>{t("registrationDefaultRole")}</Typography.Title>
+      {!canReadRoles ? <Alert type="warning" showIcon title={t("registrationRolesReadUnavailable")} /> : <>
+        <SettingsEnabledControls name="enabled">
+        <Input.Search
+          className="mb-3"
+          allowClear
+          maxLength={100}
+          value={roleSearchDraft}
+          placeholder={t("registrationRoleSearch")}
+          onChange={event => setRoleSearchDraft(event.target.value)}
+          onSearch={value => { setRoleSearch(value.trim()); setRolePage(1); }}
+        />
+        <Form.Item
+          name="defaultRoleId"
+          rules={enabled ? [{ required: true, message: t("registrationRoleIneligibleError") }] : []}
+        >
+          <Select
+            allowClear
+            showSearch={false}
+            loading={roles.isFetching}
+            options={roleOptions}
+            placeholder={t("registrationDefaultRole")}
+            notFoundContent={roles.isError ? t("unavailable") : t("registrationRoleNotFound")}
+          />
+        </Form.Item>
+        {roles.error && <QueryFailure title={t(roles.error instanceof Error && "status" in roles.error && roles.error.status === 403 ? "forbidden" : "unavailable")} pending={roles.isFetching} onRetry={() => void roles.refetch()} />}
+        {selectedCandidate && !selectedCandidate.eligible && <Alert className="mb-3" type="error" showIcon title={t(roleReasonKeys[selectedCandidate.reason ?? ""] ?? "registrationRoleIneligible")} />}
+        {roles.data && roles.data.total > 0 && <Pagination
+          className="mb-4"
+          current={rolePage}
+          pageSize={rolePageSize}
+          total={roles.data.total}
+          size="small"
+          responsive
+          showSizeChanger
+          pageSizeOptions={[10, 20, 50, 100]}
+          showTotal={total => t("totalRecords", { count: total })}
+          onChange={(page, pageSize) => { setRolePage(pageSize === rolePageSize ? page : 1); setRolePageSize(pageSize); }}
+        />}
+        </SettingsEnabledControls>
+      </>}
+
+      <Typography.Title level={5}>{t("registrationReadiness")}</Typography.Title>
+      <div className="flex flex-col gap-2 mb-4">
+        {readiness.map(item => {
+          const ready = item.ready;
+          const isMaintenance = item.key === "maintenance" && query.data!.readiness.maintenance;
+          return <Space key={item.key} wrap>
+            <span>{t(item.label)}</span>
+            <Tag color={ready && !isMaintenance ? "success" : "warning"}>
+              {isMaintenance ? t("registrationMaintenanceActive") : t(ready ? "registrationReady" : "registrationNeedsAttention")}
+            </Tag>
+          </Space>;
+        })}
+      </div>
+
+      <FeedbackBubble id="registration-settings-error" content={action.error ? t(action.error) : undefined} />
+      <FeedbackBubble kind="success" id="registration-settings-saved" content={saved ? t("registrationSaved") : undefined} />
+      <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />
+    </Form>
+  </>;
+}

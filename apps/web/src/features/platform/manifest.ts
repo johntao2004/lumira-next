@@ -10,7 +10,5 @@ export const platformManifest = {
     { id: "modules", label: "modules", permission: "platform:modules:read", group: "administration", order: 10 },
     { id: "ai-console", label: "aiConsole", permission: "platform:settings:read", group: "ai-management", order: 10 },
     { id: "ai-models", label: "aiModels", permission: "platform:settings:read", group: "ai-management", order: 20 },
-    { id: "ai-judgment", label: "aiJudgment", permission: "platform:settings:read", group: "ai-management", order: 30 },
-    { id: "ai-capabilities", label: "aiCapabilities", permission: "platform:settings:read", group: "ai-management", order: 40 },
   ],
 } as const satisfies FrontendModuleManifest;

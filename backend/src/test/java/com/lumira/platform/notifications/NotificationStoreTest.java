@@ -1,10 +1,9 @@
 package com.lumira.platform.notifications;
 
-import com.lumira.platform.TestMigration;
+import static org.junit.jupiter.api.Assertions.*;
 
+import com.lumira.platform.TestMigration;
 import com.lumira.platform.common.PageRequest;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
@@ -14,7 +13,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
-import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class NotificationStoreTest {
@@ -26,15 +24,24 @@ class NotificationStoreTest {
 
     @BeforeEach
     void setup() throws Exception {
-        String url = System.getenv("LUMIRA_TEST_DB_URL"), user = System.getenv("LUMIRA_TEST_DB_USER"), password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
+        String url = System.getenv("LUMIRA_TEST_DB_URL"),
+                user = System.getenv("LUMIRA_TEST_DB_USER"),
+                password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
         admin = new JdbcTemplate(new DriverManagerDataSource(url, user, password));
         schema = "qa_notifications_" + UUID.randomUUID().toString().replace("-", "");
         admin.execute("CREATE SCHEMA " + schema);
-        var ds = new DriverManagerDataSource(url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema, user, password);
+        var ds =
+                new DriverManagerDataSource(
+                        url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema,
+                        user,
+                        password);
         jdbc = new JdbcTemplate(ds);
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
-        store = new NotificationStore(JdbcClient.create(ds), new JdbcTemplate(ds), new JsonMapper());
-        jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,enabled BOOLEAN)");
+        store =
+                new NotificationStore(
+                        JdbcClient.create(ds), new JdbcTemplate(ds), new JsonMapper());
+        jdbc.execute(
+                "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,enabled BOOLEAN)");
         jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
         jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
         // V41 widened the message-key pattern to the camelCase catalogue keys used by broadcasts.
@@ -43,9 +50,24 @@ class NotificationStoreTest {
     }
 
     @AfterEach
-    void cleanup() { if (admin != null && schema != null) admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE"); }
+    void cleanup() {
+        if (admin != null && schema != null)
+            admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    }
 
-    private boolean create(UUID recipient, String key) { return tx.execute(s -> store.create(recipient, null, key, "feedback", "title", "body", "{\"title\":\"Hello\"}", "/dashboard/feedback")); }
+    private boolean create(UUID recipient, String key) {
+        return tx.execute(
+                s ->
+                        store.create(
+                                recipient,
+                                null,
+                                key,
+                                "feedback",
+                                "title",
+                                "body",
+                                "{\"title\":\"Hello\"}",
+                                "/dashboard/feedback"));
+    }
 
     @Test
     void deduplicatesAndIsolatesInboxRows() {
@@ -66,36 +88,123 @@ class NotificationStoreTest {
         for (int i = 0; i < 25; i++) create(alice, "feedback:" + i + ":created");
         var first = store.list(alice, new PageRequest(1, 20, ""), true);
         var second = store.list(alice, new PageRequest(2, 20, ""), true);
-        assertEquals(25, first.total()); assertEquals(20, first.items().size()); assertEquals(5, second.items().size());
+        assertEquals(25, first.total());
+        assertEquals(20, first.items().size());
+        assertEquals(5, second.items().size());
         UUID own = first.items().getFirst().id(), foreign = UUID.randomUUID();
         assertFalse(store.markRead(bob, own));
-        assertTrue(store.markRead(alice, own)); assertFalse(store.markRead(alice, own));
+        assertTrue(store.markRead(alice, own));
+        assertFalse(store.markRead(alice, own));
         assertEquals(24, store.unreadCount(alice));
         assertEquals(24, store.list(alice, new PageRequest(1, 20, ""), true).total());
-        assertEquals(24, store.markAllRead(alice)); assertEquals(0, store.unreadCount(alice));
+        assertEquals(24, store.markAllRead(alice));
+        assertEquals(0, store.unreadCount(alice));
         assertFalse(store.markRead(alice, foreign));
+    }
+
+    @Test
+    void filtersReadStateBeforePaginationAndPreservesLegacyAllRows() {
+        for (int i = 0; i < 25; i++) create(alice, "read-filter:" + i);
+        create(bob, "read-filter:foreign");
+        var all = store.list(alice, new PageRequest(1, 100, ""), false);
+        for (var entry : all.items().subList(0, 9)) assertTrue(store.markRead(alice, entry.id()));
+        var read = store.list(alice, new PageRequest(1, 8, ""), false, true);
+        var readNext = store.list(alice, new PageRequest(2, 8, ""), false, true);
+        var unread = store.list(alice, new PageRequest(1, 8, ""), false, false);
+        assertEquals(9, read.total());
+        assertEquals(8, read.items().size());
+        assertEquals(9, readNext.total());
+        assertEquals(1, readNext.items().size());
+        assertTrue(read.items().stream().allMatch(NotificationStore.Entry::read));
+        assertTrue(readNext.items().stream().allMatch(NotificationStore.Entry::read));
+        assertEquals(16, unread.total());
+        assertEquals(8, unread.items().size());
+        assertTrue(unread.items().stream().noneMatch(NotificationStore.Entry::read));
+        assertEquals(25, store.list(alice, new PageRequest(1, 8, ""), false).total());
+        assertEquals(16, store.list(alice, new PageRequest(1, 8, ""), true).total());
+        assertEquals(0, store.list(bob, new PageRequest(1, 8, ""), false, true).total());
+        assertEquals(1, store.list(bob, new PageRequest(1, 8, ""), false, false).total());
+        jdbc.update(
+                "UPDATE platform_notification SET expires_at=now()-interval '1 second' WHERE id=?",
+                read.items().getFirst().id());
+        assertEquals(8, store.list(alice, new PageRequest(1, 8, ""), false, true).total());
+        assertEquals(16, store.markAllRead(alice));
+        assertEquals(0, store.list(alice, new PageRequest(1, 8, ""), false, false).total());
+        assertEquals(24, store.list(alice, new PageRequest(1, 8, ""), false, true).total());
     }
 
     @Test
     void excludesExpiredEntriesAndRejectsInvalidPayloadOrKeys() {
         assertTrue(create(alice, "feedback:valid:created"));
-        jdbc.update("UPDATE platform_notification SET expires_at=now()-interval '1 second' WHERE recipient_id=?", alice);
+        jdbc.update(
+                "UPDATE platform_notification SET expires_at=now()-interval '1 second' WHERE recipient_id=?",
+                alice);
         assertEquals(0, store.unreadCount(alice));
-        assertThrows(IllegalArgumentException.class, () -> store.create(alice, null, "bad key", "feedback", "title", "body", "{}", "/dashboard/feedback"));
-        assertThrows(IllegalArgumentException.class, () -> store.create(alice, null, "feedback:bad", "feedback", "title", "body", "not-json", "/dashboard/feedback"));
-        assertThrows(IllegalArgumentException.class, () -> store.create(alice, null, "feedback:link", "feedback", "title", "body", "{}", "https://example.com"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        store.create(
+                                alice,
+                                null,
+                                "bad key",
+                                "feedback",
+                                "title",
+                                "body",
+                                "{}",
+                                "/dashboard/feedback"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        store.create(
+                                alice,
+                                null,
+                                "feedback:bad",
+                                "feedback",
+                                "title",
+                                "body",
+                                "not-json",
+                                "/dashboard/feedback"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        store.create(
+                                alice,
+                                null,
+                                "feedback:link",
+                                "feedback",
+                                "title",
+                                "body",
+                                "{}",
+                                "https://example.com"));
     }
 
     @Test
     void batchCreationKeepsPerRecipientDeduplication() {
-        // Broadcasts are not backed by an outbox row, so event_id stays NULL (as NotificationAdminService does).
+        // Broadcasts are not backed by an outbox row, so event_id stays NULL (as
+        // NotificationAdminService does).
         UUID event = UUID.randomUUID();
-        var requests = List.of(
-            new NotificationStore.CreateRequest(alice, null, "broadcast:" + event + ":" + alice,
-                "broadcast", "notificationCustomTitle", "notificationCustomBody", "{\"title\":\"Hello\"}", "/dashboard/feedback", null),
-            new NotificationStore.CreateRequest(bob, null, "broadcast:" + event + ":" + bob,
-                "broadcast", "notificationCustomTitle", "notificationCustomBody", "{\"title\":\"Hello\"}", "/dashboard/feedback", null)
-        );
+        var requests =
+                List.of(
+                        new NotificationStore.CreateRequest(
+                                alice,
+                                null,
+                                "broadcast:" + event + ":" + alice,
+                                "broadcast",
+                                "notificationCustomTitle",
+                                "notificationCustomBody",
+                                "{\"title\":\"Hello\"}",
+                                "/dashboard/feedback",
+                                null),
+                        new NotificationStore.CreateRequest(
+                                bob,
+                                null,
+                                "broadcast:" + event + ":" + bob,
+                                "broadcast",
+                                "notificationCustomTitle",
+                                "notificationCustomBody",
+                                "{\"title\":\"Hello\"}",
+                                "/dashboard/feedback",
+                                null));
         assertEquals(Integer.valueOf(2), tx.execute(status -> store.createBatch(requests)));
         assertEquals(Integer.valueOf(0), tx.execute(status -> store.createBatch(requests)));
         assertEquals(1, store.unreadCount(alice));
@@ -103,13 +212,151 @@ class NotificationStoreTest {
     }
 
     @Test
+    void normalizesSingleAndBatchLinksBeforePersistenceAndRejectsUnsafeValues() {
+        assertTrue(
+                store.create(
+                        alice,
+                        null,
+                        "href:single:normalized",
+                        "feedback",
+                        "title",
+                        "body",
+                        "{}",
+                        "  /dashboard/home  "));
+        assertEquals(
+                "/dashboard/home",
+                jdbc.queryForObject(
+                        "SELECT href FROM platform_notification WHERE dedupe_key=?",
+                        String.class,
+                        "href:single:normalized"));
+
+        assertTrue(
+                store.create(
+                        alice,
+                        null,
+                        "href:single:blank",
+                        "feedback",
+                        "title",
+                        "body",
+                        "{}",
+                        "   "));
+        assertEquals(
+                Boolean.TRUE,
+                jdbc.queryForObject(
+                        "SELECT href IS NULL FROM platform_notification WHERE dedupe_key=?",
+                        Boolean.class,
+                        "href:single:blank"));
+
+        var batchRequest =
+                new NotificationStore.CreateRequest(
+                        bob,
+                        null,
+                        "href:batch:normalized",
+                        "broadcast",
+                        "title",
+                        "body",
+                        "{}",
+                        " /dashboard/broadcast ",
+                        null);
+        assertEquals(1, store.createBatch(List.of(batchRequest)));
+        assertEquals(
+                "/dashboard/broadcast",
+                jdbc.queryForObject(
+                        "SELECT href FROM platform_notification WHERE dedupe_key=?",
+                        String.class,
+                        "href:batch:normalized"));
+
+        var blankBatchRequest =
+                new NotificationStore.CreateRequest(
+                        bob,
+                        null,
+                        "href:batch:blank",
+                        "broadcast",
+                        "title",
+                        "body",
+                        "{}",
+                        "   ",
+                        null);
+        assertEquals(1, store.createBatch(List.of(blankBatchRequest)));
+        assertEquals(
+                Boolean.TRUE,
+                jdbc.queryForObject(
+                        "SELECT href IS NULL FROM platform_notification WHERE dedupe_key=?",
+                        Boolean.class,
+                        "href:batch:blank"));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        store.create(
+                                alice,
+                                null,
+                                "href:single:crlf",
+                                "feedback",
+                                "title",
+                                "body",
+                                "{}",
+                                "/dashboard\r\n/home"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        store.create(
+                                alice,
+                                null,
+                                "href:single:long",
+                                "feedback",
+                                "title",
+                                "body",
+                                "{}",
+                                "/" + "a".repeat(512)));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        store.createBatch(
+                                List.of(
+                                        new NotificationStore.CreateRequest(
+                                                bob,
+                                                null,
+                                                "href:batch:crlf",
+                                                "broadcast",
+                                                "title",
+                                                "body",
+                                                "{}",
+                                                "/dashboard\n/home",
+                                                null))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        store.createBatch(
+                                List.of(
+                                        new NotificationStore.CreateRequest(
+                                                bob,
+                                                null,
+                                                "href:batch:long",
+                                                "broadcast",
+                                                "title",
+                                                "body",
+                                                "{}",
+                                                "/" + "a".repeat(512),
+                                                null))));
+    }
+
+    @Test
     void duplicateCreationHasOneWinnerAcrossWorkers() throws Exception {
         var start = new CountDownLatch(1);
         try (var pool = Executors.newFixedThreadPool(2)) {
-            Callable<Boolean> attempt = () -> { start.await(); return create(alice, "feedback:concurrent:created"); };
-            var a = pool.submit(attempt); var b = pool.submit(attempt); start.countDown();
+            Callable<Boolean> attempt =
+                    () -> {
+                        start.await();
+                        return create(alice, "feedback:concurrent:created");
+                    };
+            var a = pool.submit(attempt);
+            var b = pool.submit(attempt);
+            start.countDown();
             assertNotEquals(a.get(15, TimeUnit.SECONDS), b.get(15, TimeUnit.SECONDS));
         }
-        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM platform_notification", Integer.class));
+        assertEquals(
+                1,
+                jdbc.queryForObject("SELECT count(*) FROM platform_notification", Integer.class));
     }
 }

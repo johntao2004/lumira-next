@@ -1,0 +1,32 @@
+{
+  "minTokens": 100,
+  "minLines": 12,
+  "mode": "weak",
+  "format": [
+    "typescript",
+    "tsx",
+    "java",
+    "python",
+    "javascript",
+    "bash"
+  ],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/target/**",
+    "**/.umi*/**",
+    "**/src/test/**",
+    "**/*.test.*",
+    "**/migrations/**",
+    "**/*-browser-smoke.mjs"
+  ],
+  "reporters": [
+    "json"
+  ],
+  "output": ".runtime/code-quality/duplicates",
+  "ignorePattern": [
+    "(?m)^import[^;]+;",
+    "(?m)^package[^;]+;",
+    "(?ms)^export const messages = \\{.*?^\\} as const;"
+  ]
+}

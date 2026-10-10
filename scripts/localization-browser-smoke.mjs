@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const config = JSON.parse(readFileSync('.runtime/local.json', 'utf8'));
 const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {}) });
 const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8010', viewport: { width: 1213, height: 886 } });
-const key = `qa.browser.localization.${Date.now()}`;
+const key = `custom.qa.browser.localization.${Date.now()}`;
 const emptyKey = `${key}.empty`;
 let created;
 let emptyCreated;
@@ -37,17 +37,26 @@ try {
   const editor = page.getByRole('dialog', { name: '新增文案', exact: true });
   await editor.getByLabel('消息键').fill(emptyKey);
   await editor.getByLabel('默认文案').fill('无翻译默认值');
-  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await editor.getByLabel('有效文案').fill('当前语言文案');
+  await editor.getByRole('button', { name: /^保\s*存$/ }).click();
   await expect(editor).not.toBeVisible();
+  const searchForm = main.locator('.resource-search');
+  await searchForm.getByLabel('消息键', { exact: true }).fill(emptyKey);
+  await searchForm.getByRole('button', { name: /^查\s*询$/ }).click();
   const emptyRows = main.locator('tbody tr[data-row-key]').filter({ hasText: emptyKey });
   await expect(emptyRows).toHaveCount(1);
   const emptyList = await (await context.request.get(`/api/platform/localization/entries?search=${encodeURIComponent(emptyKey)}`)).json();
   emptyCreated = emptyList.items?.[0];
   assert.ok(emptyCreated?.id);
+  await page.reload();
+  await searchForm.getByLabel('消息键', { exact: true }).fill(emptyKey);
+  await searchForm.getByRole('button', { name: /^查\s*询$/ }).click();
+  await expect(main.locator('tbody tr[data-row-key]').filter({ hasText: emptyKey })).toHaveCount(1);
+  assert.equal(emptyCreated.translations?.['zh-CN'], '当前语言文案');
 
   const create = await write('/platform/localization/entries', 'POST', {
     messageKey: key,
-    namespace: 'platform',
+    namespace: 'custom',
     defaultMessage: '浏览器默认文案',
     translations: { en: 'Browser runtime copy', 'zh-TW': '瀏覽器執行時文案' },
     enabled: true,

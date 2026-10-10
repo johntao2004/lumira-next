@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class DirectoryModuleConfiguration {
     @Bean
     PlatformModule directoryModule() {
-        return new PlatformModule("directory", "组织与目录", "1.0.0", List.of("identity", "platform", "files"), true);
+        return new PlatformModule(
+                "directory", "组织与目录", "1.0.0", List.of("identity", "platform", "files"), true);
     }
 }

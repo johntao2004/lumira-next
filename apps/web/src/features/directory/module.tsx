@@ -1,45 +1,45 @@
 import type { FrontendModule } from "@/platform/modules/types";
 import { directoryManifest } from "./manifest";
-import { lazy } from "react";
+import { lazy, type ReactNode } from "react";
 import { RouteTabs } from "@/platform/components/route-tabs";
+import { isRolePreviewReadOnly } from "@/platform/api/client";
+import { routeTabsForGroup } from "@/platform/modules/route-tabs";
 
 const OnlineUsersPage = lazy(() => import("@/features/users/online-users-page").then(({ OnlineUsersPage }) => ({ default: OnlineUsersPage })));
 const OrganizationsPage = lazy(() => import("@/features/organizations/organizations-page").then(({ OrganizationsPage }) => ({ default: OrganizationsPage })));
 const RolesPage = lazy(() => import("@/features/roles/roles-page").then(({ RolesPage }) => ({ default: RolesPage })));
 const UsersPage = lazy(() => import("@/features/users/users-page").then(({ UsersPage }) => ({ default: UsersPage })));
 
-function UserManagementTabs({ authorities, hasGlobal }: { authorities: string[]; hasGlobal: (permission: string) => boolean }) {
-  const tabs = [];
+function UserManagementTabs({ authorities, hasGlobal, readOnlyPreview = false }: { authorities: string[]; hasGlobal: (permission: string) => boolean; readOnlyPreview?: boolean }) {
+  const previewReadOnly = readOnlyPreview || isRolePreviewReadOnly();
+  const childrenByRoute: Record<string, ReactNode | undefined> = {};
   if (authorities.includes("platform:users:read")) {
-    tabs.push({
-      key: "users",
-      path: "/dashboard/users",
-      label: "userList" as const,
-      children: <UsersPage
-        canCreate={hasGlobal("platform:users:write")}
-        canAssignOrganizations={hasGlobal("platform:organizations:write") && authorities.includes("platform:organizations:read")}
-        canAssignRoles={hasGlobal("platform:roles:write") && authorities.includes("platform:roles:read")}
-        canWrite={authorities.includes("platform:users:write")}
-      />,
-    });
+    childrenByRoute.users = <UsersPage
+        readOnlyPreview={previewReadOnly}
+        canCreate={!previewReadOnly && hasGlobal("platform:users:write")}
+        canAssignOrganizations={!previewReadOnly && hasGlobal("platform:organizations:write") && authorities.includes("platform:organizations:read")}
+        canAssignRoles={!previewReadOnly && hasGlobal("platform:roles:write") && authorities.includes("platform:roles:read")}
+        canWrite={!previewReadOnly && authorities.includes("platform:users:write")}
+      />;
   }
-  if (hasGlobal("platform:users:read")) {
-    tabs.push({
-      key: "online-users",
-      path: "/dashboard/online-users",
-      label: "onlineUsers" as const,
-      children: <OnlineUsersPage canWrite={hasGlobal("platform:users:write")} />,
-    });
+  if (!previewReadOnly && hasGlobal("platform:users:read")) {
+    childrenByRoute["online-users"] = <OnlineUsersPage canWrite={hasGlobal("platform:users:write")} />;
   }
-  return <RouteTabs tabs={tabs} />;
+  return <RouteTabs tabs={routeTabsForGroup(directoryManifest, "user-activity", childrenByRoute)} />;
 }
 
 export const directoryFrontendModule = {
   ...directoryManifest,
   pages: {
-    organizations: ({ hasGlobal }) => <OrganizationsPage canWrite={hasGlobal("platform:organizations:write")} />,
-    roles: ({ hasGlobal, authorities }) => <RolesPage canWrite={hasGlobal("platform:roles:write")} authorities={authorities} />,
-    users: ({ hasGlobal, authorities }) => <UserManagementTabs authorities={authorities} hasGlobal={hasGlobal} />,
-    "online-users": ({ hasGlobal, authorities }) => <UserManagementTabs authorities={authorities} hasGlobal={hasGlobal} />,
+    organizations: ({ hasGlobal, readOnlyPreview }) => <OrganizationsPage canWrite={hasGlobal("platform:organizations:write")} readOnlyPreview={readOnlyPreview} />,
+    roles: ({ hasGlobal, authorities, readOnlyPreview }) => <RolesPage
+      canWrite={hasGlobal("platform:roles:write")}
+      authorities={authorities}
+      canManageAuthenticationPolicy={hasGlobal("platform:roles:read") && hasGlobal("platform:roles:write") && hasGlobal("platform:settings:read") && hasGlobal("platform:settings:write")}
+      canReadRegistrationSettings={!readOnlyPreview && authorities.includes("platform:settings:read")}
+      readOnlyPreview={readOnlyPreview}
+    />,
+    users: ({ hasGlobal, authorities, readOnlyPreview }) => <UserManagementTabs authorities={authorities} hasGlobal={hasGlobal} readOnlyPreview={readOnlyPreview} />,
+    "online-users": ({ hasGlobal, authorities, readOnlyPreview }) => <UserManagementTabs authorities={authorities} hasGlobal={hasGlobal} readOnlyPreview={readOnlyPreview} />,
   },
 } satisfies FrontendModule;

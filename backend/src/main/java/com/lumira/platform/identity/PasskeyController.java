@@ -25,6 +25,8 @@ public class PasskeyController {
 
     public record AuthenticationAvailability(boolean enabled) {}
 
+    public record AuthenticationOptionsInput(String captchaProofId) {}
+
     public PasskeyController(PasskeyService service) {
         this.service = service;
     }
@@ -35,32 +37,41 @@ public class PasskeyController {
     }
 
     @PostMapping("/authentication/options")
-    public PasskeyOptions authenticationOptions(HttpServletRequest request) {
-        return service.authenticationOptions(request);
+    public PasskeyOptions authenticationOptions(
+            @BoundedBody(maxBytes = 2_048, errorCode = "invalidPasskeyAuthentication")
+                    @RequestBody(required = false)
+                    AuthenticationOptionsInput input,
+            HttpServletRequest request) {
+        return service.authenticationOptions(
+                input == null ? null : input.captchaProofId(), request);
     }
 
     @PostMapping("/authentication/complete")
     public java.util.Map<String, Object> authenticationComplete(
-            @BoundedBody(maxBytes = 32_768, errorCode = "invalidPasskeyAuthentication")
-            @RequestBody PasskeyRequests.Authentication input,
-            HttpServletRequest request, HttpServletResponse response) {
+            @BoundedBody(maxBytes = 32_768, errorCode = "invalidPasskeyAuthentication") @RequestBody
+                    PasskeyRequests.Authentication input,
+            HttpServletRequest request,
+            HttpServletResponse response) {
         return service.completeAuthentication(input, request, response);
     }
 
     @PostMapping("/registration/options")
     public PasskeyOptions registrationOptions(
             @BoundedBody(maxBytes = 4_096, errorCode = "invalidPasskeyRegistration")
-            @RequestBody(required = false) PasskeyRequests.Operation input,
-            Authentication actor, HttpServletRequest request) {
+                    @RequestBody(required = false)
+                    PasskeyRequests.Operation input,
+            Authentication actor,
+            HttpServletRequest request) {
         return service.registrationOptions(actor, input, request);
     }
 
     @PostMapping("/registration/complete")
     @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.CREATED)
     public PasskeyCredentialView registrationComplete(
-            @BoundedBody(maxBytes = 32_768, errorCode = "invalidPasskeyRegistration")
-            @RequestBody PasskeyRequests.Registration input,
-            Authentication actor, HttpServletRequest request) {
+            @BoundedBody(maxBytes = 32_768, errorCode = "invalidPasskeyRegistration") @RequestBody
+                    PasskeyRequests.Registration input,
+            Authentication actor,
+            HttpServletRequest request) {
         return service.completeRegistration(actor, input, request);
     }
 
@@ -74,16 +85,22 @@ public class PasskeyController {
     @PatchMapping("/{id}")
     public PasskeyCredentialView rename(
             @PathVariable UUID id,
-            @BoundedBody(maxBytes = 4_096, errorCode = "invalidPasskeyLabel") @RequestBody Rename input,
+            @BoundedBody(maxBytes = 4_096, errorCode = "invalidPasskeyLabel") @RequestBody
+                    Rename input,
             Authentication actor) {
-        return service.rename(actor, id, input == null ? null : input.label(), input == null ? null : input.currentPassword());
+        return service.rename(
+                actor,
+                id,
+                input == null ? null : input.label(),
+                input == null ? null : input.currentPassword());
     }
 
     @DeleteMapping("/{id}")
     @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(
             @PathVariable UUID id,
-            @BoundedBody(maxBytes = 2_048, errorCode = "currentPasswordRequired") @RequestBody PasskeyRequests.Operation input,
+            @BoundedBody(maxBytes = 2_048, errorCode = "currentPasswordRequired") @RequestBody
+                    PasskeyRequests.Operation input,
             Authentication actor) {
         service.delete(actor, id, input);
     }

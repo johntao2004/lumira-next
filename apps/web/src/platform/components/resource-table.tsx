@@ -1,11 +1,15 @@
 "use client";
 import { ProTable, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
 import type { TableProps } from "antd";
-import { Children, useEffect, useRef, useState } from "react";
+import { Children, useRef } from "react";
+import { useEffect } from "react";
+import dayjs from "dayjs";
 import { ApiError } from "../api/client";
 import { TABLE_PAGE_SIZE_OPTIONS, type ListRequest, type PageResult } from "../api/pagination";
 import { usePreferences } from "../providers";
 import { FeedbackBubble } from "./feedback-bubble";
+import { tableActionColumn } from "./table-actions";
+import { useQueryFilterSpan } from "./use-query-filter-span";
 
 export type { ListRequest, PageResult } from "../api/pagination";
 export type { ProColumns } from "@ant-design/pro-components";
@@ -53,20 +57,32 @@ function readColumnSearch<T>(columns: ProColumns<T>[], values: Record<string, un
 }
 
 function requestSearchValues<T>(columns: ProColumns<T>[], request: ListRequest): Record<string, unknown> {
-  const values: Record<string, unknown> = {};
+  const values: Record<string, unknown> = Object.create(null);
   for (const column of columns) {
     const name = typeof column.dataIndex === "string" ? column.dataIndex : undefined;
     if (!column.search || !name) continue;
     const valueType = String(column.valueType ?? "text");
-    if (!valueType.toLowerCase().includes("range") && request.filters?.[name] !== undefined) {
+    if (valueType.toLowerCase().includes("range")) {
+      const from = request.filters?.[`${name}.from`];
+      const to = request.filters?.[`${name}.to`];
+      const parse = (value: string | undefined) => {
+        if (value === undefined) return null;
+        if (valueType.toLowerCase().includes("date") || valueType.toLowerCase().includes("time")) return dayjs(value);
+        return value;
+      };
+      if (from !== undefined || to !== undefined) values[name] = [parse(from), parse(to)];
+    } else if (request.filters?.[name] !== undefined) {
       values[name] = request.filters[name];
+    } else {
+      values[name] = null;
     }
   }
   return values;
 }
 
-export function ResourceTable<T extends { id: string }>({ result, loading, error, request, onChange, onRetry, columns, actions, onSearch, searchInitialValues, rowSelection, searchable = true }: {
+export function ResourceTable<T extends { id: string }>({ result, loading, error, request, onChange, onRetry, columns, actions, onSearch, searchInitialValues, rowSelection, expandable, searchable = true }: {
   searchable?: boolean; rowSelection?: TableProps<T>["rowSelection"]; actions?: React.ReactNode;
+  expandable?: TableProps<T>["expandable"];
   onSearch?: (search: ResourceSearch) => void;
   searchInitialValues?: Record<string, unknown>;
   result?: PageResult<T>; loading: boolean; error: Error | null; request: ListRequest;
@@ -75,26 +91,23 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
   const { t } = usePreferences();
   const tableRef = useRef<HTMLDivElement>(null);
   const searchFormRef = useRef<ProFormInstance | undefined>(undefined);
-  const [searchSpan, setSearchSpan] = useState(24);
+  const requestSearch = requestSearchValues(columns, request);
+  const requestSearchKey = JSON.stringify(requestSearch);
   useEffect(() => {
-    const element = tableRef.current;
-    if (!element) return;
-    const updateSpan = (width: number) => {
-      // QueryFilter's 24-column grid is measured against the table itself so
-      // a persistent sidebar or drawer does not leave the fields compressed.
-      setSearchSpan(width < 440 ? 24 : width < 960 ? 12 : 8);
-    };
-    updateSpan(element.getBoundingClientRect().width);
-    const observer = new ResizeObserver(entries => {
-      const width = entries[0]?.contentRect.width;
-      if (width !== undefined) updateSpan(width);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+    searchFormRef.current?.setFieldsValue({ ...requestSearchValues(columns, request), ...searchInitialValues });
+  }, [requestSearchKey]);
+  const searchSpan = useQueryFilterSpan(tableRef);
   // Search only fields deliberately selected by each page; data columns alone
   // do not automatically become query controls.
-  const tableColumns = columns.map(column => ({ ...column, search: column.search ?? false }));
+  // Use a stable actions key across pages; option columns follow the same right-edge policy.
+  const tableColumns = columns.map(column => ({
+    ...column,
+    ...(column.key === "actions" || column.valueType === "option" ? {
+      ...tableActionColumn,
+      className: [column.className, tableActionColumn.className].filter(Boolean).join(" "),
+    } : {}),
+    search: column.search ?? false,
+  }));
   const submitSearch = (values: Record<string, unknown>) => {
     const search = readColumnSearch(columns, values);
     if (onSearch) onSearch(search);
@@ -115,11 +128,12 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
       className="resource-data"
       formRef={searchFormRef}
       rowSelection={rowSelection}
+      expandable={expandable}
       rowKey="id"
       loading={loading}
       dataSource={result?.items ?? []}
       search={searchable ? { className: "resource-search", defaultCollapsed: true, span: searchSpan, labelWidth: "auto" } : false}
-      form={{ initialValues: { ...requestSearchValues(columns, request), ...searchInitialValues } }}
+      form={{ initialValues: { ...requestSearch, ...searchInitialValues } }}
       onSubmit={submitSearch}
       onReset={resetSearch}
       columns={tableColumns}

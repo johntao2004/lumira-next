@@ -6,35 +6,36 @@ import { safeReturnPath } from "./auth/return-path";
 import { App, ConfigProvider, theme } from "antd";
 import { ProConfigProvider } from "@ant-design/pro-components";
 import { StyleProvider } from "antd-style";
-import zhCN from "antd/locale/zh_CN";
 import enUS from "antd/locale/en_US";
-import zhTW from "antd/locale/zh_TW";
-import jaJP from "antd/locale/ja_JP";
-import koKR from "antd/locale/ko_KR";
-import frFR from "antd/locale/fr_FR";
-import esES from "antd/locale/es_ES";
-import deDE from "antd/locale/de_DE";
 import {
+  loadLocaleMessages,
   resolveLocale,
   translate,
   type Locale,
   type MessageKey,
 } from "./i18n/messages";
-const antLocales = {
-  "zh-CN": zhCN,
-  "zh-TW": zhTW,
-  en: enUS,
-  ja: jaJP,
-  ko: koKR,
-  fr: frFR,
-  es: esES,
-  de: deDE,
-};
+async function loadAntLocale(locale: Locale) {
+  switch (locale) {
+    case "zh-CN": return (await import("antd/locale/zh_CN")).default;
+    case "zh-TW": return (await import("antd/locale/zh_TW")).default;
+    case "ja": return (await import("antd/locale/ja_JP")).default;
+    case "ko": return (await import("antd/locale/ko_KR")).default;
+    case "fr": return (await import("antd/locale/fr_FR")).default;
+    case "es": return (await import("antd/locale/es_ES")).default;
+    case "de": return (await import("antd/locale/de_DE")).default;
+    case "en": return enUS;
+  }
+}
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { canonicalLocale, defaultPreferences, PREFERENCES_COOKIE, parsePreferences, serializePreferences, type PreferencesValue } from "./preferences/model";
+import { api, mutate } from "./api/client";
+import type { CurrentUser } from "./auth/api-types";
+import { createAccountLocaleSync } from "./preferences/account-locale-sync";
 import { AppErrorBoundary } from "./shell/app-error-boundary";
 import { useDisplayScale } from "./display/use-display-scale";
+import { clearAuthorizationContext } from "./api/client";
+import { currentSessionUserId, invalidateSession, SESSION_STORAGE_KEY, subscribeSessionBoundary } from "./auth/session-lifecycle";
 const Preferences = createContext({
   ...defaultPreferences,
   updatePreferences: (_patch: Partial<PreferencesValue>) => {},
@@ -43,12 +44,14 @@ const Preferences = createContext({
   t: (key: string, params?: Record<string, string | number>) =>
     translate("zh-CN", key as MessageKey, params),
   toggleDark: () => {},
-  setLocale: (_locale: string) => {},
+  setLocale: async (_locale: string) => {},
 });
 export const usePreferences = () => useContext(Preferences);
 export function Providers({ children, initialBranding, initialPreferences, hasSavedPreferences }: { initialBranding:Branding; children: React.ReactNode; initialPreferences: PreferencesValue; hasSavedPreferences: boolean }) {
   const [preferences, setPreferences] = useState(initialPreferences);
   const displayScale = useDisplayScale();
+  const [staticLocaleRevision, setStaticLocaleRevision] = useState(0);
+  const [antLocale, setAntLocale] = useState(enUS);
   const [runtimeMessages, setRuntimeMessages] = useState<Record<string, string>>({});
   const [runtimeRevision, setRuntimeRevision] = useState(0);
   const current = useRef(preferences);
@@ -73,6 +76,62 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
         },
       }),
   );
+  const [accountLocale] = useState(() => createAccountLocaleSync({
+    load: (signal) => api<{ locale: string | null }>("/account/locale", { signal }),
+    save: (value, signal) => mutate<{ locale: string | null }>("/account/locale", "PUT", { locale: value }, signal),
+    apply: (value) => updatePreferences({ locale: value }),
+  }));
+  useEffect(() => {
+    const syncAccount = () => {
+      const user = client.getQueryData<CurrentUser>(["session"]);
+      void accountLocale.setAccount(user?.userId ?? null);
+    };
+    const unsubscribe = client.getQueryCache().subscribe(syncAccount);
+    syncAccount();
+    return () => { unsubscribe(); accountLocale.dispose(); };
+  }, [client, accountLocale]);
+  useEffect(() => {
+    const pendingRevalidations = new Set<number>();
+    const unsubscribe = subscribeSessionBoundary(({ kind, userId }) => {
+      if (kind === "invalidated") {
+        client.clear();
+        clearAuthorizationContext();
+      } else {
+        // Keep the in-flight /auth/me query that established the new identity;
+        // every account-scoped query is removed and must be loaded again.
+        client.removeQueries({ predicate: query => query.queryKey[0] !== "session" });
+        clearAuthorizationContext();
+
+        // Another bootstrap caller can establish the new identity first, which
+        // makes a same-epoch duplicate /auth/me fail its epoch guard. If the
+        // session query has not already cached the accepted user, revalidate it
+        // after the establishing promise can settle instead of leaving the
+        // workspace in the transient error state until its next poll.
+        const timer = window.setTimeout(() => {
+          pendingRevalidations.delete(timer);
+          if (!userId || currentSessionUserId() !== userId) return;
+          const cached = client.getQueryData<CurrentUser>(["session"]);
+          if (cached?.userId === userId) return;
+          window.dispatchEvent(new Event("lumira:session-revalidate"));
+        }, 0);
+        pendingRevalidations.add(timer);
+      }
+    });
+    return () => {
+      unsubscribe();
+      pendingRevalidations.forEach(timer => window.clearTimeout(timer));
+    };
+  }, [client]);
+  useEffect(() => {
+    const reauthenticate = (event: StorageEvent) => {
+      if (event.key !== SESSION_STORAGE_KEY || !event.newValue) return;
+      invalidateSession(false);
+      clearAuthorizationContext();
+      window.dispatchEvent(new Event("lumira:session-revalidate"));
+    };
+    window.addEventListener("storage", reauthenticate);
+    return () => window.removeEventListener("storage", reauthenticate);
+  }, []);
   useEffect(() => {
     const refresh = () => setRuntimeRevision((value) => value + 1);
     window.addEventListener("lumira:localization-changed", refresh);
@@ -82,6 +141,7 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
     const expire = () => {
       if (!window.location.pathname.startsWith("/dashboard/")) return;
       const returnTo = safeReturnPath(window.location.pathname + window.location.search + window.location.hash);
+      invalidateSession(true);
       client.clear();
       history.replace(`/user/login?returnTo=${encodeURIComponent(returnTo)}`);
     };
@@ -114,12 +174,7 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
   }, [hasSavedPreferences]);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/public/localization/locales", {
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => response.ok ? response.json() as Promise<Array<{ locale?: unknown }>> : null)
+    api<Array<{ locale?: unknown }>>("/public/localization/locales", { signal: controller.signal })
       .then((registered) => {
         if (!registered || !Array.isArray(registered)) return;
         const locales = new Set(registered.flatMap((item) => typeof item?.locale === "string" ? [item.locale] : []));
@@ -134,14 +189,24 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
     document.documentElement.lang = locale;
   }, [dark, locale]);
   useEffect(() => {
+    let active = true;
+    const selectedLocale = resolveLocale(locale);
+    void Promise.all([loadLocaleMessages(selectedLocale), loadAntLocale(selectedLocale)])
+      .then(([, loadedAntLocale]) => {
+        if (!active) return;
+        setAntLocale(loadedAntLocale);
+        setStaticLocaleRevision((revision) => revision + 1);
+      })
+      .catch(() => {
+        // English remains a complete static fallback when a locale chunk fails.
+        if (active) setAntLocale(enUS);
+      });
+    return () => { active = false; };
+  }, [locale]);
+  useEffect(() => {
     const controller = new AbortController();
     setRuntimeMessages({});
-    fetch(`/api/public/localization/bundle/${encodeURIComponent(locale)}`, {
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => response.ok ? response.json() as Promise<{ messages?: unknown }> : null)
+    api<{ messages?: unknown }>(`/public/localization/bundle/${encodeURIComponent(locale)}`, { signal: controller.signal })
       .then((payload) => {
         if (!payload || !payload.messages || typeof payload.messages !== "object") return;
         const entries = Object.entries(payload.messages as Record<string, unknown>)
@@ -153,13 +218,13 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
     return () => controller.abort();
   }, [locale, runtimeRevision]);
   const toggleDark = useCallback(() => updatePreferences({ dark: !current.current.dark }), [updatePreferences]);
-  const setLocale = useCallback((next: string) => updatePreferences({ locale: next }), [updatePreferences]);
+  const setLocale = useCallback((next: string) => accountLocale.select(next), [accountLocale]);
   const t = useCallback((key: string, params?: Record<string, string | number>) => {
-    const template = runtimeMessages[key] ?? translate(locale as Locale, key as MessageKey, params);
+    const template = runtimeMessages[key] ?? translate(resolveLocale(locale), key as MessageKey, params);
     return runtimeMessages[key]
       ? template.replace(/\{(\w+)\}/g, (placeholder, name: string) => String(params?.[name] ?? placeholder))
       : template;
-  }, [locale, runtimeMessages]);
+  }, [locale, runtimeMessages, staticLocaleRevision]);
   const preferencesValue = useMemo(() => ({
     ...preferences, updatePreferences, dark, locale, toggleDark, setLocale, t,
   }), [preferences, updatePreferences, dark, locale, toggleDark, setLocale, t]);
@@ -167,7 +232,7 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
     <Preferences.Provider value={preferencesValue}>
       <QueryClientProvider client={client}>
         <ConfigProvider
-          locale={antLocales[locale as keyof typeof antLocales] ?? enUS}
+          locale={antLocale}
           modal={{ centered: true }}
           theme={{
             cssVar: { key: "lumira" },
@@ -196,7 +261,7 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
             <ProConfigProvider dark={dark}>
               <App>
                 <BrandingProvider initial={initialBranding}>
-                  <AppErrorBoundary message={t("pageError")} retryLabel={t("retry")}>
+                  <AppErrorBoundary locale={locale} t={t}>
                     {children}
                   </AppErrorBoundary>
                 </BrandingProvider>

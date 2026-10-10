@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, InputNumber, Modal, Select, Typography } from "antd";
+import { InputNumber, Modal, Select, Typography } from "antd";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { SettingsSection } from "@/platform/components/settings-section";
 import { usePreferences } from "@/platform/providers";
@@ -25,7 +25,7 @@ export function FileRetentionPage({ canWrite }: { canWrite: boolean }) {
     });
   }
 
-  return <SettingsSection section="file-retention" canWrite={canWrite} confirmBeforeSave={confirmPolicy}>
+  return <SettingsSection section="file-retention" canWrite={canWrite} showSecondaryActions={false} confirmBeforeSave={confirmPolicy}>
     <Typography.Paragraph type="secondary">{t("fileRetentionHint")}</Typography.Paragraph>
     <Form.Item name={["data", "mode"]} label={t("fileRetentionMode")} rules={[{ required: true }]}>
       <Select options={[
@@ -38,7 +38,6 @@ export function FileRetentionPage({ canWrite }: { canWrite: boolean }) {
         <Form.Item name={["data", "retentionDays"]} label={t("fileRetentionDays")} rules={[{ required: true, type: "number", min: 1, max: 365 }]}>
           <InputNumber min={1} max={365} precision={0} disabled={getFieldValue(["data", "mode"]) === "MANUAL"} />
         </Form.Item>
-        {getFieldValue(["data", "mode"]) === "AUTOMATIC" && <Alert type="warning" showIcon message={t("fileRetentionExistingWarning")} />}
       </>}
     </Form.Item>
   </SettingsSection>;

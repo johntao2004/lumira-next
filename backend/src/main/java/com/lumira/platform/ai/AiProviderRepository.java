@@ -20,54 +20,111 @@ public class AiProviderRepository {
     }
 
     public List<AiProviderProfile> findAll() {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
             SELECT id,name,provider_kind,base_url,model_name,capability_codes::text AS capability_codes,enabled,version
             FROM platform_ai_provider ORDER BY created_at DESC,id
-            """).query((rs, row) -> read(rs.getObject("id", UUID.class), rs.getString("name"),
-                rs.getString("provider_kind"), rs.getString("base_url"), rs.getString("model_name"),
-                rs.getString("capability_codes"), rs.getBoolean("enabled"), rs.getLong("version"))).list();
+            """)
+                .query(
+                        (rs, row) ->
+                                read(
+                                        rs.getObject("id", UUID.class),
+                                        rs.getString("name"),
+                                        rs.getString("provider_kind"),
+                                        rs.getString("base_url"),
+                                        rs.getString("model_name"),
+                                        rs.getString("capability_codes"),
+                                        rs.getBoolean("enabled"),
+                                        rs.getLong("version")))
+                .list();
     }
 
     public Optional<AiProviderProfile> find(UUID id) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
             SELECT id,name,provider_kind,base_url,model_name,capability_codes::text AS capability_codes,enabled,version
             FROM platform_ai_provider WHERE id=:id
-            """).param("id", id).query((rs, row) -> read(rs.getObject("id", UUID.class), rs.getString("name"),
-                rs.getString("provider_kind"), rs.getString("base_url"), rs.getString("model_name"),
-                rs.getString("capability_codes"), rs.getBoolean("enabled"), rs.getLong("version"))).optional();
+            """)
+                .param("id", id)
+                .query(
+                        (rs, row) ->
+                                read(
+                                        rs.getObject("id", UUID.class),
+                                        rs.getString("name"),
+                                        rs.getString("provider_kind"),
+                                        rs.getString("base_url"),
+                                        rs.getString("model_name"),
+                                        rs.getString("capability_codes"),
+                                        rs.getBoolean("enabled"),
+                                        rs.getLong("version")))
+                .optional();
     }
 
     public void insert(AiProviderProfile profile, String capabilitiesJson, String actor) {
-        jdbc.sql("""
+        jdbc.sql(
+                        """
             INSERT INTO platform_ai_provider(id,name,provider_kind,base_url,model_name,capability_codes,enabled,created_by,updated_by)
             VALUES(:id,:name,:kind,:baseUrl,:model,CAST(:capabilities AS jsonb),:enabled,:actor,:actor)
-            """).param("id", profile.id()).param("name", profile.name()).param("kind", profile.providerKind().name())
-            .param("baseUrl", profile.baseUrl()).param("model", profile.modelName()).param("capabilities", capabilitiesJson)
-            .param("enabled", profile.enabled()).param("actor", actor).update();
+            """)
+                .param("id", profile.id())
+                .param("name", profile.name())
+                .param("kind", profile.providerKind().name())
+                .param("baseUrl", profile.baseUrl())
+                .param("model", profile.modelName())
+                .param("capabilities", capabilitiesJson)
+                .param("enabled", profile.enabled())
+                .param("actor", actor)
+                .update();
     }
 
     public int update(AiProviderProfile profile, String capabilitiesJson, String actor) {
-        return jdbc.sql("""
+        return jdbc.sql(
+                        """
             UPDATE platform_ai_provider SET name=:name,provider_kind=:kind,base_url=:baseUrl,model_name=:model,
                 capability_codes=CAST(:capabilities AS jsonb),enabled=:enabled,version=version+1,updated_by=:actor,updated_at=now()
             WHERE id=:id AND version=:version
-            """).param("id", profile.id()).param("name", profile.name()).param("kind", profile.providerKind().name())
-            .param("baseUrl", profile.baseUrl()).param("model", profile.modelName()).param("capabilities", capabilitiesJson)
-            .param("enabled", profile.enabled()).param("actor", actor).param("version", profile.version()).update();
+            """)
+                .param("id", profile.id())
+                .param("name", profile.name())
+                .param("kind", profile.providerKind().name())
+                .param("baseUrl", profile.baseUrl())
+                .param("model", profile.modelName())
+                .param("capabilities", capabilitiesJson)
+                .param("enabled", profile.enabled())
+                .param("actor", actor)
+                .param("version", profile.version())
+                .update();
     }
 
     public int delete(UUID id, long version) {
         return jdbc.sql("DELETE FROM platform_ai_provider WHERE id=:id AND version=:version")
-            .param("id", id).param("version", version).update();
+                .param("id", id)
+                .param("version", version)
+                .update();
     }
 
-    private AiProviderProfile read(UUID id, String name, String kind, String baseUrl, String model,
-                                   String capabilitiesJson, boolean enabled, long version) {
+    private AiProviderProfile read(
+            UUID id,
+            String name,
+            String kind,
+            String baseUrl,
+            String model,
+            String capabilitiesJson,
+            boolean enabled,
+            long version) {
         try {
-            return new AiProviderProfile(id, name, AiProviderProfile.ProviderKind.valueOf(kind), baseUrl, model,
-                mapper.readValue(capabilitiesJson, STRINGS), enabled, version);
+            return new AiProviderProfile(
+                    id,
+                    name,
+                    AiProviderProfile.ProviderKind.valueOf(kind),
+                    baseUrl,
+                    model,
+                    mapper.readValue(capabilitiesJson, STRINGS),
+                    enabled,
+                    version);
         } catch (RuntimeException exception) {
-            throw new IllegalStateException("Stored AI provider configuration is invalid", exception);
+            throw new IllegalStateException(
+                    "Stored AI provider configuration is invalid", exception);
         }
     }
 }

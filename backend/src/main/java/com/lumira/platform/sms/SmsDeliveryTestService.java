@@ -12,7 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class SmsDeliveryTestService {
     private static final String TEST_RECIPIENT = "+15555550123";
-    private static final String TEST_MESSAGE = "Lumira local SMS transport test. No account code is included.";
+    private static final String TEST_MESSAGE =
+            "Lumira local SMS transport test. No account code is included.";
 
     public record Result(String result) {}
 
@@ -22,8 +23,12 @@ public class SmsDeliveryTestService {
     private final AdministrationPort guard;
     private final AuditPort audit;
 
-    public SmsDeliveryTestService(SmsConfigurationPort settings, SmsConnectionSource source, SmsGateway gateway,
-            AdministrationPort guard, AuditPort audit) {
+    public SmsDeliveryTestService(
+            SmsConfigurationPort settings,
+            SmsConnectionSource source,
+            SmsGateway gateway,
+            AdministrationPort guard,
+            AuditPort audit) {
         this.settings = settings;
         this.source = source;
         this.gateway = gateway;
@@ -34,10 +39,14 @@ public class SmsDeliveryTestService {
     public Result sendLocalTest(String actor) {
         requireWrite(actor);
         var data = settings.readSettings();
-        if (!data.enabled() || !SmsGateway.isLoopbackTestEndpoint(data.endpoint())) unavailable();
+        if (!data.enabled()
+                || !"webhook".equals(data.provider())
+                || !SmsGateway.isLoopbackTestEndpoint(data.endpoint())) unavailable();
 
         try (var connection = source.load()) {
-            if (!SmsGateway.isLoopbackTestEndpoint(connection.settings().endpoint())) unavailable();
+            if (!"webhook".equals(connection.settings().provider())
+                    || !SmsGateway.isLoopbackTestEndpoint(connection.settings().endpoint()))
+                unavailable();
             var result = gateway.send(connection, new OutgoingSms(TEST_RECIPIENT, TEST_MESSAGE));
             audit.append(actor, "sms.localTest." + result.name(), UUID.randomUUID());
             return new Result(result.name());

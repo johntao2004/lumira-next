@@ -11,5 +11,7 @@ export type RuntimeNavigationNode = {
   readonly moduleId?: string | null;
   readonly labelKey?: string | null;
   readonly labelDefault?: string | null;
+  /** False for a PAGE retained only because it has visible descendants. */
+  readonly routable?: boolean;
   readonly children: readonly RuntimeNavigationNode[];
 };

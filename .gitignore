@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .next/
 apps/web/dist/
 apps/web/src/.umi/
@@ -10,5 +10,9 @@ target/
 *.tsbuildinfo
 .DS_Store
 *.log
+*.srl
 # Generated review notes and browser evidence belong in .runtime.
 docs/audits/
+
+plugins/**/dist/
+plugins/**/frontend/node_modules/

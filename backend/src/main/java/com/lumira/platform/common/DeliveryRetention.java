@@ -1,4 +1,5 @@
 package com.lumira.platform.common;
+
 import java.time.Duration;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,7 +25,8 @@ public final class DeliveryRetention {
             throw new IllegalArgumentException("Delivery retention must be positive");
         }
         if (batchSize < 1 || batchSize > 10_000) {
-            throw new IllegalArgumentException("Delivery retention batch must be between 1 and 10000");
+            throw new IllegalArgumentException(
+                    "Delivery retention batch must be between 1 and 10000");
         }
         this.retention = retention;
         this.batchSize = batchSize;

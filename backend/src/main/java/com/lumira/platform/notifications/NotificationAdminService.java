@@ -1,9 +1,9 @@
 package com.lumira.platform.notifications;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
-import com.lumira.platform.common.AdministrationPort;
 import java.time.OffsetDateTime;
 import java.util.*;
 import org.springframework.http.HttpStatus;
@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Global, in-app broadcast administration. External delivery remains in the mail/SMS queues. */
+/** Global, in-app notification administration. External delivery remains in the mail/SMS queues. */
 @Service
 public class NotificationAdminService {
     public static final String READ = "platform:notifications:read";
@@ -26,12 +26,25 @@ public class NotificationAdminService {
     private final AuditPort audit;
     private final ObjectMapper mapper;
 
-    public record Publish(String scope, List<UUID> userIds, String title, String body, String href,
-                          String expiresAt) {}
+    public record RoleOption(UUID id, String code, String name) {}
+
+    public record Publish(
+            String scope,
+            List<UUID> userIds,
+            List<UUID> roleIds,
+            String title,
+            String body,
+            String href,
+            String expiresAt) {}
+
     public record Published(UUID broadcastId, int recipientCount) {}
 
-    public NotificationAdminService(NotificationStore store, JdbcClient jdbc, AdministrationPort guard,
-                                     AuditPort audit, ObjectMapper mapper) {
+    public NotificationAdminService(
+            NotificationStore store,
+            JdbcClient jdbc,
+            AdministrationPort guard,
+            AuditPort audit,
+            ObjectMapper mapper) {
         this.store = store;
         this.jdbc = jdbc;
         this.guard = guard;
@@ -45,63 +58,152 @@ public class NotificationAdminService {
         return store.listAdmin(page);
     }
 
+    @Transactional(readOnly = true)
+    public List<RoleOption> enabledRoles(String actor) {
+        guard.require(actor, WRITE);
+        guard.requireGlobal(actor, WRITE);
+        return jdbc.sql(
+                        "SELECT id,code,name FROM platform_role WHERE enabled=true ORDER BY code,id")
+                .query(RoleOption.class)
+                .list();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<NotificationStore.RecipientOption> recipientOptions(
+            String actor, PageRequest page) {
+        requireGlobalWriter(actor);
+        return store.listRecipientOptions(page);
+    }
+
+    @Transactional(readOnly = true)
+    public NotificationStore.RecipientOption recipientOption(String actor, UUID id) {
+        requireGlobalWriter(actor);
+        return store.recipientOption(id)
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND, "notificationRecipientNotFound"));
+    }
+
+    private void requireGlobalWriter(String actor) {
+        guard.require(actor, WRITE);
+        guard.requireGlobal(actor, WRITE);
+    }
+
     @Transactional
     public Published publish(String actor, Publish input) {
         guard.require(actor, WRITE);
         guard.requireGlobal(actor, WRITE);
-        if (input == null || input.scope() == null || input.title() == null || input.body() == null) {
+        if (input == null
+                || input.scope() == null
+                || input.title() == null
+                || input.body() == null) {
             throw invalid();
         }
         String scope = input.scope().strip().toUpperCase(Locale.ROOT);
-        if (!Set.of("ALL", "USERS").contains(scope)) throw invalid();
+        if (!Set.of("ALL", "USERS", "ROLES").contains(scope)) throw invalid();
         String title = bounded(input.title(), 200);
         String body = bounded(input.body(), 4_000);
-        String href = normalizeHref(input.href());
+        String href;
+        try {
+            href = NotificationHref.normalize(input.href());
+        } catch (IllegalArgumentException invalidHref) {
+            throw invalid();
+        }
         OffsetDateTime expiresAt = parseExpiry(input.expiresAt());
-        List<UUID> recipients = resolveRecipients(scope, input.userIds());
-        if (recipients.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "notificationNoRecipients");
-        if (recipients.size() > MAX_RECIPIENTS) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "notificationTooManyRecipients");
+        List<UUID> recipients = resolveRecipients(scope, input.userIds(), input.roleIds());
+        if (recipients.isEmpty())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "notificationNoRecipients");
+        if (recipients.size() > MAX_RECIPIENTS)
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE, "notificationTooManyRecipients");
 
         ObjectNode params = mapper.createObjectNode();
         params.put("title", title);
         params.put("body", body);
         String serialized = mapper.writeValueAsString(params);
         UUID broadcastId = UUID.randomUUID();
-        var requests = recipients.stream().map(recipient -> new NotificationStore.CreateRequest(
-            recipient, null, "broadcast:" + broadcastId + ":" + recipient,
-            "broadcast", "notificationCustomTitle", "notificationCustomBody", serialized, href, expiresAt
-        )).toList();
+        var requests =
+                recipients.stream()
+                        .map(
+                                recipient ->
+                                        new NotificationStore.CreateRequest(
+                                                recipient,
+                                                null,
+                                                "broadcast:" + broadcastId + ":" + recipient,
+                                                "broadcast",
+                                                "notificationCustomTitle",
+                                                "notificationCustomBody",
+                                                serialized,
+                                                href,
+                                                expiresAt))
+                        .toList();
         int created = store.createBatch(requests);
         audit.append(actor, "notification.broadcast", broadcastId);
         return new Published(broadcastId, created);
     }
 
-    private List<UUID> resolveRecipients(String scope, List<UUID> requested) {
+    private List<UUID> resolveRecipients(
+            String scope, List<UUID> requested, List<UUID> requestedRoles) {
         if (scope.equals("ALL")) {
-            return jdbc.sql("SELECT id FROM platform_user WHERE enabled=true ORDER BY id LIMIT :limit")
-                    .param("limit", MAX_RECIPIENTS + 1).query(UUID.class).list();
+            return jdbc.sql(
+                            "SELECT id FROM platform_user WHERE enabled=true ORDER BY id LIMIT :limit")
+                    .param("limit", MAX_RECIPIENTS + 1)
+                    .query(UUID.class)
+                    .list();
         }
+        if (scope.equals("ROLES")) return resolveRoleRecipients(requestedRoles);
         if (requested == null || requested.isEmpty()) return List.of();
         LinkedHashSet<UUID> unique = new LinkedHashSet<>(requested);
         if (unique.size() != requested.size()) throw invalid();
-        if (unique.size() > MAX_RECIPIENTS) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "notificationTooManyRecipients");
-        var found = jdbc.sql("SELECT id FROM platform_user WHERE enabled=true AND id IN (:ids)")
-                .param("ids", unique).query(UUID.class).list();
-        if (found.size() != unique.size()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "notificationRecipientNotFound");
+        if (unique.size() > MAX_RECIPIENTS)
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE, "notificationTooManyRecipients");
+        var found =
+                jdbc.sql("SELECT id FROM platform_user WHERE enabled=true AND id IN (:ids)")
+                        .param("ids", unique)
+                        .query(UUID.class)
+                        .list();
+        if (found.size() != unique.size())
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "notificationRecipientNotFound");
         return found;
+    }
+
+    private List<UUID> resolveRoleRecipients(List<UUID> requested) {
+        if (requested == null || requested.isEmpty()) return List.of();
+        LinkedHashSet<UUID> unique = new LinkedHashSet<>(requested);
+        if (unique.size() != requested.size()) throw invalid();
+        if (unique.size() > MAX_RECIPIENTS) throw tooManyRecipients();
+        int enabledRoles =
+                jdbc.sql("SELECT count(*) FROM platform_role WHERE enabled=true AND id IN (:ids)")
+                        .param("ids", unique)
+                        .query(Integer.class)
+                        .single();
+        if (enabledRoles != unique.size())
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "notificationRoleNotFound");
+        return jdbc.sql(
+                        """
+                        SELECT DISTINCT u.id
+                        FROM platform_user_role ur
+                        JOIN platform_role r ON r.id=ur.role_id AND r.enabled=true
+                        JOIN platform_user u ON u.id=ur.user_id AND u.enabled=true
+                        WHERE ur.role_id IN (:ids)
+                        ORDER BY u.id
+                        LIMIT :limit
+                        """)
+                .param("ids", unique)
+                .param("limit", MAX_RECIPIENTS + 1)
+                .query(UUID.class)
+                .list();
     }
 
     private static String bounded(String value, int max) {
         String normalized = value.strip();
-        if (normalized.isEmpty() || normalized.length() > max || normalized.codePoints().anyMatch(Character::isISOControl)) throw invalid();
+        if (normalized.isEmpty()
+                || normalized.length() > max
+                || normalized.codePoints().anyMatch(Character::isISOControl)) throw invalid();
         return normalized;
-    }
-
-    private static String normalizeHref(String value) {
-        if (value == null || value.isBlank()) return null;
-        String href = value.strip();
-        if (href.length() > 512 || !href.startsWith("/") || href.startsWith("//") || href.contains("\n") || href.contains("\r")) throw invalid();
-        return href;
     }
 
     private static OffsetDateTime parseExpiry(String value) {
@@ -117,5 +219,10 @@ public class NotificationAdminService {
 
     private static ResponseStatusException invalid() {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, "notificationInvalid");
+    }
+
+    private static ResponseStatusException tooManyRecipients() {
+        return new ResponseStatusException(
+                HttpStatus.PAYLOAD_TOO_LARGE, "notificationTooManyRecipients");
     }
 }

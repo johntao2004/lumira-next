@@ -10,7 +10,11 @@ import org.springframework.context.annotation.Configuration;
 public class MonitoringModuleConfiguration {
     @Bean
     PlatformModule monitoringModule() {
-        return new PlatformModule("monitoring", "运行监控", "1.0.0",
-                List.of("platform", "communication", "events", "notifications", "directory"), true);
+        return new PlatformModule(
+                "monitoring",
+                "运行监控",
+                "1.0.0",
+                List.of("platform", "communication", "events", "notifications", "directory"),
+                true);
     }
 }

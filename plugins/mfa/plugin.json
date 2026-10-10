@@ -1,0 +1,129 @@
+{
+  "formatVersion": 1,
+  "id": "mfa",
+  "name": "二次认证与验证器",
+  "version": "1.0.5",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.platform.mfa.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:mfa:manage"
+  ],
+  "routes": [
+    {
+      "id": "mfa-authenticator",
+      "label": "mfaAuthenticator",
+      "permission": null,
+      "group": "overview",
+      "order": 30,
+      "global": false
+    },
+    {
+      "id": "mfa-management",
+      "label": "mfaManagement",
+      "permission": "platform:mfa:manage",
+      "group": "administration",
+      "order": 210,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/mfa/account",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/mfa/account/setup",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/mfa/account/confirm",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/mfa/account/replacement/setup",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/mfa/account/replacement/confirm",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/mfa/account/replacement/cancel",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/mfa/account/recovery",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/mfa/account/label",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/mfa/account",
+      "authorities": [],
+      "publicAccess": false,
+      "authenticatedOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/mfa/manage",
+      "authorities": [
+        "platform:mfa:manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/mfa/manage/*/reset",
+      "authorities": [
+        "platform:mfa:manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ]
+}

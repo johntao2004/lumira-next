@@ -1,0 +1,143 @@
+{
+  "formatVersion": 1,
+  "id": "feedback",
+  "name": "工单反馈",
+  "version": "1.0.6",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.platform.feedback.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "files",
+      "version": "1.0.0"
+    },
+    {
+      "id": "dictionaries",
+      "version": "1.0.0"
+    },
+    {
+      "id": "notifications",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:feedback:create",
+    "platform:feedback:manage",
+    "platform:feedback:read"
+  ],
+  "routes": [
+    {
+      "id": "feedback",
+      "label": "feedback",
+      "permission": "platform:feedback:read",
+      "group": "operations",
+      "order": 70,
+      "global": false
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/feedback/manage",
+      "authorities": [
+        "platform:feedback:manage"
+      ],
+      "global": true,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback/manage/*",
+      "authorities": [
+        "platform:feedback:manage"
+      ],
+      "global": true,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/feedback/manage/*",
+      "authorities": [
+        "platform:feedback:manage"
+      ],
+      "global": false,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback/images/*",
+      "authorities": [
+        "platform:feedback:read",
+        "platform:feedback:manage"
+      ],
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/feedback/images",
+      "authorities": [
+        "platform:feedback:create"
+      ],
+      "global": false,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback",
+      "authorities": [
+        "platform:feedback:read"
+      ],
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback/*",
+      "authorities": [
+        "platform:feedback:read"
+      ],
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/feedback",
+      "authorities": [
+        "platform:feedback:create"
+      ],
+      "global": false,
+      "publicAccess": false
+    }
+  ],
+  "dataSets": [
+    {
+      "table": "platform_feedback_file",
+      "label": "pluginDataFeedbackFiles",
+      "column": null,
+      "value": null
+    },
+    {
+      "table": "platform_feedback",
+      "label": "pluginDataFeedback",
+      "column": null,
+      "value": null
+    },
+    {
+      "table": "platform_account_draft",
+      "label": "pluginDataFeedbackDrafts",
+      "column": "draft_key",
+      "value": "feedback.create"
+    }
+  ]
+}

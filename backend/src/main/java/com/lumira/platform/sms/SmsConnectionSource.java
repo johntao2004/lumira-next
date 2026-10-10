@@ -7,7 +7,15 @@ import org.springframework.stereotype.Service;
 @Service
 public class SmsConnectionSource {
     private final SmsConfigurationPort configurations;
-    public SmsConnectionSource(SmsConfigurationPort configurations) { this.configurations = configurations; }
+
+    public SmsConnectionSource(SmsConfigurationPort configurations) {
+        this.configurations = configurations;
+    }
+
+    public boolean ready() {
+        return configurations.ready();
+    }
+
     public SmsConnection load() {
         var configuration = configurations.load();
         try {

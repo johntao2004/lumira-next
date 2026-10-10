@@ -394,9 +394,9 @@ async function createReadonlyUserRole() {
   await adminPage.goto('/dashboard/roles');
   await adminPage.getByRole('button', { name: localized(labels.createRole) }).click();
   const roleForm = adminPage.locator('#role-editor');
-  await roleForm.locator('#code').fill(readerRoleCode);
-  await roleForm.locator('#name').fill(readerRoleName);
-  await roleForm.locator('#dataScope').click();
+  await roleForm.locator('[id$="_code"]').fill(readerRoleCode);
+  await roleForm.locator('[id$="_name"]').fill(readerRoleName);
+  await roleForm.locator('[id$="_dataScope"]').click();
   await adminPage.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByText(localized(['全部', 'All']), { exact: true }).last().click();
   await adminPage.locator('input[type="checkbox"][value="platform:settings:read"]').check({ force: true });
   await adminPage.locator('input[type="checkbox"][value="platform:dictionaries:read"]').check({ force: true });
@@ -410,9 +410,9 @@ async function createReadonlyUserRole() {
   await adminPage.goto('/dashboard/users');
   await adminPage.getByRole('button', { name: localized(labels.createUser) }).click();
   const userForm = adminPage.locator('#user-editor');
-  await userForm.locator('#username').fill(readerUsername);
-  await userForm.locator('#displayName').fill('QA settings read only');
-  await userForm.locator('#password').fill(readerPassword);
+  await userForm.locator('[id$="_username"]').fill(readerUsername);
+  await userForm.locator('[id$="_displayName"]').fill('QA settings read only');
+  await userForm.locator('[id$="_password"]').fill(readerPassword);
   const userCreate = adminPage.waitForResponse(response => response.url().endsWith('/api/platform/users') && response.request().method() === 'POST');
   await adminPage.locator('button[form="user-editor"]').click();
   const createdUser = await userCreate;
@@ -534,7 +534,7 @@ async function openDictionaryItemEditor() {
 
 async function setDictionaryItemEnabled(enabled) {
   await openDictionaryItemEditor();
-  await setSwitch(adminPage.locator('#dictionary-item-editor #enabled'), enabled);
+  await setSwitch(adminPage.locator('#dictionary-item-editor [id$="_enabled"]'), enabled);
   const responsePromise = adminPage.waitForResponse(response => response.url().includes('/api/platform/dictionaries/') && response.request().method() === 'PUT');
   await adminPage.locator('button[form="dictionary-item-editor"]').click();
   const response = await responsePromise;

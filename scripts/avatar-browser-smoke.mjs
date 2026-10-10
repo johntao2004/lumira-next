@@ -20,7 +20,7 @@ try{
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/dashboard/home');await page.locator('.pro-account-trigger').click();await page.getByRole('menuitem',{name:'个人资料',exact:true}).click();
  const editor=page.getByRole('region',{name:'头像',exact:true});await editor.waitFor();
- await page.locator('#displayName').fill('Unsaved profile name');
+ await page.locator('#account-profile_displayName').fill('Unsaved profile name');
  async function choose(body,name='avatar.png'){
   const chooser=page.waitForEvent('filechooser');await editor.getByRole('button',{name:'更换头像',exact:true}).click();
   await(await chooser).setFiles({name,mimeType:'image/png',buffer:body});
@@ -32,7 +32,7 @@ try{
  await choose(png);assert.equal((await uploaded).status(),200);
  await expect(page.locator('img[alt="头像"]:visible')).toHaveCount(2);
  await page.waitForFunction(()=>[...document.querySelectorAll('img[alt="头像"]')].every(img=>img.complete&&img.naturalWidth===2));
- assert.equal(await page.locator('#displayName').inputValue(),'Unsaved profile name');
+ assert.equal(await page.locator('#account-profile_displayName').inputValue(),'Unsaved profile name');
  assert.equal((await(await context.request.get('/api/account/profile')).json()).displayName,'Avatar Browser QA');
  // UI policy rendering is injected here; real policy enforcement has its own HTTP suite.
  const rules=await(await context.request.get('/api/account/profile-fields')).json();

@@ -6,10 +6,10 @@ import {api} from "@/platform/api/client";
 import {CapacityMeter} from "@/platform/components/capacity-meter";
 import {QueryFailure} from "@/platform/components/query-failure";
 import {usePreferences} from "@/platform/providers";
-type Usage={chargedBytes:number;fileCount:number;maximumBytes:number;maximumFiles:number};
+type Usage={chargedBytes:number;fileCount:number;maximumBytes:number;maximumFiles:number;pendingDeletingCount?:number;pendingDeletingBytes?:number};
 export function FileUsage(){
  const {t,locale}=usePreferences();
- const query=useQuery({queryKey:["files","usage"],queryFn:({signal})=>api<Usage>("/account/files/usage",{signal}),staleTime:0});
+ const query=useQuery({queryKey:["files","usage"],queryFn:({signal})=>api<Usage>("/account/files/usage",{signal}),staleTime:0,refetchInterval:query=>((query.state.data?.pendingDeletingCount??0)>0?3_000:5_000),refetchOnWindowFocus:true});
  const bytes=(value:number)=>{const unit=value>=1024**3?3:value>=1024**2?2:value>=1024?1:0;return new Intl.NumberFormat(locale,{maximumFractionDigits:2}).format(value/1024**unit)+" "+["B","KiB","MiB","GiB"][unit];};
  const count=(value:number)=>new Intl.NumberFormat(locale).format(value);
  return (
@@ -21,6 +21,7 @@ export function FileUsage(){
      <CapacityMeter label={t("fileStorageUsage")} used={query.data.chargedBytes} limit={query.data.maximumBytes} format={bytes}/>
      <CapacityMeter label={t("fileCountUsage")} used={query.data.fileCount} limit={query.data.maximumFiles} format={count}/>
     </div>:!query.error&&<Spin/>}
+    {query.data&&(query.data.pendingDeletingCount??0)>0&&<Typography.Paragraph className="file-usage-pending" type="secondary">{t("fileUsagePendingDeletion",{count:count(query.data.pendingDeletingCount??0),size:bytes(query.data.pendingDeletingBytes??0)})}</Typography.Paragraph>}
     <Typography.Paragraph className="file-usage-hint" type="secondary">{t("fileUsageHint")}</Typography.Paragraph>
    </section>
   </ProCard>

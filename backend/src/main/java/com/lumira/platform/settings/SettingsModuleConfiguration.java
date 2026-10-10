@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class SettingsModuleConfiguration {
     @Bean
     PlatformModule settingsModule() {
-        return new PlatformModule("settings", "系统设置", "1.0.0", List.of("identity", "platform", "dictionaries"), true);
+        return new PlatformModule(
+                "settings", "系统设置", "1.0.0", List.of("identity", "platform", "dictionaries"), true);
     }
 }

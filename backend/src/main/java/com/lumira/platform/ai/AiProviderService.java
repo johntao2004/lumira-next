@@ -165,14 +165,12 @@ public class AiProviderService {
         audit.append(actor, "ai.provider.deleted", id);
     }
 
-    @Transactional(readOnly = true)
     public ModelConnectionService.ConnectionResult test(UUID id, String actor) {
         requireWrite(actor);
         var profile = find(id);
         return connections.probe(profile);
     }
 
-    @Transactional(readOnly = true)
     public ModelConnectionService.ConnectionResult discoverModels(
             ModelDiscoveryRequest input, String actor) {
         requireWrite(actor);
@@ -183,12 +181,16 @@ public class AiProviderService {
         String baseUrl = normalizeBaseUrl(input.providerKind(), input.baseUrl());
 
         UUID id = UUID.randomUUID();
+        long version = 1;
+        String modelName = "";
         if (input.providerId() != null) {
             var existing = find(input.providerId());
             if (existing.providerKind() != input.providerKind()
                     || !normalizeBaseUrl(existing.providerKind(), existing.baseUrl())
                             .equals(baseUrl)) invalid();
             id = existing.id();
+            version = existing.version();
+            modelName = existing.modelName();
         }
         var transientProfile =
                 new AiProviderProfile(
@@ -196,14 +198,13 @@ public class AiProviderService {
                         "Model discovery",
                         input.providerKind(),
                         baseUrl,
-                        "",
+                        modelName,
                         input.providerKind().providerCapabilityCodes(),
                         true,
-                        1);
+                        version);
         return connections.discoverModels(transientProfile, input.credentialValue());
     }
 
-    @Transactional(readOnly = true)
     public ModelConnectionService.ConnectionResult models(UUID id, String actor) {
         guard.require(actor, "platform:settings:read");
         var profile = find(id);

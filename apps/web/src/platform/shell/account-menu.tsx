@@ -7,6 +7,9 @@ import { usePreferences } from "../providers";
 export type AccountActions = {
   displayName: string;
   onProfile: () => void;
+  onAuthenticationSecurity: () => void;
+  onRolePreview?: () => void;
+  onWechat?: () => void;
   onSessions: () => void;
   onDrafts: () => void;
   onChangePassword: () => void;
@@ -25,6 +28,9 @@ export function AccountMenu({ children, open, onOpenChange, placement = "bottomR
   const triggerRef=useRef<HTMLElement|null>(null);
   const handlers: Record<string, () => void> = {
     profile: actions.onProfile,
+    "account-security": actions.onAuthenticationSecurity,
+    "role-preview": actions.onRolePreview ?? (() => {}),
+    wechat: actions.onWechat ?? (() => {}),
     sessions: actions.onSessions,
     drafts: actions.onDrafts,
     password: actions.onChangePassword,
@@ -35,6 +41,9 @@ export function AccountMenu({ children, open, onOpenChange, placement = "bottomR
     menu={{ items: [
       { key: "identity", label: actions.displayName, disabled: true },
       { key: "profile", label: t("profile") },
+      { key: "account-security", label: t("accountSecurity") },
+      ...(actions.onRolePreview ? [{ key: "role-preview", label: t("rolePreview") }] : []),
+      ...(actions.onWechat ? [{ key: "wechat", label: t("wechatBinding") }] : []),
       { key: "password", label: t("changePassword") },
       { key: "sessions", label: t("mySessions") },
       { key: "drafts", label: t("drafts") },

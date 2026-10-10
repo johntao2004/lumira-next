@@ -1,5 +1,5 @@
 "use client";
-import { Button, Dropdown } from "antd";
+import { App, Button, Dropdown } from "antd";
 import { GlobalOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { usePreferences } from "../providers";
@@ -8,6 +8,7 @@ import { languages } from "./messages";
 type RegisteredLocale = { locale: string; displayName: string };
 export function LanguageSwitcher({ className }: { className?: string } = {}) {
   const { locale, setLocale, t } = usePreferences();
+  const { message } = App.useApp();
   const registry = useQuery({
     queryKey: ["public-localization-locales"],
     queryFn: ({ signal }) => api<RegisteredLocale[]>("/public/localization/locales", { signal }),
@@ -31,7 +32,7 @@ export function LanguageSwitcher({ className }: { className?: string } = {}) {
         })),
         onClick: ({ key }) => {
           const selected = visibleOptions.find((item) => item.value === key);
-          if (selected) setLocale(selected.value);
+          if (selected) void setLocale(selected.value).catch(() => message.error(t("accountLocaleSaveFailed")));
         },
       }}
     >

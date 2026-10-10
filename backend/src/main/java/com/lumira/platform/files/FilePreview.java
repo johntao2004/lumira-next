@@ -1,4 +1,11 @@
 package com.lumira.platform.files;
 
-/** Plain-text preview response with an explicit truncation signal for large documents. */
-public record FilePreview(String text, boolean truncated) {}
+/**
+ * Bounded text or raster preview. PDF pages are rendered locally without executing file content.
+ */
+public record FilePreview(
+        String text, boolean truncated, String imageDataUrl, int page, int pageCount) {
+    public FilePreview(String text, boolean truncated) {
+        this(text, truncated, null, 1, 1);
+    }
+}

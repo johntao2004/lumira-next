@@ -14,7 +14,8 @@ public class MailDeliveryTestService {
     private static final String TEST_RECIPIENT = "smtp-test@example.invalid";
     private static final String TEST_SENDER = "lumira-qa@example.invalid";
     private static final String TEST_SUBJECT = "Lumira local SMTP test";
-    private static final String TEST_BODY = "Synthetic local delivery test. No account code is included.";
+    private static final String TEST_BODY =
+            "Synthetic local delivery test. No account code is included.";
 
     public record Result(String result) {}
 
@@ -23,8 +24,11 @@ public class MailDeliveryTestService {
     private final AdministrationPort guard;
     private final AuditPort audit;
 
-    public MailDeliveryTestService(MailConfigurationPort settings, SmtpGateway gateway,
-            AdministrationPort guard, AuditPort audit) {
+    public MailDeliveryTestService(
+            MailConfigurationPort settings,
+            SmtpGateway gateway,
+            AdministrationPort guard,
+            AuditPort audit) {
         this.settings = settings;
         this.gateway = gateway;
         this.guard = guard;
@@ -34,13 +38,25 @@ public class MailDeliveryTestService {
     public Result sendLocalTest(String actor) {
         requireWrite(actor);
         MailConfigurationPort.Settings data = settings.readSettings();
-        if (!data.enabled() || data.authentication()
-                || !SmtpGateway.isLoopbackTestHost(data.host()) || !TEST_SENDER.equalsIgnoreCase(data.fromAddress())) unavailable();
+        if (!data.enabled()
+                || data.authentication()
+                || !SmtpGateway.isLoopbackTestHost(data.host())
+                || !TEST_SENDER.equalsIgnoreCase(data.fromAddress())) unavailable();
 
-        var transportSettings = new MailConfigurationPort.Settings(true, data.host(), data.port(),
-                data.security(), false, "", data.fromAddress(), data.fromName());
-        var result = gateway.sendLocalTest(new SmtpConnection(transportSettings, null),
-                new OutgoingMail(TEST_RECIPIENT, TEST_SUBJECT, TEST_BODY));
+        var transportSettings =
+                new MailConfigurationPort.Settings(
+                        true,
+                        data.host(),
+                        data.port(),
+                        data.security(),
+                        false,
+                        "",
+                        data.fromAddress(),
+                        data.fromName());
+        var result =
+                gateway.sendLocalTest(
+                        new SmtpConnection(transportSettings, null),
+                        new OutgoingMail(TEST_RECIPIENT, TEST_SUBJECT, TEST_BODY));
         audit.append(actor, "mail.localTest." + result.name(), UUID.randomUUID());
         return new Result(result.name());
     }

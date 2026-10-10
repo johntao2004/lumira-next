@@ -25,7 +25,7 @@ public class SmsDeliveryController {
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "") String state,
-            @RequestParam java.util.Map<String,String> parameters) {
+            @RequestParam java.util.Map<String, String> parameters) {
         PageRequest request = PageRequest.fromQueryParameters(page, pageSize, search, parameters);
         return query.list(actor.getName(), request, request.filters().getOrDefault("state", state));
     }

@@ -27,6 +27,7 @@ try {
   await page.goto('/dashboard/sensitive-words');
   const main = page.getByRole('main');
   await expect(main.getByRole('heading', { name: '敏感词策略' })).toBeVisible();
+  await main.getByRole('tab', { name: '共享词库', exact: true }).click();
   await expect(main.getByRole('button', { name: '新增敏感词', exact: true })).toBeVisible();
   await expect(main.getByRole('button', { name: '导入敏感词', exact: true })).toBeVisible();
 
@@ -34,17 +35,22 @@ try {
   const editor = page.getByRole('dialog', { name: '新增敏感词', exact: true });
   await expect(editor).toBeVisible();
   await editor.getByLabel('敏感词', { exact: true }).fill(word);
-  await editor.getByLabel('分类', { exact: true }).fill('BROWSER');
-  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await editor.getByText('策略与级别（高级）', { exact: true }).click();
+  await editor.locator('.ant-select').filter({ has: page.locator('#sensitive-word-editor_action') }).click();
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('Enter');
+  await editor.getByRole('button', { name: /^保\s*存$/ }).click();
   await expect(editor).not.toBeVisible();
   const row = main.locator('tbody tr[data-row-key]').filter({ hasText: word });
   await expect(row).toHaveCount(1);
 
+  await main.getByRole('tab', { name: '策略试运行', exact: true }).click();
   const check = main.getByLabel('待检查内容', { exact: true });
   await check.fill(`text ${word}`);
   await main.getByRole('button', { name: '检查内容', exact: true }).click();
   await expect(main.getByText('检测到敏感内容，提交会被阻断', { exact: true })).toBeVisible();
 
+  await main.getByRole('tab', { name: '共享词库', exact: true }).click();
   await row.getByRole('button', { name: '停用', exact: true }).click();
   await expect(row.getByText('停用', { exact: true })).toBeVisible();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false);

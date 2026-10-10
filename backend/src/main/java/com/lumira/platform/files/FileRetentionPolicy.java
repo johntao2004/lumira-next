@@ -1,7 +1,7 @@
 package com.lumira.platform.files;
 
-import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.settings.SettingStore;
 import java.util.List;
 import java.util.UUID;
@@ -13,17 +13,27 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class FileRetentionPolicy {
-    public enum Mode { AUTOMATIC, MANUAL }
+    public enum Mode {
+        AUTOMATIC,
+        MANUAL
+    }
+
     public record Data(Mode mode, int retentionDays) {
-        public static Data defaults() { return new Data(Mode.AUTOMATIC, 30); }
+        public static Data defaults() {
+            return new Data(Mode.AUTOMATIC, 30);
+        }
+
         public void validate() {
             if (mode == null || retentionDays < 1 || retentionDays > 365) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidFileRetention");
             }
         }
     }
+
     public record View(long version, Data data) {}
+
     public record Input(long version, Data data, String changeReason) {}
+
     public record RollbackInput(long version, long sourceVersion, String changeReason) {}
 
     private final SettingStore settings;
@@ -32,7 +42,12 @@ public class FileRetentionPolicy {
     private final AdministrationPort guard;
     private final ObjectMapper mapper;
 
-    public FileRetentionPolicy(SettingStore settings, FileRepository files, AuditPort audit, AdministrationPort guard, ObjectMapper mapper) {
+    public FileRetentionPolicy(
+            SettingStore settings,
+            FileRepository files,
+            AuditPort audit,
+            AdministrationPort guard,
+            ObjectMapper mapper) {
         this.settings = settings;
         this.files = files;
         this.audit = audit;
@@ -42,7 +57,11 @@ public class FileRetentionPolicy {
 
     public View read() {
         return settings.find("file-retention")
-                .map(snapshot -> new View(snapshot.version(), mapper.readValue(snapshot.payload(), Data.class)))
+                .map(
+                        snapshot ->
+                                new View(
+                                        snapshot.version(),
+                                        mapper.readValue(snapshot.payload(), Data.class)))
                 .orElseGet(() -> new View(0, Data.defaults()));
     }
 
@@ -52,8 +71,13 @@ public class FileRetentionPolicy {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidFileRetention");
         }
         input.data().validate();
-        var saved = settings.save("file-retention", mapper.writeValueAsString(input.data()), actor,
-                input.version(), input.changeReason());
+        var saved =
+                settings.save(
+                        "file-retention",
+                        mapper.writeValueAsString(input.data()),
+                        actor,
+                        input.version(),
+                        input.changeReason());
         if (input.data().mode() == Mode.AUTOMATIC) {
             enqueueExpired(input.data().retentionDays(), actor);
         }
@@ -71,12 +95,22 @@ public class FileRetentionPolicy {
         if (input == null || input.version() < 0 || input.sourceVersion() < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidSettingRevision");
         }
-        var revision = settings.revision("file-retention", input.sourceVersion())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settingRevisionNotFound"));
+        var revision =
+                settings.revision("file-retention", input.sourceVersion())
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND, "settingRevisionNotFound"));
         Data data = mapper.readValue(revision.payload(), Data.class);
         data.validate();
-        var saved = settings.save("file-retention", mapper.writeValueAsString(data), actor, input.version(),
-                input.changeReason(), input.sourceVersion());
+        var saved =
+                settings.save(
+                        "file-retention",
+                        mapper.writeValueAsString(data),
+                        actor,
+                        input.version(),
+                        input.changeReason(),
+                        input.sourceVersion());
         applyAutomaticRetention(data, actor);
         return new View(saved.version(), data);
     }

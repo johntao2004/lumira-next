@@ -2,9 +2,9 @@ package com.lumira.platform.monitoring;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.modules.ModuleCapabilityPort;
+import com.sun.management.OperatingSystemMXBean;
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
-import com.sun.management.OperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.RuntimeMXBean;
@@ -16,23 +16,48 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MonitoringService {
-    public record MachineRuntime(String operatingSystem, String javaVersion, long uptimeMillis,
-                                 int availableProcessors, Double systemCpuUsage,
-                                 Double processCpuUsage, Long systemMemoryUsedBytes, Long systemMemoryTotalBytes,
-                                 long heapUsedBytes, Long heapMaxBytes, int liveThreads, int daemonThreads) {}
-    public record DatabaseRuntime(String status, Integer activeConnections, Integer idleConnections,
-                                  Integer waitingConnections, Integer maxConnections) {}
-    public record EventFlow(long createdLast5m, long deliveredLast5m, List<MonitoringRepository.FlowEvent> recentEvents) {}
-    public record Snapshot(MonitoringRepository.Summary summary, MachineRuntime machine,
-                           DatabaseRuntime database, EventFlow flow) {}
+    public record MachineRuntime(
+            String operatingSystem,
+            String javaVersion,
+            long uptimeMillis,
+            int availableProcessors,
+            Double systemCpuUsage,
+            Double processCpuUsage,
+            Long systemMemoryUsedBytes,
+            Long systemMemoryTotalBytes,
+            long heapUsedBytes,
+            Long heapMaxBytes,
+            int liveThreads,
+            int daemonThreads) {}
+
+    public record DatabaseRuntime(
+            String status,
+            Integer activeConnections,
+            Integer idleConnections,
+            Integer waitingConnections,
+            Integer maxConnections) {}
+
+    public record EventFlow(
+            long createdLast5m,
+            long deliveredLast5m,
+            List<MonitoringRepository.FlowEvent> recentEvents) {}
+
+    public record Snapshot(
+            MonitoringRepository.Summary summary,
+            MachineRuntime machine,
+            DatabaseRuntime database,
+            EventFlow flow) {}
 
     private final MonitoringRepository repository;
     private final AdministrationPort guard;
     private final ModuleCapabilityPort modules;
     private final DataSource dataSource;
 
-    public MonitoringService(MonitoringRepository repository, AdministrationPort guard, ModuleCapabilityPort modules,
-                             DataSource dataSource) {
+    public MonitoringService(
+            MonitoringRepository repository,
+            AdministrationPort guard,
+            ModuleCapabilityPort modules,
+            DataSource dataSource) {
         this.repository = repository;
         this.guard = guard;
         this.modules = modules;
@@ -43,19 +68,39 @@ public class MonitoringService {
     public Snapshot summary(String actor) {
         guard.requireGlobal(actor, "platform:audit:read");
         var value = repository.summary(System.currentTimeMillis());
-        var counters = new MonitoringRepository.Summary(
-                value.totalUsers(), value.activeUsers(), value.activeSessions(),
-                modules.enabledModules().size(), modules.totalModules(),
-                value.pendingOutbox(), value.failedOutbox(), value.deadLetterOutbox(),
-                value.pendingMail(), value.failedMail(), value.pendingSms(), value.failedSms(),
-                value.unreadNotifications(), value.auditEvents24h(), value.processingOutbox(),
-                value.eventsCreatedLast5m(), value.eventsDeliveredLast5m(), value.measuredAt());
-        return new Snapshot(counters, machineRuntime(), databaseRuntime(),
-                new EventFlow(counters.eventsCreatedLast5m(), counters.eventsDeliveredLast5m(), repository.recentFlow()));
+        var counters =
+                new MonitoringRepository.Summary(
+                        value.totalUsers(),
+                        value.activeUsers(),
+                        value.activeSessions(),
+                        modules.enabledModules().size(),
+                        modules.totalModules(),
+                        value.pendingOutbox(),
+                        value.failedOutbox(),
+                        value.deadLetterOutbox(),
+                        value.pendingMail(),
+                        value.failedMail(),
+                        value.pendingSms(),
+                        value.failedSms(),
+                        value.unreadNotifications(),
+                        value.auditEvents24h(),
+                        value.processingOutbox(),
+                        value.eventsCreatedLast5m(),
+                        value.eventsDeliveredLast5m(),
+                        value.measuredAt());
+        return new Snapshot(
+                counters,
+                machineRuntime(),
+                databaseRuntime(),
+                new EventFlow(
+                        counters.eventsCreatedLast5m(),
+                        counters.eventsDeliveredLast5m(),
+                        repository.recentFlow()));
     }
 
     private MachineRuntime machineRuntime() {
-        java.lang.management.OperatingSystemMXBean operatingSystem = ManagementFactory.getOperatingSystemMXBean();
+        java.lang.management.OperatingSystemMXBean operatingSystem =
+                ManagementFactory.getOperatingSystemMXBean();
         Double systemCpuUsage = null;
         Double processCpuUsage = null;
         Long systemMemoryTotalBytes = null;
@@ -75,18 +120,31 @@ public class MonitoringService {
         long heapMaxBytes = memory.getHeapMemoryUsage().getMax();
         RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
         ThreadMXBean threads = ManagementFactory.getThreadMXBean();
-        return new MachineRuntime(operatingSystem.getName(), System.getProperty("java.version"), runtime.getUptime(),
-                operatingSystem.getAvailableProcessors(), systemCpuUsage,
-                processCpuUsage, systemMemoryUsedBytes, systemMemoryTotalBytes, Math.max(0, heapUsedBytes),
-                heapMaxBytes >= 0 ? heapMaxBytes : null, threads.getThreadCount(), threads.getDaemonThreadCount());
+        return new MachineRuntime(
+                operatingSystem.getName(),
+                System.getProperty("java.version"),
+                runtime.getUptime(),
+                operatingSystem.getAvailableProcessors(),
+                systemCpuUsage,
+                processCpuUsage,
+                systemMemoryUsedBytes,
+                systemMemoryTotalBytes,
+                Math.max(0, heapUsedBytes),
+                heapMaxBytes >= 0 ? heapMaxBytes : null,
+                threads.getThreadCount(),
+                threads.getDaemonThreadCount());
     }
 
     private DatabaseRuntime databaseRuntime() {
         if (dataSource instanceof HikariDataSource hikari) {
             HikariPoolMXBean pool = hikari.getHikariPoolMXBean();
             if (pool != null) {
-                return new DatabaseRuntime("UP", pool.getActiveConnections(), pool.getIdleConnections(),
-                        pool.getThreadsAwaitingConnection(), hikari.getMaximumPoolSize());
+                return new DatabaseRuntime(
+                        "UP",
+                        pool.getActiveConnections(),
+                        pool.getIdleConnections(),
+                        pool.getThreadsAwaitingConnection(),
+                        hikari.getMaximumPoolSize());
             }
         }
         return new DatabaseRuntime("UP", null, null, null, null);

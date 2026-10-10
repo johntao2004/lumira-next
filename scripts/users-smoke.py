@@ -1,33 +1,18 @@
 """Verify user administration using an isolated account and cleanup."""
-import json, os, subprocess, uuid, urllib.request, urllib.error, urllib.parse, http.cookiejar, secrets
-from pathlib import Path
-config = json.loads((Path(__file__).resolve().parents[1] / '.runtime/local.json').read_text())
+import json, uuid, secrets
+from smoke_support import config, sql, client, call as request_call, login as login_account, write as write_json
 username = 'qa_password_' + uuid.uuid4().hex
 password = config['LUMIRA_BOOTSTRAP_PASSWORD']
 new_password = secrets.token_urlsafe(24)
-def sql(statement):
-    result = subprocess.run([os.environ.get('PSQL_BIN', '/opt/homebrew/opt/postgresql@18/bin/psql'), '-X', '-h', '127.0.0.1', '-U', config['LUMIRA_DB_USER'], '-d', 'lumira_next', '-v', 'ON_ERROR_STOP=1'], input=statement, text=True, capture_output=True, env={**os.environ, 'PGPASSWORD':config['LUMIRA_DB_PASSWORD']})
-    assert result.returncode == 0, 'Database fixture operation failed'
-def client(): return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 def call(c, path, data=None, headers=None):
-    req = urllib.request.Request('http://127.0.0.1:8010/api'+path, data=data, headers=headers or {})
-    try:
-        with c.open(req, timeout=20) as res: return res.status, res.read()
-    except urllib.error.HTTPError as error: return error.code, error.read()
-def token(c):
-    status,body=call(c,'/auth/csrf'); assert status==200
-    t=json.loads(body); return {t['headerName']:t['token']}
-def login(c, secret): return call(c,'/auth/login',urllib.parse.urlencode({'username':username,'password':secret}).encode(),{**token(c),'Content-Type':'application/x-www-form-urlencoded'})[0]
-def change(c, old, new): return call(c,'/account/password',json.dumps({'currentPassword':old,'newPassword':new}).encode(),{**token(c),'Content-Type':'application/json'})[0]
+    return request_call(c, path, 'POST' if data is not None else 'GET', data, headers)
+def login(c, secret): return login_account(c, username, secret)
 test_username=username
 username='admin'
 admin=client()
 assert login(admin,password)==200
 def write(path,method,payload,c=admin):
-    req=urllib.request.Request('http://127.0.0.1:8010/api'+path,data=json.dumps(payload).encode(),method=method,headers={**token(c),'Content-Type':'application/json'})
-    try:
-        with c.open(req,timeout=20) as res:return res.status,res.read()
-    except urllib.error.HTTPError as error:return error.code,error.read()
+    return write_json(c, path, method, payload)
 created=None
 try:
     status,body=write('/platform/users','POST',{'username':test_username,'displayName':'User QA','password':new_password})

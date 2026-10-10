@@ -9,9 +9,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Bounded, horizontally-safe Outbox delivery. PostgreSQL SKIP LOCKED owns the
- * claim; this worker only performs handler IO and fences the final ack with the
- * claim token. Multiple application instances can therefore poll concurrently.
+ * Bounded, horizontally-safe Outbox delivery. PostgreSQL SKIP LOCKED owns the claim; this worker
+ * only performs handler IO and fences the final ack with the claim token. Multiple application
+ * instances can therefore poll concurrently.
  */
 @Component
 public final class PlatformEventOutboxWorker implements AutoCloseable {
@@ -20,17 +20,21 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
 
     private final PlatformEventOutboxStore store;
     private final PlatformEventConsumerRegistry registry;
-    private final ExecutorService workers = Executors.newThreadPerTaskExecutor(
-        Thread.ofVirtual().name("platform-event-", 0).factory());
+    private final ExecutorService workers =
+            Executors.newThreadPerTaskExecutor(
+                    Thread.ofVirtual().name("platform-event-", 0).factory());
     private final Semaphore slots = new Semaphore(MAX_IN_FLIGHT);
     private final AtomicBoolean stopped = new AtomicBoolean();
 
-    public PlatformEventOutboxWorker(PlatformEventOutboxStore store, PlatformEventConsumerRegistry registry) {
+    public PlatformEventOutboxWorker(
+            PlatformEventOutboxStore store, PlatformEventConsumerRegistry registry) {
         this.store = store;
         this.registry = registry;
     }
 
-    @Scheduled(fixedDelayString = "${lumira.events.poll-interval-ms:2000}", initialDelayString = "${lumira.events.poll-initial-delay-ms:15000}")
+    @Scheduled(
+            fixedDelayString = "${lumira.events.poll-interval-ms:2000}",
+            initialDelayString = "${lumira.events.poll-initial-delay-ms:15000}")
     public void poll() {
         if (stopped.get() || registry.isEmpty()) return;
         for (int i = 0; i < MAX_IN_FLIGHT && !stopped.get() && slots.tryAcquire(); i++) {
@@ -38,16 +42,18 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
             try {
                 var claim = store.claim();
                 if (claim.isEmpty()) return;
-                workers.execute(() -> {
-                    try {
-                        process(claim.get());
-                    } finally {
-                        slots.release();
-                    }
-                });
+                workers.execute(
+                        () -> {
+                            try {
+                                process(claim.get());
+                            } finally {
+                                slots.release();
+                            }
+                        });
                 submitted = true;
             } catch (RuntimeException failure) {
-                log.warn("Platform event polling deferred ({})", failure.getClass().getSimpleName());
+                log.warn(
+                        "Platform event polling deferred ({})", failure.getClass().getSimpleName());
             } finally {
                 if (!submitted) slots.release();
             }
@@ -73,7 +79,10 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
             // Keep exception details out of the metadata API; operators can
             // correlate the claim id with redacted server logs instead.
             store.fail(claim, "CONSUMER_FAILED");
-            log.warn("Platform event delivery deferred for {} ({})", claim.id(), failure.getClass().getSimpleName());
+            log.warn(
+                    "Platform event delivery deferred for {} ({})",
+                    claim.id(),
+                    failure.getClass().getSimpleName());
         }
     }
 

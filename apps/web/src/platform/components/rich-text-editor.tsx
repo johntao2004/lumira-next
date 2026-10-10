@@ -11,6 +11,7 @@ import { Button, Space, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@/platform/api/client";
 import { usePreferences } from "@/platform/providers";
+import { EditorSurface } from "./editor-surface";
 
 const allowedTags = new Set([
   "P",
@@ -205,8 +206,7 @@ export function RichTextEditor({
   }, [insertImage]);
 
   return (
-    <div className="rounded-lg border border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)]">
-      <Space wrap className="border-b border-[var(--ant-color-border-secondary)] p-2">
+    <EditorSurface toolbar={<Space wrap size={4}>
         <Button
           size="small"
           icon={<BoldOutlined />}
@@ -264,14 +264,14 @@ export function RichTextEditor({
         <Typography.Text type="secondary">{placeholder}</Typography.Text>
         {imageBusy && <Typography.Text type="secondary">{imageUploadingLabel}</Typography.Text>}
         {imageError && <Typography.Text type="danger">{imageUploadError}</Typography.Text>}
-      </Space>
+      </Space>}>
       <div
         ref={editorRef}
         contentEditable={!disabled}
         suppressContentEditableWarning
         role="textbox"
         aria-multiline="true"
-        className="min-h-52 max-h-96 overflow-auto p-3 outline-none empty:before:text-[var(--ant-color-text-placeholder)] empty:before:content-[attr(data-placeholder)]"
+        className="editor-surface-editable rich-text-editor-editable empty:before:text-[var(--ant-color-text-placeholder)] empty:before:content-[attr(data-placeholder)]"
         data-placeholder={placeholder}
         onInput={emit}
         onBlur={emit}
@@ -292,7 +292,7 @@ export function RichTextEditor({
           void insertImage(image);
         }}
       />
-    </div>
+    </EditorSurface>
   );
 }
 

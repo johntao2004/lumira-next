@@ -1,6 +1,7 @@
 package com.lumira.platform.ai;
 
 import com.lumira.platform.ai.AiProviderProfile.ProviderKind;
+import com.lumira.platform.common.DeadlineExchange;
 import com.lumira.platform.common.GuardedSockets;
 import com.lumira.platform.common.PublicHosts;
 import com.lumira.platform.common.SecretStorePort;
@@ -20,6 +21,8 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -62,37 +65,55 @@ public class ModelConnectionService {
     private final HttpClient client =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final SecretStorePort secrets;
+    private final AiConnectionSnapshot snapshots;
     private final ObjectMapper mapper;
     private final Duration requestTimeout;
 
     @Autowired
-    public ModelConnectionService(SecretStorePort secrets, ObjectMapper mapper) {
-        this(secrets, mapper, Duration.ofSeconds(60));
+    public ModelConnectionService(
+            SecretStorePort secrets, ObjectMapper mapper, AiConnectionSnapshot snapshots) {
+        this(secrets, mapper, snapshots, Duration.ofSeconds(60));
     }
 
     ModelConnectionService(SecretStorePort secrets, ObjectMapper mapper, Duration requestTimeout) {
+        this(secrets, mapper, null, requestTimeout);
+    }
+
+    ModelConnectionService(
+            SecretStorePort secrets,
+            ObjectMapper mapper,
+            AiConnectionSnapshot snapshots,
+            Duration requestTimeout) {
         this.secrets = secrets;
+        this.snapshots = snapshots;
         this.mapper = mapper;
         this.requestTimeout = requestTimeout;
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ConnectionResult probe(AiProviderProfile provider) {
         return probe(provider, null);
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ConnectionResult discoverModels(AiProviderProfile provider, String credential) {
         byte[] credentialBytes =
                 credential == null || credential.isBlank()
                         ? null
                         : credential.getBytes(StandardCharsets.UTF_8);
         try {
-            return probe(provider, credentialBytes);
+            return withSnapshot(
+                    provider, credentialBytes, provider.modelName().isBlank(), this::probeCaptured);
         } finally {
             if (credentialBytes != null) Arrays.fill(credentialBytes, (byte) 0);
         }
     }
 
     private ConnectionResult probe(AiProviderProfile provider, byte[] credentialOverride) {
+        return withSnapshot(provider, credentialOverride, false, this::probeCaptured);
+    }
+
+    private ConnectionResult probeCaptured(AiProviderProfile provider, byte[] credential) {
         JsonNode response =
                 request(
                         provider,
@@ -100,7 +121,7 @@ public class ModelConnectionService {
                         apiUrl(provider, "/models"),
                         null,
                         provider.requiresCredential(),
-                        credentialOverride);
+                        credential);
         JsonNode entries =
                 provider.isDecisionModel() ? response.path("models") : response.path("data");
         var models = new ArrayList<ModelOption>();
@@ -117,7 +138,11 @@ public class ModelConnectionService {
                             new ModelOption(
                                     id,
                                     name,
-                                    stringValues(entry.path("input_modalities")),
+                                    stringValues(
+                                            entry.has("input_modalities")
+                                                    ? entry.path("input_modalities")
+                                                    : entry.path("architecture")
+                                                            .path("input_modalities")),
                                     stringValues(entry.path("output_modalities")),
                                     provider.supportsUserTools(id)
                                             ? List.of("CHAT", "TOOL_CALLING")
@@ -129,6 +154,7 @@ public class ModelConnectionService {
                 models, models.stream().anyMatch(model -> model.id().equals(provider.modelName())));
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ChatReply chat(
             AiProviderProfile provider,
             String modelName,
@@ -151,12 +177,18 @@ public class ModelConnectionService {
             payload.put("tool_choice", "auto");
         }
         JsonNode response =
-                request(
+                withSnapshot(
                         provider,
-                        "POST",
-                        apiUrl(provider, "/chat/completions"),
-                        payload,
-                        provider.requiresCredential());
+                        null,
+                        false,
+                        (snapshot, key) ->
+                                request(
+                                        snapshot,
+                                        "POST",
+                                        apiUrl(snapshot, "/chat/completions"),
+                                        payload,
+                                        snapshot.requiresCredential(),
+                                        key));
         JsonNode message = response.path("choices").path(0).path("message");
         String content = message.path("content").asText("");
         var calls = new ArrayList<ToolCall>();
@@ -176,6 +208,7 @@ public class ModelConnectionService {
         return new ChatReply(content, List.copyOf(calls));
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public JsonNode judge(AiProviderProfile provider, String state, Map<String, Object> questions) {
         if (!provider.isDecisionModel())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aiDecisionProviderRequired");
@@ -183,21 +216,18 @@ public class ModelConnectionService {
         payload.put("model", provider.modelName());
         payload.put("state", state);
         payload.put("questions", questions);
-        return request(
+        return withSnapshot(
                 provider,
-                "POST",
-                AiProviderProfile.DECISION_ORIGIN + "/v1/systemone",
-                payload,
-                true);
-    }
-
-    private JsonNode request(
-            AiProviderProfile provider,
-            String method,
-            String url,
-            Object payload,
-            boolean requiredKey) {
-        return request(provider, method, url, payload, requiredKey, null);
+                null,
+                false,
+                (snapshot, key) ->
+                        request(
+                                snapshot,
+                                "POST",
+                                AiProviderProfile.DECISION_ORIGIN + "/v1/systemone",
+                                payload,
+                                true,
+                                key));
     }
 
     private JsonNode request(
@@ -206,14 +236,10 @@ public class ModelConnectionService {
             String url,
             Object payload,
             boolean requiredKey,
-            byte[] credentialOverride) {
+            byte[] tokenBytes) {
         if (provider.isOpenAiCompatibleCloud()
                 && !PublicHosts.isAllowed(URI.create(provider.baseUrl()).getHost()))
             throw unavailable();
-        byte[] tokenBytes =
-                credentialOverride == null
-                        ? secrets.reveal(secretContext(provider.id())).orElse(null)
-                        : credentialOverride;
         try {
             if (requiredKey && (tokenBytes == null || tokenBytes.length == 0)) {
                 throw new ResponseStatusException(
@@ -223,50 +249,63 @@ public class ModelConnectionService {
                     tokenBytes != null && tokenBytes.length > 0
                             ? "Bearer " + new String(tokenBytes, StandardCharsets.UTF_8)
                             : null;
-            byte[] requestBody = "POST".equals(method) ? mapper.writeValueAsBytes(payload) : null;
-            int status;
-            byte[] body;
-            if (provider.isOpenAiCompatibleCloud()) {
-                // Cloud endpoints are dialled through a guard that validates the address actually
-                // being
-                // connected, so DNS answers that change between validation and connect cannot reach
-                // the
-                // internal network.
-                var headers = new LinkedHashMap<String, String>();
-                headers.put("Accept", "application/json");
-                if (bearer != null) headers.put("Authorization", bearer);
-                if (requestBody != null) headers.put("Content-Type", "application/json");
-                var response =
-                        GuardedSockets.exchangePublicCloud(
-                                URI.create(url),
-                                method,
-                                headers,
-                                requestBody,
-                                requestTimeout,
-                                MAX_RESPONSE_BYTES + 1);
-                status = response.status();
-                body = response.body();
-            } else {
-                HttpRequest.Builder builder =
-                        HttpRequest.newBuilder(URI.create(url))
-                                .timeout(requestTimeout)
-                                .header("Accept", "application/json");
-                if (bearer != null) builder.header("Authorization", bearer);
-                if (requestBody != null) {
-                    builder.header("Content-Type", "application/json")
-                            .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody));
-                } else {
-                    builder.GET();
-                }
-                HttpResponse<java.io.InputStream> response =
-                        client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
-                status = response.statusCode();
-                try (java.io.InputStream stream = response.body()) {
-                    // Bounded read: never buffer more than the limit plus one byte from an
-                    // untrusted endpoint.
-                    body = stream.readNBytes(MAX_RESPONSE_BYTES + 1);
-                }
-            }
+            TransportResponse response =
+                    DeadlineExchange.run(
+                            requestTimeout,
+                            scope -> {
+                                scope.check();
+                                byte[] requestBody =
+                                        "POST".equals(method)
+                                                ? mapper.writeValueAsBytes(payload)
+                                                : null;
+                                int status;
+                                byte[] body;
+                                if (provider.isOpenAiCompatibleCloud()) {
+                                    var headers = new LinkedHashMap<String, String>();
+                                    headers.put("Accept", "application/json");
+                                    if (bearer != null) headers.put("Authorization", bearer);
+                                    if (requestBody != null)
+                                        headers.put("Content-Type", "application/json");
+                                    var cloudResponse =
+                                            GuardedSockets.exchangePublicCloud(
+                                                    URI.create(url),
+                                                    method,
+                                                    headers,
+                                                    requestBody,
+                                                    requestTimeout,
+                                                    MAX_RESPONSE_BYTES + 1,
+                                                    scope);
+                                    status = cloudResponse.status();
+                                    body = cloudResponse.body();
+                                } else {
+                                    HttpRequest.Builder builder =
+                                            HttpRequest.newBuilder(URI.create(url))
+                                                    .timeout(requestTimeout)
+                                                    .header("Accept", "application/json");
+                                    if (bearer != null) builder.header("Authorization", bearer);
+                                    if (requestBody != null) {
+                                        builder.header("Content-Type", "application/json")
+                                                .POST(
+                                                        HttpRequest.BodyPublishers.ofByteArray(
+                                                                requestBody));
+                                    } else {
+                                        builder.GET();
+                                    }
+                                    HttpResponse<java.io.InputStream> localResponse =
+                                            client.send(
+                                                    builder.build(),
+                                                    HttpResponse.BodyHandlers.ofInputStream());
+                                    status = localResponse.statusCode();
+                                    try (java.io.InputStream stream =
+                                            scope.track(localResponse.body())) {
+                                        body = stream.readNBytes(MAX_RESPONSE_BYTES + 1);
+                                    }
+                                }
+                                scope.check();
+                                return new TransportResponse(status, body);
+                            });
+            int status = response.status();
+            byte[] body = response.body();
             if (status == 401 || status == 403) {
                 throw unavailable("aiProviderAuthenticationFailed");
             }
@@ -285,15 +324,44 @@ public class ModelConnectionService {
         } catch (HttpTimeoutException exception) {
             throw new ResponseStatusException(
                     HttpStatus.GATEWAY_TIMEOUT, "aiProviderRequestTimedOut");
+        } catch (DeadlineExchange.Busy busy) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "aiProviderBusy");
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw unavailable();
         } catch (IOException | RuntimeException exception) {
             throw unavailable();
-        } finally {
-            if (tokenBytes != null) Arrays.fill(tokenBytes, (byte) 0);
         }
     }
+
+    private <T> T withSnapshot(
+            AiProviderProfile requested,
+            byte[] credentialOverride,
+            boolean allowMissingProvider,
+            SnapshotOperation<T> operation) {
+        if (snapshots != null) {
+            try (AiConnectionSnapshot.Captured captured =
+                    snapshots.capture(requested, credentialOverride, allowMissingProvider)) {
+                return operation.run(captured.profile(), captured.credential());
+            }
+        }
+        byte[] owned =
+                credentialOverride == null
+                        ? secrets.reveal(secretContext(requested.id())).orElse(null)
+                        : Arrays.copyOf(credentialOverride, credentialOverride.length);
+        try {
+            return operation.run(requested, owned);
+        } finally {
+            if (owned != null) Arrays.fill(owned, (byte) 0);
+        }
+    }
+
+    @FunctionalInterface
+    private interface SnapshotOperation<T> {
+        T run(AiProviderProfile provider, byte[] credential);
+    }
+
+    private record TransportResponse(int status, byte[] body) {}
 
     public static List<Map<String, Object>> userToolDefinitions(boolean canWriteUsers) {
         var definitions = new ArrayList<Map<String, Object>>();
@@ -306,13 +374,15 @@ public class ModelConnectionService {
                                 "name",
                                 "users_search",
                                 "description",
-                                "Search visible user accounts by username or display name.",
+                                "Search visible user accounts by username or display name. Use an empty search string to list visible users. Do not repeat the same query.",
                                 "parameters",
                                 Map.of(
                                         "type",
                                         "object",
                                         "properties",
                                         Map.of("search", Map.of("type", "string")),
+                                        "additionalProperties",
+                                        false,
                                         "required",
                                         List.of("search")))));
         if (canWriteUsers) {

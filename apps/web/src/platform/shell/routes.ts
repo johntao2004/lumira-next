@@ -1,5 +1,5 @@
 import { isMessageKey, type MessageKey } from "../i18n/messages.ts";
-import { frontendModuleManifests, frontendRoutes, type FrontendRouteId } from "../modules/catalog.ts";
+import { frontendModuleManifests, frontendRoutes, frontendTabGroups, type FrontendRouteId } from "../modules/catalog.ts";
 import type { FrontendRoute, NavigationGroupId } from "../modules/types.ts";
 import type { RuntimeNavigationNode } from "../navigation/runtime-types";
 export type { RuntimeNavigationNode } from "../navigation/runtime-types";
@@ -41,6 +41,7 @@ export type NavigationGroup = {
   subgroup: MessageKey | null;
   sections: readonly Section[];
   pages: NavigationPage[];
+  standalone?: boolean;
 };
 
 /** Translate known catalog keys and safely fall back to server-provided labels. */
@@ -75,6 +76,7 @@ export const navigationGroups: readonly {
 }[] = groupSpecs.map((group) => ({
   ...group,
   sections: frontendRoutes()
+    .filter((route) => !route.hidden)
     .filter((route) => route.group === group.id)
     .sort((left, right) => left.order - right.order)
     .map((route) => route.id as Section),
@@ -89,23 +91,20 @@ export function availableNavigation(authorities: readonly string[], enabledModul
   return groups.filter((group) => group.pages.length > 0);
 }
 
-const tabNavigationGroups = [
-  ["branding", "watermark", "agreements", "maintenance"],
-  ["smtp", "sms"],
-  ["security", "passkey"],
-  ["users", "online-users"],
-  ["mail-deliveries", "sms-deliveries"],
-] as const;
+const tabNavigationGroups = frontendTabGroups;
 
-/** Collapse a complete related route set to its first page in the sidebar. */
+/** Collapse related route tabs to their visible anchor in the sidebar. */
 export function collapseTabbedNavigation(groups: NavigationGroup[]): NavigationGroup[] {
   return groups
     .map((group) => {
       const pageIds = new Set(group.pages.map((page) => page.id));
       const hidden = new Set<string>();
-      for (const members of tabNavigationGroups) {
-        if (members.every((id) => pageIds.has(id))) {
-          members.slice(1).forEach((id) => hidden.add(id));
+      for (const tabGroup of tabNavigationGroups) {
+        const groupIsVisible = tabGroup.collapse === "when-anchor-visible"
+          ? pageIds.has(tabGroup.anchor)
+          : tabGroup.routes.every((id) => pageIds.has(id));
+        if (groupIsVisible) {
+          tabGroup.routes.filter((id) => id !== tabGroup.anchor).forEach((id) => hidden.add(id));
         }
       }
       return { ...group, pages: group.pages.filter((page) => !hidden.has(page.id)) };
@@ -116,12 +115,73 @@ export function collapseTabbedNavigation(groups: NavigationGroup[]): NavigationG
 /** Use the visible group entry as the active menu item for a tab deep link. */
 export function navigationPageIdForRoute(routeId: string, groups: readonly NavigationGroup[]): string {
   const visibleIds = new Set(groups.flatMap((group) => group.pages.map((page) => page.id)));
-  for (const members of tabNavigationGroups) {
-    if (members.some((id) => id === routeId) && visibleIds.has(members[0]) && !visibleIds.has(routeId)) {
-      return members[0];
+  for (const tabGroup of tabNavigationGroups) {
+    if (tabGroup.routes.includes(routeId) && visibleIds.has(tabGroup.anchor) && !visibleIds.has(routeId)) {
+      return tabGroup.anchor;
     }
   }
   return routeId;
+}
+
+/** Find a runtime PAGE by exact path first, then by its stable frontend section key. */
+export function runtimeNavigationPageNode(
+  nodes: readonly RuntimeNavigationNode[],
+  section: string,
+  pathname: string,
+): RuntimeNavigationNode | null {
+  const find = (matches: (node: RuntimeNavigationNode) => boolean) => {
+    const stack = nodes.slice().reverse();
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node) continue;
+      if (node.menuType === "ACTION") continue;
+      if (node.menuType === "PAGE" && matches(node)) return node;
+      const children = node.children ?? [];
+      for (let index = children.length - 1; index >= 0; index--) stack.push(children[index]);
+    }
+    return null;
+  };
+
+  return find(node => Boolean(pathname) && node.path === pathname)
+    ?? find(node => Boolean(section) && node.sectionKey === section);
+}
+
+/** Find a route's full visible catalog/page ancestry from the permission-filtered runtime tree. */
+export function runtimeNavigationTrail(
+  nodes: readonly RuntimeNavigationNode[],
+  section: string,
+  pathname: string,
+): RuntimeNavigationNode[] | null {
+  const target = runtimeNavigationPageNode(nodes, section, pathname);
+  if (!target || !(target.routable === true || (target.routable === undefined && Boolean(target.sectionKey && isSection(target.sectionKey))))) {
+    return null;
+  }
+
+  const stack = nodes.slice().reverse().map(node => ({ node, trail: [] as RuntimeNavigationNode[] }));
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current) continue;
+    const { node } = current;
+    if (node.menuType === "ACTION") continue;
+    const trail = node.menuType === "CATALOG" || node.menuType === "PAGE"
+      ? [...current.trail, node]
+      : current.trail;
+    if (node === target) return trail;
+    const children = node.children ?? [];
+    for (let index = children.length - 1; index >= 0; index--) stack.push({ node: children[index], trail });
+  }
+  return null;
+}
+
+/** Resolve labels for the runtime trail; pages absent from the user's tree keep only their title. */
+export function runtimeBreadcrumbLabels(
+  trail: readonly RuntimeNavigationNode[] | null,
+  fallbackTitle: string,
+  localize: (node: RuntimeNavigationNode) => string,
+): string[] {
+  const runtimeLabels = (trail ?? []).map(localize).filter(label => Boolean(label.trim()));
+  const labels = runtimeLabels.length ? runtimeLabels : [fallbackTitle];
+  return labels.filter(label => Boolean(label.trim()));
 }
 
 /**
@@ -131,57 +191,131 @@ export function navigationPageIdForRoute(routeId: string, groups: readonly Navig
  */
 export function mergeRuntimeNavigation(groups: NavigationGroup[], nodes?: readonly RuntimeNavigationNode[]): NavigationGroup[] {
   if (!nodes) return groups;
-  const order = new Map<string, number>();
-  const visible = new Set<string>();
-  const dynamic = new Map<string, NavigationPage[]>();
-  const dynamicGroups = new Map<string, NavigationGroup>();
-  const staticGroupIds = new Set(groups.map((group) => group.id));
-  let index = 0;
-  const visit = (items: readonly RuntimeNavigationNode[], rootCode: string | null = null) => {
-    items.forEach((item) => {
-      const nextRoot = rootCode ?? item.menuCode ?? null;
-      if (!rootCode && item.menuType === "CATALOG" && item.menuCode && !staticGroupIds.has(item.menuCode)) {
-        dynamicGroups.set(item.menuCode, {
-          id: item.menuCode,
-          label: item.labelKey || item.menuCode,
-          labelDefault: item.labelDefault || item.menuCode,
-          subgroup: null,
-          sections: [],
-          pages: [],
-        });
-      }
-      if (item.sectionKey) {
-        visible.add(item.sectionKey);
-        order.set(item.sectionKey, index++);
-      }
-      if (item.menuType === "PAGE" && item.sectionKey && !isSection(item.sectionKey) && nextRoot) {
-        const page: NavigationPage = {
-          id: item.sectionKey,
-          label: item.labelKey || item.sectionKey,
-          labelDefault: item.labelDefault || item.sectionKey,
-          permission: null,
-          module: item.moduleId ?? undefined,
-          path: item.path || `/dashboard/${item.sectionKey}`,
-          componentKey: item.componentKey || item.menuCode || item.sectionKey,
-          dynamic: true,
-        };
-        const pages = dynamic.get(nextRoot) ?? [];
-        pages.push(page);
-        dynamic.set(nextRoot, pages);
-      }
-      visit(item.children ?? [], nextRoot);
-    });
+  const staticGroups = new Map(groups.map(group => [group.id, group]));
+  const staticPages = new Map(groups.flatMap(group => group.pages.map(page => [page.id, page] as const)));
+  const staticGroupFallbacks = new Map<string, NavigationGroup>(navigationGroups.map(group => [
+    group.id,
+    { ...group, labelDefault: undefined, pages: [] },
+  ]));
+  const staticOwners = new Map<string, string>(navigationGroups.flatMap(group =>
+    group.sections.map(section => [section, group.id] as [string, string]),
+  ));
+  const merged = new Map<string, NavigationGroup>();
+  const orderedIds: string[] = [];
+
+  const ensureGroup = (id: string, label?: string | null, labelDefault?: string | null) => {
+    let group = merged.get(id);
+    if (!group) {
+      const original = staticGroups.get(id) ?? staticGroupFallbacks.get(id);
+      group = original
+        ? { ...original, pages: [], label: label || original.label, labelDefault: labelDefault || original.labelDefault }
+        : { id, label: label || id, labelDefault: labelDefault || label || id, subgroup: null, sections: [], pages: [] };
+      merged.set(id, group);
+      orderedIds.push(id);
+    } else {
+      if (label) group.label = label;
+      if (labelDefault) group.labelDefault = labelDefault;
+    }
+    return group;
   };
-  visit(nodes);
-  const merged = groups.map((group) => ({
-    ...group,
-    pages: [...group.pages.filter((page) => visible.has(page.id)), ...(dynamic.get(group.id) ?? [])]
-      .sort((left, right) => (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER)),
-  }));
-  dynamicGroups.forEach((group, id) => {
-    group.pages = (dynamic.get(id) ?? []).sort((left, right) =>
-      (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER));
-    if (group.pages.length) merged.push(group);
+
+  const ensureStandaloneGroup = (page: NavigationPage) => {
+    const id = `root-page:${page.id}`;
+    let group = merged.get(id);
+    if (!group) {
+      group = {
+        id,
+        label: page.label,
+        labelDefault: page.labelDefault,
+        subgroup: null,
+        sections: [],
+        pages: [],
+        standalone: true,
+      };
+      merged.set(id, group);
+      orderedIds.push(id);
+    }
+    return group;
+  };
+
+  const ensureRootAncestorGroup = (node: RuntimeNavigationNode) => {
+    const id = `root-ancestor:${node.id ?? node.menuCode ?? node.sectionKey ?? "page"}`;
+    return ensureGroup(id, node.labelKey?.trim() || node.menuCode, node.labelDefault);
+  };
+
+  const pageForRuntimeNode = (node: RuntimeNavigationNode): NavigationPage | null => {
+    const id = node.sectionKey;
+    if (!id) return null;
+    const saved = staticPages.get(id);
+    if (saved) {
+      if (node.routable === false) return null;
+      return {
+        ...saved,
+        label: node.labelKey?.trim() || saved.label,
+        labelDefault: node.labelDefault?.trim() || saved.labelDefault,
+        path: node.path?.trim() || saved.path,
+        componentKey: node.componentKey?.trim() || saved.componentKey,
+      };
+    }
+    // Registered but unavailable routes stay hidden; runtime data cannot grant static permissions.
+    if (isSection(id)) return null;
+    if (node.routable !== true) return null;
+    return {
+      id,
+      label: node.labelKey?.trim() || node.menuCode || id,
+      labelDefault: node.labelDefault?.trim() || node.labelKey?.trim() || id,
+      permission: null,
+      module: node.moduleId ?? undefined,
+      path: node.path?.trim() || `/dashboard/${id}`,
+      componentKey: node.componentKey?.trim() || node.menuCode || id,
+      dynamic: true,
+    };
+  };
+
+  const appendPages = (items: readonly RuntimeNavigationNode[], group: NavigationGroup) => {
+    const stack = items.slice().reverse();
+    while (stack.length) {
+      const item = stack.pop();
+      if (!item || item.menuType === "ACTION") continue;
+      if (item.menuType === "PAGE") {
+        const page = pageForRuntimeNode(item);
+        if (page) group.pages.push(page);
+      }
+      const children = item.children ?? [];
+      for (let index = children.length - 1; index >= 0; index--) stack.push(children[index]);
+    }
+  };
+
+  nodes.forEach(root => {
+    if (root.menuType === "CATALOG") {
+      const id = root.menuCode?.trim() || root.id?.trim();
+      if (!id) return;
+      appendPages(root.children ?? [], ensureGroup(id, root.labelKey, root.labelDefault));
+      return;
+    }
+    // Older menu trees may place a built-in PAGE at the root. Keep it under its existing static group.
+    if (root.menuType === "PAGE") {
+      const page = pageForRuntimeNode(root);
+      const owner = root.sectionKey ? staticOwners.get(root.sectionKey) : undefined;
+      if (owner) {
+        const group = ensureGroup(owner);
+        if (page) group.pages.push(page);
+        appendPages(root.children ?? [], group);
+      } else if (page?.dynamic) {
+        const group = ensureStandaloneGroup(page);
+        group.pages.push(page);
+        appendPages(root.children ?? [], group);
+      } else if ((root.children ?? []).length > 0) {
+        appendPages(root.children ?? [], ensureRootAncestorGroup(root));
+      }
+    }
   });
-  return merged.filter((group) => group.pages.length > 0);
+
+  return orderedIds
+    .map(id => merged.get(id)!)
+    .map(group => ({
+      ...group,
+      sections: group.pages.flatMap(page => isSection(page.id) ? [page.id as Section] : []),
+    }))
+    .filter(group => group.pages.length > 0);
 }

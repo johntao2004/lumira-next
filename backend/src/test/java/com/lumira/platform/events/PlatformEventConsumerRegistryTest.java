@@ -1,15 +1,25 @@
 package com.lumira.platform.events;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 class PlatformEventConsumerRegistryTest {
     private static PlatformEventConsumer consumer(String source, String event) {
         return new PlatformEventConsumer() {
-            @Override public String sourceType() { return source; }
-            @Override public String eventType() { return event; }
-            @Override public void consume(PlatformEventOutboxStore.Event ignored) {}
+            @Override
+            public String sourceType() {
+                return source;
+            }
+
+            @Override
+            public String eventType() {
+                return event;
+            }
+
+            @Override
+            public void consume(PlatformEventOutboxStore.Event ignored) {}
         };
     }
 
@@ -26,9 +36,17 @@ class PlatformEventConsumerRegistryTest {
 
     @Test
     void rejectsMalformedAndDuplicateRegistrations() {
-        assertThrows(IllegalArgumentException.class, () -> new PlatformEventConsumerRegistry(List.of(consumer("Bad", "event"))));
-        assertThrows(IllegalArgumentException.class, () -> new PlatformEventConsumerRegistry(List.of(consumer("source", "Bad"))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new PlatformEventConsumerRegistry(List.of(consumer("Bad", "event"))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new PlatformEventConsumerRegistry(List.of(consumer("source", "Bad"))));
         var handler = consumer("source", "event");
-        assertThrows(IllegalArgumentException.class, () -> new PlatformEventConsumerRegistry(List.of(handler, consumer("source", "event"))));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new PlatformEventConsumerRegistry(
+                                List.of(handler, consumer("source", "event"))));
     }
 }

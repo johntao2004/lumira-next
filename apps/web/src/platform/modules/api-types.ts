@@ -9,27 +9,3 @@ export interface ModuleInfo {
   version: string;
   dependencies: string[];
 }
-
-export interface ModulePackage {
-  id: string;
-  moduleId: string;
-  name: string;
-  packageVersion: string;
-  schemaVersion: string;
-  apiVersion: string;
-  artifactDigest: string;
-  manifestDigest: string;
-  artifactRef: string;
-  dependencies: string[];
-  permissions: string[];
-  routes: string[];
-  status: "STAGED" | "ACTIVE" | "SUPERSEDED" | "REJECTED";
-  revision: number;
-  installedBy: string;
-  installReason: string;
-  createdAt: string;
-  updatedAt: string;
-  activatedAt: string | null;
-  supersededAt: string | null;
-  runtimeReady: boolean;
-}

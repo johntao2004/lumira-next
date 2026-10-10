@@ -1,0 +1,151 @@
+.api-docs-page {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.api-docs-page .api-docs-toolbar,
+.api-docs-page .api-docs-document,
+.api-docs-page > .ant-card:not(.api-docs-toolbar) {
+  min-width: 0;
+  background: var(--ant-color-bg-container);
+}
+
+.api-docs-page .api-docs-query-container,
+.api-docs-page .api-docs-toolbar .api-docs-search {
+  min-width: 0;
+}
+
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions,
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions .ant-form-item-control,
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions .ant-form-item-control-input,
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions .ant-form-item-control-input-content,
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions .ant-space,
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions .ant-space-item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions .ant-space,
+.api-docs-page .api-docs-toolbar .ant-pro-query-filter-actions .ant-space-item > div {
+  flex-wrap: wrap;
+}
+
+.api-docs-page .api-docs-error {
+  min-width: 0;
+}
+
+.api-docs-page .api-docs-document {
+  overflow: hidden;
+  padding: 0;
+}
+
+.api-docs-page .api-docs-document .ant-card-body {
+  min-width: 0;
+  padding: 20px;
+}
+
+.api-docs-page .swagger-ui {
+  color: var(--ant-color-text);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.api-docs-page .swagger-ui .wrapper {
+  max-width: none;
+  padding: 0;
+}
+
+.api-docs-page .swagger-ui .info {
+  margin: 4px 0 24px;
+}
+
+.api-docs-page .swagger-ui .info > .info__description.description {
+  display: none;
+}
+
+.api-docs-page .swagger-ui .info .title,
+.api-docs-page .swagger-ui .info p,
+.api-docs-page .swagger-ui .info li,
+.api-docs-page .swagger-ui .markdown p,
+.api-docs-page .swagger-ui .markdown li,
+.api-docs-page .swagger-ui .opblock .opblock-summary-description,
+.api-docs-page .swagger-ui .opblock .opblock-summary-path,
+.api-docs-page .swagger-ui .opblock .opblock-summary-path a,
+.api-docs-page .swagger-ui .opblock .opblock-summary-path__deprecated,
+.api-docs-page .swagger-ui .opblock .opblock-summary-path__deprecated a,
+.api-docs-page .swagger-ui .parameter__name,
+.api-docs-page .swagger-ui .parameter__type,
+.api-docs-page .swagger-ui .response-col_status,
+.api-docs-page .swagger-ui .model-title,
+.api-docs-page .swagger-ui section.models h4,
+.api-docs-page .swagger-ui section.models h4 span,
+.api-docs-page .swagger-ui .model,
+.api-docs-page .swagger-ui .prop-type,
+.api-docs-page .swagger-ui .prop-format,
+.api-docs-page .swagger-ui table thead tr th,
+.api-docs-page .swagger-ui table thead tr td {
+  color: var(--ant-color-text);
+}
+
+.api-docs-page .swagger-ui .opblock-control-arrow,
+.api-docs-page .swagger-ui section.models .models-control {
+  color: var(--ant-color-text);
+}
+
+.api-docs-page .swagger-ui .opblock-control-arrow svg,
+.api-docs-page .swagger-ui section.models .models-control svg {
+  fill: var(--ant-color-text);
+}
+
+.api-docs-page .swagger-ui .opblock-control-arrow svg path,
+.api-docs-page .swagger-ui section.models .models-control svg path {
+  fill: var(--ant-color-text);
+}
+
+.api-docs-page .swagger-ui .scheme-container,
+.api-docs-page .swagger-ui section.models,
+.api-docs-page .swagger-ui .model-box,
+.api-docs-page .swagger-ui .opblock .opblock-section-header {
+  background: var(--ant-color-bg-container);
+  box-shadow: none;
+}
+
+.api-docs-page .swagger-ui .opblock,
+.api-docs-page .swagger-ui section.models,
+.api-docs-page .swagger-ui .model-box,
+.api-docs-page .swagger-ui .opblock .opblock-section-header,
+.api-docs-page .swagger-ui table thead tr th,
+.api-docs-page .swagger-ui table thead tr td,
+.api-docs-page .swagger-ui .response-col_description__inner div.markdown p {
+  border-color: var(--ant-color-border-secondary);
+}
+
+.api-docs-page .swagger-ui .opblock-tag,
+.api-docs-page .swagger-ui .opblock-tag small,
+.api-docs-page .swagger-ui .servers-title,
+.api-docs-page .swagger-ui .parameter__deprecated,
+.api-docs-page .swagger-ui .response-col_links {
+  color: var(--ant-color-text-secondary);
+}
+
+.api-docs-page .swagger-ui pre,
+.api-docs-page .swagger-ui code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 767px) {
+  .api-docs-page .api-docs-document .ant-card-body {
+    padding: 12px;
+  }
+
+  .api-docs-page .swagger-ui .opblock .opblock-summary {
+    align-items: flex-start;
+  }
+
+  .api-docs-page .swagger-ui .opblock .opblock-summary-description {
+    overflow-wrap: anywhere;
+  }
+}

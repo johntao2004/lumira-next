@@ -89,19 +89,27 @@ function pageIcon(pageId: string): ReactNode {
 
 /** Convert the permission-filtered, server-ordered route tree into ProLayout data. */
 export function buildProLayoutRoute(groups: readonly NavigationGroup[], translate: Translate): LayoutRoute {
-  const routes: LayoutRoute[] = groups.map((group) => ({
-    key: group.id,
-    path: pagePath(group.pages[0]),
-    name: localizedNavigationLabel(group.label, group.labelDefault, translate),
-    icon: groupIcon(group.id),
+  const pageRoute = (page: NavigationPage): LayoutRoute => ({
+    key: page.id,
+    path: pagePath(page),
+    name: localizedNavigationLabel(page.label, page.labelDefault, translate),
+    icon: pageIcon(page.id),
     locale: false,
-    routes: group.pages.map((page) => ({
-      key: page.id,
-      path: pagePath(page),
-      name: localizedNavigationLabel(page.label, page.labelDefault, translate),
-      icon: pageIcon(page.id),
+  });
+  const routes: LayoutRoute[] = groups.flatMap((group) => {
+    if (group.standalone) {
+      const [page, ...children] = group.pages;
+      if (!page) return [];
+      return [{ ...pageRoute(page), ...(children.length ? { routes: children.map(pageRoute) } : {}) }];
+    }
+    return [{
+      key: group.id,
+      path: pagePath(group.pages[0]),
+      name: localizedNavigationLabel(group.label, group.labelDefault, translate),
+      icon: groupIcon(group.id),
       locale: false,
-    })),
-  }));
+      routes: group.pages.map(pageRoute),
+    }];
+  });
   return { path: "/dashboard", routes };
 }

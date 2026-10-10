@@ -11,23 +11,23 @@ export type Provider = {
   version: number;
   credentialConfigured: boolean;
 };
-export type Capability = {
-  code: string;
-  module: string;
-  operations: string[];
-  permission: string;
-  available: boolean;
-};
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatAttachment = { id: string; name: string; sizeBytes: number; image: boolean; truncated: boolean };
+export type ChatMessage = { role: "user" | "assistant"; content: string; attachmentIds?: string[] };
 export type ActionProposal = {
   id: string;
   kind: "CREATE_USER" | "UPDATE_USER" | "DELETE_USER";
+  target: { id: string; username: string; displayName: string; enabled: boolean; version: number } | null;
   username: string | null;
   displayName: string | null;
   enabled: boolean | null;
   expiresAt: string;
 };
-export type ExecutionStep = { code: "MODEL_RESPONSE" | "USER_SEARCH" | "ACTION_PROPOSAL" | "ACTION_CONFIRMATION" | "TOOL_VALIDATION"; status: "success" | "error" | "pending" | "abort" };
+export type ExecutionStep = {
+  code: "MODEL_RESPONSE" | "USER_SEARCH" | "ACTION_PROPOSAL" | "ACTION_CONFIRMATION" | "TOOL_VALIDATION";
+  status: "success" | "error" | "pending" | "abort";
+  moduleCode?: string;
+  operationCode?: string;
+};
 export type ChatResponse = { message: string; users: { id: string; username: string; displayName: string; enabled: boolean; version: number }[] | null; proposal: ActionProposal | null; steps?: ExecutionStep[] };
 export type ModelOption = {
   id: string;

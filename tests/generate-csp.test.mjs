@@ -19,3 +19,19 @@ test("policy never permits unsafe script execution or framing", () => {
   assert.ok(policy.includes("object-src 'none'"));
   assert.ok(policy.includes("default-src 'self'"));
 });
+
+test("policy allows local CAPTCHA raster and audio data without external provider origins", () => {
+  const policy = buildPolicy("");
+  const directives = Object.fromEntries(policy.split("; ").map(item => {
+    const [name, ...values] = item.split(" ");
+    return [name, values];
+  }));
+  assert.ok(directives["img-src"].includes("data:"));
+  assert.ok(directives["media-src"].includes("data:"));
+  assert.deepEqual(directives["script-src"], ["'self'"]);
+  assert.deepEqual(directives["connect-src"], ["'self'"]);
+  assert.deepEqual(directives["frame-src"], ["'self'"]);
+  assert.ok(!policy.includes("tencent") && !policy.includes("qcloud"));
+  assert.ok(!policy.includes("*.qq.com"));
+  assert.ok(!directives["script-src"].includes("'unsafe-eval'"));
+});

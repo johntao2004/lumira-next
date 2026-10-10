@@ -14,6 +14,8 @@ export function messageKeyFor(
   aliases: Readonly<Record<string, MessageKey>> = {},
 ): MessageKey {
   const code = errorCode(error);
+  if (code === "sensitiveContent") return "sensitiveContent";
+  if (code === "passwordHashCapacity") return "passwordHashCapacity";
   if (Object.hasOwn(aliases, code)) return aliases[code];
   if (isMessageKey(code) && allowed.includes(code)) return code;
   return error instanceof ApiError && error.status === 403 ? "forbidden" : fallback;

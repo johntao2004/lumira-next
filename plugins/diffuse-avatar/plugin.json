@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "id": "diffuse-avatar",
+  "name": "弥散渐变头像",
+  "version": "1.0.1",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.diffuseavatar.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    },
+    {
+      "id": "files",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [],
+  "routes": [],
+  "apiRules": []
+}

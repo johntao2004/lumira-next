@@ -6,24 +6,65 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "check:java-format": "node scripts/check-java-format.mjs",
     "dev": "pnpm --dir apps/web dev",
     "build": "pnpm --dir apps/web build",
     "typecheck": "pnpm --dir apps/web typecheck",
-    "test": "python3 scripts/module-boundaries-smoke.py && node --test tests/*.test.mjs && pnpm test:ai-model-discovery",
+    "test": "pnpm check:quality && python3 scripts/module-boundaries-smoke.py && node --test tests/*.test.mjs && pnpm test:ai-model-discovery && pnpm test:ai-chat-history && pnpm test:captcha-policy",
+    "test:java": "node scripts/office-worker-test.mjs",
     "test:ai-model-discovery": "node --experimental-strip-types --test apps/web/src/features/ai/model-discovery.test.ts",
+    "test:ai-chat-history": "node --experimental-strip-types --test apps/web/src/features/ai/chat-history.test.ts",
+    "test:captcha-policy": "node --experimental-strip-types --test apps/web/src/platform/auth/captcha-policy.test.ts",
+    "verify:dependency-patches": "node scripts/dependency-patch-checks.mjs && node --test tests/dependency-hardening.test.mjs tests/router-url-normalization.test.mjs",
+    "verify:pnpm-audit": "node scripts/verify-pnpm-audit.mjs",
+    "verify:web-output": "node scripts/verify-web-output.mjs apps/web/dist",
+    "test:captcha-login-browser": "node scripts/captcha-login-policy-browser-smoke.mjs",
     "test:design": "node scripts/design-qa-browser.mjs",
     "test:monitoring-visibility": "node scripts/monitoring-visibility-browser-smoke.mjs",
     "test:monitoring-intervals": "node scripts/monitoring-interval-browser-smoke.mjs",
     "test:module-boundaries": "python3 scripts/module-boundaries-smoke.py",
-    "test:module-packages": "python3 scripts/module-packages-smoke.py && node scripts/module-packages-browser-smoke.mjs",
+    "test:module-packages": "python3 scripts/plugins-smoke.py",
     "test:passkey": "python3 scripts/passkey-smoke.py",
-    "test:browser": "node scripts/drafts-browser-smoke.mjs && node scripts/modules-browser-smoke.mjs && node scripts/module-packages-browser-smoke.mjs && node scripts/navigation-motion-browser-smoke.mjs && node scripts/navigation-scroll-browser-smoke.mjs && node scripts/security-events-browser-smoke.mjs && node scripts/password-recovery-browser-smoke.mjs && node scripts/account-keyboard-browser-smoke.mjs && node scripts/account-email-browser-smoke.mjs && node scripts/account-phone-browser-smoke.mjs && node scripts/sms-delivery-browser-smoke.mjs && node scripts/shell-responsive-browser-smoke.mjs && node scripts/form-spacing-browser-smoke.mjs && node scripts/feedback-bubbles-browser-smoke.mjs && node scripts/dictionary-browser-smoke.mjs && node scripts/branding-browser-smoke.mjs && node scripts/agreements-browser-smoke.mjs && node scripts/watermark-browser-smoke.mjs && node scripts/maintenance-browser-smoke.mjs && node scripts/security-settings-browser-smoke.mjs && node scripts/passkey-browser-smoke.mjs && node scripts/preferences-browser-smoke.mjs && node scripts/public-config-browser-smoke.mjs && node scripts/settings-readonly-browser-smoke.mjs && node scripts/profile-fields-browser-smoke.mjs && node scripts/profile-values-browser-smoke.mjs && node scripts/files-browser-smoke.mjs && node scripts/admin-files-browser-smoke.mjs && node scripts/admin-notifications-browser-smoke.mjs && node scripts/avatar-browser-smoke.mjs && node scripts/smtp-browser-smoke.mjs && node scripts/mail-query-browser-smoke.mjs && node scripts/outbox-browser-smoke.mjs && node scripts/notifications-browser-smoke.mjs && node scripts/monitoring-browser-smoke.mjs && node scripts/online-users-browser-smoke.mjs && node scripts/users-browser-smoke.mjs && node scripts/navigation-browser-smoke.mjs && node scripts/feedback-browser-smoke.mjs && node scripts/sensitive-words-browser-smoke.mjs && node scripts/localization-browser-smoke.mjs",
+    "test:browser": "node scripts/drafts-browser-smoke.mjs && node scripts/modules-browser-smoke.mjs && node scripts/navigation-motion-browser-smoke.mjs && node scripts/navigation-scroll-browser-smoke.mjs && node scripts/security-events-browser-smoke.mjs && node scripts/password-recovery-browser-smoke.mjs && node scripts/account-keyboard-browser-smoke.mjs && node scripts/account-email-browser-smoke.mjs && node scripts/account-phone-browser-smoke.mjs && node scripts/sms-delivery-browser-smoke.mjs && node scripts/shell-responsive-browser-smoke.mjs && node scripts/form-spacing-browser-smoke.mjs && node scripts/feedback-bubbles-browser-smoke.mjs && node scripts/dictionary-browser-smoke.mjs && node scripts/branding-browser-smoke.mjs && node scripts/agreements-browser-smoke.mjs && node scripts/watermark-browser-smoke.mjs && node scripts/maintenance-browser-smoke.mjs && node scripts/security-settings-browser-smoke.mjs && node scripts/no-change-reason-browser-smoke.mjs && node scripts/passkey-browser-smoke.mjs && node scripts/preferences-browser-smoke.mjs && node scripts/public-config-browser-smoke.mjs && node scripts/settings-readonly-browser-smoke.mjs && node scripts/profile-fields-browser-smoke.mjs && node scripts/profile-values-browser-smoke.mjs && node scripts/files-browser-smoke.mjs && node scripts/admin-files-browser-smoke.mjs && node scripts/admin-notifications-browser-smoke.mjs && node scripts/avatar-browser-smoke.mjs && node scripts/smtp-browser-smoke.mjs && node scripts/mail-query-browser-smoke.mjs && node scripts/outbox-browser-smoke.mjs && node scripts/notifications-browser-smoke.mjs && node scripts/monitoring-browser-smoke.mjs && node scripts/online-users-browser-smoke.mjs && node scripts/users-browser-smoke.mjs && node scripts/navigation-browser-smoke.mjs && node scripts/feedback-browser-smoke.mjs && node scripts/sensitive-words-browser-smoke.mjs && node scripts/localization-browser-smoke.mjs",
     "db:prepare": "node scripts/init-local.mjs",
     "db:reinitialize": "node scripts/reinitialize-local.mjs",
     "db:schema-smoke": "python3 scripts/database-schema-smoke.py",
-    "status": "node scripts/status.mjs"
+    "status": "node scripts/status.mjs",
+    "plugins:build": "node scripts/build-plugins.mjs",
+    "plugins:typecheck": "node scripts/plugins-typecheck.mjs",
+    "test:plugin-data": "python3 scripts/plugin-data-smoke.py",
+    "check:naming": "python3 scripts/source-naming-smoke.py",
+    "check:duplicates": "jscpd apps/web/src backend/src/main/java plugins scripts --config .jscpd.json --baseline .jscpd-baseline.json --fail-on-new-clones 0 --fail-on-empty --no-colors",
+    "check:quality": "pnpm check:naming && pnpm check:duplicates",
+    "test:crud": "node scripts/crud-browser-smoke.mjs && node scripts/user-editor-browser-smoke.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.60.0"
+    "@playwright/test": "1.60.0",
+    "esbuild": "0.28.2",
+    "jscpd": "5.4.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@babel/core": "7.29.7",
+      "@babel/runtime": "7.29.7",
+      "axios@0.27.2": "1.20.0",
+      "decode-uri-component@0.2.2": "0.5.0",
+      "esbuild": "0.28.2",
+      "immer@8.0.4": "9.0.6",
+      "katex@0.16.47": "0.18.2",
+      "node-fetch@1.7.3": "2.7.0",
+      "path-to-regexp@1.7.0": "1.9.0",
+      "path-to-regexp@8.2.0": "8.4.2",
+      "pbkdf2@3.1.6": "3.1.7",
+      "postcss-selector-parser@6.1.4": "7.1.6",
+      "react-router@6.3.0": "6.30.6",
+      "react-router-dom@6.3.0": "6.30.6",
+      "source-map-js@1.2.1": "1.2.2"
+    },
+    "patchedDependencies": {
+      "braces@3.0.3": "patches/braces@3.0.3.patch",
+      "sprintf-js@1.0.3": "patches/sprintf-js@1.0.3.patch",
+      "@remix-run/router@1.23.4": "patches/@remix-run__router@1.23.4.patch"
+    }
   }
 }

@@ -1,0 +1,28 @@
+diff --git a/src/sprintf.js b/src/sprintf.js
+index c0fc7c08b2e6fe38de2883034b8d28c8f34e9866..dceed3ad1924154e9b647ca66b1b35b1798a2116 100644
+--- a/src/sprintf.js
++++ b/src/sprintf.js
+@@ -1,4 +1,8 @@
+ (function(window) {
++    // Keep formatting work bounded when format strings originate outside the
++    // process. Native numeric formatters accept at most 100 decimal places.
++    var MAX_FIELD_WIDTH = 10000
++    var MAX_NUMERIC_PRECISION = 100
+     var re = {
+         not_string: /[^s]/,
+         number: /[diefg]/,
+@@ -30,6 +34,14 @@
+             }
+             else if (node_type === "array") {
+                 match = parse_tree[i] // convenience purposes only
++                var fieldWidth = match[6] ? parseInt(match[6], 10) : 0
++                var precision = match[7] ? parseInt(match[7], 10) : 0
++                if (fieldWidth > MAX_FIELD_WIDTH) {
++                    throw new RangeError("[sprintf] field width exceeds maximum of " + MAX_FIELD_WIDTH)
++                }
++                if (precision > MAX_FIELD_WIDTH || (re.number.test(match[8]) && precision > MAX_NUMERIC_PRECISION)) {
++                    throw new RangeError("[sprintf] precision exceeds the supported maximum")
++                }
+                 if (match[2]) { // keyword argument
+                     arg = argv[cursor]
+                     for (k = 0; k < match[2].length; k++) {

@@ -18,8 +18,6 @@ type PlatformSummary = {
   totalUsers: number;
   activeUsers: number;
   activeSessions: number;
-  enabledModules: number;
-  totalModules: number;
   pendingOutbox: number;
   processingOutbox: number;
   failedOutbox: number;
@@ -305,10 +303,9 @@ export function MonitoringPage() {
             <Row gutter={[16, 16]}>
               <Col xs={12}><Statistic title={t("totalUsers")} value={summary.totalUsers} suffix={<Typography.Text type="secondary">/ {summary.activeUsers} {t("activeUsers")}</Typography.Text>} /></Col>
               <Col xs={12}><Statistic title={t("activeSessions")} value={summary.activeSessions} /></Col>
-              <Col xs={12}><Statistic title={t("enabledModules")} value={summary.enabledModules} suffix={`/ ${summary.totalModules}`} /></Col>
               <Col xs={12}><Statistic title={t("auditEvents24h")} value={summary.auditEvents24h} /></Col>
+              <Col xs={12}><Statistic title={t("unreadNotifications")} value={summary.unreadNotifications} /></Col>
             </Row>
-            <div className="monitoring-secondary-metric"><Statistic title={t("unreadNotifications")} value={summary.unreadNotifications} /></div>
           </ProCard>
         </Col>
       </Row>

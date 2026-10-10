@@ -2,6 +2,8 @@ package com.lumira.platform.dictionaries;
 
 import com.lumira.platform.common.ImportValidationException;
 import com.lumira.platform.common.ImportValidationException.Issue;
+import com.lumira.platform.common.OfficeArchiveBudget;
+import com.lumira.platform.common.OfficeWorkerClient;
 import java.io.*;
 import java.nio.*;
 import java.nio.charset.*;
@@ -25,19 +27,51 @@ public class DictionaryFileParser {
     private record Hierarchy(int row, int level, boolean leaf, String parent) {}
 
     public Parsed parse(byte[] bytes, String filename, String structure) {
-        if (bytes.length > MAX_BYTES)
-            throw new ResponseStatusException(
-                    HttpStatus.PAYLOAD_TOO_LARGE, "dictionaryDatasetTooLarge");
-        if (bytes.length == 0
-                || filename == null
-                || !("TREE".equals(structure) || "FLAT".equals(structure))) throw invalid();
+        validateRequest(bytes, filename, structure);
+        String extension = extension(filename);
+        if (extension.equals("xls") || extension.equals("xlsx")) {
+            var dictionary = OfficeWorkerClient.dictionary(filename, structure, bytes);
+            return new Parsed(
+                    dictionary.sha256(),
+                    dictionary.items().stream()
+                            .map(
+                                    item ->
+                                            new DictionaryDataset.Entry(
+                                                    item.value(),
+                                                    item.label(),
+                                                    item.parentValue(),
+                                                    item.sortOrder(),
+                                                    item.enabled(),
+                                                    item.remark()))
+                            .toList());
+        }
+        return parseLocal(bytes, filename, structure, false);
+    }
+
+    /** Entry point for the disposable Office parser JVM; never call from a host request thread. */
+    public Parsed parseInWorker(byte[] bytes, String filename, String structure) {
+        validateRequest(bytes, filename, structure);
+        String extension = extension(filename);
+        if (!extension.equals("xls") && !extension.equals("xlsx")) throw invalid();
+        return parseLocal(bytes, filename, structure, true);
+    }
+
+    private Parsed parseLocal(
+            byte[] bytes, String filename, String structure, boolean officeWorker) {
         try {
-            String extension =
-                    filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+            String extension = extension(filename);
             List<SourceRow> rows =
                     switch (extension) {
                         case "txt" -> textRows(bytes);
-                        case "xls", "xlsx" -> workbookRows(bytes);
+                        case "xls" -> {
+                            if (!officeWorker) throw invalid();
+                            yield workbookRows(bytes);
+                        }
+                        case "xlsx" -> {
+                            if (!officeWorker) throw invalid();
+                            OfficeArchiveBudget.verify(bytes);
+                            yield workbookRows(bytes);
+                        }
                         default -> throw invalid();
                     };
             if (rows.isEmpty()) throw invalid();
@@ -118,9 +152,28 @@ public class DictionaryFileParser {
                     List.copyOf(items));
         } catch (ResponseStatusException ex) {
             throw ex;
+        } catch (OfficeArchiveBudget.Exceeded ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE, "dictionaryDatasetTooLarge", ex);
         } catch (Exception ex) {
             throw invalid();
         }
+    }
+
+    private static void validateRequest(byte[] bytes, String filename, String structure) {
+        if (bytes == null || bytes.length > MAX_BYTES)
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE, "dictionaryDatasetTooLarge");
+        if (bytes.length == 0
+                || filename == null
+                || !("TREE".equals(structure) || "FLAT".equals(structure))) throw invalid();
+    }
+
+    private static String extension(String filename) {
+        int dot = filename.lastIndexOf('.');
+        return dot < 0
+                ? filename.toLowerCase(Locale.ROOT)
+                : filename.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
     private List<SourceRow> textRows(byte[] bytes) throws IOException {

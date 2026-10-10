@@ -3,15 +3,17 @@ import { PlatformForm as Form } from "@/platform/components/platform-form";
 
 import {Divider, Input, InputNumber, Switch} from "antd";
 import { SettingsSection } from "@/platform/components/settings-section";
+import { SettingsEnabledControls } from "@/platform/components/settings-enabled-controls";
 import { usePreferences } from "@/platform/providers";
 
 /** Relying-party policy stays versioned through the shared settings editor. */
 export function PasskeyPage({ canWrite }: { canWrite: boolean }) {
   const { t } = usePreferences();
-  return <SettingsSection section="passkey" canWrite={canWrite} requireChangeReason>
+  return <SettingsSection section="passkey" canWrite={canWrite} showSecondaryActions={false}>
     <Form.Item name={["data", "enabled"]} label={t("passkeyEnabled")} extra={t("passkeySettingsHint")} valuePropName="checked">
       <Switch />
     </Form.Item>
+    <SettingsEnabledControls>
     <Form.Item name={["data", "passwordlessEnabled"]} label={t("passkeyPasswordlessEnabled")} valuePropName="checked">
       <Switch />
     </Form.Item>
@@ -38,5 +40,6 @@ export function PasskeyPage({ canWrite }: { canWrite: boolean }) {
     <Form.Item name={["data", "challengeTtlSeconds"]} label={t("passkeyChallengeTtl")} rules={[{ required: true, type: "number", min: 30, max: 600, message: t("invalidPasskeySettings") }]}>
       <InputNumber min={30} max={600} precision={0} addonAfter={t("seconds")} />
     </Form.Item>
+    </SettingsEnabledControls>
   </SettingsSection>;
 }

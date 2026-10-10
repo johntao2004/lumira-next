@@ -5,13 +5,14 @@ import { PasswordDrawer } from "@/features/account/password-drawer";
 import { ProfileDrawer } from "@/features/account/profile-drawer";
 import { SessionsDrawer } from "@/features/account/sessions-drawer";
 import { NotificationsButton } from "@/features/notifications/notifications-button";
-import { ApiError, api, logout } from "@/platform/api/client";
-import type { CurrentUser } from "@/platform/auth/api-types";
+import { ApiError, api, getAuthorizationContext, hasAuthorizationContextChanged, logout, mutate, sessionMe, shouldRefreshAuthorizationContextRevision } from "@/platform/api/client";
+import type { AuthorizationContext, CurrentUser } from "@/platform/auth/api-types";
 import { PlatformWatermark } from "@/platform/branding/watermark";
 import { useBranding } from "@/platform/branding/provider";
 import { AccountAvatar } from "@/platform/components/account-avatar";
 import { LanguageSwitcher } from "@/platform/i18n/language-switcher";
 import type { ModuleInfo } from "@/platform/modules/api-types";
+import { usePluginRuntime } from "@/platform/modules/plugin-runtime";
 import { renderFrontendPage } from "@/platform/modules/registry";
 import type { RuntimeNavigationNode } from "@/platform/navigation/runtime-types";
 import { usePreferences } from "@/platform/providers";
@@ -24,26 +25,46 @@ import {
 import { AppstoreFilled, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { history, Link, useLocation } from "@umijs/max";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Result, Skeleton, Space, Tag, Typography } from "antd";
-import { Suspense, useEffect, useState } from "react";
+import { Alert, App, Button, Result, Skeleton, Space, Tag, Typography } from "antd";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AccountMenu } from "./account-menu";
 import { DynamicPage } from "./dynamic-page";
 import { useDisplayScale } from "../display/use-display-scale";
 import { buildProLayoutRoute } from "./navigation";
+import { formatDateTime } from "../i18n/format";
+import { syncMenuState, type MenuState } from "./menu-state";
+import { currentSessionRevision, currentSessionUserId, subscribeSessionBoundary } from "../auth/session-lifecycle";
+const rolePreviewPageIds = new Set([
+  "home",
+  "users",
+  "roles",
+  "organizations",
+  "files",
+  "feedback",
+  "account-role-preview",
+]);
 import {
   availableNavigation,
   canAccessSection,
   collapseTabbedNavigation,
-  isDashboardSection,
   isSection,
   localizedNavigationLabel,
   mergeRuntimeNavigation,
   navigationPageIdForRoute,
+  runtimeNavigationPageNode,
+  runtimeBreadcrumbLabels,
+  runtimeNavigationTrail,
   routes,
   type Section,
 } from "./routes";
 
 export function Workspace({ children = null }: { children?: React.ReactNode }) {
+  usePluginRuntime();
+  const sessionRevision = useSyncExternalStore(
+    notify => subscribeSessionBoundary(() => notify()),
+    currentSessionRevision,
+    currentSessionRevision,
+  );
   const { pathname } = useLocation();
   const displayScale = useDisplayScale();
   const section = pathname.split("/").filter(Boolean)[1] ?? "home";
@@ -54,7 +75,9 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [mobileCollapsed, setMobileCollapsed] = useState(true);
-  const [mobileShell, setMobileShell] = useState(false);
+  const [mobileShell, setMobileShell] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  const [menuState, setMenuState] = useState<MenuState>({ activeGroup: null, openGroups: [] });
+  const previousSessionRevision = useRef(sessionRevision);
   const client = useQueryClient();
   const { dark, toggleDark, t } = usePreferences();
   const { message } = App.useApp();
@@ -93,8 +116,37 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchInterval: 30_000,
-    queryFn: () => api<CurrentUser>("/auth/me"),
+    queryFn: ({ signal }) => sessionMe<CurrentUser>("workspace-session", signal),
   });
+  useLayoutEffect(() => {
+    if (previousSessionRevision.current === sessionRevision) return;
+    previousSessionRevision.current = sessionRevision;
+    setProfileOpen(false);
+    setSessionsOpen(false);
+    setDraftsOpen(false);
+    setPasswordOpen(false);
+    setMenuState({ activeGroup: null, openGroups: [] });
+  }, [sessionRevision]);
+  useEffect(() => {
+    let refreshGeneration = 0;
+    const reauthenticate = () => {
+      const generation = ++refreshGeneration;
+      const revision = currentSessionRevision();
+      void client.cancelQueries({ queryKey: ["session"], exact: true }).then(() => {
+        if (generation !== refreshGeneration || revision !== currentSessionRevision()) return;
+        return client.fetchQuery({
+          queryKey: ["session"],
+          staleTime: 0,
+          queryFn: ({ signal }) => sessionMe<CurrentUser>("workspace-session", signal),
+        });
+      }).catch(() => {});
+    };
+    window.addEventListener("lumira:session-revalidate", reauthenticate);
+    return () => {
+      refreshGeneration++;
+      window.removeEventListener("lumira:session-revalidate", reauthenticate);
+    };
+  }, [client]);
   const canReadModules = user.data?.authorities.includes("platform:modules:read") ?? false;
   const modules = useQuery({
     queryKey: ["modules"],
@@ -107,9 +159,13 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
     enabled: Boolean(user.data),
     staleTime: 30_000,
   });
-  const routeForTitle = isSection(section) ? routes[section] : undefined;
-  const runtimePageForTitle = findRuntimePage(runtimeNavigation.data ?? [], section);
-  const navigation = collapseTabbedNavigation(mergeRuntimeNavigation(
+  const runtimePageNode = runtimeNavigationPageNode(runtimeNavigation.data ?? [], section, pathname);
+  const routeSection = runtimePageNode?.sectionKey?.trim() || section;
+  const routeForTitle = isSection(routeSection) ? routes[routeSection] : undefined;
+  const runtimeTrail = runtimeNavigationTrail(runtimeNavigation.data ?? [], routeSection, pathname);
+  const runtimePageForTitle = runtimeTrail?.at(-1) ?? null;
+  const previewActive = user.data?.authorizationContext?.preview?.state === "ACTIVE";
+  const allNavigation = collapseTabbedNavigation(mergeRuntimeNavigation(
     availableNavigation(
       user.data?.authorities ?? [],
       user.data?.enabledModules ?? [],
@@ -117,10 +173,28 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
     ),
     runtimeNavigation.data,
   ));
-  const navigationSection = navigationPageIdForRoute(section, navigation);
-  const resolvedPageTitle = routeForTitle
-    ? t(routeForTitle.label)
-    : localizedNavigationLabel(runtimePageForTitle?.labelKey, runtimePageForTitle?.labelDefault, t) || t("notFound");
+  const navigation = previewActive
+    ? allNavigation
+        .map(group => ({ ...group, pages: group.pages.filter(page => rolePreviewPageIds.has(page.id)) }))
+        .filter(group => group.pages.length > 0)
+    : allNavigation;
+  const navigationSection = navigationPageIdForRoute(routeSection, navigation);
+  const activeGroup = navigation.find((group) =>
+    group.pages.some((page) => page.id === navigationSection || page.path === pathname),
+  );
+  const menuGroupId = (group: (typeof navigation)[number] | undefined) =>
+    group?.standalone ? group.pages[0]?.id ?? null : group?.id ?? null;
+  const activeGroupId = menuGroupId(activeGroup);
+  const availableGroupIds = navigation.map(group => menuGroupId(group)).filter((id): id is string => Boolean(id));
+  // Hash/query changes and Tab routes within the same group leave manual expansion untouched.
+  useEffect(() => {
+    setMenuState(current => syncMenuState(current, availableGroupIds, activeGroupId));
+  }, [availableGroupIds.join("\0"), activeGroupId]);
+  const resolvedPageTitle = runtimePageForTitle
+    ? localizedNavigationLabel(runtimePageForTitle.labelKey, runtimePageForTitle.labelDefault, t)
+    : routeForTitle
+      ? t(routeForTitle.label)
+      : t("notFound");
 
   useEffect(() => {
     document.title = `${resolvedPageTitle} - ${branding.websiteName}`;
@@ -128,8 +202,7 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
 
   useEffect(() => {
     const refresh = () => {
-      void client.invalidateQueries({ queryKey: ["session"] });
-      void client.invalidateQueries({ queryKey: ["modules"] });
+      void client.invalidateQueries();
     };
     const channel = new BroadcastChannel("lumira:modules");
     channel.onmessage = refresh;
@@ -137,6 +210,41 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
     return () => {
       channel.close();
       window.removeEventListener("lumira:modules-changed", refresh);
+    };
+  }, [client]);
+
+  useEffect(() => {
+    let refreshInFlight: Promise<void> | null = null;
+    const refresh = () => {
+      if (refreshInFlight) return refreshInFlight;
+      const previousContext = client.getQueryData<CurrentUser>(["session"])?.authorizationContext ?? null;
+      refreshInFlight = (async () => {
+        await client.invalidateQueries({ queryKey: ["session"] });
+        const currentContext = client.getQueryData<CurrentUser>(["session"])?.authorizationContext ?? null;
+        if (hasAuthorizationContextChanged(previousContext, currentContext)) {
+          await client.invalidateQueries({ predicate: query => query.queryKey[0] !== "session" });
+        }
+      })().finally(() => { refreshInFlight = null; });
+      return refreshInFlight;
+    };
+    const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("lumira:authorization-context");
+    let lastSeenRevision = getAuthorizationContext()?.revision ?? null;
+    if (channel) channel.onmessage = event => {
+        const value = event.data as { revision?: unknown } | null;
+        if (!value || (value.revision !== null && typeof value.revision !== "string")) return;
+        const revision = value.revision as string | null;
+        const currentRevision = getAuthorizationContext()?.revision ?? null;
+        if (!shouldRefreshAuthorizationContextRevision(revision, lastSeenRevision, currentRevision)) {
+          lastSeenRevision = revision;
+          return;
+        }
+        lastSeenRevision = revision;
+        refresh();
+      };
+    window.addEventListener("lumira:authorization-context-refresh", refresh);
+    return () => {
+      channel?.close();
+      window.removeEventListener("lumira:authorization-context-refresh", refresh);
     };
   }, [client]);
 
@@ -156,6 +264,9 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
   if (user.isPending) {
     return <main className="workspace-loading"><Skeleton active paragraph={{ rows: 10 }} /></main>;
   }
+  if (user.data && user.data.userId !== currentSessionUserId()) {
+    return <main className="workspace-loading"><Skeleton active paragraph={{ rows: 10 }} /></main>;
+  }
   if (!user.data) {
     return (
       <main className="workspace-status">
@@ -172,6 +283,13 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
   const accountActions = {
     displayName: user.data.displayName,
     onProfile: () => setProfileOpen(true),
+    onAuthenticationSecurity: () => history.push("/dashboard/account-security"),
+    onRolePreview: user.data.authorizationContext?.rolePreviewSupported
+      ? () => history.push("/dashboard/account-role-preview")
+      : undefined,
+    onWechat: user.data.effectiveAuthentication?.allowedMethods.includes("WECHAT")
+      ? () => history.push("/dashboard/account-wechat")
+      : undefined,
     onSessions: () => setSessionsOpen(true),
     onDrafts: () => setDraftsOpen(true),
     onChangePassword: () => setPasswordOpen(true),
@@ -189,29 +307,30 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
   const activeRoute = routeForTitle;
   const runtimePage = runtimePageForTitle;
   const moduleDenied = Boolean(activeRoute?.module && !(user.data.enabledModules ?? []).includes(activeRoute.module));
+  const previewUnavailable = previewActive && !rolePreviewPageIds.has(routeSection);
   const runtimeLoading = !activeRoute && runtimeNavigation.isPending;
-  const denied = runtimeLoading
+  const denied = previewUnavailable || runtimePageNode?.routable === false || (runtimeLoading
     ? false
     : activeRoute
-      ? !canAccessSection(section as Section, user.data.authorities, user.data.enabledModules ?? [], user.data.globalAuthorities ?? [])
-      : !runtimePage;
+      ? !canAccessSection(routeSection as Section, user.data.authorities, user.data.enabledModules ?? [], user.data.globalAuthorities ?? [])
+      : !runtimePage);
   const title = resolvedPageTitle;
-  const featurePage = !denied && isSection(section) && section !== "home"
-    ? renderFrontendPage(section, { authorities: user.data.authorities, hasGlobal })
+  const featurePage = !denied && routeSection !== "home"
+    ? renderFrontendPage(routeSection, {
+        authorities: user.data.authorities,
+        hasGlobal,
+        readOnlyPreview: Boolean(user.data.authorizationContext?.preview),
+      })
     : null;
   const layoutRoute = buildProLayoutRoute(navigation, t);
-  const activeGroup = navigation.find((group) =>
-    group.pages.some((page) => page.id === navigationSection || page.path === pathname),
-  );
-  const activeMenuPage = navigation.flatMap((group) => group.pages).find((page) => page.id === navigationSection);
+  const activeMenuPage = navigation.flatMap((group) => group.pages)
+    .find((page) => page.id === navigationSection || page.path === pathname);
   const layoutPath = activeMenuPage?.path || (activeMenuPage ? `/dashboard/${activeMenuPage.id}` : pathname);
-  const breadcrumbItems = [
-    { title: <Link to="/dashboard/home">{t("home")}</Link> },
-    ...(activeGroup && section !== "home"
-      ? [{ title: localizedNavigationLabel(activeGroup.label, activeGroup.labelDefault, t) }]
-      : []),
-    ...(section !== "home" ? [{ title }] : []),
-  ];
+  const breadcrumbItems = runtimeBreadcrumbLabels(
+    runtimeTrail,
+    title,
+    node => localizedNavigationLabel(node.labelKey, node.labelDefault, t),
+  ).map((label) => ({ title: label }));
   const utilityActions = () => [
     <Button
       type="text"
@@ -235,7 +354,7 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
   const layoutCollapsed = mobileShell ? mobileCollapsed : desktopCollapsed;
 
   return (
-    <PlatformWatermark>
+    <PlatformWatermark key={`${user.data.userId}:${sessionRevision}`}>
       <ProfileDrawer open={profileOpen} onClose={() => setProfileOpen(false)} />
       <DraftsDrawer open={draftsOpen} onClose={() => setDraftsOpen(false)} />
       <SessionsDrawer open={sessionsOpen} onClose={() => setSessionsOpen(false)} />
@@ -248,6 +367,10 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
             header: {
               colorBgHeader: "var(--ant-color-bg-container)",
               colorBgScrollHeader: "var(--ant-color-bg-container)",
+            },
+            pageContainer: {
+              paddingInlinePageContainerContent: mobileShell ? 16 : 24,
+              paddingBlockPageContainerContent: mobileShell ? 16 : 24,
             },
             ...(dark ? {
               sider: {
@@ -271,9 +394,18 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
           fixedHeader
           fixSiderbar
           breakpoint={false}
+          disableMobile={!mobileShell}
           siderWidth={displayScale.siderWidth}
           menu={{ collapsedWidth: displayScale.collapsedSiderWidth, defaultOpenAll: false }}
           collapsed={layoutCollapsed}
+          menuProps={{
+            selectedKeys: activeMenuPage ? [activeMenuPage.id] : [],
+            openKeys: menuState.openGroups,
+            onOpenChange: (keys) => {
+              // Ant Design emits an empty list when the whole sidebar folds. Keep it for reopening.
+              if (!layoutCollapsed) setMenuState(current => ({ ...current, openGroups: keys.map(String).filter(key => availableGroupIds.includes(key)) }));
+            },
+          }}
           onCollapse={(nextCollapsed) => {
             if (mobileShell) setMobileCollapsed(nextCollapsed);
             else setDesktopCollapsed(nextCollapsed);
@@ -285,6 +417,7 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
           pageTitleRender={() => `${title} - ${branding.websiteName}`}
         >
           <div className="workspace-main">
+            {user.data.authorizationContext?.rolePreviewSupported && user.data.authorizationContext.preview && <RolePreviewBanner context={user.data.authorizationContext} actorName={user.data.displayName} />}
             <PageContainer
               className="workspace-page"
               title={<Typography.Title level={2} className="page-title">{title}</Typography.Title>}
@@ -295,11 +428,11 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
                 <Result
                   status="403"
                   title="403"
-                  subTitle={t(moduleDenied ? "moduleUnavailable" : "forbidden")}
+                  subTitle={t(previewUnavailable ? "rolePreviewPageUnavailable" : moduleDenied ? "moduleUnavailable" : "forbidden")}
                 />
               ) : runtimeLoading ? (
                 <Skeleton active paragraph={{ rows: 8 }} />
-              ) : section === "home" ? (
+              ) : routeSection === "home" ? (
                 <Workbench
                   displayName={user.data.displayName}
                   moduleCount={modules.data?.length ?? 0}
@@ -312,7 +445,7 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
               ) : runtimePage ? (
                 <DynamicPage
                   title={title}
-                  path={runtimePage.path ?? `/dashboard/${section}`}
+                  path={runtimePage.path ?? `/dashboard/${routeSection}`}
                   componentKey={runtimePage.componentKey ?? runtimePage.menuCode ?? runtimePage.sectionKey}
                 />
               ) : (
@@ -324,6 +457,44 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
       </div>
     </PlatformWatermark>
   );
+}
+
+function RolePreviewBanner({ context, actorName }: { context: AuthorizationContext; actorName: string }) {
+  const { t, locale } = usePreferences();
+  const client = useQueryClient();
+  const { message } = App.useApp();
+  const [pending, setPending] = useState(false);
+  const preview = context.preview;
+  if (!preview) return null;
+
+  async function exit() {
+    if (!context.revision || pending) return;
+    setPending(true);
+    try {
+      await mutate<void>("/account/role-preview", "DELETE", { authorizationContextRevision: context.revision });
+      await client.invalidateQueries();
+    } catch (error) {
+      void message.error(t(error instanceof ApiError && error.message === "authorizationContextChanged" ? "authorizationContextChanged" : error instanceof ApiError && error.status === 403 ? "rolePreviewBlocked" : "unavailable"));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return <Alert
+    className="mb-4"
+    showIcon
+    type={preview.state === "BLOCKED" ? "warning" : "info"}
+    message={t(preview.state === "BLOCKED" ? "rolePreviewBlocked" : "rolePreviewActive", { role: preview.roleName })}
+    description={<Space wrap size={[8, 4]}>
+      <span>{t("rolePreviewActor", { name: actorName })}</span>
+      <span>{t("rolePreviewExpires", { time: formatDateTime(preview.expiresAt, locale) })}</span>
+      {preview.limitedByActor && <span>{t("rolePreviewLimitedByActor")}</span>}
+    </Space>}
+    action={<Space wrap>
+      {preview.state === "BLOCKED" && <Button size="small" onClick={() => history.push("/dashboard/account-role-preview")}>{t("rolePreviewChoose")}</Button>}
+      <Button size="small" danger loading={pending} disabled={!context.revision} onClick={() => void exit()}>{t("rolePreviewExit")}</Button>
+    </Space>}
+  />;
 }
 
 function Workbench({
@@ -396,15 +567,4 @@ function workbenchGreetingForHour(hour: number): WorkbenchGreetingKey {
   if (hour >= 14 && hour < 18) return "greetingAfternoon";
   if (hour >= 18 && hour < 22) return "greetingEvening";
   return "greetingNight";
-}
-
-function findRuntimePage(nodes: readonly RuntimeNavigationNode[], section: string): RuntimeNavigationNode | null {
-  if (!isDashboardSection(section)) return null;
-  const path = `/dashboard/${section}`;
-  for (const node of nodes) {
-    if (node.menuType === "PAGE" && (node.sectionKey === section || node.path === path)) return node;
-    const nested = findRuntimePage(node.children ?? [], section);
-    if (nested) return nested;
-  }
-  return null;
 }

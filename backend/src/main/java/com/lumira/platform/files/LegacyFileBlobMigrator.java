@@ -22,8 +22,11 @@ public final class LegacyFileBlobMigrator implements ApplicationRunner {
     private final PostgresBlobStore postgres;
     private final DataSource dataSource;
 
-    public LegacyFileBlobMigrator(FileRepository files, LocalBlobStore local,
-            PostgresBlobStore postgres, DataSource dataSource) {
+    public LegacyFileBlobMigrator(
+            FileRepository files,
+            LocalBlobStore local,
+            PostgresBlobStore postgres,
+            DataSource dataSource) {
         this.files = files;
         this.local = local;
         this.postgres = postgres;
@@ -70,7 +73,8 @@ public final class LegacyFileBlobMigrator implements ApplicationRunner {
     }
 
     private void releaseLock(Connection connection) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("SELECT pg_advisory_unlock(?)")) {
+        try (PreparedStatement statement =
+                connection.prepareStatement("SELECT pg_advisory_unlock(?)")) {
             statement.setLong(1, MIGRATION_LOCK);
             statement.execute();
         }
@@ -91,7 +95,8 @@ public final class LegacyFileBlobMigrator implements ApplicationRunner {
         try (InputStream source = local.open(entry.id())) {
             postgres.migrateLocal(entry, source);
         }
-        // The DB switch is committed before deleting the old copy. A failed unlink is retried on boot.
+        // The DB switch is committed before deleting the old copy. A failed unlink is retried on
+        // boot.
         local.delete(entry.id());
         files.finishLegacyLocalCleanup(entry.id());
     }

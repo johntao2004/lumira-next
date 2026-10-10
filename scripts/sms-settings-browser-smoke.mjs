@@ -35,7 +35,7 @@ try {
   await main.getByRole('combobox', { name: '访问密钥操作', exact: true }).click();
   await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByText('更换密钥', { exact: true }).click();
   await main.getByLabel('密码', { exact: true }).fill('sms-browser-fixture');
-  await main.locator('#changeReason').fill('SMS browser configuration');
+  assert.equal(await main.locator('#changeReason').count(), 0, 'SMS form must not ask for a change reason');
   const save = page.waitForResponse(response => response.url().endsWith('/api/platform/settings/sms') && response.request().method() === 'PUT');
   await main.getByRole('button', { name: '保存', exact: true }).click();
   const saved = await save;
@@ -57,7 +57,7 @@ try {
   await restore.getByRole('combobox', { name: '访问密钥操作', exact: true }).click();
   await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').getByText('更换密钥', { exact: true }).click();
   await restore.getByLabel('密码', { exact: true }).fill('sms-browser-restored');
-  await restore.locator('#restore-sms_changeReason').fill('SMS browser history restore');
+  assert.equal(await restore.locator('#restore-sms_changeReason').count(), 0, 'SMS restore form must not ask for a change reason');
   const rollback = page.waitForResponse(response => response.url().endsWith('/api/platform/settings/sms/rollback'));
   await page.locator('button[form="restore-sms"]').click();
   const restored = await rollback;

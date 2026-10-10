@@ -21,14 +21,18 @@ public class PasskeySettingsController {
     }
 
     @GetMapping
-    public PasskeySettingsService.View read() { return service.read(); }
+    public PasskeySettingsService.View read() {
+        return service.read();
+    }
 
     @PutMapping
     public PasskeySettingsService.View write(
-            @BoundedBody(maxBytes = 16_384, errorCode = "invalidPasskeySettings") @RequestBody Input input,
+            @BoundedBody(maxBytes = 16_384, errorCode = "invalidPasskeySettings") @RequestBody
+                    Input input,
             Authentication actor) {
-        if (input == null) throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "invalidPasskeySettings");
+        if (input == null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "invalidPasskeySettings");
         return service.save(input.data(), actor.getName(), input.version(), input.changeReason());
     }
 }

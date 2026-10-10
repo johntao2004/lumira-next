@@ -1,9 +1,7 @@
 "use client";
 import { history, useLocation } from "@umijs/max";
-import { readListLocation } from "./list-location";
-import { createListRequest, type ListRequest } from "../api/pagination";
-
-const defaultListRequest = createListRequest();
+import { listLocationChanges, readListLocation } from "./list-location";
+import type { ListRequest } from "../api/pagination";
 
 /** URL-backed state preserves history without remounting the workspace shell. */
 export function useLocationParams() {
@@ -22,10 +20,6 @@ export function useLocationParams() {
 export function useListLocation(prefix = "") {
   const [params, update] = useLocationParams();
   const request = readListLocation(new URLSearchParams(params.toString()), prefix);
-  const setRequest = (next: ListRequest) => update({
-    [prefix + "page"]: next.page === defaultListRequest.page ? null : String(next.page),
-    [prefix + "pageSize"]: next.pageSize === defaultListRequest.pageSize ? null : String(next.pageSize),
-    [prefix + "search"]: next.search || null,
-  });
+  const setRequest = (next: ListRequest) => update(listLocationChanges(params, next, prefix));
   return [request, setRequest] as const;
 }

@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
+import { startOfficeWorker, stopOfficeWorker } from "./office-worker-runtime.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = path.join(root, ".runtime");
 mkdirSync(runtime, { recursive: true });
@@ -38,6 +39,12 @@ for (const port of [8010, 8090])
 const config = JSON.parse(
   readFileSync(path.join(runtime, "local.json"), "utf8"),
 );
+const workerUrl = process.env.LUMIRA_OFFICE_WORKER_URL;
+const workerToken = process.env.LUMIRA_OFFICE_WORKER_TOKEN;
+if (Boolean(workerUrl) !== Boolean(workerToken))
+  throw new Error("Set both LUMIRA_OFFICE_WORKER_URL and LUMIRA_OFFICE_WORKER_TOKEN, or leave both unset to start the local isolated worker.");
+let managedOfficeWorker = false;
+let officeWorker;
 const javaHome = process.env.LUMIRA_JAVA_HOME ?? process.env.JAVA_HOME;
 if (!javaHome) throw new Error("Set JAVA_HOME to the system JDK before starting Lumira.");
 const java = path.join(javaHome, "bin/java");
@@ -54,15 +61,17 @@ copyFileSync(path.join(jarDir, jars[0]), runtimeJar);
 const processes = [];
 function launch(name, command, args, cwd, extraEnv = {}) {
   const fd = openSync(path.join(runtime, `${name}.log`), "w", 0o600);
+  const childEnv = {
+    ...process.env,
+    ...config,
+    ...extraEnv,
+    // Local preview is HTTP; production compose must set this explicitly.
+    LUMIRA_COOKIE_SECURE: process.env.LUMIRA_COOKIE_SECURE ?? config.LUMIRA_COOKIE_SECURE ?? "false",
+  };
+  if (name !== "backend") delete childEnv.LUMIRA_OFFICE_WORKER_TOKEN;
   const child = spawn(command, args, {
     cwd,
-    env: {
-      ...process.env,
-      ...config,
-      ...extraEnv,
-      // Local preview is HTTP; production compose must set this explicitly.
-      LUMIRA_COOKIE_SECURE: process.env.LUMIRA_COOKIE_SECURE ?? config.LUMIRA_COOKIE_SECURE ?? "false",
-    },
+    env: childEnv,
     detached: true,
     stdio: ["ignore", fd, fd],
   });
@@ -74,13 +83,21 @@ function launch(name, command, args, cwd, extraEnv = {}) {
   writeFileSync(stateFile, JSON.stringify(processes));
 }
 try {
-  launch("backend", java, ["-jar", runtimeJar], root);
+  if (workerUrl) officeWorker = { url: workerUrl, token: workerToken };
+  else {
+    managedOfficeWorker = true;
+    officeWorker = await startOfficeWorker();
+  }
+  launch("backend", java, ["-jar", runtimeJar], root, {
+    LUMIRA_OFFICE_WORKER_URL: officeWorker.url,
+    LUMIRA_OFFICE_WORKER_TOKEN: officeWorker.token,
+  });
   const productionWeb = process.env.LUMIRA_WEB_MODE === "production";
   const maxCli = path.join(root, "apps/web/node_modules/@umijs/max/bin/max.js");
   if (productionWeb) {
     const productionIndex = path.join(root, "apps/web/dist/index.html");
     if (!existsSync(productionIndex)) throw new Error("Build the Umi web app before starting the production preview.");
-    launch("web", node, [maxCli, "preview", "--host", "127.0.0.1", "--port", "8010"], path.join(root, "apps/web"));
+    launch("web", node, [maxCli, "preview", "--host", "127.0.0.1", "--port", "8010"], path.join(root, "apps/web"), { NODE_ENV: "production" });
   } else {
     launch(
       "web",
@@ -123,6 +140,13 @@ try {
     try {
       process.kill(-p.pid, "SIGTERM");
     } catch {}
+  }
+  if (managedOfficeWorker) {
+    try {
+      await stopOfficeWorker();
+    } catch (cleanupError) {
+      console.error(`Office worker cleanup failed: ${cleanupError.message}`);
+    }
   }
   throw error;
 }

@@ -10,15 +10,15 @@ public final class PasswordContract {
     private PasswordContract() {}
 
     public static boolean withinMaximum(String value) {
-        return value != null
-                && value.getBytes(StandardCharsets.UTF_8).length <= MAX_PASSWORD_BYTES;
+        return value != null && value.getBytes(StandardCharsets.UTF_8).length <= MAX_PASSWORD_BYTES;
     }
 
     /** Raw BCrypt hashes are kept compatible without permitting BCrypt truncation. */
     public static boolean compatibleWithStoredHash(String value, String encodedHash) {
         if (!withinMaximum(value) || encodedHash == null) return false;
         return !isLegacyBcrypt(encodedHash)
-                || value.getBytes(StandardCharsets.UTF_8).length <= LEGACY_BCRYPT_MAX_PASSWORD_BYTES;
+                || value.getBytes(StandardCharsets.UTF_8).length
+                        <= LEGACY_BCRYPT_MAX_PASSWORD_BYTES;
     }
 
     private static boolean isLegacyBcrypt(String encodedHash) {

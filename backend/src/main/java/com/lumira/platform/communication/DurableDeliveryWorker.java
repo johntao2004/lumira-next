@@ -21,12 +21,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Shared orchestration for durable provider deliveries.
  *
- * <p>Channel modules provide only their payload, connection, gateway result
- * and store adapter. Claim fencing, bounded concurrency, lease renewal,
- * deadline interruption and conservative completion semantics remain one
- * implementation.</p>
+ * <p>Channel modules provide only their payload, connection, gateway result and store adapter.
+ * Claim fencing, bounded concurrency, lease renewal, deadline interruption and conservative
+ * completion semantics remain one implementation.
  */
-public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R> implements AutoCloseable {
+public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
+        implements AutoCloseable {
     @FunctionalInterface
     public interface ConnectionSource<C> {
         C load();
@@ -82,32 +82,42 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R> imple
         this.channel = channel;
         this.defaultTimeoutMillis = defaultTimeoutMillis;
         this.log = LoggerFactory.getLogger(getClass());
-        this.workers = Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name(channel + "-delivery-", 0).factory());
-        this.schedules = Executors.newSingleThreadScheduledExecutor(
-                Thread.ofPlatform().daemon().name(channel + "-delivery-schedules").factory());
+        this.workers =
+                Executors.newThreadPerTaskExecutor(
+                        Thread.ofVirtual().name(channel + "-delivery-", 0).factory());
+        this.schedules =
+                Executors.newSingleThreadScheduledExecutor(
+                        Thread.ofPlatform()
+                                .daemon()
+                                .name(channel + "-delivery-schedules")
+                                .factory());
     }
 
     protected void pollQueue() {
         if (stopped.get()) return;
         try {
-            transaction.executeWithoutResult(status -> {
-                for (var row : recoverExpired.get()) {
-                    audit.append("system:" + channel, channel + "." + row.state(), row.id());
-                }
-            });
-            for (int batch = 0; batch < MAX_CONCURRENCY && !stopped.get() && slots.tryAcquire(); batch++) {
+            transaction.executeWithoutResult(
+                    status -> {
+                        for (var row : recoverExpired.get()) {
+                            audit.append(
+                                    "system:" + channel, channel + "." + row.state(), row.id());
+                        }
+                    });
+            for (int batch = 0;
+                    batch < MAX_CONCURRENCY && !stopped.get() && slots.tryAcquire();
+                    batch++) {
                 boolean submitted = false;
                 try {
                     Optional<DurableDeliveryStore.Claim> claim = store.claim();
                     if (claim.isEmpty()) return;
-                    workers.execute(() -> {
-                        try {
-                            processQueue(claim.get(), defaultTimeoutMillis);
-                        } finally {
-                            slots.release();
-                        }
-                    });
+                    workers.execute(
+                            () -> {
+                                try {
+                                    processQueue(claim.get(), defaultTimeoutMillis);
+                                } finally {
+                                    slots.release();
+                                }
+                            });
                     submitted = true;
                 } finally {
                     if (!submitted) slots.release();
@@ -128,40 +138,55 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R> imple
             var message = store.message(claim);
             if (message.isEmpty()) return;
             try (C connection = source.load()) {
-                started = Boolean.TRUE.equals(transaction.execute(status -> {
-                    if (!store.beginSending(claim)) return false;
-                    audit.append("system:" + channel, channel + ".started", claim.id());
-                    return true;
-                }));
+                started =
+                        Boolean.TRUE.equals(
+                                transaction.execute(
+                                        status -> {
+                                            if (!store.beginSending(claim)) return false;
+                                            audit.append(
+                                                    "system:" + channel,
+                                                    channel + ".started",
+                                                    claim.id());
+                                            return true;
+                                        }));
                 if (!started) return;
 
                 Thread current = Thread.currentThread();
                 AtomicBoolean leaseLost = new AtomicBoolean();
-                var leaseRenewal = schedules.scheduleAtFixedRate(() -> {
-                    try {
-                        if (!store.renewLease(claim)) {
-                            leaseLost.set(true);
-                            current.interrupt();
-                        }
-                    } catch (RuntimeException error) {
-                        leaseLost.set(true);
-                        current.interrupt();
-                    }
-                }, LEASE_RENEWAL_SECONDS, LEASE_RENEWAL_PERIOD_SECONDS, TimeUnit.SECONDS);
+                var leaseRenewal =
+                        schedules.scheduleAtFixedRate(
+                                () -> {
+                                    try {
+                                        if (!store.renewLease(claim)) {
+                                            leaseLost.set(true);
+                                            current.interrupt();
+                                        }
+                                    } catch (RuntimeException error) {
+                                        leaseLost.set(true);
+                                        current.interrupt();
+                                    }
+                                },
+                                LEASE_RENEWAL_SECONDS,
+                                LEASE_RENEWAL_PERIOD_SECONDS,
+                                TimeUnit.SECONDS);
 
                 R result;
                 boolean[] deadlineState = {false, false};
                 Object deadlineLock = new Object();
-                ScheduledFuture<?> deadline = timeoutMillis > 0
-                        ? schedules.schedule(() -> {
-                            synchronized (deadlineLock) {
-                                if (!deadlineState[0]) {
-                                    deadlineState[1] = true;
-                                    current.interrupt();
-                                }
-                            }
-                        }, timeoutMillis, TimeUnit.MILLISECONDS)
-                        : null;
+                ScheduledFuture<?> deadline =
+                        timeoutMillis > 0
+                                ? schedules.schedule(
+                                        () -> {
+                                            synchronized (deadlineLock) {
+                                                if (!deadlineState[0]) {
+                                                    deadlineState[1] = true;
+                                                    current.interrupt();
+                                                }
+                                            }
+                                        },
+                                        timeoutMillis,
+                                        TimeUnit.MILLISECONDS)
+                                : null;
                 try {
                     try {
                         result = sender.send(connection, message.get());
@@ -181,26 +206,38 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R> imple
                     result = uncertainResult.get();
                 }
                 R outcome = result;
-                transaction.executeWithoutResult(status -> {
-                    if (Boolean.TRUE.equals(complete.apply(claim, outcome))) {
-                        audit.append("system:" + channel, channel + "." + resultName.apply(outcome), claim.id());
-                    }
-                });
+                transaction.executeWithoutResult(
+                        status -> {
+                            if (Boolean.TRUE.equals(complete.apply(claim, outcome))) {
+                                audit.append(
+                                        "system:" + channel,
+                                        channel + "." + resultName.apply(outcome),
+                                        claim.id());
+                            }
+                        });
             }
         } catch (Exception error) {
             if (!started) {
                 try {
-                    transaction.executeWithoutResult(status -> {
-                        if (store.failBeforeSending(claim)) {
-                            audit.append("system:" + channel, channel + ".configurationUnavailable", claim.id());
-                        }
-                    });
+                    transaction.executeWithoutResult(
+                            status -> {
+                                if (store.failBeforeSending(claim)) {
+                                    audit.append(
+                                            "system:" + channel,
+                                            channel + ".configurationUnavailable",
+                                            claim.id());
+                                }
+                            });
                 } catch (RuntimeException failure) {
                     log.warn("{} failure recording deferred for {}", channel, claim.id());
                 }
             }
             // A failed completion transaction leaves SENDING for conservative expiry recovery.
-            log.warn("{} attempt deferred for {} ({})", channel, claim.id(), error.getClass().getSimpleName());
+            log.warn(
+                    "{} attempt deferred for {} ({})",
+                    channel,
+                    claim.id(),
+                    error.getClass().getSimpleName());
         }
     }
 

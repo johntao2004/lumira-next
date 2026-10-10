@@ -20,7 +20,7 @@ export function DraftsDrawer({open,onClose}:{open:boolean;onClose:()=>void}){
    {title:t("draftName"),dataIndex:"draftKey",search:true,width:180,render:(_,row)=><span style={{overflowWrap:"anywhere"}}>{row.draftKey==="organization.create"?t("createOrganization"):row.draftKey}</span>},
    {title:t("fileSize"),dataIndex:"payloadBytes",valueType:"digit",width:120,render:(_,row)=>new Intl.NumberFormat(locale).format(row.payloadBytes)},
    {title:t("draftSavedAt"),dataIndex:"updatedAt",valueType:"dateTimeRange",width:170,render:(_,row)=>formatDateTime(row.updatedAt,locale,{dateStyle:"short",timeStyle:"short"})},
-   {title:t("actions"),search:false,width:100,render:(_,row)=><TableActions><DeleteAction name={row.draftKey==="organization.create"?t("createOrganization"):row.draftKey} actionLabel={t("deleteDraft")} onDelete={async()=>{
+   {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions><DeleteAction name={row.draftKey==="organization.create"?t("createOrganization"):row.draftKey} actionLabel={t("deleteDraft")} onDelete={async()=>{
     try{await mutate(`/account/drafts/${encodeURIComponent(row.draftKey)}?revision=${encodeURIComponent(row.revision)}`,"DELETE");}
     catch(error){void query.refetch();throw error;}
     if(query.data?.items.length===1&&request.page>1)setRequest({...request,page:request.page-1});else await query.refetch();

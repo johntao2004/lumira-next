@@ -59,9 +59,15 @@ class ProfileValuesTest {
                         ProfileValues.merge(
                                 schema("TEXT", false, true), Map.of(), Map.of("password", "new")));
         assertEquals(
-                Map.of(),
+                Map.of("custom", "old"),
                 ProfileValues.merge(
                         schema("TEXT", false, true), Map.of("custom", "old"), Map.of()));
+        assertEquals(
+                Map.of(),
+                ProfileValues.merge(
+                        schema("TEXT", false, true),
+                        Map.of("custom", "old"),
+                        Map.of("custom", "")));
     }
 
     @Test
@@ -313,6 +319,93 @@ class ProfileValuesTest {
                 queried);
     }
 
+    @Test
+    void placementScopedWritesIgnoreOtherHostsAndRetainRemovedValues() {
+        var accountField =
+                placedField(
+                        "accountField",
+                        false,
+                        true,
+                        List.of(new ProfileFields.Placement("account-profile", "basic", 10)));
+        var adminRequired =
+                placedField(
+                        "adminRequired",
+                        true,
+                        true,
+                        List.of(new ProfileFields.Placement("admin-user-editor", "profile", 10)));
+        var hiddenRequired =
+                new ProfileFields.Field(
+                        "hiddenRequired",
+                        "Hidden",
+                        "",
+                        "TEXT",
+                        false,
+                        true,
+                        5,
+                        "",
+                        "custom",
+                        "Custom",
+                        20,
+                        true,
+                        List.of(),
+                        null,
+                        false,
+                        List.of(new ProfileFields.Placement("account-profile", "basic", 20)));
+        var current = new ProfileFields(List.of(accountField, adminRequired, hiddenRequired));
+        var stored =
+                Map.of(
+                        "adminRequired", "kept for admin",
+                        "hiddenRequired", "kept while hidden",
+                        "retired", "kept after deletion");
+
+        assertEquals(
+                stored,
+                ProfileValues.mergeForPlacement(
+                        current, stored, Map.of(), "account-profile", "basic", true));
+        assertEquals(
+                Map.of(
+                        "accountField", "updated",
+                        "adminRequired", "kept for admin",
+                        "hiddenRequired", "kept while hidden",
+                        "retired", "kept after deletion"),
+                ProfileValues.mergeForPlacement(
+                        current,
+                        stored,
+                        Map.of("accountField", "updated"),
+                        "account-profile",
+                        "basic",
+                        true));
+
+        assertEquals(stored, ProfileValues.merge(List.of(), stored, Map.of(), false));
+    }
+
+    @Test
+    void capsUtf8BytesForEachValueAndForTheWholePatch() {
+        var field = fieldWithType("unicode", "TEXT", false);
+        assertEquals(
+                "界".repeat(200),
+                ProfileValues.merge(
+                                List.of(field), Map.of(), Map.of("unicode", "界".repeat(200)), false)
+                        .get("unicode"));
+        assertThrows(
+                ResponseStatusException.class,
+                () ->
+                        ProfileValues.merge(
+                                List.of(field),
+                                Map.of(),
+                                Map.of("unicode", "界".repeat(201)),
+                                false));
+
+        var oversized = new LinkedHashMap<String, String>();
+        for (int index = 0; index < 100; index++) {
+            String suffix = Integer.toString(index);
+            oversized.put("k" + suffix + "x".repeat(63 - suffix.length()), "界".repeat(200));
+        }
+        assertThrows(
+                ResponseStatusException.class,
+                () -> ProfileValues.merge(List.of(), Map.of(), oversized, false));
+    }
+
     private ProfileFields dictionarySchema(String code) {
         return new ProfileFields(
                 List.of(
@@ -325,5 +418,34 @@ class ProfileValuesTest {
         return new ProfileFields.Field(
                 key, key, "", "SELECT", visible, false, 5, "", "custom", "Custom", 10, true,
                 List.of(), code);
+    }
+
+    private ProfileFields.Field placedField(
+            String key,
+            boolean required,
+            boolean visible,
+            List<ProfileFields.Placement> placements) {
+        return new ProfileFields.Field(
+                key,
+                key,
+                "",
+                "TEXT",
+                visible,
+                required,
+                5,
+                "",
+                "custom",
+                "Custom",
+                10,
+                true,
+                List.of(),
+                null,
+                false,
+                placements);
+    }
+
+    private ProfileFields.Field fieldWithType(String key, String type, boolean required) {
+        return new ProfileFields.Field(
+                key, key, "", type, true, required, 5, "", "custom", "Custom", 10, true, List.of());
     }
 }

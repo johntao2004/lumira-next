@@ -1,10 +1,11 @@
 "use client";
+import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 
 import { useEffect, useMemo, useState, type Key } from "react";
 import {App, Button, Input, InputNumber, Select, Space, Switch, Tag, Typography} from "antd";
 import { TableActions } from "@/platform/components/table-actions";
-import { ArrowDownOutlined, ArrowUpOutlined, EditOutlined, MinusOutlined, PlusOutlined } from "@ant-design/icons";
+import { ArrowDownOutlined, ArrowUpOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, mutate } from "@/platform/api/client";
 import type { NavigationMenu } from "@/platform/navigation/api-types";
@@ -17,8 +18,9 @@ import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { matchesListFilters } from "@/platform/api/pagination";
-import { isSection } from "@/platform/shell/routes";
+import { isSection, localizedNavigationLabel } from "@/platform/shell/routes";
 import { registeredPageComponentKeys, resolvePageComponent } from "@/platform/shell/page-component-registry";
+import type { ModuleInfo } from "@/platform/modules/api-types";
 
 type EditorValues = {
   parentId?: string | null;
@@ -39,7 +41,6 @@ type EditorValues = {
 };
 type MenuRow = NavigationMenu & { level: number };
 type NavigationTreeRow = NavigationMenu & { children?: NavigationTreeRow[] };
-type NavigationTableRow = NavigationMenu & { level: number; parentLabel: string | null; hasChildren: boolean };
 
 /** Convert the persisted adjacency list into a stable, depth-first sequence. */
 export function flattenNavigation(rows: NavigationMenu[]): MenuRow[] {
@@ -96,13 +97,6 @@ function collectExpandableKeys(nodes: NavigationTreeRow[]): Key[] {
   ]);
 }
 
-function flattenVisibleNavigation(nodes: NavigationTreeRow[], expanded: ReadonlySet<string>, level = 0, parentLabel: string | null = null): NavigationTableRow[] {
-  return nodes.flatMap(({ children = [], ...node }) => {
-    const row: NavigationTableRow = { ...node, level, parentLabel, hasChildren: children.length > 0 };
-    return [row, ...(expanded.has(node.id) ? flattenVisibleNavigation(children, expanded, level + 1, node.labelDefault) : [])];
-  });
-}
-
 export function NavigationPage({ canWrite }: { canWrite: boolean }) {
   const { t } = usePreferences();
   const { message } = App.useApp();
@@ -110,7 +104,6 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
   const [request, setRequest] = useListRequest();
   const [editor, setEditor] = useState<NavigationMenu | null>(null);
   const [creating, setCreating] = useState(false);
-  const [pending, setPending] = useState(false);
   const [pendingMutation, setPendingMutation] = useState<string | null>(null);
   const [expandedRowKeys, setExpandedRowKeys] = useState<Key[]>([]);
   const [form] = Form.useForm<EditorValues>();
@@ -121,19 +114,25 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     queryFn: ({ signal }) => api<NavigationMenu[]>("/platform/navigation/menus", { signal }),
     staleTime: 0,
   });
+  const modules = useQuery({
+    queryKey: ["modules"],
+    queryFn: ({ signal }) => api<ModuleInfo[]>("/platform/modules", { signal }),
+    enabled: creating || !!editor,
+  });
   const flattened = useMemo(() => flattenNavigation(query.data ?? []), [query.data]);
   const tree = useMemo(() => buildNavigationTree(query.data ?? []), [query.data]);
   const filteredTree = useMemo(() => filterNavigationTree(tree, request.filters, request.filterModes), [tree, request.filters, request.filterModes]);
-  const visibleRows = useMemo(() => flattenVisibleNavigation(filteredTree, new Set(expandedRowKeys.map(String))), [filteredTree, expandedRowKeys]);
-  const pageRows = visibleRows.slice((request.page - 1) * request.pageSize, request.page * request.pageSize);
+  // Paginate root nodes only: each branch stays together when expanded.
+  const pageRows = filteredTree.slice((request.page - 1) * request.pageSize, request.page * request.pageSize);
   const hasFilters = Object.values(request.filters ?? {}).some((value) => value.trim().length > 0);
   useEffect(() => {
-    setExpandedRowKeys(hasFilters ? collectExpandableKeys(filteredTree) : []);
+    const expandableKeys = collectExpandableKeys(filteredTree);
+    setExpandedRowKeys(current => hasFilters ? expandableKeys : current.filter(key => expandableKeys.includes(key)));
   }, [filteredTree, hasFilters]);
   useEffect(() => {
-    const lastPage = Math.max(1, Math.ceil(visibleRows.length / request.pageSize));
+    const lastPage = Math.max(1, Math.ceil(filteredTree.length / request.pageSize));
     if (request.page > lastPage) setRequest({ ...request, page: lastPage });
-  }, [request, setRequest, visibleRows.length]);
+  }, [request, setRequest, filteredTree.length]);
   const excludedParentIds = useMemo(() => {
     const excluded = new Set<string>();
     if (!editor) return excluded;
@@ -157,10 +156,14 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     }
     return excluded;
   }, [editor?.id, query.data]);
+  const navigationErrorKeys = ["invalidNavigation", "navigationBuiltIn", "navigationHasChildren", "navigationCycle", "navigationNotFound", "navigationRouteConflict", "staleRecord", "forbidden"] as const satisfies readonly MessageKey[];
+  const {pending,run}=useSubmitAction({errorKeys:navigationErrorKeys,onError:(key,error)=>{
+    void message.error(t(key));if(error instanceof ApiError&&error.status===409)void query.refetch();
+  }});
   const actionPending = pending || pendingMutation !== null;
   const parentOptions = flattened.filter((row) => row.menuType !== "ACTION" && !excludedParentIds.has(row.id)).map((row) => ({
     value: row.id,
-    label: `${"　".repeat(row.level)}${row.labelDefault}`,
+    label: `${"　".repeat(row.level)}${localizedNavigationLabel(row.labelKey, row.labelDefault, t)}`,
   }));
   const openCreate = () => {
     form.resetFields();
@@ -197,10 +200,8 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
       form.resetFields();
     }
   };
-  const navigationErrorKeys = ["invalidNavigation", "navigationBuiltIn", "navigationHasChildren", "navigationCycle", "navigationNotFound", "navigationRouteConflict", "staleRecord", "forbidden"] as const satisfies readonly MessageKey[];
   const save = async (values: EditorValues) => {
     if (!canWrite || actionPending) return;
-    setPending(true);
     const payload = {
       parentId: values.parentId || null,
       menuCode: values.menuCode,
@@ -218,7 +219,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
       enabled: values.enabled !== false,
       ...(editor ? { version: values.version } : {}),
     };
-    try {
+    return run(async () => {
       if (editor) await mutate(`/platform/navigation/menus/${editor.id}`, "PUT", payload);
       else await mutate("/platform/navigation/menus", "POST", payload);
       await Promise.all([
@@ -227,12 +228,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
       ]);
       close();
       void message.success(t("navigationSaved"));
-    } catch (error) {
-      void message.error(t(messageKeyFor(error, navigationErrorKeys)));
-      if (error instanceof ApiError && error.status === 409) void query.refetch();
-    } finally {
-      setPending(false);
-    }
+    });
   };
   const toggle = async (row: NavigationMenu) => {
     if (!canWrite || row.builtIn || actionPending) return;
@@ -282,32 +278,29 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     }
   };
   const hasChildren = (id: string) => flattened.some((row) => row.parentId === id);
-  const toggleExpanded = (id: string) => {
-    setExpandedRowKeys(current => current.includes(id) ? current.filter(key => key !== id) : [...current, id]);
-    setRequest({ ...request, page: 1 });
-  };
   return <>
-    <ResourceTable<NavigationTableRow>
-      result={{ items: pageRows, total: visibleRows.length, page: request.page, pageSize: request.pageSize }}
+    <ResourceTable<NavigationTreeRow>
+      result={{ items: pageRows, total: filteredTree.length, page: request.page, pageSize: request.pageSize }}
       loading={query.isFetching}
       error={query.error}
       request={request}
       onChange={setRequest}
       onRetry={() => void query.refetch()}
+      expandable={{ expandedRowKeys, onExpandedRowsChange: keys => setExpandedRowKeys([...keys]), indentSize: 24 }}
       searchInitialValues={{ labelDefault: request.filters?.labelDefault, menuType: request.filters?.menuType, enabled: request.filters?.enabled }}
       actions={canWrite ? <Button type="primary" icon={<PlusOutlined />} disabled={actionPending} onClick={openCreate}>{t("createNavigation")}</Button> : undefined}
       columns={[
-        { title: t("navigationLabel"), dataIndex: "labelDefault", width: 360, search: true, render: (_, row) => <NavigationHierarchyLabel label={row.labelDefault} level={row.level} parentLabel={row.parentLabel} hasChildren={row.hasChildren} expanded={expandedRowKeys.includes(row.id)} onToggle={() => toggleExpanded(row.id)} /> },
+        { title: t("navigationLabel"), dataIndex: "labelDefault", className: "navigation-label-cell", width: 300, search: true, render: (_, row) => <EllipsisText text={localizedNavigationLabel(row.labelKey, row.labelDefault, t)} /> },
         { title: t("navigationCode"), dataIndex: "menuCode", width: 200, render: (_, row) => <EllipsisText text={row.menuCode} /> },
         { title: t("navigationType"), dataIndex: "menuType", width: 120, search: true, valueEnum: { CATALOG: { text: t("navigationCatalog") }, PAGE: { text: t("navigationPage") }, ACTION: { text: t("navigationAction") } }, render: (_, row) => <Tag>{t(row.menuType === "CATALOG" ? "navigationCatalog" : row.menuType === "PAGE" ? "navigationPage" : "navigationAction")}</Tag> },
         { title: t("status"), dataIndex: "enabled", width: 100, search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
         { title: t("navigationBuiltIn"), dataIndex: "builtIn", width: 110, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, row) => row.builtIn ? <Tag>{t("enabled")}</Tag> : "—" },
-        { title: t("actions"), search: false, width: 360, render: (_, row) => <TableActions>
+        { title: t("actions"), key: "actions", search: false, render: (_, row) => <TableActions>
           {canWrite && !row.builtIn && <Button icon={<EditOutlined />} disabled={actionPending} onClick={() => openEdit(row)} aria-label={t("edit")}>{t("edit")}</Button>}
           {canWrite && !row.builtIn && <Button disabled={actionPending} loading={pendingMutation === row.id} onClick={() => void toggle(row)}>{t(row.enabled ? "disabled" : "enabled")}</Button>}
           {canWrite && !row.builtIn && <Button icon={<ArrowUpOutlined />} disabled={actionPending || !siblingsCanMove(flattened, row, -1)} loading={pendingMutation === row.id} onClick={() => void move(row, -1)} aria-label={t("moveUp")} />}
           {canWrite && !row.builtIn && <Button icon={<ArrowDownOutlined />} disabled={actionPending || !siblingsCanMove(flattened, row, 1)} loading={pendingMutation === row.id} onClick={() => void move(row, 1)} aria-label={t("moveDown")} />}
-          {canWrite && !row.builtIn && <DeleteAction name={row.labelDefault} disabled={actionPending || hasChildren(row.id)} onDelete={() => remove(row)} />}
+          {canWrite && !row.builtIn && <DeleteAction name={localizedNavigationLabel(row.labelKey, row.labelDefault, t)} disabled={actionPending || hasChildren(row.id)} onDelete={() => remove(row)} />}
         </TableActions> },
       ]}
     />
@@ -316,7 +309,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
       <Form id="navigation-editor" form={form} layout="vertical" onFinish={save}>
         <Form.Item name="menuCode" label={t("navigationCode")} rules={[{ required: true }, { pattern: /^[a-z][a-z0-9._:-]{1,127}$/ }]}><Input maxLength={128} disabled={!!editor} /></Form.Item>
         <Form.Item name="labelKey" label={t("navigationLabelKey")} rules={[{ required: true }, { pattern: /^[a-z][a-zA-Z0-9._:-]{0,127}$/ }]}><Input maxLength={128} /></Form.Item>
-        <Form.Item name="labelDefault" label={t("navigationLabel")} rules={[{ required: true }, { max: 200 }]}><Input maxLength={200} /></Form.Item>
+        <Form.Item name="labelDefault" label={t("navigationLabel")} rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input maxLength={200} /></Form.Item>
         <Form.Item name="menuType" label={t("navigationType")} rules={[{ required: true }]}><Select options={[{ value: "CATALOG", label: t("navigationCatalog") }, { value: "PAGE", label: t("navigationPage") }, { value: "ACTION", label: t("navigationAction") }]} /></Form.Item>
         <Form.Item name="parentId" label={t("parentNavigation")}><Select allowClear placeholder={t("rootNavigation")} options={parentOptions} /></Form.Item>
         {menuType !== "CATALOG" && <>
@@ -327,8 +320,13 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
           } }]}><Input maxLength={64} /></Form.Item>
           <Form.Item name="path" label={t("navigationPath")} rules={[{ pattern: /^\/dashboard\/[a-z][a-z0-9-]{0,63}$/ }]}><Input maxLength={512} placeholder="/dashboard/example" /></Form.Item>
           <Form.Item name="componentKey" label={t("navigationComponent")} rules={[{ pattern: /^[a-z][a-z0-9._:-]{1,127}$/ }]}><Select allowClear showSearch optionFilterProp="label" options={pageComponentKeys.map(value => ({ value, label: value }))} placeholder={t("navigationComponentPlaceholder")} /></Form.Item>
-          <Form.Item name="permissionKey" label={t("navigationPermission")}><Input maxLength={120} /></Form.Item>
-          <Form.Item name="moduleId" label={t("navigationModule")}><Input maxLength={100} /></Form.Item>
+          <Form.Item name="permissionKey" label={t("navigationPermission")} rules={[{ pattern: /^[a-z][a-z0-9:._-]{0,119}$/ }]}><Input maxLength={120} /></Form.Item>
+          <Form.Item name="moduleId" label={t("navigationModule")} rules={[{ validator: (_, value) => {
+            if (!value || !modules.data || modules.data.some((module) => module.id === value)) return Promise.resolve();
+            return Promise.reject(new Error(t("invalidNavigation")));
+          } }]}>
+            <Select allowClear showSearch optionFilterProp="label" loading={modules.isFetching} options={modules.data?.map((module) => ({ value: module.id, label: `${module.name} (${module.id})` })) ?? []} />
+          </Form.Item>
           <Form.Item name="globalOnly" label={t("navigationPermission")} valuePropName="checked"><Switch checkedChildren={t("navigationGlobal")} unCheckedChildren={t("navigationLocal")} /></Form.Item>
         </>}
         <Space align="start">
@@ -338,23 +336,6 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
       </Form>
     </FormDrawer>
   </>;
-}
-
-function NavigationHierarchyLabel({ label, level, parentLabel, hasChildren, expanded, onToggle }: {
-  label: string;
-  level: number;
-  parentLabel: string | null;
-  hasChildren: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  return <span style={{ display: "flex", alignItems: "center", width: "100%", minWidth: 0, paddingInlineStart: level * 20 }}>
-    {hasChildren
-      ? <Button type="text" size="small" aria-label={label} aria-expanded={expanded} icon={expanded ? <MinusOutlined /> : <PlusOutlined />} onClick={onToggle} />
-      : <span aria-hidden="true" style={{ width: 32, flex: "0 0 32px" }} />}
-    <span style={{ flex: "1 1 0%", minWidth: 0 }}><EllipsisText text={label} /></span>
-    {parentLabel && <Typography.Text type="secondary" style={{ display: "block", flex: "0 1 38%", minWidth: 0, marginInlineStart: 8, fontSize: 12 }}><EllipsisText text={parentLabel} /></Typography.Text>}
-  </span>;
 }
 
 function siblingsCanMove(rows: NavigationMenu[], row: NavigationMenu, direction: -1 | 1) {

@@ -27,7 +27,9 @@ public class RoleQuotaPolicyAdapter implements FileQuotaPolicyPort {
 
     @Override
     public Limits forRoles(Collection<UUID> roleIds) {
-        if (roleIds == null || roleIds.size() > 100 || roleIds.stream().anyMatch(java.util.Objects::isNull)) {
+        if (roleIds == null
+                || roleIds.size() > 100
+                || roleIds.stream().anyMatch(java.util.Objects::isNull)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidRole");
         }
         var unique = new HashSet<>(roleIds);

@@ -4,8 +4,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Stable authorization contract for application modules. The JDBC-backed
- * implementation remains in identity; consumers do not depend on that class.
+ * Stable authorization contract for application modules. The JDBC-backed implementation remains in
+ * identity; consumers do not depend on that class.
  */
 public interface AdministrationPort {
     Set<String> require(String actor, String permission);

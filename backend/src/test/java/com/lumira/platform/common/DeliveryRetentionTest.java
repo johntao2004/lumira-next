@@ -1,11 +1,11 @@
 package com.lumira.platform.common;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class DeliveryRetentionTest {
     @Test
@@ -25,11 +25,14 @@ class DeliveryRetentionTest {
     void rejectsUnsafeRetentionConfiguration() {
         var mail = mock(TerminalDeliveryQueue.class);
         var sms = mock(TerminalDeliveryQueue.class);
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new DeliveryRetention(List.of(mail, sms), Duration.ZERO, 100));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new DeliveryRetention(List.of(mail, sms), Duration.ofDays(30), 0));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> new DeliveryRetention(List.of(mail, sms), Duration.ofDays(30), 10_001));
     }
 }

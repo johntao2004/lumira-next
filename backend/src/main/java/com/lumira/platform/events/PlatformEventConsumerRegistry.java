@@ -4,9 +4,9 @@ import java.util.*;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates the event handlers supplied by loaded modules and resolves one
- * deterministic handler for each event type. No class name or code comes from
- * the database, so navigation and event payloads cannot load arbitrary code.
+ * Validates the event handlers supplied by loaded modules and resolves one deterministic handler
+ * for each event type. No class name or code comes from the database, so navigation and event
+ * payloads cannot load arbitrary code.
  */
 @Component
 public final class PlatformEventConsumerRegistry {
@@ -17,12 +17,18 @@ public final class PlatformEventConsumerRegistry {
     public PlatformEventConsumerRegistry(List<PlatformEventConsumer> candidates) {
         var indexed = new LinkedHashMap<Key, PlatformEventConsumer>();
         for (var candidate : candidates == null ? List.<PlatformEventConsumer>of() : candidates) {
-            if (candidate == null || !validSource(candidate.sourceType()) || !validEvent(candidate.eventType())) {
+            if (candidate == null
+                    || !validSource(candidate.sourceType())
+                    || !validEvent(candidate.eventType())) {
                 throw new IllegalArgumentException("Invalid event consumer registration");
             }
             var key = new Key(candidate.sourceType(), candidate.eventType());
             if (indexed.putIfAbsent(key, candidate) != null) {
-                throw new IllegalArgumentException("Duplicate event consumer: " + candidate.sourceType() + "/" + candidate.eventType());
+                throw new IllegalArgumentException(
+                        "Duplicate event consumer: "
+                                + candidate.sourceType()
+                                + "/"
+                                + candidate.eventType());
             }
         }
         consumers = Map.copyOf(indexed);

@@ -51,7 +51,7 @@ export function useFileCleanupTracker() {
       }
     };
 
-    timeout = setTimeout(poll, delayMs);
+    void poll();
     return () => {
       stopped = true;
       abort.abort();

@@ -29,12 +29,23 @@ class AiProviderCapabilityGateTest {
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
         var id = UUID.randomUUID();
-        var jev = new AiProviderProfile(id, "Jev", ProviderKind.TYPESAFE_JEV, "https://api.typesafe.ai",
-            "jev-latest", List.of("CHAT", "VISION"), true, 1);
+        var jev =
+                new AiProviderProfile(
+                        id,
+                        "Jev",
+                        ProviderKind.TYPESAFE_JEV,
+                        "https://api.typesafe.ai",
+                        "jev-latest",
+                        List.of("CHAT", "VISION"),
+                        true,
+                        1);
         when(repository.find(id)).thenReturn(Optional.of(jev));
-        var service = new AiProviderService(repository, connections, secrets, guard, audit, new ObjectMapper());
+        var service =
+                new AiProviderService(
+                        repository, connections, secrets, guard, audit, new ObjectMapper());
 
-        ResponseStatusException failure = assertThrows(ResponseStatusException.class, () -> service.models(id, "actor"));
+        ResponseStatusException failure =
+                assertThrows(ResponseStatusException.class, () -> service.models(id, "actor"));
 
         assertEquals(HttpStatus.BAD_REQUEST, failure.getStatusCode());
         assertEquals("aiChatUnsupported", failure.getReason());
@@ -49,12 +60,22 @@ class AiProviderCapabilityGateTest {
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
         var id = UUID.randomUUID();
-        var deepSeek = new AiProviderProfile(id, "DeepSeek", ProviderKind.DEEPSEEK, "https://api.deepseek.com",
-            "deepseek-flash", List.of("VISION"), true, 1);
+        var deepSeek =
+                new AiProviderProfile(
+                        id,
+                        "DeepSeek",
+                        ProviderKind.DEEPSEEK,
+                        "https://api.deepseek.com",
+                        "deepseek-flash",
+                        List.of("VISION"),
+                        true,
+                        1);
         when(repository.find(id)).thenReturn(Optional.of(deepSeek));
         var result = new ModelConnectionService.ConnectionResult(List.of(), false);
         when(connections.probe(deepSeek)).thenReturn(result);
-        var service = new AiProviderService(repository, connections, secrets, guard, audit, new ObjectMapper());
+        var service =
+                new AiProviderService(
+                        repository, connections, secrets, guard, audit, new ObjectMapper());
 
         assertEquals(result, service.models(id, "actor"));
         verify(connections).probe(deepSeek);

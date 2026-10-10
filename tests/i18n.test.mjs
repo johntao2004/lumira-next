@@ -3,22 +3,24 @@ import assert from "node:assert/strict";
 import {
   messages,
   languages,
+  loadLocaleMessages,
   resolveLocale,
   translate,
 } from "../apps/web/src/platform/i18n/messages.ts";
-test("all locales have complete translations and matching placeholders", () => {
+test("all locale chunks have complete translations and matching placeholders", async () => {
   assert.equal(languages.length, 8);
   const placeholders = (text) =>
     [...text.matchAll(/\{\w+\}/g)].map((x) => x[0]).sort();
   for (const { value } of languages) {
+    const catalog = await loadLocaleMessages(value);
     assert.deepEqual(
-      Object.keys(messages[value]).sort(),
+      Object.keys(catalog).sort(),
       Object.keys(messages.en).sort(),
     );
     for (const key of Object.keys(messages.en)) {
-      assert.ok(messages[value][key].trim(), `${value}:${key}`);
+      assert.ok(catalog[key].trim(), `${value}:${key}`);
       assert.deepEqual(
-        placeholders(messages[value][key]),
+        placeholders(catalog[key]),
         placeholders(messages.en[key]),
         `${value}:${key}`,
       );
