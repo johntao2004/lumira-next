@@ -5,7 +5,7 @@
  <properties><java.version>25</java.version><bouncycastle.version>1.86</bouncycastle.version><jackson-2-bom.version>2.21.7</jackson-2-bom.version><jackson-bom.version>3.1.7</jackson-bom.version><tomcat.version>11.0.26</tomcat.version></properties>
  <dependencies>
   <dependency><groupId>org.pf4j</groupId><artifactId>pf4j</artifactId><version>3.16.0</version></dependency>
-  <dependency><groupId>com.googlecode.owasp-java-html-sanitizer</groupId><artifactId>owasp-java-html-sanitizer</artifactId><version>20260313.1</version></dependency>
+  <dependency><groupId>com.googlecode.owasp-java-html-sanitizer</groupId><artifactId>owasp-java-html-sanitizer</artifactId><version>20260924.2</version></dependency>
   <dependency><groupId>org.apache.poi</groupId><artifactId>poi-ooxml</artifactId><version>5.5.1</version></dependency>
   <dependency><groupId>org.apache.poi</groupId><artifactId>poi-scratchpad</artifactId><version>5.5.1</version></dependency>
   <dependency><groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.8</version></dependency>
