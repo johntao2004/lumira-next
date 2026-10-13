@@ -5,11 +5,14 @@ import static com.lumira.platform.ai.AiProviderProfile.ProviderKind;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PublicHosts;
 import com.lumira.platform.common.SecretStorePort;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -62,6 +65,19 @@ public class AiProviderService {
             long version,
             boolean credentialConfigured) {}
 
+    /** Deliberately excludes base URL, credential state and persistence version. */
+    public record ConsoleProviderView(
+            UUID id,
+            String name,
+            ProviderKind providerKind,
+            String modelName,
+            List<String> capabilityCodes,
+            boolean enabled) {
+        public ConsoleProviderView {
+            capabilityCodes = List.copyOf(capabilityCodes);
+        }
+    }
+
     private final AiProviderRepository repository;
     private final ModelConnectionService connections;
     private final SecretStorePort secrets;
@@ -86,13 +102,60 @@ public class AiProviderService {
 
     @Transactional(readOnly = true)
     public List<ProviderView> list(String actor) {
-        guard.require(actor, "platform:settings:read");
+        guard.requirePage(actor, PlatformPageId.AI_MODELS);
         return repository.findAll().stream().map(this::view).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConsoleProviderView> listForConsole(String actor) {
+        guard.requirePage(actor, PlatformPageId.AI_CONSOLE);
+        return repository.findEnabledForConsole().stream()
+                .map(
+                        profile ->
+                                new ConsoleProviderView(
+                                        profile.id(),
+                                        profile.name(),
+                                        profile.providerKind(),
+                                        profile.modelName(),
+                                        consoleCapabilities(profile),
+                                        profile.enabled()))
+                .toList();
+    }
+
+    /** Returns only the configured model metadata; it never calls the provider's network API. */
+    @Transactional(readOnly = true)
+    public ModelConnectionService.ConnectionResult configuredModelsForConsole(
+            UUID id, String actor) {
+        guard.requirePage(actor, PlatformPageId.AI_CONSOLE);
+        var profile =
+                repository
+                        .findForConsole(id)
+                        .filter(AiProviderRepository.ConsoleProfile::enabled)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (profile.providerKind() == ProviderKind.TYPESAFE_JEV
+                || !profile.capabilityCodes().contains("CHAT")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aiChatUnsupported");
+        }
+        String model = profile.modelName() == null ? "" : profile.modelName().strip();
+        if (model.isEmpty()) return new ModelConnectionService.ConnectionResult(List.of(), false);
+        List<String> capabilities = consoleCapabilities(profile);
+        return new ModelConnectionService.ConnectionResult(
+                List.of(
+                        new ModelConnectionService.ModelOption(
+                                model, model, List.of(), List.of(), capabilities)),
+                true);
+    }
+
+    private static List<String> consoleCapabilities(AiProviderRepository.ConsoleProfile profile) {
+        var capabilities = new LinkedHashSet<>(profile.capabilityCodes());
+        if (AiProviderProfile.supportsUserTools(profile.providerKind(), profile.modelName()))
+            capabilities.add("TOOL_CALLING");
+        return capabilities.stream().sorted().toList();
     }
 
     @Transactional
     public ProviderView create(ProviderWrite input, String actor) {
-        requireWrite(actor);
+        requireWrite(actor, PlatformOperation.AI_MODELS_CREATE);
         Normalized normalized = normalize(input, true);
         validateCredentialChange(input.credential());
         UUID id = UUID.randomUUID();
@@ -115,7 +178,7 @@ public class AiProviderService {
 
     @Transactional
     public ProviderView update(UUID id, ProviderWrite input, String actor) {
-        requireWrite(actor);
+        requireWrite(actor, PlatformOperation.AI_MODELS_UPDATE);
         if (input == null || input.version() == null || input.version() < 1) invalid();
         var existing = find(id);
         Normalized normalized = normalize(input, false);
@@ -157,7 +220,7 @@ public class AiProviderService {
 
     @Transactional
     public void delete(UUID id, long version, String actor) {
-        requireWrite(actor);
+        requireWrite(actor, PlatformOperation.AI_MODELS_DELETE);
         if (version < 1 || repository.delete(id, version) != 1) stale();
         var state = secrets.state(ModelConnectionService.secretContext(id));
         if (state.configured())
@@ -166,14 +229,14 @@ public class AiProviderService {
     }
 
     public ModelConnectionService.ConnectionResult test(UUID id, String actor) {
-        requireWrite(actor);
+        requireWrite(actor, PlatformOperation.AI_MODELS_TEST);
         var profile = find(id);
         return connections.probe(profile);
     }
 
     public ModelConnectionService.ConnectionResult discoverModels(
             ModelDiscoveryRequest input, String actor) {
-        requireWrite(actor);
+        requireWrite(actor, PlatformOperation.AI_MODELS_TEST);
         if (input == null
                 || input.providerKind() == null
                 || input.providerKind() == ProviderKind.TYPESAFE_JEV) invalid();
@@ -206,7 +269,7 @@ public class AiProviderService {
     }
 
     public ModelConnectionService.ConnectionResult models(UUID id, String actor) {
-        guard.require(actor, "platform:settings:read");
+        guard.requirePage(actor, PlatformPageId.AI_MODELS);
         var profile = find(id);
         if (!profile.enabled())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "aiProviderDisabled");
@@ -218,7 +281,16 @@ public class AiProviderService {
 
     @Transactional(readOnly = true)
     public AiProviderProfile requireEnabled(UUID id, String actor) {
-        guard.require(actor, "platform:settings:read");
+        guard.requirePage(actor, PlatformPageId.AI_MODELS);
+        var profile = find(id);
+        if (!profile.enabled())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "aiProviderDisabled");
+        return profile;
+    }
+
+    @Transactional(readOnly = true)
+    public AiProviderProfile requireEnabledForConsole(UUID id, String actor) {
+        guard.requirePage(actor, PlatformPageId.AI_CONSOLE);
         var profile = find(id);
         if (!profile.enabled())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "aiProviderDisabled");
@@ -388,9 +460,8 @@ public class AiProviderService {
                 configured);
     }
 
-    private void requireWrite(String actor) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+    private void requireWrite(String actor, PlatformOperation operation) {
+        guard.requireOperationGlobal(actor, operation);
     }
 
     private static void invalid() {

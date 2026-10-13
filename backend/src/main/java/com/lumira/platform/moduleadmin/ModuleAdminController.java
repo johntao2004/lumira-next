@@ -23,8 +23,8 @@ public class ModuleAdminController {
     }
 
     @GetMapping
-    public List<ModuleAdminService.View> list() {
-        return service.list();
+    public List<ModuleAdminService.View> list(Authentication auth) {
+        return service.list(auth == null ? null : auth.getName());
     }
 
     @PutMapping("/{id}/state")

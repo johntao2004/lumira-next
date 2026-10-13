@@ -41,12 +41,17 @@ class NotificationStoreTest {
                 new NotificationStore(
                         JdbcClient.create(ds), new JdbcTemplate(ds), new JsonMapper());
         jdbc.execute(
-                "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,enabled BOOLEAN)");
+                "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,enabled"
+                        + " BOOLEAN,deleted_at timestamptz)");
         jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
         jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
         // V41 widened the message-key pattern to the camelCase catalogue keys used by broadcasts.
         jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
-        jdbc.update("INSERT INTO platform_user VALUES(?,'alice',true),(?,'bob',true)", alice, bob);
+        jdbc.update(
+                "INSERT INTO platform_user(id,username,enabled)"
+                        + " VALUES(?,'alice',true),(?,'bob',true)",
+                alice,
+                bob);
     }
 
     @AfterEach
@@ -137,7 +142,8 @@ class NotificationStoreTest {
     void excludesExpiredEntriesAndRejectsInvalidPayloadOrKeys() {
         assertTrue(create(alice, "feedback:valid:created"));
         jdbc.update(
-                "UPDATE platform_notification SET expires_at=now()-interval '1 second' WHERE recipient_id=?",
+                "UPDATE platform_notification SET expires_at=now()-interval '1 second' WHERE"
+                        + " recipient_id=?",
                 alice);
         assertEquals(0, store.unreadCount(alice));
         assertThrows(

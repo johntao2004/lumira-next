@@ -23,7 +23,8 @@ class AiUserDirectoryAdapterTest {
     void searchDelegatesToTheAuthorizedUserServiceAndKeepsItsSafeProjection() {
         var request = new PageRequest(1, 10, "qa");
         var user = new UserSummary(USER_ID, "qa-user", "QA User", true, 4, 4096L, 2L);
-        when(users.list(request, ACTOR)).thenReturn(new PageResult<>(List.of(user), 12, 1, 10));
+        when(users.listForAi(request, ACTOR))
+                .thenReturn(new PageResult<>(List.of(user), 12, 1, 10));
 
         var result = adapter.list(request, ACTOR);
 
@@ -36,28 +37,28 @@ class AiUserDirectoryAdapterTest {
                         1,
                         10),
                 result);
-        verify(users).list(request, ACTOR);
+        verify(users).listForAi(request, ACTOR);
     }
 
     @Test
     void targetSnapshotReadUsesTheAuthorizedUserServiceAndPreservesItsProjection() {
         var user = new UserSummary(USER_ID, "qa-user", "QA User", true, 4, 4096L, 2L);
-        when(users.find(USER_ID, ACTOR)).thenReturn(user);
+        when(users.findForAi(USER_ID, ACTOR)).thenReturn(user);
 
         assertEquals(
                 new AiUserDirectoryPort.UserView(USER_ID, "qa-user", "QA User", true, 4, 4096L, 2L),
                 adapter.find(USER_ID, ACTOR));
-        verify(users).find(USER_ID, ACTOR);
+        verify(users).findForAi(USER_ID, ACTOR);
     }
 
     @Test
     void proposedWritesDelegateToTheExistingUserService() {
         var user = new UserSummary(USER_ID, "qa-user", "QA User", true, 4, null, null);
-        when(users.create(
+        when(users.createForAi(
                         new UserService.CreateUser("qa-user", "QA User", "synthetic-password"),
                         ACTOR))
                 .thenReturn(user);
-        when(users.update(USER_ID, new UserService.UpdateUser("QA User 2", true, 4L), ACTOR))
+        when(users.updateForAi(USER_ID, new UserService.UpdateUser("QA User 2", true, 4L), ACTOR))
                 .thenReturn(new UserSummary(USER_ID, "qa-user", "QA User 2", true, 5, null, null));
 
         assertEquals(
@@ -75,10 +76,11 @@ class AiUserDirectoryAdapterTest {
         adapter.delete(USER_ID, 5, ACTOR);
 
         verify(users)
-                .create(
+                .createForAi(
                         new UserService.CreateUser("qa-user", "QA User", "synthetic-password"),
                         ACTOR);
-        verify(users).update(USER_ID, new UserService.UpdateUser("QA User 2", true, 4L), ACTOR);
-        verify(users).delete(USER_ID, 5, ACTOR);
+        verify(users)
+                .updateForAi(USER_ID, new UserService.UpdateUser("QA User 2", true, 4L), ACTOR);
+        verify(users).deleteForAi(USER_ID, 5, ACTOR);
     }
 }

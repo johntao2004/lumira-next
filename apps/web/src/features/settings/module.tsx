@@ -4,6 +4,7 @@ import { ProCard } from "@ant-design/pro-components";
 import { lazy, useEffect, type ReactNode } from "react";
 import { RouteTabs } from "@/platform/components/route-tabs";
 import { routeTabsForGroup } from "@/platform/modules/route-tabs";
+import "./authentication-security-layout.css";
 
 const AgreementsPage = lazy(() => import("./agreements-page").then(({ AgreementsPage }) => ({ default: AgreementsPage })));
 const AuthenticationPage = lazy(() => import("./authentication-page").then(({ AuthenticationPage }) => ({ default: AuthenticationPage })));
@@ -27,69 +28,74 @@ function FileRetentionLegacyRedirect() {
   return null;
 }
 
-function FileRetentionLegacyRoute({ hasGlobal }: { hasGlobal: (permission: string) => boolean }) {
-  if (hasGlobal("platform:files:read")) return <FileRetentionLegacyRedirect />;
-  return <FileRetentionPage canWrite={hasGlobal("platform:settings:write")} />;
+function FileRetentionLegacyRoute({ hasRouteAccess, hasRouteOperation }: { hasRouteAccess: (routeId: string) => boolean; hasRouteOperation: (routeId: string, actionId: string) => boolean }) {
+  if (hasRouteAccess("files-all")) return <FileRetentionLegacyRedirect />;
+  return <FileRetentionPage canWrite={hasRouteOperation("file-retention", "update")} />;
 }
 
 function SettingsCard({ children }: { children: ReactNode }) {
   return <ProCard className="platform-settings-card">{children}</ProCard>;
 }
 
-function PersonalizationTabs({ canWrite }: { canWrite: boolean }) {
+type RouteAccessCheck = (routeId: string) => boolean;
+type RouteOperationCheck = (routeId: string, actionId: string) => boolean;
+
+function PersonalizationTabs({ hasRouteAccess, hasRouteOperation }: { hasRouteAccess: RouteAccessCheck; hasRouteOperation: RouteOperationCheck }) {
   return <RouteTabs preserveContent tabs={routeTabsForGroup(settingsManifest, "personalization", {
-    branding: <BrandingPage canWrite={canWrite} />,
-    watermark: <WatermarkPage canWrite={canWrite} />,
-    agreements: <AgreementsPage canWrite={canWrite} />,
-    maintenance: <MaintenancePage canWrite={canWrite} />,
+    branding: hasRouteAccess("branding") ? <BrandingPage canWrite={hasRouteOperation("branding", "update")} /> : undefined,
+    watermark: hasRouteAccess("watermark") ? <WatermarkPage canWrite={hasRouteOperation("watermark", "update")} /> : undefined,
+    agreements: hasRouteAccess("agreements") ? <AgreementsPage canWrite={hasRouteOperation("agreements", "update")} /> : undefined,
+    maintenance: hasRouteAccess("maintenance") ? <MaintenancePage canWrite={hasRouteOperation("maintenance", "update")} /> : undefined,
   })} />;
 }
 
-function MessageChannelTabs({ canWrite }: { canWrite: boolean }) {
+function MessageChannelTabs({ hasRouteAccess, hasRouteOperation }: { hasRouteAccess: RouteAccessCheck; hasRouteOperation: RouteOperationCheck }) {
   return <RouteTabs preserveContent tabs={routeTabsForGroup(settingsManifest, "message-channels", {
-    smtp: <SmtpPage canWrite={canWrite} />,
-    sms: <SmsPage canWrite={canWrite} />,
+    smtp: hasRouteAccess("smtp") ? <SmtpPage canWrite={hasRouteOperation("smtp", "update")} /> : undefined,
+    sms: hasRouteAccess("sms") ? <SmsPage canWrite={hasRouteOperation("sms", "update")} /> : undefined,
   })} />;
 }
 
-function AuthenticationSecurityTabs({ canWrite, canWriteRoles, canReadRoles }: { canWrite: boolean; canWriteRoles: boolean; canReadRoles: boolean }) {
+function AuthenticationSecurityTabs({ hasRouteAccess, hasRouteOperation }: { hasRouteAccess: RouteAccessCheck; hasRouteOperation: RouteOperationCheck }) {
   return <RouteTabs preserveContent tabs={routeTabsForGroup(settingsManifest, "authentication-security", {
-    security: <SecurityPage canWrite={canWrite} />,
-    authentication: <SettingsCard><AuthenticationPage canWrite={canWrite} /></SettingsCard>,
-    passkey: <PasskeyPage canWrite={canWrite} />,
-    wechat: <SettingsCard><WechatPage canWrite={canWrite} /></SettingsCard>,
-    captcha: <SettingsCard><CaptchaPage canWrite={canWrite} /></SettingsCard>,
-    registration: <SettingsCard><RegistrationPage canWrite={canWrite && canWriteRoles} canReadRoles={canReadRoles} /></SettingsCard>,
+    security: hasRouteAccess("security") ? <SecurityPage canWrite={hasRouteOperation("security", "update")} /> : undefined,
+    authentication: hasRouteAccess("authentication") ? <SettingsCard><AuthenticationPage canWrite={hasRouteOperation("authentication", "update")} /></SettingsCard> : undefined,
+    passkey: hasRouteAccess("passkey") ? <PasskeyPage canWrite={hasRouteOperation("passkey", "update")} /> : undefined,
+    wechat: hasRouteAccess("wechat") ? <SettingsCard><WechatPage canWrite={hasRouteOperation("wechat", "update")} /></SettingsCard> : undefined,
+    captcha: hasRouteAccess("captcha") ? <SettingsCard><CaptchaPage canWrite={hasRouteOperation("captcha", "update")} /></SettingsCard> : undefined,
+    registration: hasRouteAccess("registration") ? <SettingsCard><RegistrationPage
+      canWrite={hasRouteOperation("registration", "update")}
+      canReadRoles={hasRouteOperation("registration", "readRoles") || hasRouteOperation("registration", "assignDefaultRole")}
+      canAssignDefaultRole={hasRouteOperation("registration", "assignDefaultRole")}
+    /></SettingsCard> : undefined,
   })} />;
 }
 
-function AuthenticationSecurityView({ hasGlobal }: { hasGlobal: (authority: string) => boolean }) {
-  return <AuthenticationSecurityTabs
-    canWrite={hasGlobal("platform:settings:write")}
-    canWriteRoles={hasGlobal("platform:roles:write")}
-    canReadRoles={hasGlobal("platform:roles:read")}
-  />;
+function AuthenticationSecurityView({ hasRouteAccess, hasRouteOperation }: { hasRouteAccess: RouteAccessCheck; hasRouteOperation: RouteOperationCheck }) {
+  return <div className="authentication-security-workspace">
+    <AuthenticationSecurityTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />
+  </div>;
 }
 
 export const settingsFrontendModule = {
   ...settingsManifest,
   pages: {
-    "profile-fields": ({ hasGlobal }) => <ProfileFieldsPage
-      canWrite={hasGlobal("platform:settings:write")}
-      canReadDictionaries={hasGlobal("platform:dictionaries:read")}
+    "profile-fields": ({ hasRouteOperation }) => <ProfileFieldsPage
+      canWrite={hasRouteOperation("profile-fields", "update")}
+      canReadDictionaries={hasRouteOperation("profile-fields", "readDictionaries")}
     />,
-    maintenance: ({ hasGlobal }) => <PersonalizationTabs canWrite={hasGlobal("platform:settings:write")} />,
-    security: ({ hasGlobal }) => <AuthenticationSecurityView hasGlobal={hasGlobal} />,
-    authentication: ({ hasGlobal }) => <AuthenticationSecurityView hasGlobal={hasGlobal} />,
-    passkey: ({ hasGlobal }) => <AuthenticationSecurityView hasGlobal={hasGlobal} />,
-    wechat: ({ hasGlobal }) => <AuthenticationSecurityView hasGlobal={hasGlobal} />,
-    captcha: ({ hasGlobal }) => <AuthenticationSecurityView hasGlobal={hasGlobal} />,
-    registration: ({ hasGlobal }) => <AuthenticationSecurityView hasGlobal={hasGlobal} />,
-    watermark: ({ hasGlobal }) => <PersonalizationTabs canWrite={hasGlobal("platform:settings:write")} />,
-    agreements: ({ hasGlobal }) => <PersonalizationTabs canWrite={hasGlobal("platform:settings:write")} />,
-    smtp: ({ hasGlobal }) => <MessageChannelTabs canWrite={hasGlobal("platform:settings:write")} />,
-    sms: ({ hasGlobal }) => <MessageChannelTabs canWrite={hasGlobal("platform:settings:write")} />,
-    branding: ({ hasGlobal }) => <PersonalizationTabs canWrite={hasGlobal("platform:settings:write")} />,
-    "file-retention": ({ hasGlobal }) => <FileRetentionLegacyRoute hasGlobal={hasGlobal} />,
+    maintenance: ({ hasRouteAccess, hasRouteOperation }) => <PersonalizationTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    security: ({ hasRouteAccess, hasRouteOperation }) => <AuthenticationSecurityView hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    authentication: ({ hasRouteAccess, hasRouteOperation }) => <AuthenticationSecurityView hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    passkey: ({ hasRouteAccess, hasRouteOperation }) => <AuthenticationSecurityView hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    wechat: ({ hasRouteAccess, hasRouteOperation }) => <AuthenticationSecurityView hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    captcha: ({ hasRouteAccess, hasRouteOperation }) => <AuthenticationSecurityView hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    registration: ({ hasRouteAccess, hasRouteOperation }) => <AuthenticationSecurityView hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    watermark: ({ hasRouteAccess, hasRouteOperation }) => <PersonalizationTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    agreements: ({ hasRouteAccess, hasRouteOperation }) => <PersonalizationTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    smtp: ({ hasRouteAccess, hasRouteOperation }) => <MessageChannelTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    sms: ({ hasRouteAccess, hasRouteOperation }) => <MessageChannelTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    branding: ({ hasRouteAccess, hasRouteOperation }) => <PersonalizationTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
+    "file-retention": ({ hasRouteAccess, hasRouteOperation }) => <FileRetentionLegacyRoute hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} />,
   },
 } satisfies FrontendModule;

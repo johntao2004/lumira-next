@@ -3,12 +3,15 @@ package com.lumira.platform;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.roles.RoleRepository;
+import com.lumira.platform.roles.api.RoleResponse;
 import java.lang.reflect.RecordComponent;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 class ApiResponseContractTest {
     private final ObjectMapper mapper = new ObjectMapper();
@@ -97,8 +100,10 @@ class ApiResponseContractTest {
                                 .toArray();
                 Object value = source.getDeclaredConstructor(types).newInstance(values);
                 Object dto = convert.invoke(null, value);
-                assertEquals(
-                        mapper.valueToTree(value), mapper.valueToTree(dto), response.getName());
+                Object expected = mapper.valueToTree(value);
+                if (response == RoleResponse.class)
+                    expectedRoleResponseFields((RoleRepository.Role) value, expected);
+                assertEquals(expected, mapper.valueToTree(dto), response.getName());
             }
             assertNull(convert.invoke(null, new Object[] {null}));
         }
@@ -114,6 +119,15 @@ class ApiResponseContractTest {
                 new PageResult<Integer>(List.of(), 90, 4, 25).map(Object::toString));
     }
 
+    @Test
+    void roleResponseDoesNotExposeRetiredProjectionMetadata() {
+        assertFalse(
+                Arrays.stream(RoleResponse.class.getRecordComponents())
+                        .anyMatch(
+                                component ->
+                                        component.getName().equals("legacyProjectionPermissions")));
+    }
+
     private static Object sample(Class<?> type, boolean nullable) {
         if (nullable && !type.isPrimitive()) return null;
         if (type == String.class) return "example";
@@ -126,5 +140,12 @@ class ApiResponseContractTest {
         if (type == List.class) return List.of("example");
         if (type == Map.class) return Map.of("en", "example");
         throw new AssertionError("Add a representative value for " + type);
+    }
+
+    private void expectedRoleResponseFields(RoleRepository.Role role, Object expected) {
+        ObjectNode json = (ObjectNode) expected;
+        json.set(
+                "authorities",
+                mapper.valueToTree(role.authorities() == null ? List.of() : role.authorities()));
     }
 }

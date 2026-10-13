@@ -15,8 +15,6 @@
   "@/platform/components/rich-text-editor",
   "@/platform/components/table-actions",
   "@/platform/components/use-centered-modal-confirm",
-  "@/platform/drafts/draft-actions",
-  "@/platform/drafts/use-account-draft",
   "@/platform/forms/use-crud-drawer",
   "@/platform/forms/use-submit-action",
   "@/platform/i18n/format",

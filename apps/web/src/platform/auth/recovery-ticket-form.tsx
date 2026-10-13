@@ -54,7 +54,9 @@ export function RecoveryTicketForm({
         challengeId,
         recoveryTicket,
       });
-      if (result?.state !== "ENROLLMENT_REQUIRED") throw new ApiError(409, "secondFactorExpired");
+      if (result?.state !== "ENROLLMENT_REQUIRED" && result?.state !== "PASSWORD_CHANGE_REQUIRED") {
+        throw new ApiError(409, "secondFactorExpired");
+      }
       setTicket("");
       onComplete(result);
     });

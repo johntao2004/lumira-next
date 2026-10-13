@@ -14,16 +14,11 @@ import { SettingsEnabledControls } from "@/platform/components/settings-enabled-
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
+import "./authentication-settings-panels.css";
+import "./captcha-page.css";
 
 type CaptchaForm = { data: CaptchaSettingsData };
 
-const actions: CaptchaAction[] = [
-  "PASSWORD_LOGIN", "PASSKEY_LOGIN", "WECHAT_LOGIN",
-  "LOGIN_CODE_SEND", "LOGIN_CODE_VERIFY",
-  "REGISTRATION_SEND", "REGISTRATION_VERIFY", "REGISTRATION_COMPLETE",
-  "PASSWORD_RECOVERY_REQUEST", "PASSWORD_RECOVERY_VERIFY", "PASSWORD_RECOVERY_CONFIRM",
-  "POST_PRIMARY_AUTH",
-];
 const actionLabels: Record<CaptchaAction, MessageKey> = {
   PASSWORD_LOGIN: "passwordLogin",
   PASSKEY_LOGIN: "passkeyLogin",
@@ -38,6 +33,25 @@ const actionLabels: Record<CaptchaAction, MessageKey> = {
   PASSWORD_RECOVERY_CONFIRM: "resetPassword",
   POST_PRIMARY_AUTH: "captchaPostPrimaryAuth",
 };
+const policyGroups: { title: MessageKey; actions: CaptchaAction[] }[] = [
+  {
+    title: "globalLoginMethods",
+    actions: ["PASSWORD_LOGIN", "PASSKEY_LOGIN", "WECHAT_LOGIN", "LOGIN_CODE_SEND", "LOGIN_CODE_VERIFY"],
+  },
+  {
+    title: "registrationSettingsTitle",
+    actions: ["REGISTRATION_SEND", "REGISTRATION_VERIFY", "REGISTRATION_COMPLETE"],
+  },
+  {
+    title: "forgotPassword",
+    actions: ["PASSWORD_RECOVERY_REQUEST", "PASSWORD_RECOVERY_VERIFY", "PASSWORD_RECOVERY_CONFIRM"],
+  },
+  {
+    title: "captchaPostPrimaryAuth",
+    actions: ["POST_PRIMARY_AUTH"],
+  },
+];
+const actions = policyGroups.flatMap(group => group.actions);
 
 const settingsErrors = [
   "staleRecord", "invalidCaptchaSettings", "invalidChangeReason",
@@ -90,53 +104,73 @@ export function CaptchaPage({ canWrite }: { canWrite: boolean }) {
   if (!query.data) return null;
 
   const serviceEnabled = query.data.data.enabled;
-  return <>
-    {serviceEnabled && <Alert className="mb-4" type={query.data.readiness.configured ? "success" : "warning"} showIcon
+  return <div className="captcha-settings-page">
+    {serviceEnabled && <Alert className="captcha-settings-readiness" type={query.data.readiness.configured ? "success" : "warning"} showIcon
       title={t(query.data.readiness.configured ? "captchaEnabledReady" : "captchaEnabledNotReady")} />}
-    <Typography.Paragraph type="secondary">{t("captchaSettingsHint")}</Typography.Paragraph>
-    <Form form={form} name="settings-captcha" className="settings-form" layout="vertical" disabled={!canWrite || action.pending}
+    <Form form={form} name="settings-captcha" className="settings-form auth-config-form captcha-settings-form" layout="vertical" disabled={!canWrite || action.pending}
       initialValues={{ data: query.data.data }}
       onValuesChange={() => setSaved(false)} onFinish={save}>
-      <Form.Item label={t("captchaProvider")}>{t("captchaProviderLocal")}</Form.Item>
-      <Form.Item name={["data", "enabled"]} label={t("captchaEnableService")} valuePropName="checked" extra={t("captchaServiceEnableHint")}>
-        <Switch />
-      </Form.Item>
-      <SettingsEnabledControls>
-      <Form.Item name={["data", "type"]} label={t("captchaChallengeType")}>
-        <Select options={[
-          { value: "IMAGE_TEXT", label: t("captchaTypeImageText") },
-          { value: "SLIDER", label: t("captchaTypeSlider") },
-        ]} />
-      </Form.Item>
-      <Form.Item label={t("captchaAccessibleReadiness")}>
-        <Tag color={query.data.readiness.accessibleAlternativeAvailable ? "success" : "default"}>
-          {t(query.data.readiness.accessibleAlternativeAvailable ? "captchaAccessibleReady" : "captchaAccessibleNotReady")}
-        </Tag>
-      </Form.Item>
-      </SettingsEnabledControls>
+      <div className="auth-config-stack">
+        <section className="auth-config-panel captcha-service-panel">
+          <Typography.Title level={5}>{t("captchaSettingsTitle")}</Typography.Title>
+          <Typography.Paragraph className="auth-config-note" type="secondary">{t("captchaSettingsHint")}</Typography.Paragraph>
+          <Form.Item
+            className="auth-config-toggle"
+            name={["data", "enabled"]}
+            label={t("captchaEnableService")}
+            valuePropName="checked"
+            extra={t("captchaServiceEnableHint")}
+          >
+            <Switch />
+          </Form.Item>
+          <div className="captcha-service-fields">
+            <Form.Item label={t("captchaProvider")}>{t("captchaProviderLocal")}</Form.Item>
+            <SettingsEnabledControls>
+              <Form.Item name={["data", "type"]} label={t("captchaChallengeType")}>
+                <Select options={[
+                  { value: "IMAGE_TEXT", label: t("captchaTypeImageText") },
+                  { value: "SLIDER", label: t("captchaTypeSlider") },
+                ]} />
+              </Form.Item>
+            </SettingsEnabledControls>
+            <Form.Item label={t("captchaAccessibleReadiness")}>
+              <Tag color={query.data.readiness.accessibleAlternativeAvailable ? "success" : "default"}>
+                {t(query.data.readiness.accessibleAlternativeAvailable ? "captchaAccessibleReady" : "captchaAccessibleNotReady")}
+              </Tag>
+            </Form.Item>
+          </div>
+        </section>
 
-      <Typography.Title level={5}>{t("captchaActionPolicies")}</Typography.Title>
-      <Typography.Paragraph type="secondary">{t("captchaActionPoliciesHint")}</Typography.Paragraph>
-      <SettingsEnabledControls>
-        <div role="group" aria-label={t("captchaActionPolicies")} className="flex flex-col gap-3">
-          {actions.map(name => <Form.Item key={name} name={["data", "actions", name]} noStyle>
-            <CaptchaActionPolicyControl
-              actionLabel={t(actionLabels[name])}
-              options={captchaPolicyModes.map(mode => ({
-                value: mode,
-                label: t(mode === "OFF" ? "captchaPolicyOff" : mode === "RISK" ? "captchaPolicyRisk" : "captchaPolicyAlways"),
-              }))}
-            />
-          </Form.Item>)}
-        </div>
-      </SettingsEnabledControls>
+        <section className="auth-config-panel captcha-policies-panel">
+          <Typography.Title level={5}>{t("captchaActionPolicies")}</Typography.Title>
+          <Typography.Paragraph className="auth-config-note" type="secondary">{t("captchaActionPoliciesHint")}</Typography.Paragraph>
+          <SettingsEnabledControls>
+            <div role="group" aria-label={t("captchaActionPolicies")} className="captcha-policy-groups">
+              {policyGroups.map(group => <section key={group.title} role="group" aria-label={t(group.title)} className="captcha-policy-card">
+                <Typography.Text strong className="captcha-policy-card-title">{t(group.title)}</Typography.Text>
+                <div className="captcha-policy-actions">
+                  {group.actions.map(name => <Form.Item key={name} name={["data", "actions", name]} noStyle>
+                    <CaptchaActionPolicyControl
+                      actionLabel={t(actionLabels[name])}
+                      options={captchaPolicyModes.map(mode => ({
+                        value: mode,
+                        label: t(mode === "OFF" ? "captchaPolicyOff" : mode === "RISK" ? "captchaPolicyRisk" : "captchaPolicyAlways"),
+                      }))}
+                    />
+                  </Form.Item>)}
+                </div>
+              </section>)}
+            </div>
+          </SettingsEnabledControls>
+        </section>
+      </div>
       <FeedbackBubble id="settings-captcha-error" content={action.error ? t(action.error) : undefined} />
       <FeedbackBubble kind="success" id="settings-captcha-saved" content={saved ? t("settingsSaved") : undefined} />
-      <Space className="form-actions" wrap style={{ marginBlockStart: 16 }}>
+      <Space className="form-actions auth-config-actions" wrap>
         <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />
       </Space>
     </Form>
-  </>;
+  </div>;
 }
 
 function CaptchaActionPolicyControl({ value = "OFF", onChange, actionLabel, options }: {
@@ -145,16 +179,15 @@ function CaptchaActionPolicyControl({ value = "OFF", onChange, actionLabel, opti
   actionLabel: string;
   options: { value: CaptchaMode; label: string }[];
 }) {
-  return <Space wrap size={8} align="center">
+  return <div className="captcha-action-policy-row">
     <span>{actionLabel}</span>
     <Select
       aria-label={actionLabel}
       value={value}
       onChange={mode => onChange?.(mode as CaptchaMode)}
       options={options}
-      style={{ width: 160 }}
     />
-  </Space>;
+  </div>;
 }
 
 function completeActions(source: Partial<Record<CaptchaAction, CaptchaMode>>): Record<CaptchaAction, CaptchaMode> {

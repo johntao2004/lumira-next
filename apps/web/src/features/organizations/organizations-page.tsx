@@ -59,9 +59,26 @@ function collectExpandableKeys(nodes: OrganizationNode[]): Key[] {
   ]);
 }
 
-export function OrganizationsPage({ canWrite, readOnlyPreview = false }: { canWrite: boolean; readOnlyPreview?: boolean }) {
+function collectOrganizationAncestorKeys(organizations: Organization[], organizationId: string): Key[] {
+  const byId = new Map(organizations.map(organization => [organization.id, organization]));
+  const expandedKeys: Key[] = [];
+  const visited = new Set<string>();
+  let parentId = byId.get(organizationId)?.parentId;
+
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    expandedKeys.push(parentId);
+    parentId = byId.get(parentId)?.parentId;
+  }
+
+  return expandedKeys;
+}
+
+export function OrganizationsPage({ canCreate, canUpdate, canDelete, readOnlyPreview = false }: { canCreate: boolean; canUpdate: boolean; canDelete: boolean; readOnlyPreview?: boolean }) {
   const previewReadOnly = readOnlyPreview || isRolePreviewReadOnly();
-  const effectiveCanWrite = canWrite && !previewReadOnly;
+  const effectiveCanCreate = canCreate && !previewReadOnly;
+  const effectiveCanUpdate = canUpdate && !previewReadOnly;
+  const effectiveCanDelete = canDelete && !previewReadOnly;
   const { t } = usePreferences();
   const client = useQueryClient();
   const [request, setRequest] = useListLocation();
@@ -78,6 +95,8 @@ export function OrganizationsPage({ canWrite, readOnlyPreview = false }: { canWr
   }), [codeFilter, nameFilter, statusFilter, request.search]);
   const hasFilters = Boolean(codeFilter || nameFilter || statusFilter || request.search.trim());
   const {selected,setSelected,pending,error,close,saved,run}=useCrudDrawer<Organization>({errorKeys:organizationErrorKeys,errorAliases:organizationErrorAliases});
+  const [newOrganizationParentId, setNewOrganizationParentId] = useState<string | null>(null);
+  const [expandAfterCreate, setExpandAfterCreate] = useState<string | null>(null);
   useEffect(() => {
     if (previewReadOnly && selected !== undefined) close();
   }, [previewReadOnly, selected, close]);
@@ -95,6 +114,11 @@ export function OrganizationsPage({ canWrite, readOnlyPreview = false }: { canWr
     setExpandedRowKeys(hasFilters ? collectExpandableKeys(filteredTree) : []);
   }, [filteredTree, hasFilters]);
   useEffect(() => {
+    if (!expandAfterCreate || !query.data?.some(organization => organization.id === expandAfterCreate)) return;
+    setExpandedRowKeys(collectOrganizationAncestorKeys(query.data, expandAfterCreate));
+    setExpandAfterCreate(null);
+  }, [expandAfterCreate, query.data]);
+  useEffect(() => {
     const lastPage = Math.max(1, Math.ceil(filteredTree.length / request.pageSize));
     if (request.page > lastPage) setRequest({ ...request, page: lastPage });
   }, [request, setRequest, filteredTree.length]);
@@ -106,6 +130,22 @@ export function OrganizationsPage({ canWrite, readOnlyPreview = false }: { canWr
       client.invalidateQueries({ queryKey: ["resource-select", "/platform/organizations"] }),
       client.invalidateQueries({ queryKey: ["resource-select-detail", "/platform/organizations"] }),
     ]);
+  };
+
+  const beginCreate = (parentId: string | null) => {
+    if (pending) return;
+    setNewOrganizationParentId(parentId);
+    setSelected(null);
+  };
+  const beginEdit = (organization: OrganizationNode) => {
+    if (pending) return;
+    setNewOrganizationParentId(null);
+    setSelected(organization);
+  };
+  const closeDrawer = () => {
+    if (pending) return;
+    close();
+    setNewOrganizationParentId(null);
   };
 
   return <>
@@ -125,27 +165,31 @@ export function OrganizationsPage({ canWrite, readOnlyPreview = false }: { canWr
       request={request}
       onChange={setRequest}
       onRetry={() => void query.refetch()}
-      actions={effectiveCanWrite && <Button type="primary" onClick={() => setSelected(null)}>{t("createOrganization")}</Button>}
+      actions={effectiveCanCreate && <Button type="primary" onClick={() => beginCreate(null)}>{t("createOrganization")}</Button>}
       columns={[
         { title: t("organizationCode"), dataIndex: "code", search: true },
         { title: t("name"), dataIndex: "name", search: true },
         { title: t("organizationSortNo"), dataIndex: "sortNo", search: false },
         { title: t("status"), key: "status", dataIndex: "enabled", search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
-        ...(effectiveCanWrite ? [{ title: t("actions"), key: "actions", render: (_: unknown, row: OrganizationNode) => <TableActions>
-          <Button type="link" onClick={() => setSelected(row)}>{t("edit")}</Button>
-          <DeleteAction name={row.name} onDelete={async () => {
+        ...(effectiveCanCreate || effectiveCanUpdate || effectiveCanDelete ? [{ title: t("actions"), key: "actions", render: (_: unknown, row: OrganizationNode) => <TableActions>
+          {effectiveCanCreate && <Button type="link" onClick={() => beginCreate(row.id)}>{t("createChildOrganization")}</Button>}
+          {effectiveCanUpdate && <Button type="link" onClick={() => beginEdit(row)}>{t("edit")}</Button>}
+          {effectiveCanDelete && <DeleteAction name={row.name} onDelete={async () => {
             await mutate(`/platform/organizations/${row.id}?version=${row.version}`, "DELETE", {});
             await refresh();
-          }} />
+          }} />}
         </TableActions> }] : []),
       ]}
     />
-    <FormDrawer open={selected !== undefined} title={t(selected ? "edit" : "createOrganization")} pending={pending} submitDisabled={!effectiveCanWrite} formId="organization-editor" onClose={close}>
+    <FormDrawer open={selected !== undefined} title={t(selected ? "edit" : newOrganizationParentId ? "createChildOrganization" : "createOrganization")} pending={pending} submitDisabled={selected === null ? !effectiveCanCreate : !effectiveCanUpdate} formId="organization-editor" onClose={closeDrawer}>
       <FeedbackBubble id="organization-editor-error" content={error ? t(error) : undefined} />
-      {selected !== undefined && <OrganizationForm key={selected?.id ?? "new"} selected={selected} parent="root" pending={pending} canWrite={effectiveCanWrite} onFinish={async values => { await run(async () => {
+      {selected !== undefined && <OrganizationForm key={selected?.id ?? `new:${newOrganizationParentId ?? "root"}`} selected={selected} parent={selected === null ? newOrganizationParentId ?? "root" : "root"} pending={pending} canWrite={selected === null ? effectiveCanCreate : effectiveCanUpdate} onFinish={async values => { await run(async () => {
 
-          await saveRecord("/platform/organizations",selected?.id, { ...values, parentId: values.parentId ?? null, version: selected?.version });
+          const isChildCreate = selected === null && newOrganizationParentId !== null;
+          const savedOrganization = await saveRecord<Organization>("/platform/organizations",selected?.id, { ...values, parentId: values.parentId ?? null, version: selected?.version });
+          if (isChildCreate) setExpandAfterCreate(savedOrganization.id);
           saved();
+          setNewOrganizationParentId(null);
           await refresh();
 
       }); }} />}

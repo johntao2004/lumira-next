@@ -2,29 +2,58 @@ package com.lumira.platform.settings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.dictionaries.api.DictionaryLookupPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 class SecuritySettingsActionsTest {
     @Test
+    void historyReadRequiresOwningGlobalSettingsPageBeforeStorage() {
+        var store = mock(SettingStore.class);
+        var administration = mock(AdministrationPort.class);
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
+                .when(administration)
+                .requirePageGlobal("reader", PlatformPageId.BRANDING);
+        var controller =
+                new SettingHistoryController(
+                        store,
+                        mock(SettingRollbackService.class),
+                        new ObjectMapper(),
+                        administration);
+        var actor = mock(Authentication.class);
+        when(actor.getName()).thenReturn("reader");
+
+        assertThrows(
+                ResponseStatusException.class, () -> controller.history("branding", 1, 10, actor));
+        verifyNoInteractions(store);
+    }
+
+    @Test
     void removedSecurityHistoryAndRestoreEndpointsDoNotReachStorage() throws Exception {
         var store = mock(SettingStore.class);
         var rollback = mock(SettingRollbackService.class);
         var mvc =
                 MockMvcBuilders.standaloneSetup(
-                                new SettingHistoryController(store, rollback, new ObjectMapper()))
+                                new SettingHistoryController(
+                                        store,
+                                        rollback,
+                                        new ObjectMapper(),
+                                        mock(AdministrationPort.class)))
                         .build();
 
         mvc.perform(get("/api/platform/settings/security/history"))

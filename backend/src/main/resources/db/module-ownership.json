@@ -46,7 +46,12 @@
     "V43__local_captcha_verification.sql": "identity",
     "V44__complete_authentication_settings_navigation.sql": "navigation",
     "V45__identity_verification_count_bounds_and_passkey_limits.sql": "identity",
-    "V46__ai_action_target_snapshot.sql": "platform"
+    "V46__ai_action_target_snapshot.sql": "platform",
+    "V47__organize_platform_navigation_domains.sql": "navigation",
+    "V48__fine_grained_platform_permissions.sql": "platform",
+    "V49__temporary_password_forced_change.sql": "identity",
+    "V50__independent_platform_page_authorization.sql": "identity",
+    "V51__retire_legacy_permission_projections.sql": "identity"
   },
   "tableOwners": {
     "platform_account_draft": "identity",
@@ -106,6 +111,7 @@
     "platform_plugin_bootstrap": "platform",
     "platform_second_factor_requirement": "identity",
     "platform_login_challenge": "identity",
+    "platform_password_change_requirement": "identity",
     "platform_authentication_policy_lock": "identity",
     "platform_global_authentication_policy": "identity",
     "platform_role_authentication_policy": "identity",
@@ -124,7 +130,11 @@
     "platform_role_preview_resource_ticket": "identity",
     "platform_role_preview_bootstrap_audit": "identity",
     "platform_plugin_runtime_node": "platform",
-    "platform_plugin_graph_approval": "platform"
+    "platform_plugin_graph_approval": "platform",
+    "platform_permission_legacy_mapping": "identity",
+    "platform_permission_projection_component": "identity",
+    "platform_permission_retired_authority": "identity",
+    "platform_permission_migration_archive": "identity"
   },
   "objectOwners": {
     "platform_effective_authority": "identity",
@@ -137,6 +147,9 @@
     "platform_visible_organizations": "directory",
     "platform_visible_users": "directory",
     "platform_role_preview_visible_users": "identity",
-    "platform_role_preview_visible_organizations": "identity"
+    "platform_role_preview_visible_organizations": "identity",
+    "platform_role_logical_authorities": "identity",
+    "platform_visible_users_base": "identity",
+    "platform_normalize_legacy_permission_projections": "identity"
   }
 }

@@ -42,9 +42,10 @@ public class DictionaryFileController {
                             maxBytes = DictionaryFileParser.MAX_BYTES,
                             errorCode = "dictionaryDatasetTooLarge")
                     @RequestBody
-                    byte[] bytes) {
+                    byte[] bytes,
+            Authentication auth) {
         var parsed = parser.parse(bytes, filename, metadata.structure());
-        var summary = datasets.preview(metadata.dataset(parsed));
+        var summary = datasets.preview(metadata.dataset(parsed), auth.getName());
         return new Preview(parsed.sha256(), summary, parsed.items().stream().limit(20).toList());
     }
 

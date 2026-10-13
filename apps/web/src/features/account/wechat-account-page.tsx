@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Card, Descriptions, Space, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Space, Spin, Tag, Typography } from "antd";
 import { history } from "@umijs/max";
 import { ApiError, api, mutate } from "@/platform/api/client";
 import type { LoginMethodAvailability, ReauthenticationAction, WechatAccount, WechatAttempt } from "@/platform/auth/api-types";
@@ -17,6 +17,7 @@ import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
 import { ReauthenticationFields } from "../../../../../plugins/mfa/frontend/reauthentication-fields";
 import type { MfaActionValues } from "../../../../../plugins/mfa/frontend/types";
+import { AccountSettingsRow, AccountSettingsSection } from "./account-form-surface";
 
 type BindingAction = "BIND" | "REPLACE" | "UNBIND";
 type BindingValues = MfaActionValues;
@@ -93,14 +94,12 @@ export function AccountWechatPage() {
   if (!supported) return <Alert type="info" showIcon message={t("wechatNotAvailableForAccount")} />;
 
   return <>
-    <Card title={t("wechatBinding")}>
+    <AccountSettingsSection>
       {account.isPending ? <Spin /> : account.error ? <QueryFailure title={t("unavailable")} pending={account.isFetching} onRetry={() => void account.refetch()} /> : account.data ? <>
-        <Descriptions column={{ xs: 1, md: 2 }} items={[
-          { key: "status", label: t("status"), children: <Tag color={account.data.bound ? "success" : "default"}>{t(account.data.bound ? "wechatBound" : "wechatNotBound")}</Tag> },
-          { key: "usable", label: t("authenticationUsableMethods"), children: <Tag color={account.data.usable ? "success" : "warning"}>{t(account.data.usable ? "wechatUsable" : "wechatNotUsable")}</Tag> },
-          ...(account.data.identity?.nickname ? [{ key: "nickname", label: t("wechatNickname"), children: account.data.identity.nickname }] : []),
-        ]} />
-        <Typography.Paragraph type="secondary">{t("wechatBindingHint")}</Typography.Paragraph>
+        <AccountSettingsRow label={t("status")} value={<Tag color={account.data.bound ? "success" : "default"}>{t(account.data.bound ? "wechatBound" : "wechatNotBound")}</Tag>} />
+        <AccountSettingsRow label={t("authenticationUsableMethods")} value={<Tag color={account.data.usable ? "success" : "warning"}>{t(account.data.usable ? "wechatUsable" : "wechatNotUsable")}</Tag>} />
+        {account.data.identity?.nickname && <AccountSettingsRow label={t("wechatNickname")} value={account.data.identity.nickname} />}
+        <Typography.Paragraph type="secondary" className="mt-4">{t("wechatBindingHint")}</Typography.Paragraph>
         <Space wrap>
           {!account.data.bound && <Button type="primary" onClick={() => open("BIND")}>{t("wechatStartBinding")}</Button>}
           {account.data.bound && <>
@@ -109,7 +108,7 @@ export function AccountWechatPage() {
           </>}
         </Space>
       </> : null}
-    </Card>
+    </AccountSettingsSection>
 
     <FormDrawer open={action !== null} title={t(action === "REPLACE" ? "wechatReplaceBinding" : action === "UNBIND" ? "wechatUnbind" : "wechatStartBinding")} pending={submit.pending} submitDisabled={Boolean(reauth.challenge && !reauth.challenge.methods.length)} formId="wechat-binding" onClose={close}>
       {action === "REPLACE" && <Alert className="mb-4" type="warning" showIcon message={t("wechatReplaceOnlyAfterConfirm")} />}

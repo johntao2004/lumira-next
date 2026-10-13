@@ -583,10 +583,46 @@ input {
   margin: 0 !important;
 }
 
-.workbench-stats {
+.workbench-overview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
   gap: 16px;
+}
+
+.workbench-overview-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  min-width: 0;
+  gap: 16px;
+}
+
+.workbench-overview-card {
+  min-width: 0;
+}
+
+.workbench-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 16px;
+}
+
+.workbench-overview-metric {
+  min-width: 0;
+}
+
+.workbench-overview-metric .ant-statistic-title {
+  min-height: 2.6em;
+  overflow-wrap: anywhere;
+}
+
+.workbench-stat-link {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: 8px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
 }
 
 .workbench-navigation-groups {
@@ -853,6 +889,11 @@ input {
   flex-wrap: nowrap;
 }
 
+.ant-table .table-action-column .table-actions-wrap {
+  max-width: 360px;
+  flex-wrap: wrap;
+}
+
 .platform-form {
   width: 100%;
   max-width: 600px;
@@ -1041,6 +1082,30 @@ textarea.editor-surface-editable {
   max-width: 100%;
 }
 
+.role-permission-tree {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.role-permission-tree .ant-tree-treenode {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.role-permission-tree .ant-tree-node-content-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+}
+
+.role-permission-tree .ant-tree-title {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .platform-settings-card + .platform-settings-card {
   margin-block-start: 24px;
 }
@@ -1106,10 +1171,6 @@ textarea.editor-surface-editable {
   max-height: calc(100vh - 230px);
   overflow: auto;
   overflow-wrap: anywhere;
-}
-
-.file-preview-modal {
-  max-width: calc(100vw - 24px);
 }
 
 .file-preview-image {
@@ -1287,7 +1348,9 @@ textarea.editor-surface-editable {
 :root[data-display-scale="qhd"] .workbench,
 :root[data-display-scale="qhd"] .resource-table,
 :root[data-display-scale="qhd"] .monitoring-page,
-:root[data-display-scale="qhd"] .workbench-stats,
+:root[data-display-scale="qhd"] .workbench-overview,
+:root[data-display-scale="qhd"] .workbench-overview-groups,
+:root[data-display-scale="qhd"] .workbench-overview-metrics,
 :root[data-display-scale="qhd"] .workbench-navigation-groups {
   gap: 18px;
 }
@@ -1295,7 +1358,9 @@ textarea.editor-surface-editable {
 :root[data-display-scale="four-k"] .workbench,
 :root[data-display-scale="four-k"] .resource-table,
 :root[data-display-scale="four-k"] .monitoring-page,
-:root[data-display-scale="four-k"] .workbench-stats,
+:root[data-display-scale="four-k"] .workbench-overview,
+:root[data-display-scale="four-k"] .workbench-overview-groups,
+:root[data-display-scale="four-k"] .workbench-overview-metrics,
 :root[data-display-scale="four-k"] .workbench-navigation-groups {
   gap: 20px;
 }
@@ -1315,6 +1380,42 @@ textarea.editor-surface-editable {
 }
 
 @media (max-width: 767px) {
+  .resource-table .ant-pro-table-list-toolbar {
+    min-width: 0;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .resource-table .ant-pro-table-list-toolbar-left,
+  .resource-table .ant-pro-table-list-toolbar-right,
+  .resource-table .ant-pro-table-list-toolbar-right > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .resource-table .ant-pro-table-list-toolbar-right {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .resource-table .ant-pro-table-list-toolbar-right .ant-space {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .resource-table .ant-pro-table-list-toolbar-right .ant-space-item {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .resource-table .ant-pro-table-list-toolbar-setting-items {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+  }
+
   .login-page {
     display: block;
     height: auto;
@@ -1346,8 +1447,8 @@ textarea.editor-surface-editable {
     padding: 24px 16px;
   }
 
-  .workbench-stats {
-    grid-template-columns: 1fr;
+  .workbench-overview-metrics {
+    gap: 16px 12px;
   }
 
   .platform-form,

@@ -58,19 +58,19 @@ test('OpenAPI download keeps the complete fetched spec and a stable filename aft
   assert.equal(OPENAPI_DOWNLOAD_FILENAME, 'lumira-next-openapi.json');
 });
 
-test('API documentation is in operations and requires the global audit permission', () => {
+test('API documentation is in operations and requires its own global page-access grant', () => {
   assert.deepEqual(
     (({ label, permission, global }) => ({ label, permission, global }))(routes['api-docs']),
-    { label: 'apiDocs', permission: 'platform:audit:read', global: true },
+    { label: 'apiDocs', permission: 'platform:api-docs:access', global: true },
   );
   assert.equal(monitoringManifest.routes.find(route => route.id === 'api-docs').group, 'operations');
 
-  const regularAuditPages = availableNavigation(['platform:audit:read'], [], [])
+  const regularAuditPages = availableNavigation(['platform:api-docs:access'], [], ['platform:monitoring:access'])
     .flatMap(group => group.pages.map(page => page.id));
   assert.ok(regularAuditPages.includes('monitoring'));
   assert.ok(!regularAuditPages.includes('api-docs'));
 
-  const globalAuditPages = availableNavigation(['platform:audit:read'], [], ['platform:audit:read'])
+  const globalAuditPages = availableNavigation([], [], ['platform:monitoring:access', 'platform:api-docs:access'])
     .flatMap(group => group.pages.map(page => page.id));
   assert.ok(globalAuditPages.includes('api-docs'));
 });

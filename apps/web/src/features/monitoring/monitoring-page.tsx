@@ -61,11 +61,33 @@ type FlowEvent = {
   createdAt: string;
 };
 
+type EventFlowStatus = "UNCONNECTED" | "IDLE" | "HEALTHY" | "PROCESSING" | "ATTENTION";
+
+type EventFlow = {
+  status: EventFlowStatus;
+  producerTypes: number;
+  consumerTypes: number;
+  connectedTypes: number;
+  unmatchedConsumerTypes: number;
+  missingConsumers: { sourceType: string; eventType: string }[];
+  createdLast5m: number;
+  deliveredLast5m: number;
+  retryPending: number;
+  overdue: number;
+  recentEvents: FlowEvent[];
+};
+
 type MonitoringSnapshot = {
   summary: PlatformSummary;
   machine: MachineRuntime;
   database: DatabaseRuntime;
-  flow: { createdLast5m: number; deliveredLast5m: number; recentEvents: FlowEvent[] };
+  flow: EventFlow;
+};
+
+type MonitoringSnapshotResponse = Omit<MonitoringSnapshot, "flow"> & {
+  // Older backends expose only activity counters and recent events. Treat a missing
+  // topology/status as unconnected while the backend is being rolled forward.
+  flow?: Partial<EventFlow> | null;
 };
 
 const eventStatusKeys: Record<FlowEvent["status"], MessageKey> = {
@@ -75,6 +97,48 @@ const eventStatusKeys: Record<FlowEvent["status"], MessageKey> = {
   FAILED: "eventFailed",
   DEAD_LETTER: "eventDeadLetter",
 };
+
+const eventFlowStatusKeys: Record<EventFlowStatus, MessageKey> = {
+  UNCONNECTED: "eventFlowNotConnected",
+  IDLE: "eventFlowNoActivity",
+  HEALTHY: "eventFlowHealthy",
+  PROCESSING: "eventFlowProcessing",
+  ATTENTION: "eventFlowAttention",
+};
+
+function normalizeCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function normalizeSnapshot(snapshot: MonitoringSnapshotResponse): MonitoringSnapshot {
+  const flow = snapshot.flow ?? {};
+  const rawStatus = flow.status;
+  const status =
+    typeof rawStatus === "string" && Object.prototype.hasOwnProperty.call(eventFlowStatusKeys, rawStatus)
+      ? (rawStatus as EventFlowStatus)
+      : "UNCONNECTED";
+  const producerTypes = normalizeCount(flow.producerTypes);
+  const consumerTypes = normalizeCount(flow.consumerTypes);
+  const connectedTypes = normalizeCount(flow.connectedTypes);
+  return {
+    ...snapshot,
+    flow: {
+      status,
+      producerTypes,
+      consumerTypes,
+      connectedTypes,
+      unmatchedConsumerTypes: normalizeCount(
+        flow.unmatchedConsumerTypes ?? Math.max(0, consumerTypes - connectedTypes),
+      ),
+      missingConsumers: Array.isArray(flow.missingConsumers) ? flow.missingConsumers : [],
+      createdLast5m: normalizeCount(flow.createdLast5m),
+      deliveredLast5m: normalizeCount(flow.deliveredLast5m),
+      retryPending: normalizeCount(flow.retryPending),
+      overdue: normalizeCount(flow.overdue),
+      recentEvents: Array.isArray(flow.recentEvents) ? flow.recentEvents : [],
+    },
+  };
+}
 
 type RefreshMode = "realtime" | "manual" | 5_000 | 10_000 | 30_000 | 60_000 | 300_000 | 900_000 | 3_600_000;
 
@@ -126,6 +190,14 @@ function eventStatusColor(status: FlowEvent["status"]): string {
   return "warning";
 }
 
+function eventFlowStatusColor(status: EventFlowStatus): string {
+  if (status === "HEALTHY") return "success";
+  if (status === "PROCESSING") return "processing";
+  if (status === "ATTENTION") return "error";
+  if (status === "UNCONNECTED") return "warning";
+  return "default";
+}
+
 /** Read-only operational snapshot with a selectable interval while the page is visible. */
 export function MonitoringPage() {
   const { t, locale } = usePreferences();
@@ -150,9 +222,9 @@ export function MonitoringPage() {
     queryKey: ["monitoring-summary"],
     queryFn: async ({ signal }) => {
       try {
-        const snapshot = await api<MonitoringSnapshot>("/platform/monitoring/summary", { signal });
+        const response = await api<MonitoringSnapshotResponse>("/platform/monitoring/summary", { signal });
         consecutiveFailures.current = 0;
-        return snapshot;
+        return normalizeSnapshot(response);
       } catch (error) {
         if (!signal.aborted) consecutiveFailures.current++;
         throw error;
@@ -192,7 +264,12 @@ export function MonitoringPage() {
     : null;
   const heapPercent = machine?.heapMaxBytes ? percent(machine.heapUsedBytes / machine.heapMaxBytes) : null;
   const machineNeedsAttention = (systemCpu ?? 0) >= 90 || (processCpu ?? 0) >= 90 || (heapPercent ?? 0) >= 90;
-  const queueNeedsAttention = !!summary && (summary.failedOutbox + summary.deadLetterOutbox + summary.failedMail + summary.failedSms > 0);
+  const flow = data?.flow;
+  const queueNeedsAttention = !!summary && (summary.failedOutbox + summary.deadLetterOutbox + summary.failedMail + summary.failedSms > 0)
+    || flow?.status === "ATTENTION";
+  const queueStatus = flow?.status === "UNCONNECTED"
+    ? "UNCONNECTED"
+    : queueNeedsAttention ? "ATTENTION" : flow?.status ?? "IDLE";
   const databaseIsUp = data?.database.status === "UP";
   const databaseNeedsAttention = (data?.database.waitingConnections ?? 0) > 0
     || (data?.database.maxConnections !== null && data?.database.maxConnections !== undefined
@@ -247,22 +324,24 @@ export function MonitoringPage() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <ProCard title={t("databasePool")} extra={<Tag color={!databaseIsUp ? "error" : databaseNeedsAttention ? "warning" : "success"}>
+          <ProCard style={{ height: "100%" }} title={t("databasePool")} extra={<Tag color={!databaseIsUp ? "error" : databaseNeedsAttention ? "warning" : "success"}>
             {!databaseIsUp ? t("unavailable") : databaseNeedsAttention ? t("attentionRequired") : t("healthy")}
           </Tag>}>
             <Row gutter={[16, 16]}>
-              <Col xs={12}><Statistic title={t("activeConnections")} value={data.database.activeConnections ?? "—"} /></Col>
-              <Col xs={12}><Statistic title={t("idleConnections")} value={data.database.idleConnections ?? "—"} /></Col>
-              <Col xs={12}><Statistic title={t("waitingConnections")} value={data.database.waitingConnections ?? "—"} /></Col>
-              <Col xs={12}><Statistic title={t("maxConnections")} value={data.database.maxConnections ?? "—"} /></Col>
+              <Col xs={12} sm={6}><Statistic title={t("activeConnections")} value={data.database.activeConnections ?? "—"} /></Col>
+              <Col xs={12} sm={6}><Statistic title={t("idleConnections")} value={data.database.idleConnections ?? "—"} /></Col>
+              <Col xs={12} sm={6}><Statistic title={t("waitingConnections")} value={data.database.waitingConnections ?? "—"} /></Col>
+              <Col xs={12} sm={6}><Statistic title={t("maxConnections")} value={data.database.maxConnections ?? "—"} /></Col>
             </Row>
           </ProCard>
         </Col>
         <Col xs={24} lg={12}>
-          <ProCard title={t("queueHealth")} extra={<Tag color={queueNeedsAttention ? "warning" : "success"}>{queueNeedsAttention ? t("attentionRequired") : t("healthy")}</Tag>}>
+          <ProCard style={{ height: "100%" }} title={t("queueHealth")} extra={<Tag color={eventFlowStatusColor(queueStatus)}>{t(eventFlowStatusKeys[queueStatus])}</Tag>}>
             <Row gutter={[16, 16]}>
               <Col xs={12} sm={6}><Statistic title={t("pendingOutbox")} value={summary.pendingOutbox} /></Col>
               <Col xs={12} sm={6}><Statistic title={t("processingOutbox")} value={summary.processingOutbox} /></Col>
+              <Col xs={12} sm={6}><Statistic title={t("retryPendingOutbox" as MessageKey)} value={flow?.retryPending ?? 0} styles={{ content: { color: flow?.retryPending ? "#d4380d" : undefined } }} /></Col>
+              <Col xs={12} sm={6}><Statistic title={t("overdueOutbox" as MessageKey)} value={flow?.overdue ?? 0} styles={{ content: { color: flow?.overdue ? "#d4380d" : undefined } }} /></Col>
               <Col xs={12} sm={6}><Statistic title={t("failedOutbox")} value={summary.failedOutbox} styles={{ content: { color: summary.failedOutbox ? "#d4380d" : undefined } }} /></Col>
               <Col xs={12} sm={6}><Statistic title={t("deadLetterOutbox")} value={summary.deadLetterOutbox} styles={{ content: { color: summary.deadLetterOutbox ? "#d4380d" : undefined } }} /></Col>
             </Row>
@@ -270,7 +349,20 @@ export function MonitoringPage() {
         </Col>
       </Row>
 
-      <ProCard title={t("dataFlow")} extra={<Tag color="processing">{t("lastFiveMinutes")}</Tag>}>
+      <ProCard title={t("dataFlow")} extra={<Tag color={eventFlowStatusColor(data.flow.status)}>{t(eventFlowStatusKeys[data.flow.status])}</Tag>}>
+        <Space className="monitoring-flow-coverage" wrap size={[8, 4]}>
+          <Typography.Text type="secondary">{t("eventFlowCoverage" as MessageKey, {
+            connected: data.flow.connectedTypes,
+            producers: data.flow.producerTypes,
+            consumers: data.flow.consumerTypes,
+          })}</Typography.Text>
+          {data.flow.missingConsumers.length > 0 && <Typography.Text type="danger">
+            {t("eventFlowMissingConsumers" as MessageKey, { count: data.flow.missingConsumers.length })}: {data.flow.missingConsumers.map(item => `${item.sourceType}/${item.eventType}`).join(", ")}
+          </Typography.Text>}
+          {data.flow.unmatchedConsumerTypes > 0 && <Typography.Text type="danger">
+            {t("eventFlowUnmatchedConsumers" as MessageKey, { count: data.flow.unmatchedConsumerTypes })}
+          </Typography.Text>}
+        </Space>
         <div className="monitoring-flow-track">
           <div className="monitoring-flow-node">
             <Typography.Text type="secondary">{t("eventsCreatedLast5m")}</Typography.Text>
@@ -312,7 +404,7 @@ export function MonitoringPage() {
 
       <ProCard title={t("recentEvents")}>
         {data.flow.recentEvents.length === 0
-          ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noRecentEvents")} />
+          ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t(data.flow.status === "UNCONNECTED" ? "eventsNotConnectedEmpty" as MessageKey : "noRecentEvents")} />
           : <List
               size="small"
               dataSource={data.flow.recentEvents}

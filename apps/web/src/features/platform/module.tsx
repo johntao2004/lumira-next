@@ -12,8 +12,17 @@ const AiModelsPage = lazy(() => import("@/features/ai/ai-models-page").then(({ A
 export const platformFrontendModule = {
   ...platformManifest,
   pages: {
-    modules: ({ hasGlobal }) => <ModulesPage canWrite={hasGlobal("platform:modules:write")} />,
-    "ai-console": ({ hasGlobal }) => <AiConsolePage canReadUsers={hasGlobal("platform:users:read")} canWriteUsers={hasGlobal("platform:users:write")} />,
-    "ai-models": ({ hasGlobal }) => <AiModelsPage canWrite={hasGlobal("platform:settings:write")} />,
+    modules: ({ hasOperation }) => <ModulesPage
+      canInstall={hasOperation("install")}
+      canUpdate={hasOperation("update")}
+      canUninstall={hasOperation("uninstall")}
+    />,
+    "ai-console": ({ hasOperation }) => <AiConsolePage
+      canReadUsers={hasOperation("readUsers")}
+      canCreateUsers={hasOperation("createUser")}
+      canUpdateUsers={hasOperation("updateUser")}
+      canDeleteUsers={hasOperation("deleteUser")}
+    />,
+    "ai-models": ({ hasOperation }) => <AiModelsPage canCreate={hasOperation("create")} canUpdate={hasOperation("update")} canDelete={hasOperation("delete")} canTest={hasOperation("test")} />,
   },
 } satisfies FrontendModule;

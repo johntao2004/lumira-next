@@ -1,0 +1,50 @@
+{
+  "formatVersion": 2,
+  "id": "runtime-observer",
+  "name": "运行展示屏",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.runtimeobserver.RuntimeObserverPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:runtime-observer:access",
+    "platform:runtime-observer:read"
+  ],
+  "permissionGroups": [
+    {
+      "id": "runtime-observer",
+      "title": "运行展示屏",
+      "permissions": [
+        {
+          "code": "platform:runtime-observer:access",
+          "label": "访问运行展示屏"
+        },
+        {
+          "code": "platform:runtime-observer:read",
+          "label": "读取运行状态展示"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "runtime-observer",
+      "label": "runtimeObserverTitle",
+      "permission": "platform:runtime-observer:access",
+      "operations": {
+        "read": "platform:runtime-observer:read"
+      },
+      "group": "operations",
+      "order": 951,
+      "global": true
+    }
+  ],
+  "apiRules": []
+}

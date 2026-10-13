@@ -1,6 +1,9 @@
 package com.lumira.platform.identity;
 
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -159,41 +162,21 @@ public class IdentityConfiguration {
                                 .param("id", id)
                                 .param("hash", encoder.encode(password))
                                 .update();
-                        for (String authority :
-                                new String[] {
-                                    "platform:feedback:read",
-                                    "platform:feedback:create",
-                                    "platform:feedback:manage",
-                                    "platform:modules:read",
-                                    "platform:modules:write",
-                                    "platform:events:write",
-                                    "platform:users:read",
-                                    "platform:users:write",
-                                    "platform:roles:read",
-                                    "platform:roles:write",
-                                    "platform:roles:preview",
-                                    "platform:organizations:read",
-                                    "platform:organizations:write",
-                                    "platform:audit:read",
-                                    "platform:dictionaries:read",
-                                    "platform:dictionaries:write",
-                                    "platform:settings:read",
-                                    "platform:settings:write",
-                                    "platform:navigation:read",
-                                    "platform:navigation:write",
-                                    "platform:sensitive-words:read",
-                                    "platform:sensitive-words:write",
-                                    "platform:sensitive-words:import",
-                                    "platform:localization:read",
-                                    "platform:localization:write",
-                                    "platform:localization:import",
-                                    "platform:files:read",
-                                    "platform:files:write",
-                                    "platform:notifications:read",
-                                    "platform:notifications:write"
-                                })
+                        var authorities = new LinkedHashSet<String>();
+                        for (var page : PlatformPageId.values())
+                            authorities.add(page.accessPermission());
+                        for (var operation : PlatformOperation.values())
+                            authorities.add(operation.permission());
+                        for (String authority : authorities)
                             jdbc.sql(
                                             "INSERT INTO platform_authority(user_id,authority) VALUES(:id,:authority)")
+                                    .param("id", id)
+                                    .param("authority", authority)
+                                    .update();
+                        for (String authority :
+                                com.lumira.platform.modules.PluginPermissions.values())
+                            jdbc.sql(
+                                            "INSERT INTO platform_authority(user_id,authority) VALUES(:id,:authority) ON CONFLICT DO NOTHING")
                                     .param("id", id)
                                     .param("authority", authority)
                                     .update();

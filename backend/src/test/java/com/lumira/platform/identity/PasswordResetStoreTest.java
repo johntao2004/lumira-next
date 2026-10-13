@@ -39,6 +39,7 @@ class PasswordResetStoreTest {
         store = new PasswordResetStore(JdbcClient.create(ds));
         jdbc.execute(
                 "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT NOT NULL,password_hash TEXT NOT NULL,enabled BOOLEAN NOT NULL)");
+        jdbc.execute("CREATE TABLE platform_password_change_requirement(user_id UUID PRIMARY KEY)");
         jdbc.execute("CREATE TABLE spring_session(principal_name TEXT)");
         jdbc.update("INSERT INTO platform_user VALUES(?,'owner','old-hash',true)", id);
         jdbc.execute(TestMigration.read("V25__account_email_verification.sql"));

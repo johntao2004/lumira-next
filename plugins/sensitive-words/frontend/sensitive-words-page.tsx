@@ -57,7 +57,7 @@ const sensitiveErrorKeys = [
     "forbidden", "invalidSensitiveWord", "invalidSensitiveImport", "sensitiveWordNotFound", "duplicateSensitiveWord", "staleRecord", "moduleUnavailable", "sensitiveTextTooLong",
 ] as const satisfies readonly MessageKey[];
 
-export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolean; canImport: boolean }) {
+export function SensitiveWordLibrary({ canRead, canCreate, canUpdate, canDelete, canImport }: { canRead: boolean; canCreate: boolean; canUpdate: boolean; canDelete: boolean; canImport: boolean }) {
   const { t } = usePreferences();
   const { message } = App.useApp();
   const confirm = useCenteredModalConfirm();
@@ -81,6 +81,7 @@ export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolea
   const [importForm] = Form.useForm<ImportValues>();
   const categoriesQuery = useQuery({
     queryKey: ["dictionary-options", "sensitive_word_category"],
+    enabled: canRead,
     queryFn: ({ signal }) => api<SensitiveCategoryOptionsResponse>("/platform/sensitive-words/options", { signal }),
   });
   const categoryOptions = categoriesQuery.data?.categories ?? [];
@@ -95,13 +96,14 @@ export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolea
   };
   const listQuery = useQuery({
     queryKey: ["sensitive-words", request],
+    enabled: canRead,
     queryFn: ({ signal }) => {
       return api<PageResult<SensitiveWord>>(`/platform/sensitive-words?${listRequestParams(request)}`, { signal });
     },
   });
   const detail = useQuery({
     queryKey: ["sensitive-word", selected],
-    enabled: typeof selected === "string",
+    enabled: canRead && typeof selected === "string",
     queryFn: ({ signal }) => api<SensitiveWord>(`/platform/sensitive-words/${selected}`, { signal }),
   });
   const saveAction=useSubmitAction({errorKeys:sensitiveErrorKeys,onError:async(_key,error)=>{
@@ -113,6 +115,7 @@ export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolea
   const ready = selected === null || (!!detail.data && !detail.isFetching && !detail.error);
 
   const openCreate = () => {
+    if (!canCreate) return;
     setFormError(null);
     setEditingCategory(null);
     editorForm.resetFields();
@@ -189,7 +192,7 @@ export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolea
   };
 
   const save = async (values: EditorValues) => {
-    if (pending || !canWrite) return;
+    if (pending || (selected ? !canUpdate : !canCreate)) return;
     return saveAction.run(async () => {
       await mutate(selected ? `/platform/sensitive-words/${selected}` : "/platform/sensitive-words", selected ? "PUT" : "POST", { ...values, version: selected ? detail.data?.version : undefined });
       closeEditor();
@@ -199,7 +202,7 @@ export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolea
   };
 
   const toggle = async (row: SensitiveWord) => {
-    if (pendingToggle) return;
+    if (!canUpdate || pendingToggle) return;
     setPendingToggle(row.id);
     try {
       await mutate(`/platform/sensitive-words/${row.id}/status`, "PATCH", { enabled: !row.enabled, version: row.version });
@@ -266,7 +269,7 @@ export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolea
       onChange={setRequest}
       onRetry={() => void listQuery.refetch()}
       actions={<Space wrap>
-        {canWrite && <Button type="primary" onClick={openCreate}>{t("createSensitiveWord")}</Button>}
+        {canCreate && <Button type="primary" onClick={openCreate}>{t("createSensitiveWord")}</Button>}
         {canImport && <Button onClick={openImport}>{t("importSensitiveWords")}</Button>}
       </Space>}
       columns={[
@@ -276,17 +279,17 @@ export function SensitiveWordLibrary({ canWrite, canImport }: { canWrite: boolea
         { title: t("sensitiveWordAction"), dataIndex: "action", search: true, valueEnum: { BLOCK: { text: t("sensitiveActionBlock") }, LOG_ONLY: { text: t("sensitiveActionLog") } }, render: (_, row) => row.action === "BLOCK" ? t("sensitiveActionBlock") : t("sensitiveActionLog") },
         { title: t("status"), key: "status", dataIndex: "enabled", search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
         { title: t("actions"), key: "actions", search: false, render: (_, row) => <TableActions wrap>
-          <Button type="link" onClick={() => openEdit(row)}>{t(canWrite ? "edit" : "details")}</Button>
-          {canWrite && <AsyncButton type="link" label={t(row.enabled ? "disableSensitiveWord" : "enableSensitiveWord")} pending={pendingToggle === row.id} disabled={pendingToggle !== null && pendingToggle !== row.id} onClick={() => void toggle(row)} />}
-          {canWrite && <DeleteAction name={row.word} onDelete={async () => { await mutate(`/platform/sensitive-words/${row.id}?version=${row.version}`, "DELETE", {}); await refresh(); }} />}
+          <Button type="link" onClick={() => openEdit(row)}>{t(canUpdate ? "edit" : "details")}</Button>
+          {canUpdate && <AsyncButton type="link" label={t(row.enabled ? "disableSensitiveWord" : "enableSensitiveWord")} pending={pendingToggle === row.id} disabled={pendingToggle !== null && pendingToggle !== row.id} onClick={() => void toggle(row)} />}
+          {canDelete && <DeleteAction name={row.word} onDelete={async () => { await mutate(`/platform/sensitive-words/${row.id}?version=${row.version}`, "DELETE", {}); await refresh(); }} />}
         </TableActions> },
       ]}
     />
 
     <FeedbackBubble id="sensitive-word-editor-error" content={formError ? t(formError) : undefined}/>
-    <FormDrawer open={selected !== undefined} title={t(selected ? "editSensitiveWord" : "createSensitiveWord")} pending={pending} formId="sensitive-word-editor" submitDisabled={!ready || !canWrite} onClose={closeEditor}>
+    <FormDrawer open={selected !== undefined} title={t(selected ? "editSensitiveWord" : "createSensitiveWord")} pending={pending} formId="sensitive-word-editor" submitDisabled={!ready || (selected ? !canUpdate : !canCreate)} onClose={closeEditor}>
       {selected && detail.isFetching && <Spin size="small" />}
-      {ready && <Form id="sensitive-word-editor" name="sensitive-word-editor" form={editorForm} layout="vertical" disabled={pending || !canWrite} onFinish={(values) => void save(values)}>
+      {ready && <Form id="sensitive-word-editor" name="sensitive-word-editor" form={editorForm} layout="vertical" disabled={pending || (selected ? !canUpdate : !canCreate)} onFinish={(values) => void save(values)}>
         <Typography.Paragraph type="secondary">{t("sensitiveDailyFieldsHint")}</Typography.Paragraph>
         <Form.Item name="word" label={t("sensitiveWord")} rules={[{ required: true, whitespace: true, max: 128, message: t("invalidSensitiveWord") }]}><Input maxLength={128} /></Form.Item>
         <Form.Item name="category" label={t("sensitiveWordCategory")} rules={[{ required: true, max: 64, message: t("invalidSensitiveWord") }]}><Select options={editorCategoryOptions(selected ? editingCategory : null)} showSearch optionFilterProp="label" /></Form.Item>

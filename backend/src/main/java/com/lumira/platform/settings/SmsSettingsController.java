@@ -1,6 +1,8 @@
 package com.lumira.platform.settings;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.BoundedBody;
+import com.lumira.platform.common.PlatformPageId;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -9,13 +11,16 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/platform/settings/sms")
 public class SmsSettingsController {
     private final SmsSettingsService sms;
+    private final AdministrationPort administration;
 
-    public SmsSettingsController(SmsSettingsService sms) {
+    public SmsSettingsController(SmsSettingsService sms, AdministrationPort administration) {
         this.sms = sms;
+        this.administration = administration;
     }
 
     @GetMapping
-    public SmsSettingsService.View read() {
+    public SmsSettingsService.View read(Authentication actor) {
+        administration.requirePageGlobal(actor.getName(), PlatformPageId.SMS);
         return sms.read();
     }
 

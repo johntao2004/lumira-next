@@ -1,6 +1,8 @@
 package com.lumira.platform.settings;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.BoundedBody;
+import com.lumira.platform.common.PlatformPageId;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,18 +17,22 @@ public class BrandingController {
     private final SettingDocuments documents;
     private final BrandingReader reader;
     private final BrandingAssetReferences assetReferences;
+    private final AdministrationPort administration;
 
     public BrandingController(
             SettingDocuments documents,
             BrandingReader reader,
-            BrandingAssetReferences assetReferences) {
+            BrandingAssetReferences assetReferences,
+            AdministrationPort administration) {
         this.documents = documents;
         this.reader = reader;
         this.assetReferences = assetReferences;
+        this.administration = administration;
     }
 
     @GetMapping
-    public BrandingReader.View read() {
+    public BrandingReader.View read(org.springframework.security.core.Authentication auth) {
+        administration.requirePageGlobal(auth.getName(), PlatformPageId.BRANDING);
         return reader.read();
     }
 

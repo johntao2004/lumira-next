@@ -55,7 +55,7 @@ class AdministrationGuardRecoveryConcurrencyDatabaseTest {
                 userAdminId,
                 roleAdminId);
         jdbc.update(
-                "INSERT INTO platform_effective_authority(user_id,authority) VALUES(?, 'platform:users:write'), (?, 'platform:roles:write')",
+                "INSERT INTO platform_effective_authority(user_id,authority) VALUES(?, 'platform:users:update'), (?, 'platform:roles:update')",
                 userAdminId,
                 roleAdminId);
     }
@@ -77,11 +77,12 @@ class AdministrationGuardRecoveryConcurrencyDatabaseTest {
                             () ->
                                     tx.executeWithoutResult(
                                             status -> {
-                                                guard.require("user-admin", "platform:users:write");
+                                                guard.require(
+                                                        "user-admin", "platform:users:update");
                                                 firstHasLock.countDown();
                                                 await(releaseFirst);
                                                 jdbc.update(
-                                                        "DELETE FROM platform_effective_authority WHERE user_id=? AND authority='platform:roles:write'",
+                                                        "DELETE FROM platform_effective_authority WHERE user_id=? AND authority='platform:roles:update'",
                                                         roleAdminId);
                                             }));
             assertTrue(firstHasLock.await(5, TimeUnit.SECONDS));
@@ -94,7 +95,7 @@ class AdministrationGuardRecoveryConcurrencyDatabaseTest {
                                     tx.executeWithoutResult(
                                             status ->
                                                     guard.require(
-                                                            "role-admin", "platform:roles:write"));
+                                                            "role-admin", "platform:roles:update"));
                                     return true;
                                 } catch (ResponseStatusException denied) {
                                     return false;

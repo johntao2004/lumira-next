@@ -1,8 +1,8 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "feedback",
   "name": "工单反馈",
-  "version": "1.0.6",
+  "version": "1.0.13",
   "sdkVersion": "1",
   "entryClass": "com.lumira.platform.feedback.LumiraPlugin",
   "backend": "backend/plugin.jar",
@@ -10,6 +10,10 @@
   "dependencies": [
     {
       "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "identity",
       "version": "1.0.0"
     },
     {
@@ -26,17 +30,59 @@
     }
   ],
   "permissions": [
+    "platform:feedback:access",
+    "platform:feedback:read",
     "platform:feedback:create",
-    "platform:feedback:manage",
-    "platform:feedback:read"
+    "platform:feedback:update",
+    "platform:feedback:reply"
+  ],
+  "permissionGroups": [
+    {
+      "id": "management",
+      "title": "pluginPermissionGroupFeedback",
+      "permissions": [
+        {
+          "code": "platform:feedback:access",
+          "label": "pluginPermissionFeedbackAccess"
+        },
+        {
+          "code": "platform:feedback:read",
+          "label": "pluginPermissionFeedbackRead"
+        },
+        {
+          "code": "platform:feedback:create",
+          "label": "pluginPermissionFeedbackCreate"
+        },
+        {
+          "code": "platform:feedback:update",
+          "label": "pluginPermissionFeedbackUpdate"
+        },
+        {
+          "code": "platform:feedback:reply",
+          "label": "pluginPermissionFeedbackReply"
+        }
+      ]
+    }
   ],
   "routes": [
     {
       "id": "feedback",
       "label": "feedback",
-      "permission": "platform:feedback:read",
-      "group": "operations",
-      "order": 70,
+      "permission": "platform:feedback:access",
+      "operations": {
+        "read": "platform:feedback:read",
+        "create": "platform:feedback:create",
+        "update": "platform:feedback:update",
+        "reply": "platform:feedback:reply"
+      },
+      "scopedOperations": [
+        "read",
+        "create",
+        "update",
+        "reply"
+      ],
+      "group": "communication",
+      "order": 60,
       "global": false
     }
   ],
@@ -44,56 +90,108 @@
     {
       "method": "GET",
       "path": "/api/feedback/manage",
-      "authorities": [
-        "platform:feedback:manage"
-      ],
-      "global": true,
+      "authorities": [],
+      "global": false,
       "publicAccess": false,
-      "previewReadOnly": true
+      "previewReadOnly": true,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:read"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/feedback/manage/*",
-      "authorities": [
-        "platform:feedback:manage"
-      ],
-      "global": true,
+      "authorities": [],
+      "global": false,
       "publicAccess": false,
-      "previewReadOnly": true
+      "previewReadOnly": true,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:read"
+      ]
     },
     {
       "method": "PUT",
       "path": "/api/feedback/manage/*",
       "authorities": [
-        "platform:feedback:manage"
+        "platform:feedback:update",
+        "platform:feedback:reply"
       ],
       "global": false,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:read"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/feedback/images/*",
+      "authorities": [],
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:read"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback/manage/images/*",
+      "authorities": [],
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:read"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/feedback/images",
+      "authorities": [],
+      "global": false,
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback",
+      "authorities": [],
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:read"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback/options",
       "authorities": [
         "platform:feedback:read",
-        "platform:feedback:manage"
+        "platform:feedback:create"
+      ],
+      "allAuthorities": [
+        "platform:feedback:access"
       ],
       "global": false,
       "publicAccess": false,
       "previewReadOnly": true
     },
     {
-      "method": "POST",
-      "path": "/api/feedback/images",
-      "authorities": [
-        "platform:feedback:create"
-      ],
-      "global": false,
-      "publicAccess": false
-    },
-    {
       "method": "GET",
-      "path": "/api/feedback",
-      "authorities": [
+      "path": "/api/feedback/manage/options",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:feedback:access",
         "platform:feedback:read"
       ],
       "global": false,
@@ -103,21 +201,25 @@
     {
       "method": "GET",
       "path": "/api/feedback/*",
-      "authorities": [
-        "platform:feedback:read"
-      ],
+      "authorities": [],
       "global": false,
       "publicAccess": false,
-      "previewReadOnly": true
+      "previewReadOnly": true,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:read"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/feedback",
-      "authorities": [
-        "platform:feedback:create"
-      ],
+      "authorities": [],
       "global": false,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:feedback:access",
+        "platform:feedback:create"
+      ]
     }
   ],
   "dataSets": [
@@ -132,12 +234,6 @@
       "label": "pluginDataFeedback",
       "column": null,
       "value": null
-    },
-    {
-      "table": "platform_account_draft",
-      "label": "pluginDataFeedbackDrafts",
-      "column": "draft_key",
-      "value": "feedback.create"
     }
   ]
 }

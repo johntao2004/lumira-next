@@ -6,6 +6,6 @@ export const auditManifest = {
   required: false,
   dependencies: ["platform"],
   routes: [
-    { id: "audit", label: "audit", permission: "platform:audit:read", global: true, group: "operations", order: 30 },
+    { id: "audit", label: "audit", permission: "platform:audit:access", accessScope: "global", global: true, group: "operations", order: 30 },
   ],
 } as const satisfies FrontendModuleManifest;

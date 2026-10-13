@@ -116,15 +116,14 @@ public class PendingAiActionStore {
         return new Proposal(id, kind, username, displayName, enabled, expiry, target);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public PendingAction take(UUID id, String actor) {
+    public PendingAction findPending(UUID id, String actor) {
         var action =
                 jdbc.sql(
                                 """
-            DELETE FROM platform_ai_pending_action
+            SELECT id,actor,kind,user_id,version,username,display_name,enabled,
+                   target_username,target_display_name,target_enabled,expires_at
+              FROM platform_ai_pending_action
              WHERE id=:id AND actor=:actor AND expires_at>clock_timestamp()
-            RETURNING id,actor,kind,user_id,version,username,display_name,enabled,
-                      target_username,target_display_name,target_enabled,expires_at
             """)
                         .param("id", id)
                         .param("actor", actor)
@@ -144,11 +143,21 @@ public class PendingAiActionStore {
                                                         .toInstant()))
                         .optional();
         if (action.isPresent()) return action.get();
-        jdbc.sql(
-                        "DELETE FROM platform_ai_pending_action WHERE id=:id AND expires_at<=clock_timestamp()")
-                .param("id", id)
-                .update();
         throw new ResponseStatusException(HttpStatus.GONE, "aiActionExpired");
+    }
+
+    /** Consume only after the requested operation and target scope have been authorized. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void consume(UUID id, String actor) {
+        boolean consumed =
+                jdbc.sql(
+                                "DELETE FROM platform_ai_pending_action WHERE id=:id AND actor=:actor AND expires_at>clock_timestamp() RETURNING id")
+                        .param("id", id)
+                        .param("actor", actor)
+                        .query(UUID.class)
+                        .optional()
+                        .isPresent();
+        if (!consumed) throw new ResponseStatusException(HttpStatus.GONE, "aiActionExpired");
     }
 
     private static Target target(java.sql.ResultSet rs) throws java.sql.SQLException {

@@ -111,7 +111,7 @@ public class RegistrationSettingsService implements RegistrationPolicyPort {
 
     @Transactional(readOnly = true)
     public View read(String actor) {
-        requireSettings(actor, "platform:settings:read");
+        guard.requirePageGlobal(actor, PlatformPageId.REGISTRATION);
         Policy policy = current();
         return view(policy);
     }
@@ -123,11 +123,11 @@ public class RegistrationSettingsService implements RegistrationPolicyPort {
         // Match preview/session writers: acquire the shared global-policy mutex before the
         // AdministrationGuard takes the current session's shared context lock.
         policyLock.lockForUpdate();
-        requireSettings(actor, "platform:settings:write");
-        guard.require(actor, "platform:roles:write");
-        guard.requireGlobal(actor, "platform:roles:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.REGISTRATION_UPDATE);
         Policy previous = current();
         if (previous.version() != input.version()) throw conflict("staleRecord");
+        if (!Objects.equals(previous.defaultRoleId(), input.defaultRoleId()))
+            guard.requireOperationGlobal(actor, PlatformOperation.REGISTRATION_ASSIGN_DEFAULT_ROLE);
         if (input.defaultRoleId() != null) roles.lockAndRequireEligible(input.defaultRoleId());
         if (Boolean.TRUE.equals(input.enabled())
                 && input.channels().contains(Channel.SMS)
@@ -155,9 +155,13 @@ public class RegistrationSettingsService implements RegistrationPolicyPort {
 
     @Transactional(readOnly = true)
     public PageResult<RegistrationRolePort.Candidate> roles(String actor, PageRequest page) {
-        requireSettings(actor, "platform:settings:read");
-        guard.require(actor, "platform:roles:read");
-        guard.requireGlobal(actor, "platform:roles:read");
+        guard.requirePageGlobal(actor, PlatformPageId.REGISTRATION);
+        try {
+            guard.requireOperationGlobal(actor, PlatformOperation.REGISTRATION_READ_ROLES);
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() != HttpStatus.FORBIDDEN) throw exception;
+            guard.requireOperationGlobal(actor, PlatformOperation.REGISTRATION_ASSIGN_DEFAULT_ROLE);
+        }
         return roles.candidates(page);
     }
 
@@ -205,11 +209,6 @@ public class RegistrationSettingsService implements RegistrationPolicyPort {
                         CaptchaProofPort.Action.REGISTRATION_COMPLETE)
                 .stream()
                 .allMatch(action -> provider.readyFor(action, null, defaultRoleId));
-    }
-
-    private void requireSettings(String actor, String permission) {
-        guard.require(actor, permission);
-        guard.requireGlobal(actor, permission);
     }
 
     private static boolean valid(Input input) {

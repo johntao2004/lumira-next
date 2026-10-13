@@ -20,7 +20,7 @@ type DiscoveryState = { models: ModelOption[]; status: "idle" | "success" | "emp
 const initialDiscoveryState: DiscoveryState = { models: [], status: "idle", invalidated: false };
 const providerPath = "/platform/ai/providers";
 
-export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
+export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { canCreate: boolean; canUpdate: boolean; canDelete: boolean; canTest: boolean }) {
   const { t } = usePreferences();
   const { message } = App.useApp();
   const client = useQueryClient();
@@ -38,6 +38,7 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
   const enabled = Form.useWatch("enabled", form) ?? selected?.enabled ?? true;
   const credentialValue: string | undefined = Form.useWatch("credentialValue", form);
   const selectedCredentialReusable = Boolean(selected && selected.providerKind === kind && selected.baseUrl === baseUrl && selected.credentialConfigured);
+  const canSave = selected ? canUpdate : canCreate;
   const query = useQuery({ queryKey: ["ai-providers"], queryFn: ({ signal }) => api<Provider[]>(providerPath, { signal }), staleTime: 0 });
   const requiresModelDiscovery = useMemo(() => Boolean(kind) && kind !== "TYPESAFE_JEV", [kind]);
   const cancelDiscovery = useCallback(() => {
@@ -66,7 +67,7 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
   const resetEditor = () => { cancelDiscovery(); setSelected(undefined); setDiscovery(initialDiscoveryState); form.resetFields(); };
   const close = () => { if (!saveBusy.current) resetEditor(); };
   const save = async (values: FormValues) => {
-    if (saveBusy.current || discoveringModels) return;
+    if (!canSave || saveBusy.current || discoveringModels) return;
     saveBusy.current = true;
     setSaving(true);
     const credential = values.credentialValue ? { action: "REPLACE", value: values.credentialValue }
@@ -82,6 +83,7 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
     finally { saveBusy.current = false; setSaving(false); }
   };
   const test = async (provider: Provider) => {
+    if (!canTest) return;
     setTesting(provider.id);
     try {
       const result = await mutate<ConnectionResult>(`${providerPath}/${provider.id}/test`, "POST");
@@ -90,7 +92,7 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
     finally { setTesting(null); }
   };
   const discoverModels = useCallback(async () => {
-    if (!enabled || form.getFieldValue("enabled") === false || !kind || kind === "TYPESAFE_JEV" || saveBusy.current) return;
+    if (!canTest || !canSave || !enabled || form.getFieldValue("enabled") === false || !kind || kind === "TYPESAFE_JEV" || saveBusy.current) return;
     const sequence = ++discoverySequence.current;
     discoveryAbort.current?.abort();
     const controller = new AbortController();
@@ -128,10 +130,10 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
       if (sequence === discoverySequence.current) setDiscoveringModels(false);
       if (discoveryAbort.current === controller) discoveryAbort.current = null;
     }
-  }, [enabled, kind, selected, form]);
+  }, [enabled, kind, selected, form, canSave, canTest]);
 
   useEffect(() => {
-    if (selected === undefined || saving || !enabled || form.getFieldValue("enabled") === false || !kind || kind === "TYPESAFE_JEV" || !baseUrl?.trim()) {
+    if (selected === undefined || !canTest || saving || !enabled || form.getFieldValue("enabled") === false || !kind || kind === "TYPESAFE_JEV" || !baseUrl?.trim()) {
       if (!enabled || form.getFieldValue("enabled") === false) cancelDiscovery();
       return;
     }
@@ -142,8 +144,9 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
     } catch { return; }
     const timeout = setTimeout(() => void discoverModels(), 650);
     return () => { clearTimeout(timeout); cancelDiscovery(); };
-  }, [selected, saving, enabled, kind, baseUrl, credentialValue, selectedCredentialReusable, discoverModels, cancelDiscovery, form]);
+  }, [selected, canTest, saving, enabled, kind, baseUrl, credentialValue, selectedCredentialReusable, discoverModels, cancelDiscovery, form]);
   const remove = async (provider: Provider) => {
+    if (!canDelete) return;
     try { await mutate(`${providerPath}/${provider.id}?version=${provider.version}`, "DELETE"); await refresh(); }
     catch { message.error(t("unavailable")); }
   };
@@ -154,15 +157,15 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
     (discovery.status === "idle" || discovery.status === "error") &&
     !modelOptions.some((option) => option.value === selected.modelName);
   if (keepSavedModel && selected) modelOptions.unshift({ value: selected.modelName, label: t("aiModelSavedSelection", { model: selected.modelName }) });
-  const modelDiscoveryDescription = requiresModelDiscovery && enabled ? <div className="ai-model-discovery-row">
+  const modelDiscoveryDescription = canTest && requiresModelDiscovery && enabled ? <div className="ai-model-discovery-row">
     {discoveringModels ? <span role="status"><Spin size="small" /> {t("aiModelDiscovering")}</span> : discovery.status === "idle" && <span>{t("aiModelAutoDiscoveryHint")}</span>}
     {discovery.status === "success" && <span role="status">{t("aiModelDiscoverySuccess", { count: discovery.models.length })}</span>}
     {discovery.status === "empty" && <span role="alert">{t("aiNoDiscoveredModels")} <Button type="link" size="small" onClick={() => void discoverModels()}>{t("retry")}</Button></span>}
     {discovery.status === "error" && discovery.error && <span role="alert">{t(discovery.error)} <Button type="link" size="small" onClick={() => void discoverModels()}>{t("retry")}</Button></span>}
   </div> : undefined;
   return <Space orientation="vertical" size="middle" className="w-full ai-models-page">
-    {query.error ? <QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} /> : <Card className="ai-models-card" title={t("aiConfiguredProviders")} extra={canWrite && <Button type="primary" onClick={() => setSelected(null)}>{t("aiProviderAdd")}</Button>}>
-      <Table<Provider> className="ai-models-table" rowKey="id" loading={query.isFetching} dataSource={query.data ?? []} pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }} locale={{ emptyText: t("aiNoProviders") }} scroll={{ x: "max-content" }} columns={[
+    {query.error ? <QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} /> : <Card className="ai-models-card" title={t("aiConfiguredProviders")} extra={canCreate && <Button type="primary" onClick={() => setSelected(null)}>{t("aiProviderAdd")}</Button>}>
+      <Table<Provider> className="ai-models-table" size="small" rowKey="id" loading={query.isFetching} dataSource={query.data ?? []} pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }} locale={{ emptyText: t("aiNoProviders") }} scroll={{ x: "max-content" }} columns={[
         { title: t("aiProviderName"), dataIndex: "name", render: (value: string) => <span className="ai-model-value">{value}</span> },
         { title: t("aiProviderKind"), render: (_, row) => <Tag>{t(providerKindLabel[row.providerKind] as never)}</Tag> },
         { title: t("aiModelName"), dataIndex: "modelName", render: (value: string) => <span className="ai-model-value">{value}</span> },
@@ -171,16 +174,16 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
           return <Tag color={row.credentialConfigured || !credentialRequired ? "success" : "warning"}>{t(row.credentialConfigured ? "aiCredentialConfigured" : credentialRequired ? "aiCredentialMissing" : "aiCredentialOptional")}</Tag>;
         } },
         { title: t("status"), render: (_, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
-        ...(canWrite ? [{ title: t("actions"), key: "actions", ...tableActionColumn, render: (_: unknown, row: Provider) => <TableActions wrap>
-          <Button type="link" loading={testing === row.id} onClick={() => void test(row)}>{t("aiProviderTest")}</Button>
-          <Button type="link" onClick={() => setSelected(row)}>{t("edit")}</Button>
-          <Popconfirm title={t("aiProviderDeleteConfirm")} onConfirm={() => void remove(row)}><Button type="link" danger>{t("deleteRecord")}</Button></Popconfirm>
+        ...(canTest || canUpdate || canDelete ? [{ title: t("actions"), key: "actions", ...tableActionColumn, render: (_: unknown, row: Provider) => <TableActions wrap>
+          {canTest && <Button type="link" loading={testing === row.id} onClick={() => void test(row)}>{t("aiProviderTest")}</Button>}
+          {canUpdate && <Button type="link" onClick={() => setSelected(row)}>{t("edit")}</Button>}
+          {canDelete && <Popconfirm title={t("aiProviderDeleteConfirm")} onConfirm={() => void remove(row)}><Button type="link" danger>{t("deleteRecord")}</Button></Popconfirm>}
         </TableActions> }] : []),
       ]} />
     </Card>}
 
-    <PlatformDrawer className="ai-provider-drawer" size={640} open={selected !== undefined} title={t(selected ? "aiProviderEdit" : "aiProviderAdd")} onClose={close} closable={{ disabled: saving }} destroyOnHidden footer={<DrawerFormActions formId="ai-provider-editor" onClose={close} pending={saving} submitDisabled={!kind || discoveringModels} />}>
-      <Form<FormValues> id="ai-provider-editor" className="platform-form ai-provider-form" form={form} layout="vertical" disabled={saving} onValuesChange={(changed) => {
+    <PlatformDrawer className="ai-provider-drawer" size={640} open={selected !== undefined} title={t(selected ? "aiProviderEdit" : "aiProviderAdd")} onClose={close} closable={{ disabled: saving }} destroyOnHidden footer={<DrawerFormActions formId="ai-provider-editor" onClose={close} pending={saving} submitDisabled={!canSave || !kind || discoveringModels} />}>
+      <Form<FormValues> id="ai-provider-editor" className="platform-form ai-provider-form" form={form} layout="vertical" disabled={saving || !canSave} onValuesChange={(changed) => {
         if (changed.providerKind !== undefined) {
           cancelDiscovery();
         }
@@ -218,7 +221,7 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
           if (modelSelectionIsValid(selected?.modelName, value, discovery)) return;
           throw new Error(t("aiModelSelectionRequired"));
         } }]}>
-          <Select
+          {canTest ? <Select
             showSearch
             allowClear
             loading={discoveringModels}
@@ -227,7 +230,7 @@ export function AiModelsPage({ canWrite }: { canWrite: boolean }) {
             options={modelOptions}
             placeholder={t("aiModelNamePlaceholder")}
             notFoundContent={discovery.status === "success" ? t("aiNoDiscoveredModels") : t("aiModelNamePlaceholder")}
-          />
+          /> : <Input disabled={!kind || !enabled} placeholder={t("aiModelNamePlaceholder")} />}
         </Form.Item> : <Form.Item name="modelName" label={t("aiModelName")}><Input disabled /></Form.Item>}
 
         </ConfigProvider>

@@ -1,6 +1,8 @@
 package com.lumira.platform.settings;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.BoundedBody;
+import com.lumira.platform.common.PlatformPageId;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -15,13 +17,17 @@ public class PasskeySettingsController {
     public record Input(long version, PasskeySettings data, String changeReason) {}
 
     private final PasskeySettingsService service;
+    private final AdministrationPort administration;
 
-    public PasskeySettingsController(PasskeySettingsService service) {
+    public PasskeySettingsController(
+            PasskeySettingsService service, AdministrationPort administration) {
         this.service = service;
+        this.administration = administration;
     }
 
     @GetMapping
-    public PasskeySettingsService.View read() {
+    public PasskeySettingsService.View read(Authentication actor) {
+        administration.requirePageGlobal(actor.getName(), PlatformPageId.PASSKEY);
         return service.read();
     }
 

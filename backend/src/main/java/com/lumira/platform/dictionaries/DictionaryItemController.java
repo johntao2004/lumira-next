@@ -24,25 +24,28 @@ public class DictionaryItemController {
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(required = false) String parent,
-            @RequestParam java.util.Map<String, String> parameters) {
+            @RequestParam java.util.Map<String, String> parameters,
+            Authentication auth) {
         return service.list(
                         dictionary,
                         PageRequest.fromQueryParameters(page, pageSize, search, parameters),
-                        parent)
+                        parent,
+                        auth.getName())
                 .map(DictionaryItemResponse::from);
     }
 
     @GetMapping("/{id}/ancestors")
     public java.util.List<DictionaryItemResponse> ancestors(
-            @PathVariable UUID dictionary, @PathVariable UUID id) {
-        return service.ancestors(dictionary, id).stream()
+            @PathVariable UUID dictionary, @PathVariable UUID id, Authentication auth) {
+        return service.ancestors(dictionary, id, auth.getName()).stream()
                 .map(DictionaryItemResponse::from)
                 .toList();
     }
 
     @GetMapping("/{id}")
-    public DictionaryItemResponse find(@PathVariable UUID dictionary, @PathVariable UUID id) {
-        return DictionaryItemResponse.from(service.find(dictionary, id));
+    public DictionaryItemResponse find(
+            @PathVariable UUID dictionary, @PathVariable UUID id, Authentication auth) {
+        return DictionaryItemResponse.from(service.find(dictionary, id, auth.getName()));
     }
 
     @PostMapping

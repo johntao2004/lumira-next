@@ -1,10 +1,10 @@
 """Uninstall data choices against disposable qa-plugin-data-* records only."""
 import importlib.util,json,time,uuid
 from pathlib import Path
-from smoke_support import call,write,sql
+from smoke_support import call,write,sql,wait_for_readiness
 spec=importlib.util.spec_from_file_location('plugin_smoke',Path(__file__).with_name('plugins-smoke.py'))
 smoke=importlib.util.module_from_spec(spec);spec.loader.exec_module(smoke)
-P=smoke.P;admin=smoke.admin;ids=['qa-plugin-data-dep','qa-plugin-data-root','qa-plugin-data-rollback']
+P=smoke.P;admin=smoke.admin;run_id=uuid.uuid4().hex[:8];ids=[f'qa-plugin-data-{run_id}-{suffix}' for suffix in ('dep','root','rollback')]
 def table(id):return 'plugin_'+id.replace('-','_')+'_records'
 def package(id,deps=(),bundles=(),rollback=False):
  def edit(m,files):
@@ -22,8 +22,16 @@ def execute(id,p,payload=None,expected='SUCCEEDED'):
   op=smoke.jsoncall(P+'/operations/'+op['id'])
   if op['status'] in ['SUCCEEDED','FAILED']:break
   time.sleep(.05)
- assert op['status']==expected,op
+ assert op['status']==expected,op;wait_for_readiness()
  return op
+def assert_readiness():
+ wait_for_readiness()
+def runtime_probe(id):
+ status,body=call(admin,'/plugins/'+id+'/status')
+ assert status==200,(id,status,body.decode(errors='replace'))
+ payload=json.loads(body)
+ assert payload.get('code')=='new-runtime-code' and 'PluginRuntime' in payload.get('loader',''),payload
+ return payload
 before=sql("SELECT md5(string_agg(row_to_json(t)::text,'' ORDER BY id)) FROM platform_sensitive_word t WHERE NOT deleted")
 try:
  dep=package(ids[0]);root=package(ids[1],[ids[0]],[(ids[0],dep)]);smoke.imports(root);smoke.operate(ids[1],'install')
@@ -41,16 +49,29 @@ try:
  assert sql("SELECT count(*) FROM platform_audit WHERE action='plugin.dataDeleted' AND target_id='%s'"%op['id'])=='1'
  smoke.operate(ids[1],'install');assert sql('SELECT count(*) FROM '+table(ids[1]))=='0';assert sql('SELECT count(*) FROM plugin_'+ids[1].replace('-','_')+'_schema_history')!='0';smoke.operate(ids[1],'uninstall')
  print('PASS: default preserve, explicit delete, typed confirmation, mode/count revision guard, stopped cleanup, dependency data retained, audit and reinstall without data resurrection')
- smoke.imports(package(ids[2],rollback=True));smoke.operate(ids[2],'install');failed=execute(ids[2],plan(ids[2],'DELETE'),expected='FAILED');assert failed['errorCode']=='pluginDataDeletionFailed'
- assert sql('SELECT count(*) FROM '+table(ids[2]))=='1' and sql('SELECT count(*) FROM '+table(ids[2])+'_blocked')=='1'
+ smoke.imports(package(ids[2],rollback=True));smoke.operate(ids[2],'install')
+ original=next(x for x in smoke.jsoncall(P) if x['id']==ids[2]);assert original['installed'] is True
+ if not original['enabled']:
+  row=next(x for x in smoke.jsoncall('/platform/modules') if x['id']==ids[2])
+  smoke.jsoncall('/platform/modules/'+ids[2]+'/state','PUT',{'enabled':True,'version':row['stateVersion'],'reason':'Run the data rollback lifecycle probe'})
+ original=next(x for x in smoke.jsoncall(P) if x['id']==ids[2]);assert original['enabled'] is True,original;original_enabled=original['enabled']
+ probe_before=runtime_probe(ids[2])
+ failed=execute(ids[2],plan(ids[2],'DELETE'),expected='FAILED');assert failed['errorCode']=='pluginDataDeletionFailed'
+ assert sql('SELECT count(*) FROM '+table(ids[2]))=='1' and sql('SELECT count(*) FROM '+table(ids[2])+'_blocked')=='1' and sql('SELECT count(*) FROM '+table(ids[2])+'_ref')=='1'
+ assert_readiness()
+ restored=next(x for x in smoke.jsoncall(P) if x['id']==ids[2]);assert restored['installed'] is True and restored['enabled'] is original_enabled,restored
+ assert runtime_probe(ids[2])==probe_before
+ assert smoke.token(admin)
+ preserved=execute(ids[2],plan(ids[2],'PRESERVE'));assert preserved['status']=='SUCCEEDED'
+ assert not next(x for x in smoke.jsoncall(P) if x['id']==ids[2])['installed']
+ assert sql('SELECT count(*) FROM '+table(ids[2]))=='1' and sql('SELECT count(*) FROM '+table(ids[2])+'_blocked')=='1' and sql('SELECT count(*) FROM '+table(ids[2])+'_ref')=='1'
+ print('PASS: failed DELETE restores installation and enabled state, keeps API/readiness available, then PRESERVE uninstall succeeds')
  print('PASS: failing cleanup rolls back all data deletion')
  smoke.imports(smoke.modify(smoke.fixture('qa-plugin-data-invalid'),lambda m,f:m.update(dataSets=[{'table':'platform_user','label':'Users'}])),400)
  assert sql("SELECT md5(string_agg(row_to_json(t)::text,'' ORDER BY id)) FROM platform_sensitive_word t WHERE NOT deleted")==before
  print('PASS: invalid core data scope rejected; original sensitive word baseline unchanged')
 finally:
- for id in ids:
+ wait_for_readiness()
+ for id in reversed(ids):
   row=next((x for x in smoke.jsoncall(P) if x['id']==id),None)
   if row and row['installed']:smoke.operate(id,'uninstall')
- sql("DELETE FROM platform_plugin_operation WHERE module_id LIKE 'qa-plugin-data-%';DELETE FROM platform_plugin_installation WHERE module_id LIKE 'qa-plugin-data-%';DELETE FROM platform_plugin_artifact WHERE module_id LIKE 'qa-plugin-data-%';DELETE FROM platform_module_state WHERE module_id LIKE 'qa-plugin-data-%';DELETE FROM platform_navigation_menu WHERE module_id LIKE 'qa-plugin-data-%'")
- for id in ids:
-  sql('DROP TABLE IF EXISTS '+table(id)+'_ref,'+table(id)+'_blocked,'+table(id)+',plugin_'+id.replace('-','_')+'_schema_history')

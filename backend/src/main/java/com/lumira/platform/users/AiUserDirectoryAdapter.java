@@ -3,6 +3,7 @@ package com.lumira.platform.users;
 import com.lumira.platform.common.AiUserDirectoryPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -20,19 +21,24 @@ public class AiUserDirectoryAdapter implements AiUserDirectoryPort {
 
     @Override
     public PageResult<UserView> list(PageRequest request, String actor) {
-        PageResult<UserSummary> result = users.list(request, actor);
+        PageResult<UserSummary> result = users.listForAi(request, actor);
         return result.map(AiUserDirectoryAdapter::view);
     }
 
     @Override
     public UserView find(UUID id, String actor) {
-        return view(users.find(id, actor));
+        return view(users.findForAi(id, actor));
+    }
+
+    @Override
+    public UserView findForOperation(UUID id, String actor, PlatformOperation operation) {
+        return view(users.findForAiAction(id, actor, operation));
     }
 
     @Override
     public UserView create(CreateUser input, String actor) {
         return view(
-                users.create(
+                users.createForAi(
                         new UserService.CreateUser(
                                 input.username(), input.displayName(), input.password()),
                         actor));
@@ -41,7 +47,7 @@ public class AiUserDirectoryAdapter implements AiUserDirectoryPort {
     @Override
     public UserView update(UUID id, UpdateUser input, String actor) {
         return view(
-                users.update(
+                users.updateForAi(
                         id,
                         new UserService.UpdateUser(
                                 input.displayName(), input.enabled(), input.version()),
@@ -50,7 +56,7 @@ public class AiUserDirectoryAdapter implements AiUserDirectoryPort {
 
     @Override
     public void delete(UUID id, long version, String actor) {
-        users.delete(id, version, actor);
+        users.deleteForAi(id, version, actor);
     }
 
     private static UserView view(UserSummary user) {

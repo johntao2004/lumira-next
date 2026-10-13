@@ -3,7 +3,7 @@ Run after pnpm plugins:build and starting 8010. Requires JDK 25 and the local te
 """
 from pathlib import Path
 import io,json,hashlib,zipfile,subprocess,os,time,uuid,threading
-from smoke_support import client,call,login,write,token,sql,config
+from smoke_support import client,call,login,write,token,sql,config,wait_for_readiness
 ROOT=Path(__file__).resolve().parents[1];WORK=ROOT/'.runtime/plugin-work/fixtures';WORK.mkdir(parents=True,exist_ok=True)
 JAVA=Path(os.environ.get('JAVA_HOME','/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home'))/'bin'
 admin=client();assert login(admin,'admin',config['LUMIRA_BOOTSTRAP_PASSWORD'])==200
@@ -11,6 +11,9 @@ P='/platform/modules/plugins';fixture_ids=[]
 def jsoncall(path,method='GET',payload=None):
  status,body=call(admin,path) if method=='GET' else write(admin,path,method,payload or {})
  assert status==200,(path,status,body.decode());return json.loads(body)
+def error_code(body):
+ payload=json.loads(body)
+ return payload.get('code') or payload.get('detail')
 def imports(data,expected=200):
  status,body=call(admin,P+'/import','POST',data,{**token(admin),'Content-Type':'application/octet-stream'})
  assert status==expected,(status,body.decode());return json.loads(body)
@@ -21,7 +24,7 @@ def operate(id,kind,expected='SUCCEEDED'):
   op=jsoncall(P+'/operations/'+op['id'])
   if op['status'] in ['SUCCEEDED','FAILED']:break
   time.sleep(.1)
- assert op['status']==expected,op;return op
+ assert op['status']==expected,op;wait_for_readiness();return op
 
 def zipbytes(files):
  out=io.BytesIO()
@@ -99,10 +102,19 @@ def main():
   operate('qa-plugin-lib','install');operate('qa-plugin-a','install');operate('qa-plugin-a','uninstall');assert next(x for x in jsoncall(P) if x['id']=='qa-plugin-lib')['installed'];operate('qa-plugin-lib','uninstall')
   print('PASS: complete offline dependencies, private JAR, stopped reverse consumers, shared/explicit retention, automatic cleanup')
   # In-flight requests drain; serialized operations and state revisions reject races.
-  slow=fixture('qa-plugin-slow',delay=1500);imports(slow);plan=jsoncall(P+'/qa-plugin-slow/install-plan','POST');op=jsoncall(P+'/qa-plugin-slow/install','POST',{'revision':plan['revision']})
-  # A simultaneous operation either observes busy or a changed revision after serialization.
-  status,_=write(admin,P+'/qa-plugin-slow/install','POST',{'revision':plan['revision']});assert status==409
-  while jsoncall(P+'/operations/'+op['id'])['status'] in ['QUEUED','RUNNING']:time.sleep(.1)
+  slow=fixture('qa-plugin-slow',delay=1500);imports(slow);plan=jsoncall(P+'/qa-plugin-slow/install-plan','POST');csrf={**token(admin),'Content-Type':'application/json'};op=jsoncall(P+'/qa-plugin-slow/install','POST',{'revision':plan['revision']})
+  # A concurrent write may reach the busy guard or the runtime readiness filter.
+  status,body=call(admin,P+'/qa-plugin-slow/install','POST',json.dumps({'revision':plan['revision']}).encode(),csrf)
+  if status==409:
+   assert error_code(body) in ['pluginBusy','staleRecord'],(status,body.decode(errors='replace'))
+  else:
+   assert status==503 and error_code(body)=='pluginRuntimeNotReady',(status,body.decode(errors='replace'))
+  while op['status'] in ['QUEUED','RUNNING']:
+   time.sleep(.1);op=jsoncall(P+'/operations/'+op['id'])
+  assert op['status']=='SUCCEEDED',op;wait_for_readiness()
+  # The completed graph revision must reject the stale pre-install plan.
+  status,body=call(admin,P+'/qa-plugin-slow/install','POST',json.dumps({'revision':plan['revision']}).encode(),csrf)
+  assert status==409 and error_code(body)=='staleRecord',(status,body.decode(errors='replace'))
   inflight=[];thread=threading.Thread(target=lambda:inflight.append(call(client(),'/plugins/qa-plugin-slow/status?delay=1800')));thread.start();time.sleep(.2);t=time.monotonic();operate('qa-plugin-slow','uninstall');thread.join();assert inflight[0][0]==200 and time.monotonic()-t>1
   assert call(client(),'/plugins/qa-plugin-slow/status')[0] in [401,403,404]
   assert (WORK/'closed.log').read_text()=='closed';ticks=(WORK/'tasks.log').read_bytes();time.sleep(.2);assert (WORK/'tasks.log').read_bytes()==ticks,'Task remained scheduled after unloading'
@@ -139,12 +151,9 @@ def main():
   assert subprocess.check_output(['node','scripts/status.mjs'],cwd=ROOT,text=True).splitlines()[:2]==before_pid,'Platform restarted during hotplug'
   print('PASS: original word baseline unchanged; backend/frontend process IDs unchanged')
  finally:
-  for row in jsoncall(P):
-   if row['id'].startswith('qa-plugin-') and row['installed']:
-    try:operate(row['id'],'uninstall')
-    except AssertionError:pass
-  # Only disposable fixtures are removed. Restart later clears the in-memory imported catalog.
-  sql("DELETE FROM platform_plugin_operation WHERE module_id LIKE 'qa-plugin-%'; DELETE FROM platform_plugin_installation WHERE module_id LIKE 'qa-plugin-%'; DELETE FROM platform_plugin_artifact WHERE module_id LIKE 'qa-plugin-%'; DELETE FROM platform_module_state WHERE module_id LIKE 'qa-plugin-%'; DELETE FROM platform_navigation_menu WHERE module_id LIKE 'qa-plugin-%'")
-  for id in set(fixture_ids):sql('DROP TABLE IF EXISTS plugin_'+id.replace('-','_')+'_schema_history')
+  wait_for_readiness()
+  for id in reversed(list(dict.fromkeys(fixture_ids))):
+   row=next((x for x in jsoncall(P) if x['id']==id),None)
+   if row and row['installed']:operate(id,'uninstall')
 
 if __name__=='__main__':main()

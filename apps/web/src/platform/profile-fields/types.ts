@@ -12,6 +12,7 @@ export type ProfileFieldOption = { value: string; label: string };
 export type ProfileFieldDefinition = {
   key: string;
   label: string;
+  custom?: boolean;
   description?: string | null;
   type: ProfileFieldType;
   required: boolean;

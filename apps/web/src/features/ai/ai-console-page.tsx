@@ -18,7 +18,7 @@ import { AiChatComposer, type AiChatComposerRef } from "./ai-chat-composer";
 import { AiChatMarkdown } from "./ai-chat-markdown";
 import { FileDownloadAction } from "@/features/files/file-download-action";
 
-type AiConsoleProps = { canReadUsers: boolean; canWriteUsers: boolean };
+type AiConsoleProps = { canReadUsers: boolean; canCreateUsers: boolean; canUpdateUsers: boolean; canDeleteUsers: boolean };
 type ActiveChatRequest = {
   sessionKey: string;
   content: string;
@@ -30,6 +30,7 @@ type ActiveChatRequest = {
   signal: AbortSignal;
 };
 const path = "/platform/ai";
+type ConsoleProvider = Pick<Provider, "id" | "name" | "providerKind" | "modelName" | "capabilityCodes" | "enabled">;
 
 export function AiConsolePage(props: AiConsoleProps) {
   const { t } = usePreferences();
@@ -38,7 +39,7 @@ export function AiConsolePage(props: AiConsoleProps) {
   return <AiChatWorkspace key={account.data.userId} owner={account.data.userId} {...props} />;
 }
 
-function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps & { owner: string }) {
+function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, canDeleteUsers }: AiConsoleProps & { owner: string }) {
   const { t, dark } = usePreferences();
   const sessionScope = useSessionScope();
   const { message, modal } = App.useApp();
@@ -98,15 +99,17 @@ function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps 
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [compactSessions, sessionsOpen]);
-  const providers = useQuery({ queryKey: ["ai-providers"], queryFn: ({ signal }) => api<Provider[]>(`${path}/providers`, { signal }) });
+  const providers = useQuery({ queryKey: ["ai-providers", "console"], queryFn: ({ signal }) => api<ConsoleProvider[]>(`${path}/console/providers`, { signal }) });
   const enabledProviders = (providers.data ?? []).filter((provider) => provider.enabled && (
     provider.providerKind === "TYPESAFE_JEV" || provider.capabilityCodes.includes("CHAT")
   ));
+  // AiChatComposer reads only these public fields; never pass the admin ProviderView DTO.
+  const composerProviders = enabledProviders as Provider[];
   const chatProviders = useMemo(() => (providers.data ?? []).filter((provider) => provider.enabled && provider.providerKind !== "TYPESAFE_JEV" && provider.capabilityCodes.includes("CHAT")), [providers.data]);
   const selected = chatProviders.find((provider) => provider.id === providerId);
   const modelCatalog = useQuery({
     queryKey: ["ai-provider-models", providerId],
-    queryFn: ({ signal }) => api<ConnectionResult>(`${path}/providers/${providerId}/models`, { signal }),
+    queryFn: ({ signal }) => api<ConnectionResult>(`${path}/console/providers/${providerId}/models`, { signal }),
     enabled: !!providerId,
     staleTime: 60_000,
     retry: false,
@@ -117,6 +120,11 @@ function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps 
   const supportsTools = availableModels.find((model) => model.id === modelName)?.capabilityCodes?.includes("TOOL_CALLING")
     ?? (selected?.modelName === modelName && selected?.capabilityCodes.includes("TOOL_CALLING"));
   const supportsVision = availableModels.find(model => model.id === modelName)?.inputModalities.includes("image") ?? false;
+  const canChangeUsers = canCreateUsers || canUpdateUsers || canDeleteUsers;
+  const canUseChat = canReadUsers || canChangeUsers;
+  const canConfirmProposal = proposal?.kind === "CREATE_USER" ? canCreateUsers
+    : proposal?.kind === "UPDATE_USER" ? canUpdateUsers
+      : proposal?.kind === "DELETE_USER" ? canDeleteUsers : false;
 
   useEffect(() => () => { activeChatRequest.current?.controller.abort(); }, []);
 
@@ -342,7 +350,7 @@ function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps 
       : entry) }));
   };
   const confirm = async () => {
-    if (!proposal || !activeSession || confirming.current || (!proposal.target && proposal.kind !== "CREATE_USER")) return;
+    if (!proposal || !canConfirmProposal || !activeSession || confirming.current || (!proposal.target && proposal.kind !== "CREATE_USER")) return;
     if (proposal.kind === "CREATE_USER" && password.length === 0) { message.error(t("aiCreatePassword")); return; }
     const signal = sessionScope();
     confirming.current = true;
@@ -421,7 +429,7 @@ function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps 
       icon: <EditOutlined className="ai-chat-prompt-change-icon" />,
       label: t("aiPromptChangeTitle"),
       description: t("aiPromptChangeDescription"),
-      disabled: !supportsTools || !canWriteUsers,
+      disabled: !supportsTools || !canChangeUsers,
     },
     {
       key: "capabilities",
@@ -639,7 +647,7 @@ function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps 
             onAttach={file => updateSession(activeSessionKey, session => ({ ...session, draftAttachments: [...(session.draftAttachments ?? []), file] }))}
             onRemove={id => updateSession(activeSessionKey, session => ({ ...session, draftAttachments: session.draftAttachments?.filter(file => file.id !== id) }))}
             onUploadingChange={setAttachmentBusy}
-            providers={enabledProviders}
+            providers={composerProviders}
             models={availableModels}
             providerId={providerId}
             modelName={modelName}
@@ -649,7 +657,7 @@ function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps 
             modelDisabled={!selected || modelCatalog.isPending || !!modelCatalog.error || availableModels.length === 0 || busy || !!proposal}
             modelLoading={!!providerId && modelCatalog.isPending}
             busy={busy}
-            disabled={!selected || !modelName || !canReadUsers || providers.isPending || !!providers.error || modelCatalog.isPending || !!modelCatalog.error || !!proposal}
+            disabled={!selected || !modelName || !canUseChat || providers.isPending || !!providers.error || modelCatalog.isPending || !!modelCatalog.error || !!proposal}
             uploadDisabled={busy || !!proposal || !canReadUsers}
             supportsVision={supportsVision}
           />
@@ -688,7 +696,7 @@ function AiChatWorkspace({ owner, canReadUsers, canWriteUsers }: AiConsoleProps 
       {!proposal.target && proposal.kind !== "CREATE_USER" && <Typography.Text type="danger">{t("staleRecord")}</Typography.Text>}
       {proposal.kind === "CREATE_USER" && <div><Typography.Text>{t("aiCreatePassword")}</Typography.Text><Input.Password value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className="mt-2" /><Typography.Paragraph type="secondary" className="mt-2">{t("aiCreatePasswordHint")}</Typography.Paragraph></div>}
       <Typography.Text type="secondary">{t("aiActionManualConfirm")}</Typography.Text>
-      <Space><Button type="primary" loading={confirmBusy} disabled={!proposal.target && proposal.kind !== "CREATE_USER"} onClick={() => void confirm()}>{t("aiProposalConfirm")}</Button><Button disabled={confirmBusy} onClick={() => void cancelProposal()}>{t("aiProposalCancel")}</Button></Space>
+      <Space><Button type="primary" loading={confirmBusy} disabled={!canConfirmProposal || (!proposal.target && proposal.kind !== "CREATE_USER")} onClick={() => void confirm()}>{t("aiProposalConfirm")}</Button><Button disabled={confirmBusy} onClick={() => void cancelProposal()}>{t("aiProposalCancel")}</Button></Space>
     </Space>} />}
 
     <Modal

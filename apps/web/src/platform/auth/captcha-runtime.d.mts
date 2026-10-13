@@ -23,6 +23,7 @@ export interface CaptchaProofRunOptions {
   shouldPreflight(action: CaptchaAction): boolean;
   supported: boolean;
   unavailableError(): Error;
+  refreshSupported?: () => Promise<boolean>;
   isCaptchaRequired(cause: unknown): boolean;
 }
 

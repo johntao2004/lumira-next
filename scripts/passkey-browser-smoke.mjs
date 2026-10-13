@@ -47,7 +47,8 @@ try {
   await page.reload();
   await expect(page.locator('#data_rpName')).toHaveValue('Passkey browser QA');
   await page.locator('.pro-account-trigger').click(); await page.getByRole('menuitem', { name: '个人资料', exact: true }).click();
-  const profile = page.getByRole('dialog', { name: '个人资料', exact: true });
+  await page.waitForURL('**/dashboard/account-profile');
+  const profile = page.locator('.account-settings-panel');
   await expect(profile.getByRole('button', { name: '通行密钥', exact: true })).toBeVisible();
   await profile.getByRole('button', { name: '通行密钥', exact: true }).click();
   const passkeys = page.getByRole('dialog', { name: '通行密钥', exact: true });

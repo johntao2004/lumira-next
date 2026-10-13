@@ -7,8 +7,13 @@ const FeedbackPage = lazy(() => import("./feedback-page").then(({ FeedbackPage }
 export const feedbackFrontendModule = {
   ...feedbackManifest,
   pages: {
-    feedback: ({ hasGlobal, authorities, readOnlyPreview }) => (
-      <FeedbackPage canCreate={!readOnlyPreview && authorities.includes("platform:feedback:create")} canManage={!readOnlyPreview && hasGlobal("platform:feedback:manage")} />
+    feedback: ({ hasOperation, readOnlyPreview }) => (
+      <FeedbackPage
+        canRead={hasOperation("read")}
+        canCreate={!readOnlyPreview && hasOperation("create")}
+        canUpdateStatus={!readOnlyPreview && hasOperation("update")}
+        canReply={!readOnlyPreview && hasOperation("reply")}
+      />
     ),
   },
 } satisfies FrontendModule;

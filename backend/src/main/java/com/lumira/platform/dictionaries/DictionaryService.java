@@ -41,14 +41,25 @@ public class DictionaryService {
         return new PageResult<>(repository.list(p), repository.count(p), p.page(), p.pageSize());
     }
 
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResult<DictionaryRepository.Dictionary> list(PageRequest p, String actor) {
+        guard.requirePageGlobal(actor, PlatformPageId.DICTIONARIES);
+        return list(p);
+    }
+
     @Transactional(readOnly = true)
     public DictionaryRepository.Dictionary find(UUID id) {
         return repository.find(id);
     }
 
-    private void begin(String actor) {
-        guard.require(actor, "platform:dictionaries:write");
-        guard.requireGlobal(actor, "platform:dictionaries:write");
+    @Transactional(readOnly = true)
+    public DictionaryRepository.Dictionary find(UUID id, String actor) {
+        guard.requirePageGlobal(actor, PlatformPageId.DICTIONARIES);
+        return find(id);
+    }
+
+    private void begin(String actor, PlatformOperation operation) {
+        guard.requireOperationGlobal(actor, operation);
     }
 
     static void validate(Input input) {
@@ -64,7 +75,19 @@ public class DictionaryService {
 
     @Transactional
     public DictionaryRepository.Dictionary create(Input input, String actor) {
-        begin(actor);
+        begin(actor, PlatformOperation.DICTIONARY_CREATE);
+        var created = createRecord(input);
+        audit.append(actor, "dictionary.create", created.id());
+        return created;
+    }
+
+    @Transactional
+    public DictionaryRepository.Dictionary createFromImport(Input input, String actor) {
+        begin(actor, PlatformOperation.DICTIONARY_IMPORT);
+        return createRecord(input);
+    }
+
+    private DictionaryRepository.Dictionary createRecord(Input input) {
         validate(input);
         if (input.code() == null || !input.code().matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}"))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidDictionary");
@@ -78,13 +101,12 @@ public class DictionaryService {
                 input.enabled(),
                 input.structure(),
                 input.remark() == null ? "" : input.remark());
-        audit.append(actor, "dictionary.create", id);
         return repository.find(id);
     }
 
     @Transactional
     public DictionaryRepository.Dictionary update(UUID id, Input input, String actor) {
-        begin(actor);
+        begin(actor, PlatformOperation.DICTIONARY_UPDATE);
         var old = repository.find(id);
         if (input.version() == null || input.version() != old.version())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "staleRecord");
@@ -106,7 +128,7 @@ public class DictionaryService {
 
     @Transactional
     public void delete(UUID id, long version, String actor) {
-        begin(actor);
+        begin(actor, PlatformOperation.DICTIONARY_DELETE);
         var old = repository.find(id);
         if (version != old.version())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "staleRecord");

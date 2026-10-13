@@ -12,7 +12,7 @@
 - 资料字段默认包含显示名称、真实姓名、出生日期、地区及头像图像；旧配置读取时补充缺失的头像，沿用已有基本资料分组名称及配置版本，不在读取时写库，已配置头像的显示/必填等规则保留。达到 100 个字段的旧配置保留原内容。资料字段编辑采用顺序列表与当前字段设置，拖动、键盘及上移/下移均同步更新 `sortNo`，保存后前后台按该顺序读取；自定义字段标识自动生成后可编辑，内置标识与类型受保护。
 - PostgreSQL lumira_next：独立账号、权限、数据库会话；不连接旧 MySQL。
 - 模块以各自配置贡献的 PlatformModule Bean 注册，内核只负责组装；启动时拒绝重复标识、缺失依赖、循环依赖和未声明模块归属的 Controller。前后端边界检查见 [模块化架构](modular-architecture.md)。
-- 导航以基线中的版本化菜单表为服务端事实源；运行时按权限、全局范围和已启用模块生成树，树形、侧栏和面包屑共享动态标签与层级。前端模块清单继续负责静态页面组件和权限元数据，权限不足但保留可见子项的 PAGE 祖先只参与面包屑，不作为可路由页面。PAGE 标识和路径有唯一约束，受限 componentKey 只连接前端代码注册表；未知组件使用受控占位页，绝不执行菜单数据中的 HTML 或代码。反馈创建表单复用账号级草稿协议，按 schema 版本安全保存和消费修订。
+- 导航以基线中的版本化菜单表为服务端事实源；运行时按权限、全局范围和已启用模块生成树，树形、侧栏和面包屑共享动态标签与层级。前端模块清单继续负责静态页面组件和权限元数据，权限不足但保留可见子项的 PAGE 祖先只参与面包屑，不作为可路由页面。PAGE 标识和路径有唯一约束，受限 componentKey 只连接前端代码注册表；未知组件使用受控占位页，绝不执行菜单数据中的 HTML 或代码。
 - 敏感词策略作为可停用公共模块接入：词条采用软删除和乐观版本，匹配使用不可变 Aho-Corasick 快照。所有角色共用词库，角色仅配置管控开关；公共提交边界统一检查业务 JSON 文本和上传文件名，命中元数据单独保存，阻断先于业务写入。读取、写入、导入继续使用独立全局权限，详见 [全局敏感词管控](content-policy.md)。
 - 运行时本地化作为可停用公共模块接入：文案键采用软删除和乐观版本，翻译按受控语言集合存储为 JSONB；管理 API 支持 CRUD、批量导入、启停和发布版本，公开 bundle 通过短 TTL 缓存读取，前端静态词典保持故障回退。读取、写入、导入分别使用独立全局权限，变更和发布写入审计。
 - 短信与账号手机验证作为平台能力接入：SMS webhook 的非敏感配置使用版本化 SettingStore，供应商凭据使用加密 SecretStore；发送请求先写入加密 `platform_sms_delivery` 队列，再由带租约令牌和虚拟线程的 worker 发送，网络结果按 ACCEPTED、AUTHENTICATION_FAILED、CONNECTION_FAILED、DELIVERY_UNCERTAIN 分类。`platform_account_phone` 保存当前账号可见的手机号验证状态和验证码摘要，绑定要求当前密码、E.164 规范化、冷却、日上限、失败次数和乐观版本；短信未配置时返回 503，不创建验证码记录。
@@ -20,7 +20,7 @@
 - 安全策略配置使用强类型 `SecuritySettings` 和版本化 SettingStore：密码规则按 Unicode 码点及 256 UTF-8 字节上限校验，登录/找回及邮箱/手机验证码限流与挑战存储共享账号/来源/TTL/配额策略；密码新写入使用版本化 Argon2id，旧 BCrypt 仅兼容读取并在成功认证后升级；热路径采用 2 秒有界缓存，保存使用版本冲突校验并写审计；安全策略不提供配置历史、恢复与手动重新载入。会话 Cookie 生命周期、CAPTCHA/MFA 供应商不伪造为不可生效的配置。
 - 审计流由 `AuditRetention` 按配置保留期执行有界批量清理，单批使用 `FOR UPDATE SKIP LOCKED`，不会长时间锁住整张审计表；登录限流与超长密码拒绝在账号已识别时写入账号安全事件，未知账号仍不落库。
 - 前端隐藏菜单只是体验优化，后端对每个接口独立鉴权，未声明的接口默认拒绝。
-- Outbox 事件由模块显式注册消费器，worker 使用 PostgreSQL 租约和虚拟线程并发执行，成功确认受租约令牌保护；保留清理只删除已投递记录，死信保持可审计。运维人员以全局 `platform:events:write` 权限和必填原因人工重放死信，审批历史与状态重置同事务写入。
+- Outbox 事件由模块显式注册消费器，worker 使用 PostgreSQL 租约和虚拟线程并发执行，成功确认受租约令牌保护；保留清理只删除已投递记录，死信保持可审计。运维人员以全局 `platform:events:replay` 权限和必填原因人工重放死信，审批历史与状态重置同事务写入。
 - 会话使用 Spring Session JDBC，密码使用 DelegatingPasswordEncoder/Argon2id，登录与退出启用 CSRF，cookie HttpOnly/SameSite=Lax；权限每次请求从数据库重新读取，已撤销的授权不依赖旧会话快照。生产必须设置 LUMIRA_COOKIE_SECURE=true 并提供 HTTPS。
 - 当前尚未启用公开注册；公开注册、联系方式验证及默认普通角色的拟议契约见 [公开注册设计](public-registration.md)。统一角色与认证策略见 [角色认证设计](role-authentication.md)，P04/P06–P10 的依赖、工作包和验收分工见 [认证实施计划](role-authentication-plan.md)；均仍需实施与独立验收。不填充虚构赛事，不将旧系统 iframe 嵌入新应用。
 
@@ -31,7 +31,7 @@ POST /api/auth/login：URL-encoded username/password + CSRF；成功旋转会话
 GET /api/auth/me：当前账号与权限。
 POST /api/auth/logout：带 CSRF，销毁会话。
 GET /api/platform/modules：platform:modules:read 权限，返回注册模块。
-GET /api/platform/event-outbox：platform:audit:read 全局权限，返回脱敏事件元数据；POST `/api/platform/event-outbox/{id}/replay` 需要全局 `platform:events:write`、CSRF 和必填原因，只能重放死信并保存审批历史。
+GET /api/platform/event-outbox：platform:audit:read 全局权限，返回脱敏事件元数据；POST `/api/platform/event-outbox/{id}/replay` 需要全局 `platform:events:replay`、CSRF 和必填原因，只能重放死信并保存审批历史。
 GET /api/platform/users：platform:users:read 权限，返回 PageResult（items/total/page/pageSize）；支持 page、pageSize（1–100）、search，服务端分页和名称/账号搜索。
 GET /api/account/phone：返回当前账号手机号验证状态；POST `/api/account/phone/request` 请求验证码，POST `/api/account/phone/confirm` 消费一次性验证码，均要求登录、CSRF 和当前密码。
 GET/PUT `/api/platform/settings/sms`：读取或版本化保存短信 webhook 配置；凭据只接受 KEEP、REPLACE、CLEAR 操作，并受全局设置权限、审计和加密密钥约束。`/history` 与 `/rollback` 沿用其他设置的版本边界。

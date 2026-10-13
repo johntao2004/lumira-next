@@ -22,4 +22,12 @@ public class PasswordChangeLimiter {
     public boolean allow(String actor) {
         return buckets.consume(FixedWindowBuckets.key("password-chg", actor), ATTEMPTS_PER_MINUTE);
     }
+
+    /** Bound password attempts made before a fully authenticated session exists. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean allowPendingSession(String sessionDigest) {
+        if (sessionDigest == null || !sessionDigest.matches("[a-f0-9]{64}")) return false;
+        return buckets.consume(
+                FixedWindowBuckets.key("pwd-pending", sessionDigest), ATTEMPTS_PER_MINUTE);
+    }
 }

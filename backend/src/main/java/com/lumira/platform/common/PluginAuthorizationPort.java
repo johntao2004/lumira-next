@@ -6,6 +6,11 @@ import java.util.Set;
 public interface PluginAuthorizationPort {
     boolean authorize(String method, String path, Set<String> authorities, boolean authenticated);
 
+    /** Exact, installed-plugin POST callback explicitly registered for provider signatures. */
+    default boolean signedCallback(String method, String path) {
+        return false;
+    }
+
     /** True only for an enabled plugin API rule explicitly marked side-effect-free for preview. */
     default boolean previewReadOnly(
             String method,

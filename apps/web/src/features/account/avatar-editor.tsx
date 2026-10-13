@@ -9,6 +9,7 @@ import {DeleteAction} from "@/platform/components/delete-action";
 import {QueryFailure} from "@/platform/components/query-failure";
 import {usePreferences} from "@/platform/providers";
 import type {MessageKey} from "@/platform/i18n/messages";
+import {localizeProfileFieldLabel} from "@/platform/profile-fields/localization";
 import {FeedbackBubble} from "@/platform/components/feedback-bubble";
 import {useSubmitAction} from "@/platform/forms/use-submit-action";
 
@@ -19,9 +20,9 @@ function avatarError(error:unknown):MessageKey{
  return avatarErrorKeys[code]??"unavailable";
 }
 
-export function AvatarEditor(){
+export function AvatarEditor({size=64}:{size?:number}){
  const {t}=usePreferences(),{message}=App.useApp(),client=useQueryClient(),query=useAccountAvatar();
- const schema=useQuery({queryKey:["account-profile-fields"],queryFn:({signal})=>api<{data:{fields:{key:string;label:string;description:string;visible:boolean;required:boolean}[]}}>("/account/profile-fields",{signal}),staleTime:0,refetchOnWindowFocus:true});
+ const schema=useQuery({queryKey:["account-profile-fields"],queryFn:({signal})=>api<{data:{fields:{key:string;label:string;custom?:boolean;description:string;visible:boolean;required:boolean}[]}}>("/account/profile-fields",{signal}),staleTime:0,refetchOnWindowFocus:true});
  const rule=schema.data?.data.fields.find(field=>field.key==="avatarUrl");
  const input=useRef<HTMLInputElement>(null);
  const [activeAction,setActiveAction]=useState<"upload"|"remove"|null>(null);
@@ -57,9 +58,12 @@ export function AvatarEditor(){
   setActiveAction(null);
  }
  if(rule?.visible===false)return null;
- return <section aria-label={t("avatar")} className="mb-4">
-  {rule&&<p>{rule.label}{rule.required?" *":""}{rule.description?` — ${rule.description}`:""}</p>}
-  <Space wrap align="center"><AccountAvatar size={64}/>
+ const profileLayout=size>=144;
+ const label=rule?localizeProfileFieldLabel(rule,t):t("avatar");
+ return <section aria-label={t("avatar")} className={profileLayout?"account-profile-avatar-editor":"mb-4"}>
+  {rule&&<p>{label}{rule.required?" *":""}{rule.description?` — ${rule.description}`:""}</p>}
+  <div className={profileLayout?"account-profile-avatar-preview":undefined}><AccountAvatar size={size}/></div>
+  <Space wrap align="center">
    <input ref={input} type="file" accept="image/png,image/jpeg" hidden style={{display:"none"}} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void change("upload",file);}}/>
    <AsyncButton label={t("changeAvatar")} pending={activeAction==="upload"} disabled={action.pending||!query.data||!!query.error||!schema.data||!!schema.error} onClick={()=>input.current?.click()}/>
    {query.data?.fileId&&<DeleteAction name={t("avatar")} actionLabel={t("removeAvatar")} disabled={action.pending||!!query.error||!schema.data||!!schema.error||rule?.required} onDelete={()=>change("remove")}/>}

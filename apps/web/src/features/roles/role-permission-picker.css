@@ -1,0 +1,57 @@
+.role-permission-picker {
+  min-width: 0;
+}
+
+.role-permission-picker__hint {
+  display: block;
+  margin-block: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.role-permission-picker__bulk-actions {
+  margin-bottom: 4px;
+}
+
+.role-permission-picker__bulk-hint {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.role-permission-tree {
+  max-height: min(480px, 55vh);
+  overflow-y: auto;
+}
+
+.role-permission-picker__domain,
+.role-permission-picker__root,
+.role-permission-picker__operation {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.role-permission-picker__page-title {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.role-permission-picker__tooltip {
+  max-width: 300px;
+  overflow-wrap: anywhere;
+}
+
+.role-permission-picker__empty {
+  display: block;
+  padding-block: 8px;
+}

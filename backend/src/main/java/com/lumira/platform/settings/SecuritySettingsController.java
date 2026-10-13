@@ -1,6 +1,8 @@
 package com.lumira.platform.settings;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.BoundedBody;
+import com.lumira.platform.common.PlatformPageId;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -15,13 +17,17 @@ public class SecuritySettingsController {
     public record Input(long version, SecuritySettings data, String changeReason) {}
 
     private final SecuritySettingsService service;
+    private final AdministrationPort administration;
 
-    public SecuritySettingsController(SecuritySettingsService service) {
+    public SecuritySettingsController(
+            SecuritySettingsService service, AdministrationPort administration) {
         this.service = service;
+        this.administration = administration;
     }
 
     @GetMapping
-    public SecuritySettingsService.View read() {
+    public SecuritySettingsService.View read(Authentication actor) {
+        administration.requirePageGlobal(actor.getName(), PlatformPageId.SECURITY);
         return service.read();
     }
 

@@ -80,7 +80,7 @@ class ApiDocsNavigationMigrationTest {
                                 + "WHERE child.menu_code = 'api-docs'");
         assertNotNull(apiDocs.get("id"));
         assertEquals("/dashboard/api-docs", apiDocs.get("path"));
-        assertEquals("platform:audit:read", apiDocs.get("permission_key"));
+        assertEquals("platform:api-docs:access", apiDocs.get("permission_key"));
         assertEquals(true, apiDocs.get("global_only"));
         assertEquals("monitoring", apiDocs.get("module_id"));
         assertEquals(true, apiDocs.get("enabled"));

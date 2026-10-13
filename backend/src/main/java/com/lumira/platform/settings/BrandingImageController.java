@@ -3,6 +3,7 @@ package com.lumira.platform.settings;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.common.FileContentPort;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.RateLimitExceededException;
 import com.lumira.platform.common.UploadRateLimitPort;
 import com.lumira.platform.settings.api.BrandingAssetResponse;
@@ -52,7 +53,7 @@ public class BrandingImageController {
             Authentication actor,
             HttpServletRequest request)
             throws IOException {
-        administration.requireGlobal(actor.getName(), "platform:settings:write");
+        administration.requireOperationGlobal(actor.getName(), PlatformOperation.BRANDING_UPDATE);
         if (!uploadLimits.allow(actor.getName(), addresses.resolve(request)))
             throw new RateLimitExceededException("uploadRateLimited");
         if (request.getContentLengthLong() > FileContentPort.MAXIMUM_BRANDING_IMAGE_BYTES)

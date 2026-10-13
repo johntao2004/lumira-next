@@ -405,6 +405,9 @@ public class SmsPasswordRecoveryService
                 .param("password", encodedPassword)
                 .update();
         accountSecurity.bumpPrimaryCredentialRevision(account.accountId());
+        jdbc.sql("DELETE FROM platform_password_change_requirement WHERE user_id=:id")
+                .param("id", account.accountId())
+                .update();
         accountSecurity.revokeSessions(account.accountId(), null);
         audit.append(PUBLIC_ACTOR, "account.smsPasswordRecovered", account.accountId());
         return true;

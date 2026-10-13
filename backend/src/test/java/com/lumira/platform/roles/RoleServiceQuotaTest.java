@@ -18,6 +18,41 @@ import org.springframework.web.server.ResponseStatusException;
 
 class RoleServiceQuotaTest {
     @Test
+    void acceptsZeroAsAnExplicitUnlimitedStorageQuota() {
+        var roles = mock(RoleRepository.class);
+        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
+        var service =
+                new RoleService(
+                        roles,
+                        mock(com.lumira.platform.common.UserDirectoryPort.class),
+                        guard,
+                        mock(com.lumira.platform.common.AuditPort.class));
+        when(guard.require("admin", "platform:roles:create")).thenReturn(Set.of());
+
+        service.create(
+                new RoleService.RoleInput(
+                        "qa-unlimited-storage",
+                        "QA unlimited storage",
+                        true,
+                        null,
+                        Set.of(),
+                        "SELF",
+                        0L,
+                        null),
+                "admin");
+
+        verify(roles)
+                .create(
+                        any(UUID.class),
+                        eq("qa-unlimited-storage"),
+                        eq("QA unlimited storage"),
+                        eq(true),
+                        eq("SELF"),
+                        eq(0L),
+                        eq((Long) null));
+    }
+
+    @Test
     void acceptsRoleQuotaAboveTheSystemFallback() {
         var roles = mock(RoleRepository.class);
         var guard = mock(com.lumira.platform.common.AdministrationPort.class);
@@ -27,7 +62,7 @@ class RoleServiceQuotaTest {
                         mock(com.lumira.platform.common.UserDirectoryPort.class),
                         guard,
                         mock(com.lumira.platform.common.AuditPort.class));
-        when(guard.require("admin", "platform:roles:write")).thenReturn(Set.of());
+        when(guard.require("admin", "platform:roles:create")).thenReturn(Set.of());
 
         service.create(
                 new RoleService.RoleInput(
@@ -62,7 +97,7 @@ class RoleServiceQuotaTest {
                         mock(com.lumira.platform.common.UserDirectoryPort.class),
                         guard,
                         mock(com.lumira.platform.common.AuditPort.class));
-        when(guard.require("admin", "platform:roles:write")).thenReturn(Set.of());
+        when(guard.require("admin", "platform:roles:create")).thenReturn(Set.of());
 
         assertThrows(
                 ResponseStatusException.class,
@@ -100,7 +135,7 @@ class RoleServiceQuotaTest {
                         mock(com.lumira.platform.common.UserDirectoryPort.class),
                         guard,
                         mock(com.lumira.platform.common.AuditPort.class));
-        when(guard.require("admin", "platform:roles:write")).thenReturn(Set.of());
+        when(guard.require("admin", "platform:roles:create")).thenReturn(Set.of());
         var authorities = new HashSet<String>();
         authorities.add(null);
 
@@ -138,7 +173,7 @@ class RoleServiceQuotaTest {
         var service =
                 new RoleService(
                         roles, users, guard, mock(com.lumira.platform.common.AuditPort.class));
-        when(guard.require("admin", "platform:roles:write")).thenReturn(Set.of());
+        when(guard.require("admin", "platform:roles:assign")).thenReturn(Set.of());
         var roleIds = new HashSet<UUID>();
         roleIds.add(null);
 

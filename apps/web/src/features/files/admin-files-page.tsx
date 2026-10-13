@@ -13,7 +13,7 @@ import { useListRequest } from "@/platform/routing/use-list-request";
 import { listRequestParams } from "@/platform/api/pagination";
 import { FileTrashActions } from "./file-trash-actions";
 import { FileDownloadAction } from "./file-download-action";
-import { FilePreviewModal } from "./file-preview-modal";
+import { FilePreviewDrawer } from "./file-preview-drawer";
 import { FileNameCell } from "./file-name-cell";
 import { fileCreatedAtColumn, fileDeletedAtColumn, fileNameColumn, fileSizeColumn } from "./file-table-columns";
 import { useFileBatchActions } from "./use-file-batch-actions";
@@ -36,13 +36,21 @@ type ManagedFile = {
 };
 
 export function AdminFilesPage({
-  canWrite,
+  canDelete,
+  canRestore,
+  canPurge,
+  canPreview,
+  canDownload,
   canReadRetention,
-  canWriteRetention,
+  canUpdateRetention,
 }: {
-  canWrite: boolean;
+  canDelete: boolean;
+  canRestore: boolean;
+  canPurge: boolean;
+  canPreview: boolean;
+  canDownload: boolean;
   canReadRetention: boolean;
-  canWriteRetention: boolean;
+  canUpdateRetention: boolean;
 }) {
   const { t, locale } = usePreferences();
   const client = useQueryClient();
@@ -60,8 +68,8 @@ export function AdminFilesPage({
     queryFn: ({ signal }) => api<PageResult<ManagedFile>>(`/platform/files/trash?${listRequestParams(trashRequest)}`, { signal }),
     enabled: tab === "trash",
   });
-  const filesBatch = useFileBatchActions(query.data?.items, "files", refresh, { endpoint: "/platform/files" });
-  const trashBatch = useFileBatchActions(trashQuery.data?.items, "trash", refresh, { endpoint: "/platform/files" });
+  const filesBatch = useFileBatchActions(query.data?.items, "files", refresh, { endpoint: "/platform/files", canDelete });
+  const trashBatch = useFileBatchActions(trashQuery.data?.items, "trash", refresh, { endpoint: "/platform/files", canDelete: canPurge, canRestore });
   const batchPending = filesBatch.pending || trashBatch.pending;
 
   function retryFiles() {
@@ -77,6 +85,7 @@ export function AdminFilesPage({
   }
 
   useEffect(() => { filesBatch.reset(); trashBatch.reset(); }, [tab]);
+  useEffect(() => { if (!canPreview) setPreviewFile(null); }, [canPreview]);
 
   async function refresh() {
     await Promise.all([
@@ -84,16 +93,20 @@ export function AdminFilesPage({
       client.invalidateQueries({ queryKey: ["files"] }),
     ]);
   }
+  function preview(file: ManagedFile) {
+    if (!canPreview || file.state !== "READY") return;
+    setPreviewFile(file);
+  }
   const filesTable = <>{filesBatch.feedback}<ResourceTable<ManagedFile>
     result={query.data} loading={query.isFetching || batchPending} error={query.error} request={request} onChange={next => { if (batchPending) return; filesBatch.reset(); setRequest(next); }}
     onRetry={retryFiles}
-    rowSelection={canWrite ? filesBatch.rowSelection : undefined}
-    actions={canWrite ? filesBatch.actions : null}
+    rowSelection={canDelete ? filesBatch.rowSelection : undefined}
+    actions={canDelete ? filesBatch.actions : null}
     columns={[
       fileNameColumn<ManagedFile>({ t, renderName: file => <FileNameCell
         name={file.originalName}
-        previewable={file.state === "READY"}
-        onPreview={() => setPreviewFile(file)}
+        previewable={canPreview && file.state === "READY"}
+        onPreview={canPreview && file.state === "READY" ? () => preview(file) : undefined}
         suffix={file.protectedByReference ? <Tag>{t("fileProtectedByReference")}</Tag> : undefined}
       /> }),
       { title: t("fileOwner"), dataIndex: "ownerUsername", search: true, render: (_: unknown, file: ManagedFile) => file.ownerUsername ? `${file.ownerDisplayName || file.ownerUsername} (${file.ownerUsername})` : "—" },
@@ -101,27 +114,27 @@ export function AdminFilesPage({
       { title: t("status"), dataIndex: "state", search: true, valueEnum: { UPLOADING: { text: t("fileUploading") }, READY: { text: t("fileReady") }, DELETING: { text: t("fileDeleting") } }, render: (_: unknown, file: ManagedFile) => <Tag color={file.state === "READY" ? "success" : "processing"}>{t(file.state === "READY" ? "fileReady" : file.state === "UPLOADING" ? "fileUploading" : "fileDeleting")}</Tag> },
       fileCreatedAtColumn<ManagedFile>(t, locale),
       { title: t("actions"), key: "actions", search: false, render: (_: unknown, file: ManagedFile) => <TableActions>
-        {file.state === "READY" && <FileDownloadAction fileName={file.originalName} href={`/api/platform/files/${file.id}/content`} label={t("downloadFile")} confirmation={t("fileDownloadConfirm", { name: file.originalName })} confirmText={t("downloadFile")} cancelText={t("cancel")} />}
-        {canWrite && file.state === "READY" && <DeleteAction disabled={batchPending || file.protectedByReference} conflictErrorKey="fileMutationConflict" name={file.originalName} actionLabel={t("moveToTrash")} confirmation={t("moveToTrashConfirm", { name: file.originalName })} onDelete={async () => { try { await mutate(`/platform/files/${file.id}?version=${file.version}`, "DELETE"); } finally { await refresh(); } }} />}
+        {file.state === "READY" && <FileDownloadAction fileName={file.originalName} href={`/api/platform/files/${file.id}/content`} label={t("downloadFile")} confirmation={t("fileDownloadConfirm", { name: file.originalName })} confirmText={t("downloadFile")} cancelText={t("cancel")} disabled={!canDownload} />}
+        {canDelete && file.state === "READY" && <DeleteAction disabled={batchPending || file.protectedByReference} conflictErrorKey="fileMutationConflict" name={file.originalName} actionLabel={t("moveToTrash")} confirmation={t("moveToTrashConfirm", { name: file.originalName })} onDelete={async () => { try { await mutate(`/platform/files/${file.id}?version=${file.version}`, "DELETE"); } finally { await refresh(); } }} />}
       </TableActions> },
     ]}
   /></>;
   const trashTable = <>{trashBatch.feedback}<ResourceTable<ManagedFile>
     result={trashQuery.data} loading={trashQuery.isFetching || batchPending} error={trashQuery.error} request={trashRequest} onChange={next => { if (batchPending) return; trashBatch.reset(); setTrashRequest(next); }}
     onRetry={retryTrash}
-    rowSelection={canWrite ? trashBatch.rowSelection : undefined}
-    actions={canWrite ? trashBatch.actions : null}
+    rowSelection={canPurge || canRestore ? trashBatch.rowSelection : undefined}
+    actions={canPurge || canRestore ? trashBatch.actions : null}
     columns={[
       fileNameColumn<ManagedFile>({ t, renderName: file => <FileNameCell name={file.originalName} /> }),
       { title: t("fileOwner"), dataIndex: "ownerUsername", search: true, render: (_: unknown, file: ManagedFile) => file.ownerUsername ? `${file.ownerDisplayName || file.ownerUsername} (${file.ownerUsername})` : "—" },
       fileSizeColumn<ManagedFile>(t, locale),
       fileDeletedAtColumn<ManagedFile>(t, locale),
-      { title: t("actions"), key: "actions", search: false, render: (_: unknown, file: ManagedFile) => <TableActions>{canWrite && <FileTrashActions disabled={batchPending} file={file} endpoint="/platform/files" onChanged={refresh} />}</TableActions> },
+      { title: t("actions"), key: "actions", search: false, render: (_: unknown, file: ManagedFile) => <TableActions><FileTrashActions disabled={batchPending} canDelete={canPurge} canRestore={canRestore} file={file} endpoint="/platform/files" onChanged={refresh} /></TableActions> },
     ]}
   /></>;
   return <><Tabs activeKey={tab} onChange={next => { if (batchPending) return; filesBatch.reset(); trashBatch.reset(); setTab(next); }} items={[
     { key: "files", label: t("filesTab"), disabled: batchPending, children: filesTable },
     { key: "trash", label: t("fileTrash"), disabled: batchPending, children: trashTable },
-    ...(canReadRetention ? [{ key: "file-retention", label: t("fileRetention"), disabled: batchPending, children: <FileRetentionPage canWrite={canWriteRetention} /> }] : []),
-  ]} /><FilePreviewModal key={previewFile?.id ?? "closed"} file={previewFile} endpoint="/platform/files" onClose={() => setPreviewFile(null)} /></>;
+    ...(canReadRetention ? [{ key: "file-retention", label: t("fileRetention"), disabled: batchPending, children: <FileRetentionPage canWrite={canUpdateRetention} /> }] : []),
+  ]} /><FilePreviewDrawer file={canPreview ? previewFile : null} endpoint="/platform/files" onClose={() => setPreviewFile(null)} /></>;
 }

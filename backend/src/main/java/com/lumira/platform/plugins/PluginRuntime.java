@@ -244,12 +244,27 @@ public class PluginRuntime
         return new ResponseStatusException(HttpStatus.CONFLICT, reason);
     }
 
-    private void write(String actor) {
-        guard.requireGlobal(actor, "platform:modules:write");
+    private void requireLifecyclePermission(String actor, String kind) {
+        guard.requireGlobal(actor, PlatformPageId.MODULES.accessPermission());
+        String permission =
+                switch (kind) {
+                    case "INSTALL" -> PlatformOperation.MODULE_INSTALL.permission();
+                    case "UNINSTALL" -> PlatformOperation.MODULE_UNINSTALL.permission();
+                    default ->
+                            throw new ResponseStatusException(
+                                    HttpStatus.BAD_REQUEST, "invalidPluginOperation");
+                };
+        guard.requireGlobal(actor, permission);
+    }
+
+    private void requireLifecyclePermissions(String actor, Plan plan) {
+        requireLifecyclePermission(actor, plan.kind());
+        if (!plan.enable().isEmpty())
+            guard.requireGlobal(actor, PlatformOperation.MODULE_UPDATE.permission());
     }
 
     private void read(String actor) {
-        guard.requireGlobal(actor, "platform:modules:read");
+        guard.requireGlobal(actor, PlatformPageId.MODULES.accessPermission());
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -359,6 +374,7 @@ public class PluginRuntime
                         }
                         jdbc.sql("INSERT INTO platform_plugin_bootstrap(id) VALUES(1)").update();
                     });
+            registerCatalog();
         }
         if (fixedGraph) validateApprovedInstallations(approved);
         for (String id : orderAll())
@@ -832,8 +848,80 @@ public class PluginRuntime
                             m.name(),
                             m.version(),
                             m.dependencies().stream().map(PluginManifest.Dependency::id).toList()));
-            PluginPermissions.register(m.permissions());
         }
+
+        var installedManifests =
+                orderAll().stream()
+                        .filter(this::installed)
+                        .map(id -> artifacts.get(id).manifest())
+                        .toList();
+        PluginPermissions.replaceAll(catalogForManifests(installedManifests));
+    }
+
+    static Map<String, List<PluginPermissions.CatalogGroup>> catalogForManifests(
+            List<PluginManifest> installedManifests) {
+        var pluginCatalog = new TreeMap<String, List<PluginPermissions.CatalogGroup>>();
+        for (var owner : installedManifests) {
+            var groups = new ArrayList<PluginPermissions.CatalogGroup>();
+            for (var group : owner.permissionGroups()) {
+                var codes =
+                        group.permissions().stream()
+                                .map(PluginManifest.Permission::code)
+                                .collect(java.util.stream.Collectors.toSet());
+                var pages =
+                        owner.routes().stream()
+                                .filter(route -> codes.contains(route.permission()))
+                                .filter(
+                                        route ->
+                                                !route.operations().isEmpty()
+                                                        ? codes.containsAll(
+                                                                route.operations().values())
+                                                        : true)
+                                .map(
+                                        route ->
+                                                new PluginPermissions.Page(
+                                                        route.id(),
+                                                        "/dashboard/" + route.id(),
+                                                        route.label(),
+                                                        route.group(),
+                                                        route.order(),
+                                                        route.permission(),
+                                                        List.copyOf(route.operations().values()),
+                                                        route.global() ? "global" : "scoped",
+                                                        route.operations().entrySet().stream()
+                                                                .collect(
+                                                                        java.util.stream.Collectors
+                                                                                .toUnmodifiableMap(
+                                                                                        Map.Entry
+                                                                                                ::getValue,
+                                                                                        operation ->
+                                                                                                route.scopedOperations()
+                                                                                                                .contains(
+                                                                                                                        operation
+                                                                                                                                .getKey())
+                                                                                                        ? "scoped"
+                                                                                                        : "global"))))
+                                .distinct()
+                                .sorted(
+                                        Comparator.comparing(PluginPermissions.Page::id)
+                                                .thenComparing(PluginPermissions.Page::title))
+                                .toList();
+                var permissions =
+                        group.permissions().stream()
+                                .map(
+                                        permission ->
+                                                new PluginPermissions.Permission(
+                                                        permission.code(),
+                                                        permission.label(),
+                                                        permission.requires()))
+                                .toList();
+                groups.add(
+                        new PluginPermissions.CatalogGroup(
+                                owner.id() + ":" + group.id(), group.title(), pages, permissions));
+            }
+            pluginCatalog.put(owner.id(), groups);
+        }
+        return Map.copyOf(pluginCatalog);
     }
 
     private List<String> orderAll() {
@@ -951,7 +1039,7 @@ public class PluginRuntime
     }
 
     public List<View> list(String actor) {
-        guard.require(actor, "platform:modules:read");
+        read(actor);
         requireRuntimeReady();
         return views();
     }
@@ -992,7 +1080,8 @@ public class PluginRuntime
     }
 
     public List<View> importPackage(String actor, byte[] bytes) throws Exception {
-        write(actor);
+        guard.requireGlobal(actor, PlatformPageId.MODULES.accessPermission());
+        guard.requireGlobal(actor, PlatformOperation.MODULE_INSTALL.permission());
         requireLifecycleChangeAllowed();
         return withClusterLifecycleLock(
                 () -> {
@@ -1090,10 +1179,13 @@ public class PluginRuntime
     }
 
     public Plan plan(String actor, String id, String kind, String dataMode) {
-        write(actor);
+        requireLifecyclePermission(actor, kind);
         requireRuntimeReady();
         synchronized (lock) {
-            return makePlan(id, kind, dataMode);
+            var plan = makePlan(id, kind, dataMode);
+            if (!plan.enable().isEmpty())
+                guard.requireGlobal(actor, PlatformOperation.MODULE_UPDATE.permission());
+            return plan;
         }
     }
 
@@ -1148,7 +1240,7 @@ public class PluginRuntime
     }
 
     public Operation execute(String actor, String id, String kind, Execute input) {
-        write(actor);
+        requireLifecyclePermission(actor, kind);
         requireRuntimeReady();
         requireLifecycleChangeAllowed();
         synchronized (lock) {
@@ -1160,6 +1252,7 @@ public class PluginRuntime
                             input == null || input.dataMode() == null
                                     ? "PRESERVE"
                                     : input.dataMode());
+            requireLifecyclePermissions(actor, plan);
             if (input == null || !plan.revision().equals(input.revision()))
                 throw conflict("staleRecord");
             if (!plan.blockers().isEmpty()) throw conflict(plan.blockers().getFirst());
@@ -1205,12 +1298,15 @@ public class PluginRuntime
     private void runOperation(String actor, UUID op, Plan plan) {
         var added = new ArrayList<String>();
         var enabled = new ArrayList<String>();
+        var removed = new ArrayList<String>();
+        var deleteUninstallCommitted = new AtomicReference<>(false);
+        var recoveryFailed = new AtomicReference<>(false);
         try {
             withClusterLifecycleLock(
                     () -> {
                         synchronized (lock) {
                             requireOperationTopologyAllowed();
-                            write(actor);
+                            requireLifecyclePermissions(actor, plan);
                             if (!makePlan(plan.moduleId(), plan.kind(), plan.dataMode())
                                     .revision()
                                     .equals(plan.revision())) throw conflict("staleRecord");
@@ -1230,123 +1326,116 @@ public class PluginRuntime
                                 }
                                 if (installed(plan.moduleId()))
                                     persistInstalled(plan.moduleId(), true, true);
+                                String completedRevision =
+                                        completeLifecycleOperation(actor, op, "plugin.installed");
+                                loadedGraphRevision = completedRevision;
+                                ready = true;
+                                updateNodeState(true, completedRevision);
                             } else {
                                 // Drain all affected handles before removing any provider.
                                 for (String id : plan.remove()) drain(id);
                                 if (!makePlan(plan.moduleId(), plan.kind(), plan.dataMode())
                                         .revision()
                                         .equals(plan.revision())) throw conflict("staleRecord");
+                                boolean deleteUninstall = plan.dataMode().equals("DELETE");
                                 for (String id : plan.remove()) {
                                     step(op, "RUNNING", "unload " + id, null);
-                                    unload(id);
-                                    persistInstalled(id, false, false);
-                                    setFlag(id, false);
+                                    boolean wasLoaded = handles.containsKey(id);
+                                    try {
+                                        unload(id);
+                                    } catch (Exception unloadError) {
+                                        if (wasLoaded && !handles.containsKey(id)) removed.add(id);
+                                        throw unloadError;
+                                    }
+                                    if (wasLoaded) removed.add(id);
+                                    if (!deleteUninstall) {
+                                        persistInstalled(id, false, false);
+                                        setFlag(id, false);
+                                    }
                                 }
-                                if (plan.dataMode().equals("DELETE")) {
+                                if (deleteUninstall) {
                                     step(op, "RUNNING", "delete data " + plan.moduleId(), null);
-                                    tx.executeWithoutResult(
-                                            status -> {
-                                                PluginDataRemoval.delete(
-                                                        jdbc,
-                                                        artifacts
-                                                                .get(plan.moduleId())
-                                                                .manifest()
-                                                                .dataSets());
-                                                audit.append(actor, "plugin.dataDeleted", op);
-                                            });
+                                    String completedRevision =
+                                            completeDeleteUninstall(actor, op, plan);
+                                    deleteUninstallCommitted.set(true);
+                                    loadedGraphRevision = completedRevision;
+                                    ready = true;
+                                    updateNodeState(true, completedRevision);
+                                } else {
+                                    String completedRevision =
+                                            completeLifecycleOperation(
+                                                    actor, op, "plugin.uninstalled");
+                                    loadedGraphRevision = completedRevision;
+                                    ready = true;
+                                    updateNodeState(true, completedRevision);
                                 }
                             }
-                            tx.executeWithoutResult(
-                                    status ->
-                                            audit.append(
-                                                    actor,
-                                                    plan.kind().equals("INSTALL")
-                                                            ? "plugin.installed"
-                                                            : "plugin.uninstalled",
-                                                    op));
-                            String completedRevision = revision();
-                            tx.executeWithoutResult(
-                                    status -> {
-                                        jdbc.sql(
-                                                        "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
-                                                .param("revision", completedRevision)
-                                                .param("actor", actor)
-                                                .update();
-                                        step(op, "SUCCEEDED", "complete", null);
-                                    });
-                            loadedGraphRevision = completedRevision;
-                            ready = true;
-                            updateNodeState(true, completedRevision);
                         }
                         return null;
                     });
         } catch (Throwable error) {
-            synchronized (lock) {
-                Collections.reverse(added);
-                for (String id : added) {
-                    try {
-                        unload(id);
-                        persistInstalled(id, false, false);
-                        setFlag(id, false);
-                    } catch (Exception ignored) {
-                    }
-                }
-                for (String id : enabled) {
-                    try {
-                        unload(id);
-                        setFlag(id, false);
-                    } catch (Exception ignored) {
-                    }
-                }
-                // Failed draining restores admission on all still-published handles.
-                handles.values()
-                        .forEach(
-                                h -> {
-                                    synchronized (h) {
-                                        h.accepting = true;
-                                    }
-                                });
-                String failedStep =
-                        jdbc.sql("SELECT step FROM platform_plugin_operation WHERE id=:id")
-                                .param("id", op)
-                                .query(String.class)
-                                .single();
-                String code =
-                        failedStep.startsWith("delete data ")
-                                ? "pluginDataDeletionFailed"
-                                : error instanceof ResponseStatusException r
-                                        ? r.getReason()
-                                        : error instanceof IllegalArgumentException
-                                                ? error.getMessage()
-                                                : "pluginStartFailed";
-                try {
-                    tx.executeWithoutResult(
-                            status ->
-                                    audit.append(
-                                            actor,
-                                            plan.kind().equals("INSTALL")
-                                                    ? "plugin.installFailed"
-                                                    : "plugin.uninstallFailed",
-                                            op));
-                } catch (Exception auditError) {
-                    System.getLogger(getClass().getName())
-                            .log(
-                                    System.Logger.Level.WARNING,
-                                    "Plugin failure audit unavailable",
-                                    auditError);
-                }
-                try {
-                    step(op, "FAILED", failedStep + " failed", code);
-                } catch (RuntimeException leaseLost) {
-                    System.getLogger(getClass().getName())
-                            .log(
-                                    System.Logger.Level.WARNING,
-                                    "Plugin operation lease was lost",
-                                    leaseLost);
-                }
+            boolean restoreRemovedResources =
+                    plan.kind().equals("UNINSTALL")
+                            && plan.dataMode().equals("DELETE")
+                            && !deleteUninstallCommitted.get();
+            try {
+                recoverFailedOperation(
+                        op,
+                        added,
+                        enabled,
+                        removed,
+                        restoreRemovedResources,
+                        recoveryFailed,
+                        error);
+            } catch (Throwable recoveryError) {
+                recoveryFailed.set(true);
+                error.addSuppressed(recoveryError);
                 System.getLogger(getClass().getName())
-                        .log(System.Logger.Level.ERROR, "Plugin operation failed: " + op, error);
+                        .log(
+                                System.Logger.Level.ERROR,
+                                "Plugin runtime recovery failed after lifecycle operation " + op,
+                                recoveryError);
             }
+            String failedStep =
+                    jdbc.sql("SELECT step FROM platform_plugin_operation WHERE id=:id")
+                            .param("id", op)
+                            .query(String.class)
+                            .single();
+            String code =
+                    failedStep.startsWith("delete data ")
+                            ? "pluginDataDeletionFailed"
+                            : error instanceof ResponseStatusException r
+                                    ? r.getReason()
+                                    : error instanceof IllegalArgumentException
+                                            ? error.getMessage()
+                                            : "pluginStartFailed";
+            try {
+                tx.executeWithoutResult(
+                        status ->
+                                audit.append(
+                                        actor,
+                                        plan.kind().equals("INSTALL")
+                                                ? "plugin.installFailed"
+                                                : "plugin.uninstallFailed",
+                                        op));
+            } catch (Exception auditError) {
+                System.getLogger(getClass().getName())
+                        .log(
+                                System.Logger.Level.WARNING,
+                                "Plugin failure audit unavailable",
+                                auditError);
+            }
+            try {
+                step(op, "FAILED", failedStep + " failed", code);
+            } catch (RuntimeException leaseLost) {
+                System.getLogger(getClass().getName())
+                        .log(
+                                System.Logger.Level.WARNING,
+                                "Plugin operation lease was lost",
+                                leaseLost);
+            }
+            System.getLogger(getClass().getName())
+                    .log(System.Logger.Level.ERROR, "Plugin operation failed: " + op, error);
         } finally {
             busy = false;
             try {
@@ -1358,7 +1447,8 @@ public class PluginRuntime
                                 .optional()
                                 .orElse("");
                 ready =
-                        currentRevision.equals(loadedGraphRevision)
+                        !recoveryFailed.get()
+                                && currentRevision.equals(loadedGraphRevision)
                                 && currentRevision.equals(approvedRevision)
                                 && heartbeatHealthy;
                 updateNodeState(ready, loadedGraphRevision);
@@ -1367,6 +1457,122 @@ public class PluginRuntime
                 updateNodeState(false, loadedGraphRevision);
             }
         }
+    }
+
+    private void recoverFailedOperation(
+            UUID op,
+            List<String> added,
+            List<String> enabled,
+            List<String> removed,
+            boolean restoreRemovedResources,
+            AtomicReference<Boolean> recoveryFailed,
+            Throwable operationError)
+            throws Exception {
+        withClusterLifecycleLock(
+                () -> {
+                    synchronized (lock) {
+                        Collections.reverse(added);
+                        for (String id : added) {
+                            try {
+                                unload(id);
+                                persistInstalled(id, false, false);
+                                setFlag(id, false);
+                            } catch (Exception ignored) {
+                            }
+                        }
+                        for (String id : enabled) {
+                            try {
+                                unload(id);
+                                setFlag(id, false);
+                            } catch (Exception ignored) {
+                            }
+                        }
+                        if (restoreRemovedResources) {
+                            // A peer may have changed the graph after the failed transaction
+                            // released its lifecycle lock. Only reload the old graph if it is
+                            // still the sole approved graph in this runtime.
+                            requireOperationTopologyAllowed();
+                            Collections.reverse(removed);
+                            for (String id : removed) {
+                                try {
+                                    load(id);
+                                } catch (Throwable restorationError) {
+                                    recoveryFailed.set(true);
+                                    operationError.addSuppressed(restorationError);
+                                    System.getLogger(getClass().getName())
+                                            .log(
+                                                    System.Logger.Level.ERROR,
+                                                    "Plugin runtime restoration failed after uninstall operation "
+                                                            + op
+                                                            + " for "
+                                                            + id,
+                                                    restorationError);
+                                }
+                            }
+                        }
+                        try {
+                            registerCatalog();
+                        } catch (RuntimeException catalogError) {
+                            if (restoreRemovedResources) {
+                                recoveryFailed.set(true);
+                                operationError.addSuppressed(catalogError);
+                            }
+                            System.getLogger(getClass().getName())
+                                    .log(
+                                            System.Logger.Level.WARNING,
+                                            "Plugin permission catalog refresh failed",
+                                            catalogError);
+                        }
+                        // Failed draining restores admission on all still-published handles.
+                        handles.values()
+                                .forEach(
+                                        h -> {
+                                            synchronized (h) {
+                                                h.accepting = true;
+                                            }
+                                        });
+                    }
+                    return null;
+                });
+    }
+
+    private String completeLifecycleOperation(String actor, UUID op, String action) {
+        tx.executeWithoutResult(status -> audit.append(actor, action, op));
+        registerCatalog();
+        String completedRevision = revision();
+        tx.executeWithoutResult(
+                status -> {
+                    jdbc.sql(
+                                    "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
+                            .param("revision", completedRevision)
+                            .param("actor", actor)
+                            .update();
+                    step(op, "SUCCEEDED", "complete", null);
+                });
+        return completedRevision;
+    }
+
+    private String completeDeleteUninstall(String actor, UUID op, Plan plan) {
+        return tx.execute(
+                status -> {
+                    for (String id : plan.remove()) {
+                        persistInstalled(id, false, false);
+                        setFlag(id, false);
+                    }
+                    PluginDataRemoval.delete(
+                            jdbc, artifacts.get(plan.moduleId()).manifest().dataSets());
+                    audit.append(actor, "plugin.dataDeleted", op);
+                    audit.append(actor, "plugin.uninstalled", op);
+                    registerCatalog();
+                    String completedRevision = revision();
+                    jdbc.sql(
+                                    "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
+                            .param("revision", completedRevision)
+                            .param("actor", actor)
+                            .update();
+                    step(op, "SUCCEEDED", "complete", null);
+                    return completedRevision;
+                });
     }
 
     private void persistInstalled(String id, boolean value, boolean explicit) {
@@ -1402,7 +1608,8 @@ public class PluginRuntime
 
     public ModuleStateStore.State change(
             String actor, String id, boolean enabled, long version, String reason) {
-        write(actor);
+        guard.requireGlobal(actor, PlatformPageId.MODULES.accessPermission());
+        guard.requireGlobal(actor, PlatformOperation.MODULE_UPDATE.permission());
         String changeReason =
                 reason == null || reason.isBlank()
                         ? ModuleStateStore.DEFAULT_CHANGE_REASON
@@ -1569,14 +1776,8 @@ public class PluginRuntime
             progress.accept("migrate " + id);
             Path migrations = a.directory().resolve("migrations");
             if (Files.isDirectory(migrations))
-                org.flywaydb.core.Flyway.configure()
-                        .dataSource(host.getBean(javax.sql.DataSource.class))
-                        .table("plugin_" + id.replace('-', '_') + "_schema_history")
-                        .baselineOnMigrate(true)
-                        .baselineVersion("0")
-                        .locations("filesystem:" + migrations)
-                        .load()
-                        .migrate();
+                PluginPermissionMigrationRunner.migrate(
+                        host.getBean(DataSource.class), id, migrations);
             progress.accept("health check " + id);
             entry.checkHealth();
             manager.startPlugin(id);
@@ -1777,11 +1978,33 @@ public class PluginRuntime
             if (!states.isEnabled(a.manifest().id())) continue;
             for (var rule : a.manifest().apiRules())
                 if (rule.method().equals(method) && matches(rule.path(), path))
-                    return rule.publicAccess()
+                    return rule.signedCallback()
+                            || rule.publicAccess()
                             || authenticated
                                     && (rule.authenticatedOnly()
-                                            || rule.authorities().stream()
-                                                    .anyMatch(authorities::contains));
+                                            || authorityRuleMatches(rule, authorities));
+        }
+        return false;
+    }
+
+    /** Legacy `authorities` retain any-of semantics; the additive all-of list is explicit. */
+    static boolean authorityRuleMatches(PluginManifest.Rule rule, Set<String> authorities) {
+        if (rule == null || authorities == null) return false;
+        boolean legacyAny =
+                rule.authorities().isEmpty()
+                        || rule.authorities().stream().anyMatch(authorities::contains);
+        return legacyAny && authorities.containsAll(rule.allAuthorities());
+    }
+
+    @Override
+    public boolean signedCallback(String method, String path) {
+        if (!"POST".equals(method) || !isReadyForTraffic()) return false;
+        for (var artifact : artifacts.values()) {
+            if (!states.isEnabled(artifact.manifest().id())) continue;
+            for (var rule : artifact.manifest().apiRules())
+                if (rule.signedCallback()
+                        && "POST".equals(rule.method())
+                        && rule.path().equals(path)) return true;
         }
         return false;
     }
@@ -1801,7 +2024,11 @@ public class PluginRuntime
                         || !matches(rule.path(), path)) continue;
                 Set<String> available =
                         rule.global() ? effectiveGlobalAuthorities : effectiveAuthorities;
-                if (rule.authorities().stream().anyMatch(available::contains)) return true;
+                if (authorityRuleMatches(rule, available)
+                        && (rule.globalAuthorities().isEmpty()
+                                || rule.globalAuthorities().stream()
+                                        .anyMatch(effectiveGlobalAuthorities::contains)))
+                    return true;
             }
         }
         return false;
@@ -1846,8 +2073,22 @@ public class PluginRuntime
                                         instanceof
                                         org.springframework.security.authentication
                                                 .AnonymousAuthenticationToken))) return false;
-                if (rule.global() && !rule.publicAccess())
-                    guard.requireGlobal(auth.getName(), rule.authorities().getFirst());
+                if (rule.global() && !rule.publicAccess()) {
+                    if (!rule.authorities().isEmpty()
+                            && rule.authorities().stream()
+                                    .noneMatch(
+                                            permission ->
+                                                    guard.hasGlobal(auth.getName(), permission)))
+                        guard.requireGlobal(auth.getName(), rule.authorities().getFirst());
+                    for (String permission : rule.allAuthorities())
+                        if (!guard.hasGlobal(auth.getName(), permission))
+                            guard.requireGlobal(auth.getName(), permission);
+                }
+                if (!rule.globalAuthorities().isEmpty()
+                        && rule.globalAuthorities().stream()
+                                .noneMatch(
+                                        permission -> guard.hasGlobal(auth.getName(), permission)))
+                    guard.requireGlobal(auth.getName(), rule.globalAuthorities().getFirst());
                 return true;
             }
         return false;

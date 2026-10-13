@@ -21,19 +21,27 @@ public class RoleController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(defaultValue = "") String search,
-            @RequestParam Map<String, String> parameters) {
-        return service.list(PageRequest.fromQueryParameters(page, pageSize, search, parameters))
+            @RequestParam Map<String, String> parameters,
+            Authentication auth) {
+        return service.list(
+                        PageRequest.fromQueryParameters(page, pageSize, search, parameters),
+                        auth.getName())
                 .map(RoleResponse::from);
     }
 
     @GetMapping("/roles/{id}")
-    public RoleResponse find(@PathVariable UUID id) {
-        return RoleResponse.from(service.find(id));
+    public RoleResponse find(@PathVariable UUID id, Authentication auth) {
+        return RoleResponse.from(service.find(id, auth.getName()));
     }
 
     @GetMapping("/permissions")
-    public List<String> permissions() {
-        return RoleService.permissions().stream().sorted().toList();
+    public List<String> permissions(Authentication auth) {
+        return service.permissionCodes(auth.getName());
+    }
+
+    @GetMapping("/permission-catalog")
+    public List<RoleService.PermissionCatalogGroup> permissionCatalog(Authentication auth) {
+        return service.permissionCatalog(auth.getName());
     }
 
     @PostMapping("/roles")
@@ -57,6 +65,20 @@ public class RoleController {
     @GetMapping("/users/{id}/roles")
     public RoleService.UserRoles userRoles(@PathVariable UUID id, Authentication auth) {
         return service.userRoles(id, auth.getName());
+    }
+
+    @GetMapping("/users/{id}/role-options")
+    public PageResult<RoleService.AssignmentRoleOption> roleOptions(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(defaultValue = "") String search,
+            @RequestParam Map<String, String> parameters,
+            Authentication auth) {
+        return service.assignmentOptions(
+                id,
+                PageRequest.fromQueryParameters(page, pageSize, search, parameters),
+                auth.getName());
     }
 
     @PutMapping("/users/{id}/roles")

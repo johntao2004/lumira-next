@@ -24,10 +24,7 @@ public final class PluginDataRemoval {
                     switch (id) {
                         case "feedback" ->
                                 Set.of("platform_feedback", "platform_feedback_file")
-                                                .contains(set.table())
-                                        || set.table().equals("platform_account_draft")
-                                                && "draft_key".equals(set.column())
-                                                && "feedback.create".equals(set.value());
+                                        .contains(set.table());
                         case "localization" ->
                                 Set.of(
                                                         "platform_localization_entry",
@@ -42,6 +39,13 @@ public final class PluginDataRemoval {
                                                 "platform_sensitive_role_policy",
                                                 "platform_content_policy_hit")
                                         .contains(set.table());
+                        case "payment-core" ->
+                                "platform_secret".equals(set.table())
+                                        && "secret_context".equals(set.column())
+                                        && Set.of(
+                                                        "plugin:payment-core/wechat-pay",
+                                                        "plugin:payment-core/alipay-pay")
+                                                .contains(set.value());
                         default -> false;
                     };
             if (!owned || set.table().endsWith("_schema_history"))

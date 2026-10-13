@@ -2,15 +2,17 @@ package com.lumira.platform.notifications;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.DurableEventPublisherPort;
 import com.lumira.platform.common.PageRequest;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -25,7 +27,8 @@ class NotificationAdminServiceTest {
                     mock(JdbcClient.class),
                     mock(AdministrationPort.class),
                     mock(AuditPort.class),
-                    new JsonMapper());
+                    new JsonMapper(),
+                    mock(DurableEventPublisherPort.class));
 
     @Test
     void roleScopeRequiresAtLeastOneRecipientRole() {
@@ -79,17 +82,38 @@ class NotificationAdminServiceTest {
     @Test
     void recipientLookupRequiresGlobalNotificationWriteBeforeReadingTheStore() {
         NotificationStore store = mock(NotificationStore.class);
-        AdministrationPort guard = mock(AdministrationPort.class);
+        List<String> permissionChecks = new ArrayList<>();
+        AdministrationPort guard =
+                new AdministrationPort() {
+                    @Override
+                    public Set<String> require(String actor, String permission) {
+                        permissionChecks.add("require:" + permission);
+                        return Set.of(permission);
+                    }
+
+                    @Override
+                    public void requireUser(String actor, UUID target, String permission) {}
+
+                    @Override
+                    public void requireGlobal(String actor, String permission) {
+                        permissionChecks.add("global:" + permission);
+                        if (NotificationAdminService.CREATE.equals(permission))
+                            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+                    }
+
+                    @Override
+                    public boolean hasGlobal(String actor, String permission) {
+                        return false;
+                    }
+                };
         var protectedService =
                 new NotificationAdminService(
                         store,
                         mock(JdbcClient.class),
                         guard,
                         mock(AuditPort.class),
-                        new JsonMapper());
-        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
-                .when(guard)
-                .requireGlobal("writer", NotificationAdminService.WRITE);
+                        new JsonMapper(),
+                        mock(DurableEventPublisherPort.class));
 
         var listError =
                 assertThrows(
@@ -104,10 +128,17 @@ class NotificationAdminServiceTest {
 
         assertEquals(HttpStatus.FORBIDDEN, listError.getStatusCode());
         assertEquals(HttpStatus.FORBIDDEN, detailError.getStatusCode());
-        verify(guard, org.mockito.Mockito.times(2))
-                .require("writer", NotificationAdminService.WRITE);
-        verify(guard, org.mockito.Mockito.times(2))
-                .requireGlobal("writer", NotificationAdminService.WRITE);
+        assertEquals(
+                List.of(
+                        "require:" + NotificationAdminService.READ,
+                        "global:" + NotificationAdminService.READ,
+                        "require:" + NotificationAdminService.CREATE,
+                        "global:" + NotificationAdminService.CREATE,
+                        "require:" + NotificationAdminService.READ,
+                        "global:" + NotificationAdminService.READ,
+                        "require:" + NotificationAdminService.CREATE,
+                        "global:" + NotificationAdminService.CREATE),
+                permissionChecks);
         verify(store, never())
                 .listRecipientOptions(org.mockito.ArgumentMatchers.any(PageRequest.class));
         verify(store, never()).recipientOption(org.mockito.ArgumentMatchers.any(UUID.class));

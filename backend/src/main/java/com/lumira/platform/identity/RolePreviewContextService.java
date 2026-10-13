@@ -4,6 +4,8 @@ import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PluginAuthorizationPort;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.AuthorizationContextBoundaryPort;
@@ -39,8 +41,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class RolePreviewContextService implements AuthorizationContextBoundaryPort {
     public static final String REVISION_HEADER = "X-Lumira-Authorization-Context-Revision";
     private static final int PREVIEW_MINUTES = 10;
-    private static final String PREVIEW_PERMISSION = "platform:roles:preview";
-    private static final String ROLE_READ_PERMISSION = "platform:roles:read";
+    private static final String PREVIEW_PERMISSION = PlatformOperation.ROLE_PREVIEW.permission();
+    private static final String ROLE_ACCESS_PERMISSION = PlatformPageId.ROLES.accessPermission();
 
     public record View(String revision, boolean rolePreviewSupported, Preview preview) {}
 
@@ -200,7 +202,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         RequestAuthorizationContext context = authorization(request);
         boolean mayPreviewUnassigned =
                 context.realGlobalAuthorities().contains(PREVIEW_PERMISSION)
-                        && context.realGlobalAuthorities().contains(ROLE_READ_PERMISSION);
+                        && context.realGlobalAuthorities().contains(ROLE_ACCESS_PERMISSION);
         String search = page.search();
         long total =
                 jdbc.sql(
@@ -227,7 +229,11 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                                        WHERE ur.user_id=:actor AND ur.role_id=r.id) AS assigned,
                                coalesce(string_agg(a.authority,chr(31) ORDER BY a.authority),'') AS authorities
                           FROM platform_role r
-                          LEFT JOIN platform_role_authority a ON a.role_id=r.id
+                          LEFT JOIN LATERAL (
+                               SELECT authority FROM platform_role_authority
+                                WHERE role_id=r.id
+                                  AND authority NOT LIKE 'platform:__v50:%'
+                          ) a ON true
                          WHERE r.enabled
                            AND (:mayPreviewUnassigned OR EXISTS (
                                SELECT 1 FROM platform_user_role ur
@@ -288,7 +294,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         boolean assigned = assigned(context.actorId(), roleId);
         boolean administratorPreview =
                 realGlobal.contains(PREVIEW_PERMISSION)
-                        && realGlobal.contains(ROLE_READ_PERMISSION);
+                        && realGlobal.contains(ROLE_ACCESS_PERMISSION);
         if (!assigned && !administratorPreview)
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         OffsetDateTime now = OffsetDateTime.now();
@@ -495,6 +501,10 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
             HttpServletRequest request, RequestAuthorizationContext context) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         String method = request.getMethod();
+        PluginAuthorizationPort callbackAuthorization =
+                pluginAuthorizations == null ? null : pluginAuthorizations.getIfAvailable();
+        if (callbackAuthorization != null && callbackAuthorization.signedCallback(method, path))
+            return;
         boolean control = isContextControl(path, method);
         boolean staticPluginAsset = "GET".equals(method) && safeFrontendAsset(path);
         String suppliedRevision =
@@ -682,7 +692,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
             return "ACTOR_AUTHORITY_CHANGED";
         if (!assigned(actorId, stored.roleId())
                 && !(realGlobal.contains(PREVIEW_PERMISSION)
-                        && realGlobal.contains(ROLE_READ_PERMISSION)))
+                        && realGlobal.contains(ROLE_ACCESS_PERMISSION)))
             return "PREVIEW_PERMISSION_REVOKED";
         return null;
     }
@@ -728,7 +738,10 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         Set<String> authorities =
                 Set.copyOf(
                         jdbc.sql(
-                                        "SELECT authority FROM platform_role_authority WHERE role_id=:id ORDER BY authority")
+                                        "SELECT authority FROM platform_role_authority "
+                                                + "WHERE role_id=:id "
+                                                + "AND authority NOT LIKE 'platform:__v50:%' "
+                                                + "ORDER BY authority")
                                 .param("id", id)
                                 .query(String.class)
                                 .list());
@@ -770,16 +783,23 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         Set<String> global = new HashSet<>();
         jdbc.sql(
                         """
-                        SELECT authority,data_scope FROM (
+                        WITH effective AS (
+                            SELECT authority FROM platform_effective_authority WHERE user_id=:actor
+                        ), scope_sources AS (
                             SELECT a.authority,'ALL'::text AS data_scope
-                              FROM platform_authority a WHERE a.user_id=:actor
+                              FROM platform_authority a
+                              JOIN effective ON effective.authority=a.authority
+                             WHERE a.user_id=:actor
                             UNION ALL
                             SELECT ra.authority,r.data_scope
                               FROM platform_user_role ur
                               JOIN platform_role r ON r.id=ur.role_id AND r.enabled
                               JOIN platform_role_authority ra ON ra.role_id=r.id
+                              JOIN effective ON effective.authority=ra.authority
                              WHERE ur.user_id=:actor
-                        ) sources ORDER BY authority,data_scope
+                        )
+                        SELECT authority,data_scope FROM scope_sources
+                         ORDER BY authority,data_scope
                         """)
                 .param("actor", actorId)
                 .query(
@@ -923,7 +943,8 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
 
     private void requireGlobalBootstrapOperator(UUID actorId) {
         Set<String> grants = globalAuthorities(actorId);
-        if (!grants.contains("platform:roles:write") || !grants.contains("platform:settings:write"))
+        if (!grants.contains("platform:roles:update")
+                || !grants.contains("platform:settings:update"))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
     }
 

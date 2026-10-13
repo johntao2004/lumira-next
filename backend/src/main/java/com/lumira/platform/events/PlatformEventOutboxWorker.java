@@ -1,17 +1,21 @@
 package com.lumira.platform.events;
 
+import com.lumira.platform.common.DurableEventConsumerPort;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Bounded, horizontally-safe Outbox delivery. PostgreSQL SKIP LOCKED owns the claim; this worker
- * only performs handler IO and fences the final ack with the claim token. Multiple application
- * instances can therefore poll concurrently.
+ * Bounded, horizontally-safe Outbox delivery. PostgreSQL SKIP LOCKED owns the claim. Consumer
+ * database effects and the token-fenced acknowledgement share one transaction, so a stale lease
+ * rolls both back. External network effects must be emitted through a separate durable outbox.
  */
 @Component
 public final class PlatformEventOutboxWorker implements AutoCloseable {
@@ -20,23 +24,41 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
 
     private final PlatformEventOutboxStore store;
     private final PlatformEventConsumerRegistry registry;
+    private final TransactionTemplate transaction;
     private final ExecutorService workers =
             Executors.newThreadPerTaskExecutor(
                     Thread.ofVirtual().name("platform-event-", 0).factory());
     private final Semaphore slots = new Semaphore(MAX_IN_FLIGHT);
     private final AtomicBoolean stopped = new AtomicBoolean();
 
+    @Autowired
     public PlatformEventOutboxWorker(
+            PlatformEventOutboxStore store,
+            PlatformEventConsumerRegistry registry,
+            PlatformTransactionManager transactionManager) {
+        this(store, registry, new TransactionTemplate(transactionManager));
+    }
+
+    /** Package-private constructor used by isolated unit tests without a database transaction. */
+    PlatformEventOutboxWorker(
             PlatformEventOutboxStore store, PlatformEventConsumerRegistry registry) {
+        this(store, registry, (TransactionTemplate) null);
+    }
+
+    PlatformEventOutboxWorker(
+            PlatformEventOutboxStore store,
+            PlatformEventConsumerRegistry registry,
+            TransactionTemplate transaction) {
         this.store = store;
         this.registry = registry;
+        this.transaction = transaction;
     }
 
     @Scheduled(
             fixedDelayString = "${lumira.events.poll-interval-ms:2000}",
             initialDelayString = "${lumira.events.poll-initial-delay-ms:15000}")
     public void poll() {
-        if (stopped.get() || registry.isEmpty()) return;
+        if (stopped.get()) return;
         for (int i = 0; i < MAX_IN_FLIGHT && !stopped.get() && slots.tryAcquire(); i++) {
             boolean submitted = false;
             try {
@@ -61,30 +83,91 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
     }
 
     void process(PlatformEventOutboxStore.Claim claim) {
-        var event = store.event(claim).orElse(null);
+        final PlatformEventOutboxStore.Event event;
+        try {
+            event = store.event(claim).orElse(null);
+        } catch (RuntimeException databaseFailure) {
+            log.warn(
+                    "Platform event lookup deferred for {} ({})",
+                    claim.id(),
+                    databaseFailure.getClass().getSimpleName());
+            return;
+        }
         if (event == null) return;
-        var consumer = registry.resolve(event.sourceType(), event.eventType());
+        var consumer = registry.resolveConsumer(event.sourceType(), event.eventType());
         if (consumer.isEmpty()) {
-            store.fail(claim, "NO_CONSUMER");
+            try {
+                if (!store.releaseWithoutConsumer(claim)) {
+                    log.debug("Platform event without a consumer was fenced for {}", claim.id());
+                }
+            } catch (RuntimeException databaseFailure) {
+                log.warn(
+                        "Platform event without a consumer could not be released for {} ({})",
+                        claim.id(),
+                        databaseFailure.getClass().getSimpleName());
+            }
             return;
         }
         try {
-            // Never hold a JDBC transaction while a module performs network or
-            // other potentially slow work. The claim token fences the ack.
-            consumer.get().consume(event);
-            if (!store.deliver(claim)) {
-                log.debug("Platform event ack fenced for {}", claim.id());
+            if (transaction == null) {
+                consumeAndAcknowledge(consumer.get(), event, claim);
+            } else {
+                transaction.executeWithoutResult(
+                        status -> consumeAndAcknowledge(consumer.get(), event, claim));
             }
+        } catch (AckFencedException fenced) {
+            // The transaction rollback removes every consumer DB side effect before this point.
+            log.debug("Platform event ack fenced for {}", claim.id());
         } catch (Exception failure) {
-            // Keep exception details out of the metadata API; operators can
-            // correlate the claim id with redacted server logs instead.
-            store.fail(claim, "CONSUMER_FAILED");
+            // The transaction (including consumer DB writes) has rolled back. Record retry state
+            // separately; fail() checks that this claim still owns a live lease.
+            try {
+                store.fail(claim, "CONSUMER_FAILED");
+            } catch (RuntimeException databaseFailure) {
+                log.warn(
+                        "Platform event retry state could not be recorded for {} ({})",
+                        claim.id(),
+                        databaseFailure.getClass().getSimpleName());
+            }
             log.warn(
                     "Platform event delivery deferred for {} ({})",
                     claim.id(),
-                    failure.getClass().getSimpleName());
+                    cause(failure).getClass().getSimpleName());
         }
     }
+
+    private void consumeAndAcknowledge(
+            DurableEventConsumerPort consumer,
+            PlatformEventOutboxStore.Event event,
+            PlatformEventOutboxStore.Claim claim) {
+        try {
+            consumer.consume(
+                    new DurableEventConsumerPort.Event(
+                            event.id(),
+                            event.sourceType(),
+                            event.eventType(),
+                            event.eventKey(),
+                            event.payload(),
+                            event.attempts()));
+        } catch (Exception failure) {
+            throw new ConsumerFailureException(failure);
+        }
+        if (!store.deliver(claim)) throw new AckFencedException();
+    }
+
+    private static Throwable cause(Throwable failure) {
+        return failure instanceof ConsumerFailureException && failure.getCause() != null
+                ? failure.getCause()
+                : failure;
+    }
+
+    private static final class ConsumerFailureException extends RuntimeException {
+        private ConsumerFailureException(Exception cause) {
+            super(cause);
+        }
+    }
+
+    private static final class AckFencedException extends RuntimeException {}
 
     @Override
     @PreDestroy

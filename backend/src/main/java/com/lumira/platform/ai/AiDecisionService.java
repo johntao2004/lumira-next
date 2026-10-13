@@ -3,6 +3,7 @@ package com.lumira.platform.ai;
 import com.lumira.platform.ai.AiProviderProfile.ProviderKind;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,8 +72,7 @@ public class AiDecisionService {
     }
 
     public JsonNode judge(JudgmentRequest input, String actor) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.AI_MODELS_TEST);
         if (input == null
                 || input.providerId() == null
                 || input.type() == null

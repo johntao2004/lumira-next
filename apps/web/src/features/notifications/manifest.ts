@@ -6,6 +6,6 @@ export const notificationsManifest = {
   required: true,
   dependencies: ["platform"],
   routes: [
-    { id: "notifications", label: "notificationCenter", permission: "platform:notifications:read", global: true, group: "operations", order: 20 },
+    { id: "notifications", label: "notificationCenter", permission: "platform:notifications:access", accessScope: "global", operations: { create: "platform:notifications:create" }, global: true, group: "communication", order: 10 },
   ],
 } as const satisfies FrontendModuleManifest;

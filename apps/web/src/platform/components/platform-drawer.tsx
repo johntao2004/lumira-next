@@ -15,6 +15,9 @@ export function PlatformDrawer({open,...props}:DrawerProps){
   const frame=requestAnimationFrame(()=>{
    const target=launcher.current;
    if(!target?.isConnected||!target.checkVisibility())return;
+   // If this drawer and its parent close together, let the outer drawer restore focus.
+   const parentDrawer=target.closest(".ant-drawer");
+   if(parentDrawer&&!parentDrawer.classList.contains("ant-drawer-open"))return;
    // Nested drawers return to their parent; an unrelated open drawer keeps focus.
    if([...document.querySelectorAll('.ant-drawer-open')].some(drawer=>!drawer.contains(target)))return;
    target.focus({preventScroll:true});

@@ -18,6 +18,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -364,28 +365,39 @@ public class ModelConnectionService {
     private record TransportResponse(int status, byte[] body) {}
 
     public static List<Map<String, Object>> userToolDefinitions(boolean canWriteUsers) {
+        return userToolDefinitions(canWriteUsers ? Set.of("create", "update", "delete") : Set.of());
+    }
+
+    public static List<Map<String, Object>> userToolDefinitions(Set<String> allowedOperations) {
+        return userToolDefinitions(allowedOperations, true);
+    }
+
+    public static List<Map<String, Object>> userToolDefinitions(
+            Set<String> allowedOperations, boolean canReadUsers) {
         var definitions = new ArrayList<Map<String, Object>>();
-        definitions.add(
-                Map.of(
-                        "type",
-                        "function",
-                        "function",
-                        Map.of(
-                                "name",
-                                "users_search",
-                                "description",
-                                "Search visible user accounts by username or display name. Use an empty search string to list visible users. Do not repeat the same query.",
-                                "parameters",
-                                Map.of(
-                                        "type",
-                                        "object",
-                                        "properties",
-                                        Map.of("search", Map.of("type", "string")),
-                                        "additionalProperties",
-                                        false,
-                                        "required",
-                                        List.of("search")))));
-        if (canWriteUsers) {
+        if (canReadUsers) {
+            definitions.add(
+                    Map.of(
+                            "type",
+                            "function",
+                            "function",
+                            Map.of(
+                                    "name",
+                                    "users_search",
+                                    "description",
+                                    "Search visible user accounts by username or display name. Use an empty search string to list visible users. Do not repeat the same query.",
+                                    "parameters",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "properties",
+                                            Map.of("search", Map.of("type", "string")),
+                                            "additionalProperties",
+                                            false,
+                                            "required",
+                                            List.of("search")))));
+        }
+        if (allowedOperations.contains("create")) {
             definitions.add(
                     Map.of(
                             "type",
@@ -408,6 +420,8 @@ public class ModelConnectionService {
                                                     Map.of("type", "string")),
                                             "required",
                                             List.of("username", "displayName")))));
+        }
+        if (allowedOperations.contains("update")) {
             definitions.add(
                     Map.of(
                             "type",
@@ -434,6 +448,8 @@ public class ModelConnectionService {
                                                     Map.of("type", "boolean")),
                                             "required",
                                             List.of("id", "version", "displayName", "enabled")))));
+        }
+        if (allowedOperations.contains("delete")) {
             definitions.add(
                     Map.of(
                             "type",

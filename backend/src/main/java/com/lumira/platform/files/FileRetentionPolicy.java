@@ -2,6 +2,8 @@ package com.lumira.platform.files;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.settings.SettingStore;
 import java.util.List;
 import java.util.UUID;
@@ -55,7 +57,12 @@ public class FileRetentionPolicy {
         this.mapper = mapper;
     }
 
-    public View read() {
+    public View read(String actor) {
+        guard.requirePageGlobal(actor, PlatformPageId.FILE_RETENTION);
+        return readUnchecked();
+    }
+
+    private View readUnchecked() {
         return settings.find("file-retention")
                 .map(
                         snapshot ->
@@ -67,6 +74,7 @@ public class FileRetentionPolicy {
 
     @Transactional
     public View save(Input input, String actor) {
+        guard.requireOperationGlobal(actor, PlatformOperation.FILE_RETENTION_UPDATE);
         if (input == null || input.data() == null || input.version() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidFileRetention");
         }
@@ -85,13 +93,12 @@ public class FileRetentionPolicy {
     }
 
     public Data current() {
-        return read().data();
+        return readUnchecked().data();
     }
 
     @Transactional
     public View rollback(RollbackInput input, String actor) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.FILE_RETENTION_UPDATE);
         if (input == null || input.version() < 0 || input.sourceVersion() < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidSettingRevision");
         }

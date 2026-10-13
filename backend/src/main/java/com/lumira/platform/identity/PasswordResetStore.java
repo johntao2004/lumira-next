@@ -205,6 +205,9 @@ public class PasswordResetStore {
                 .param("password", replacementHash)
                 .update();
         if (accountSecurity != null) accountSecurity.bumpPrimaryCredentialRevision(id);
+        jdbc.sql("DELETE FROM platform_password_change_requirement WHERE user_id=:id")
+                .param("id", id)
+                .update();
         jdbc.sql("DELETE FROM spring_session WHERE principal_name=:name")
                 .param("name", account.get().username())
                 .update();

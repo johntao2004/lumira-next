@@ -153,6 +153,9 @@ public class PasswordService {
                     if (changed != 1) throw error(HttpStatus.CONFLICT, "passwordChangeExpired");
                     if (accountSecurity != null)
                         accountSecurity.bumpPrimaryCredentialRevision(current.id());
+                    jdbc.sql("DELETE FROM platform_password_change_requirement WHERE user_id=:id")
+                            .param("id", current.id())
+                            .update();
                     jdbc.sql("DELETE FROM spring_session WHERE principal_name=:name")
                             .param("name", username)
                             .update();

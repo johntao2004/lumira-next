@@ -2,7 +2,7 @@
 
 ## 目录与构建
 
-根目录 `plugins/sdk/` 是稳定契约；`plugins/feedback/`、`plugins/localization/`、`plugins/sensitive-words/`、`plugins/mfa/`、`plugins/diffuse-avatar/` 各自包含 README、plugin.json、backend、frontend、migrations 和构建生成的 dist。每个 README 明确其插件用途、依赖、构建和安装方法。MFA 的认证状态与接口见 [二次认证说明](mfa.md)。
+根目录 `plugins/sdk/` 是稳定契约；`plugins/feedback/`、`plugins/localization/`、`plugins/sensitive-words/`、`plugins/mfa/`、`plugins/diffuse-avatar/`、`plugins/payment-core/`、`plugins/wechat-pay/`、`plugins/alipay-pay/` 各自包含 README、plugin.json、backend、frontend、migrations 和构建生成的 dist。每个 README 明确其插件用途、依赖、构建和安装方法。MFA 的认证状态与接口见 [二次认证说明](mfa.md)；扫码支付的模块边界、REST API、安全和运营限制见 [支付插件说明](payments.md)。
 
 使用 Node 24、pnpm 10.33.0、JDK 25：
 
@@ -17,7 +17,7 @@ pnpm plugins:build sdk/examples/hotplug-probe
 
 私有 Java 依赖放 `backend/lib/*.jar`；构建时加入编译类路径并复制到包。前端私有库由 esbuild 打包，宿主模块清单见 `plugins/sdk/frontend-modules.json`。存在于 `plugins/<dependency-id>/plugin.json` 的插件依赖会先构建并递归放进 `dependencies/*.lumira-plugin.zip`；核心依赖无需打包。离线依赖版本必须精确匹配清单。
 
-宿主框架和 SDK 由平台提供，安装包不能重复覆盖。插件通过 common 与各模块 api 契约调用平台，禁止引用其他插件实现。SDK v1 包括认证、全局范围、权限、JdbcClient/事务、审计、文件、通知、字典、AI 文本生成和可选扩展调用。前后端 SDK 应按兼容契约演进。
+宿主框架和 SDK 由平台提供，安装包不能重复覆盖。插件通过 common 与各模块 api 契约调用平台，禁止引用其他插件实现。SDK v1 包括认证、全局范围、权限、JdbcClient/事务、审计、文件、通知、字典、AI 文本生成、支付渠道 SPI 和可选扩展调用。安装清单格式 v2 要求每个授权页面使用本插件独有的访问权限，并通过 `route.operations` 显式映射该页操作；页面权限和操作权限不能跨页复用。格式 v1 继续读取历史清单，但不会推测或补齐它没有声明的操作映射。前后端 SDK 应按兼容契约演进。
 
 ## 安装包与接口
 
@@ -35,7 +35,19 @@ pnpm plugins:build sdk/examples/hotplug-probe
 | GET | `/frontend` | 当前可用前端插件 |
 | GET | `/assets/{digest}/{file}` | 当前已发布的前端文件 |
 
-管理操作执行认证、CSRF、模块权限和全局范围检查。动态 Controller 必须声明自己的 `@ModuleEndpoint`，HTTP 方法及授权规则必须在 manifest 登记；实际业务服务继续执行自己的数据范围检查。公开接口只允许显式登记的 GET。页面权限与模块状态共同控制导航，动态页面不授予任何权限。
+管理操作执行认证、CSRF、模块权限和全局范围检查。动态 Controller 必须声明自己的 `@ModuleEndpoint`，HTTP 方法及授权规则必须在 manifest 登记；实际业务服务继续执行自己的数据范围检查。公开接口只允许显式登记的 GET。唯一例外是供支付机构服务器通知使用的 `signedCallback: true`：它必须是 POST、精确的字面路径 `/api/plugins/{本插件ID}/callbacks/{小写短横线标识}`，且只能在该插件已启用时绕过 CSRF 和登录授权；卸载或停用后立即失效。普通公开 GET 规则不变，也不得使用通配符、路径模板或登记其他插件/平台路径。页面权限与模块状态共同控制导航，动态页面不授予任何权限。
+
+`permissions` 是插件实际拥有的 authority 清单，代码使用 `platform:{plugin-id}:{page-or-action}`，插件不能声明平台或其他插件的权限。可选的 `permissionGroups` 只提供目录展示信息，格式为 `{id,title,permissions:[{code,label,requires?}]}`；各分组的权限合计必须覆盖 manifest 所有权限且每项只出现一次。`requires` 可标示执行操作需要的宿主或已声明插件 authority，但不会代替服务端检查。旧 manifest 未提供分组时，宿主会把字符串权限放入一个以插件名称命名的兼容分组。目录 API 会把组 id 规范为 `{plugin-id}:{group-id}`，避免不同插件复用本地组名时冲突。分组和标签按普通文本显示，不会授予额外 authority。插件 id 不能占用平台权限资源或平台模块 id。
+
+新版 route 显式使用 `{id,label,permission,operations?,scopedOperations?,group,order,global}`：`permission` 是本页独有的访问权限，`operations` 把页面内稳定动作 ID 映射到本插件声明的独立权限代码，例如 `{"permission":"platform:wechat-pay:orders-access","operations":{"read":"platform:wechat-pay:orders-read","refund":"platform:wechat-pay:orders-refund"}}`。页面访问和每个动作分别勾选、分别保存；调用动作必须同时持有该页权限和对应操作权限。`global` 声明页面访问范围；`scopedOperations` 列出使用目标范围授权的动作，未列出的动作默认为全局。动作只能映射到一个页面，所有映射代码必须在同一权限组中声明。旧 manifest 可省略 `operations`，此时目录明确显示没有操作映射；宿主不会从权限名称、`read` 前缀或资源路径猜测页面或动作。依赖插件的历史路由权限仍按兼容规则读取，但不能用于新页面动作映射。
+
+API 规则保留 `authorities` 的旧任一项匹配行为，不能改解释为 AND。格式 v2 的权限规则必须把本页访问权限放入 `allAuthorities`，并至少要求该页一个已映射操作；`authorities` 只能列该页操作，不能替代页面访问门槛。新增的 `allAuthorities` 表示额外的全部匹配条件，必须是同一插件页面上已声明的访问/操作映射；同时出现两个字段时，旧列表先按任一项匹配，再要求 `allAuthorities` 全部满足。旧格式 v1 和旧 `global:true` 规则继续保持原有匹配及全局范围语义。混合范围路由可额外声明 `globalAuthorities`：其中至少一项必须同时满足普通权限匹配并具有全局范围；该字段是任一项匹配，适用于“页面访问可按本人范围、管理动作必须全局”等组合。它不能放宽 `allAuthorities` 的持有要求。实际服务也必须校验页面访问和动作，并保留已有用户/角色数据范围；manifest 规则不能替代服务的对象级检查。`authenticatedOnly`、公开读取和签名回调规则保持既有语义，不能与权限规则混用。
+
+`GET /api/platform/permission-catalog` 返回平台与当前已安装插件的动态权限组，页面结构为 `{id,path,title,navigationGroup,navigationOrder,accessPermission,operationPermissions,accessScope,operationScopes}`；权限项结构为 `{code,label,requires,editable,retired}`，插件组的 `source` 为 `plugin`。插件页面只从该 route 的显式映射生成，旧清单缺少映射时 `operationPermissions` 为空，不能按组内其他权限补齐。插件权限只在当前已安装 manifest 声明时可新增到角色。首次给角色授予插件权限，仍须通过角色创建或更新的 `platform:roles:create` / `platform:roles:update` 检查，并由持有全局 `platform:modules:install` 的操作者为当前已安装插件提供的权限执行受审计引导；此引导不能授予平台权限、未知权限或已卸载插件权限。卸载后，角色中保留的历史权限会显示为退役条目，只能保留或移除，不能再次新增。
+
+运行时每次刷新都按插件 ID 替换完整目录快照；安装后注册，卸载后移除，避免静态权限集合累积。卸载不会删除角色已保存的 authority；目录会将不再由已安装插件声明的历史授权列为退役权限，供查看现有角色使用。角色可以保留或移除退役权限，但不能新增。插件服务卸载后不再注册路由或执行能力；重新安装后再按当前 manifest 注册权限和页面。
+
+插件生命周期权限按操作拆分：导入包和首次安装需要 `platform:modules:install`，启用已安装插件需要 `platform:modules:update`，卸载需要 `platform:modules:uninstall`。安装操作若同时启用已安装依赖，也要求 update。后台任务执行时会再次检查对应权限。业务 API 的细粒度权限仍由插件 manifest 和服务层共同执行；服务层原有的数据范围、全局范围与事务边界必须保留，不能因拆分 authority 而放宽。
 
 ## 后端资源所有权
 
@@ -45,7 +57,15 @@ PF4J 为每个插件创建独立类加载器，框架与 SDK 从宿主加载。`
 
 账号头像扩展使用稳定的 `common.GeneratedAvatarPort` 契约：启用的插件可以提供 `generate(UUID accountId)`，返回 PNG 字节；宿主在持有插件调用租约期间使用结果，不缓存插件 Bean。`diffuse-avatar` 依赖 `identity@1.0.0` 和 `files@1.0.0`，生成确定性的 256 × 256 弥散渐变头像，不提供业务路由或权限。
 
+支付扩展由 SDK `common.PaymentGatewayPort` 提供。`payment-core` 通过 `PluginExtensionsPort` 租约调用当前已启用的渠道实现，不持有实现 Bean；`wechat-pay` 与 `alipay-pay` 只依赖该 SDK 接口和支付核心插件，不依赖彼此的源码。
+
 Flyway 使用每插件 `plugin_<id>_schema_history` 独立记录，仅执行向前迁移；现有表通过接管迁移处理。迁移必须适合事务执行。卸载不删表、不删除发布包，也不删除源码。管理员默认选择保留数据，也可显式选择删除所选插件的业务记录。
+
+平台 V51 先迁移并退役历史权限来源。随后发布的插件版本会在各自的追加迁移中完成旧授权转换，并调用 `platform_normalize_legacy_permission_projections()` 清理 V50 隐藏来源；迁移在缺少 V51 helper 时失败关闭，因此部署顺序必须是先升级宿主到 V51，再升级/安装插件。已发布的迁移保持原样。
+
+在 V51 之后全新安装反馈、本地化或敏感词插件时，如果插件迁移历史为空，宿主会用 Flyway Community 的自定义 no-op resolver 将待执行的旧权限专用 `V2` 记入历史：原版本、脚本和校验和保持一致，旧 SQL 不运行。若这些插件已经有先前的版本迁移记录，则仍执行待处理的 `V2`，以便转换该升级路径上的旧授权；随后追加的 `V3` 只处理已废弃且不与当前独立权限同名的聚合代码，并调用 V51 helper。MFA 的 `V6` 含管理员引导授权，因此只要它在 V51 之后仍待执行，就会以相同的原始校验和记录为已执行但不运行；`V7` 只转换可识别的旧 MFA 来源，不自动授予新的管理页或操作权限。这样全新安装保留单独授予的页面/操作权限，也不会重放 MFA 引导授权。当前最终化包版本为 feedback/localization `1.0.11`、sensitive-words `1.0.8`、mfa `1.0.9`、payment-core/wechat-pay/alipay-pay `1.0.5`。
+
+MFA `1.0.9` 的 `V7` 将已有旧 `mfa:read`/`mfa:manage` 关联迁移到新的管理页和读取权限。旧 `mfa:reset` 只在 V50 元数据要求的全局重置来源与目标范围 `users:update` 来源都存在时转换为新重置操作；这两项可以来自直接授权和角色组合，角色来源保留原始数据范围。V51 之后的新安装会将待执行的旧 V6 种子记录为已执行但不运行，因此不会自动授予新管理页或操作。升级中已记录的旧授权仍由 V51/V7 转换；新权限应由角色管理员显式检查与配置。
 
 ## 前端与扩展
 
@@ -57,7 +77,7 @@ Flyway 使用每插件 `plugin_<id>_schema_history` 独立记录，仅执行向�
 
 首次升级前按项目备份流程保存数据库。先 `pnpm plugins:build` 再启动平台，以便首次转换旧模块状态。生产应保存持久的 `.runtime/plugins/` 制品、数据库与对应宿主 SDK；不能只复制插件源码替代运行制品。
 
-升级流程为预检卸载旧版本、导入新版本、预检安装。兼容迁移后的数据自动恢复；移除任何被安装消费者依赖的插件会被阻止，即使消费者已停用。失败任务显示具体阶段，迁移与业务数据保留。
+升级流程为预检卸载旧版本、导入新版本、预检安装。修改已发布插件时提高 patch 版本，不要用相同版本号导入不同摘要；当前运行时通过卸载、导入、安装新包升级，没有原位替换已安装制品的路径。默认 `PRESERVE` 会保留业务表和已保存角色权限，插件权限目录则在卸载时撤下、安装新包后按新 manifest 重建。向前迁移为新细粒度 authority 添加授权；已发布迁移不可改写。旧权限若要求多个来源共同成立，迁移应把每个旧授权来源分别保存为唯一的 `platform:__v50:<slug>` 隐藏 authority，并在 `platform_permission_projection_component` 注册逻辑权限所需的组合及全局/目标范围；不能将旧组合直接复制成宽泛的新操作。逻辑权限之后的显式新授权保持独立，只有废弃的旧代码才进入退役列表。MFA 升级前要确认可承受短暂卸载期间服务不可用，并按插件说明保留恢复状态；不要为了升级手工删除 MFA 状态或数据库权限记录。移除任何被安装消费者依赖的插件会被阻止，即使消费者已停用。失败任务显示具体阶段，迁移与业务数据保留。
 
 ### 固定发布图部署
 
@@ -88,6 +108,6 @@ V38 节点检测依赖这些节点已运行并登记心跳；升级期间仍运�
 
 卸载预检默认 `dataMode=PRESERVE`。`POST /{id}/uninstall-plan?dataMode=DELETE` 返回当前清理范围和记录数量；执行使用 `{revision,dataMode:"DELETE",confirmation:"插件标识"}`。预检 revision 绑定插件、操作、数据模式及记录数量；执行与请求排空后再次核验，改变模式或数据数量后必须重新预检。删除还须在页面输入插件标识并确认不可恢复提示。任务持久化 data_mode，独立 `plugin.dataDeleted` 审计区分永久清理与普通卸载。
 
-安装包 `dataSets` 按顺序声明 `{table,label,column?,value?}`。宿主只允许插件自己的 `plugin_<id>_*` 表，以及三个接管插件已明确归属的业务表；共享草稿表只能精确清理 `draft_key=feedback.create`，本地化语言仅清理 `built_in=false`。清单没有声明清理范围的包不能选择删除数据。所有数据集在同一数据库事务中清理，失败全部回滚；已卸载的插件保持卸载，任务显示数据清理失败，可重新安装使用保留的数据。
+安装包 `dataSets` 按顺序声明 `{table,label,column?,value?}`。宿主只允许插件自己的 `plugin_<id>_*` 表，以及三个接管插件已明确归属的业务表；本地化语言仅清理 `built_in=false`。已升级数据库中遗留的账号草稿数据保留在数据库中，运行时不再读取、写入或清理。所有插件卸载数据集在同一数据库事务中清理，失败全部回滚；已卸载的插件保持卸载，任务显示数据清理失败，可重新安装使用保留的数据。
 
-删除只针对管理员选中的插件，闲置自动依赖始终保留数据。工单清理工单、处理记录、附件关联和工单草稿，共享文件保留；本地化清理自定义文案、覆盖翻译、发布记录与自定义语言，内置语言保留；敏感词清理词库、角色管控和命中记录。表结构、迁移/技术版本记录、权限授权、源码和发布包继续保留，重新安装不会通过旧迁移恢复已删除的业务记录。
+删除只针对管理员选中的插件，闲置自动依赖始终保留数据。工单清理工单、处理记录和附件关联，共享文件保留；本地化清理自定义文案、覆盖翻译、发布记录与自定义语言，内置语言保留；敏感词清理词库、角色管控和命中记录。表结构、迁移/技术版本记录、权限授权、源码和发布包继续保留，重新安装不会通过旧迁移恢复已删除的业务记录。

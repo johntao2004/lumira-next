@@ -96,6 +96,77 @@ test("a second captchaRequired failure is returned without a third attempt", asy
   controller.dispose();
 });
 
+test("stale unsupported CAPTCHA capability is refreshed before a required retry", async () => {
+  const actions = [];
+  const controller = createCaptchaProofController(action => actions.push(action));
+  let attempts = 0;
+  let refreshes = 0;
+  const options = {
+    ...captchaOptions(false),
+    supported: false,
+    refreshSupported: async () => {
+      refreshes += 1;
+      return true;
+    },
+  };
+  const run = controller.run("PASSWORD_LOGIN", options, async proofId => {
+    attempts += 1;
+    if (attempts === 1) {
+      assert.equal(proofId, undefined);
+      throw new Error("captchaRequired");
+    }
+    assert.equal(proofId, "proof-after-refresh");
+    return "signed-in";
+  });
+
+  await tick();
+  assert.equal(attempts, 1);
+  assert.equal(refreshes, 1);
+  assert.equal(actions.at(-1), "PASSWORD_LOGIN");
+  controller.finish({ action: "PASSWORD_LOGIN", captchaProofId: "proof-after-refresh" });
+  assert.deepEqual(await run, { status: "completed", value: "signed-in" });
+  assert.equal(attempts, 2);
+  controller.dispose();
+});
+
+test("required CAPTCHA stays blocked when a policy refresh cannot confirm support", async () => {
+  const controller = createCaptchaProofController();
+  let attempts = 0;
+  const run = controller.run("PASSWORD_LOGIN", {
+    ...captchaOptions(false),
+    supported: false,
+    refreshSupported: async () => false,
+  }, async () => {
+    attempts += 1;
+    throw new Error("captchaRequired");
+  });
+
+  await assert.rejects(run, /captchaUnavailable/);
+  assert.equal(attempts, 1, "credentials are never retried without a proof");
+  controller.dispose();
+});
+
+test("cancelling during capability refresh never opens a late proof prompt", async () => {
+  const actions = [];
+  const controller = createCaptchaProofController(action => actions.push(action));
+  let finishRefresh;
+  const run = controller.run("PASSWORD_LOGIN", {
+    ...captchaOptions(false),
+    supported: false,
+    refreshSupported: () => new Promise(resolve => { finishRefresh = resolve; }),
+  }, async () => {
+    throw new Error("captchaRequired");
+  });
+
+  await tick();
+  assert.equal(typeof finishRefresh, "function");
+  controller.cancel();
+  finishRefresh(true);
+  assert.deepEqual(await run, { status: "cancelled" });
+  assert.deepEqual(actions, [], "no proof UI is opened after the run is cancelled");
+  controller.dispose();
+});
+
 test("cancelling preflight or a required retry never submits the next request", async () => {
   const beforeSubmit = createCaptchaProofController();
   let preflightAttempts = 0;

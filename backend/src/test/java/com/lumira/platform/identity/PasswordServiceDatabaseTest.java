@@ -51,6 +51,7 @@ class PasswordServiceDatabaseTest {
         jdbc = new JdbcTemplate(dataSource);
         jdbc.execute(
                 "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text UNIQUE,password_hash text NOT NULL,enabled boolean NOT NULL,deleted_at timestamptz,primary_credential_revision uuid NOT NULL)");
+        jdbc.execute("CREATE TABLE platform_password_change_requirement(user_id uuid PRIMARY KEY)");
         jdbc.execute("CREATE TABLE platform_authentication_policy_lock(id integer PRIMARY KEY)");
         jdbc.execute("INSERT INTO platform_authentication_policy_lock(id) VALUES(1)");
         jdbc.execute(

@@ -1,6 +1,7 @@
 package com.lumira.platform.notifications;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -8,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.lumira.platform.TestMigration;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.common.PageRequest;
+import com.lumira.platform.events.PlatformEventOutboxStore;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +36,7 @@ class NotificationAdminServiceDatabaseTest {
     private JdbcTemplate jdbc;
     private TransactionTemplate tx;
     private NotificationAdminService service;
+    private NotificationBroadcastEventConsumer broadcastConsumer;
     private String schema;
     private final UUID alice = UUID.randomUUID();
     private final UUID bob = UUID.randomUUID();
@@ -63,17 +67,20 @@ class NotificationAdminServiceDatabaseTest {
         tx = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
 
         jdbc.execute(
-                "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,display_name TEXT,enabled BOOLEAN NOT NULL,deleted_at timestamptz)");
+                "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,display_name"
+                        + " TEXT,enabled BOOLEAN NOT NULL,deleted_at timestamptz)");
         jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
         jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
         jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
         jdbc.execute(
-                "CREATE TABLE platform_role(id UUID PRIMARY KEY,code TEXT NOT NULL,name TEXT NOT NULL,enabled BOOLEAN NOT NULL)");
+                "CREATE TABLE platform_role(id UUID PRIMARY KEY,code TEXT NOT NULL,name TEXT NOT"
+                        + " NULL,enabled BOOLEAN NOT NULL)");
         jdbc.execute(
                 "CREATE TABLE platform_user_role(user_id UUID NOT NULL,role_id UUID NOT NULL)");
 
         jdbc.update(
-                "INSERT INTO platform_user(id,username,display_name,enabled) VALUES(?,?,?,true),(?,?,?,true),(?,?,?,false),(?,?,?,true)",
+                "INSERT INTO platform_user(id,username,display_name,enabled)"
+                        + " VALUES(?,?,?,true),(?,?,?,true),(?,?,?,false),(?,?,?,true)",
                 alice,
                 "alice",
                 "Alice",
@@ -88,7 +95,8 @@ class NotificationAdminServiceDatabaseTest {
                 "Deleted");
         jdbc.update("UPDATE platform_user SET deleted_at=now() WHERE id=?", deletedUser);
         jdbc.update(
-                "INSERT INTO platform_role VALUES(?,?,?,true),(?,?,?,true),(?,?,?,true),(?,?,?,false)",
+                "INSERT INTO platform_role"
+                        + " VALUES(?,?,?,true),(?,?,?,true),(?,?,?,true),(?,?,?,false)",
                 firstRole,
                 "ops",
                 "Operations",
@@ -114,8 +122,11 @@ class NotificationAdminServiceDatabaseTest {
                 alice,
                 disabledRole);
 
-        NotificationStore store =
-                new NotificationStore(JdbcClient.create(dataSource), jdbc, new JsonMapper());
+        var mapper = new JsonMapper();
+        var client = JdbcClient.create(dataSource);
+        NotificationStore store = new NotificationStore(client, jdbc, mapper);
+        var events = new PlatformEventOutboxStore(client, mapper);
+        broadcastConsumer = new NotificationBroadcastEventConsumer(store, mapper);
         AdministrationPort guard =
                 new AdministrationPort() {
                     @Override
@@ -142,9 +153,7 @@ class NotificationAdminServiceDatabaseTest {
                     auditedAction = action;
                     auditedTarget = target;
                 };
-        service =
-                new NotificationAdminService(
-                        store, JdbcClient.create(dataSource), guard, audit, new JsonMapper());
+        service = new NotificationAdminService(store, client, guard, audit, mapper, events::append);
     }
 
     @AfterEach
@@ -159,11 +168,7 @@ class NotificationAdminServiceDatabaseTest {
 
         assertEquals(3, roles.size());
         assertTrue(roles.stream().allMatch(role -> !role.id().equals(disabledRole)));
-        assertEquals(
-                List.of(
-                        "require:" + NotificationAdminService.WRITE,
-                        "global:" + NotificationAdminService.WRITE),
-                requiredPermissions);
+        assertEquals(globalNotificationWriteChecks(), requiredPermissions);
     }
 
     @Test
@@ -198,17 +203,13 @@ class NotificationAdminServiceDatabaseTest {
                         () -> service.recipientOption(ACTOR, deletedUser));
         assertEquals("notificationRecipientNotFound", disabled.getReason());
         assertEquals("notificationRecipientNotFound", deleted.getReason());
-        assertEquals(16, requiredPermissions.size());
-        for (int index = 0; index < requiredPermissions.size(); index += 2) {
-            assertEquals(
-                    "require:" + NotificationAdminService.WRITE, requiredPermissions.get(index));
-            assertEquals(
-                    "global:" + NotificationAdminService.WRITE, requiredPermissions.get(index + 1));
-        }
+        List<String> expected = new ArrayList<>();
+        for (int call = 0; call < 8; call++) expected.addAll(globalNotificationWriteChecks());
+        assertEquals(expected, requiredPermissions);
     }
 
     @Test
-    void roleBroadcastCreatesOneNotificationPerEnabledAccountAcrossSelectedRoles() {
+    void roleBroadcastQueuesRecipientSnapshotAndConsumerDeduplicatesDelivery() {
         var published =
                 tx.execute(
                         status ->
@@ -226,7 +227,33 @@ class NotificationAdminServiceDatabaseTest {
         assertNotNull(published);
         assertEquals(2, published.recipientCount());
         assertEquals(
-                2,
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM platform_event_outbox WHERE status='PENDING'",
+                        Integer.class));
+        assertEquals(
+                0,
+                jdbc.queryForObject("SELECT count(*) FROM platform_notification", Integer.class));
+
+        UUID charlie = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO platform_user(id,username,display_name,enabled) VALUES(?,?,?,true)",
+                charlie,
+                "charlie",
+                "Charlie");
+        jdbc.update("DELETE FROM platform_user_role WHERE user_id=?", bob);
+        jdbc.update(
+                "INSERT INTO platform_user_role(user_id,role_id) VALUES(?,?)", charlie, firstRole);
+        var event = onlyBroadcastEvent();
+        assertTrue(event.payload().contains(alice.toString()));
+        assertTrue(event.payload().contains(bob.toString()));
+        assertFalse(event.payload().contains(charlie.toString()));
+        jdbc.update("UPDATE platform_user SET enabled=false WHERE id=?", bob);
+        tx.executeWithoutResult(status -> broadcastConsumer.consume(event));
+        tx.executeWithoutResult(status -> broadcastConsumer.consume(event));
+
+        assertEquals(
+                1,
                 jdbc.queryForObject("SELECT count(*) FROM platform_notification", Integer.class));
         assertEquals(
                 1,
@@ -235,23 +262,111 @@ class NotificationAdminServiceDatabaseTest {
                         Integer.class,
                         alice));
         assertEquals(
-                1,
+                0,
                 jdbc.queryForObject(
                         "SELECT count(*) FROM platform_notification WHERE recipient_id=?",
                         Integer.class,
                         bob));
         assertEquals(
-                2,
+                0,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM platform_notification WHERE recipient_id=?",
+                        Integer.class,
+                        charlie));
+        assertEquals(
+                1,
                 jdbc.queryForObject(
                         "SELECT count(*) FROM platform_notification WHERE href='/dashboard/home'",
                         Integer.class));
         assertEquals("notification.broadcast", auditedAction);
         assertEquals(published.broadcastId(), auditedTarget);
+        assertEquals(globalNotificationWriteChecks(), requiredPermissions);
+    }
+
+    @Test
+    void broadcastChunksStayWithinPayloadLimitAndEnqueueAtMostTenThousandRecipients() {
+        List<Object[]> users = new ArrayList<>(499);
+        for (int index = 0; index < 499; index++) {
+            UUID id = UUID.randomUUID();
+            users.add(new Object[] {id, "bulk-" + index, "Bulk " + index, true});
+        }
+        jdbc.batchUpdate(
+                "INSERT INTO platform_user(id,username,display_name,enabled) VALUES(?,?,?,?)",
+                users);
+
+        var published =
+                service.publish(
+                        ACTOR,
+                        new NotificationAdminService.Publish(
+                                "ALL",
+                                null,
+                                null,
+                                "Maintenance",
+                                "Scheduled maintenance",
+                                null,
+                                null));
+
+        assertEquals(501, published.recipientCount());
         assertEquals(
-                List.of(
-                        "require:" + NotificationAdminService.WRITE,
-                        "global:" + NotificationAdminService.WRITE),
-                requiredPermissions);
+                2,
+                jdbc.queryForObject("SELECT count(*) FROM platform_event_outbox", Integer.class));
+        assertTrue(
+                jdbc
+                        .queryForList(
+                                "SELECT octet_length(payload::text) FROM platform_event_outbox",
+                                Integer.class)
+                        .stream()
+                        .allMatch(size -> size <= 262_144));
+        for (DurableEventConsumerPort.Event event : broadcastEvents())
+            tx.executeWithoutResult(status -> broadcastConsumer.consume(event));
+        assertEquals(
+                501,
+                jdbc.queryForObject("SELECT count(*) FROM platform_notification", Integer.class));
+    }
+
+    @Test
+    void notificationOutboxWriteRollsBackWithThePublishingTransaction() {
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        tx.execute(
+                                status -> {
+                                    service.publish(ACTOR, rolePublish(List.of(firstRole)));
+                                    throw new IllegalStateException("rollback");
+                                }));
+
+        assertEquals(
+                0,
+                jdbc.queryForObject("SELECT count(*) FROM platform_event_outbox", Integer.class));
+        assertEquals(
+                0,
+                jdbc.queryForObject("SELECT count(*) FROM platform_notification", Integer.class));
+    }
+
+    @Test
+    void oversizedUtf8ParamsAreRejectedBeforeQueueingOrAuditing() {
+        String body = "通".repeat(3_000);
+        assertEquals(3_000, body.length());
+        assertTrue(body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 8_192);
+
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                service.publish(
+                                        ACTOR,
+                                        new NotificationAdminService.Publish(
+                                                "ALL", null, null, "Title", body, null, null)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
+        assertEquals("notificationInvalid", error.getReason());
+        assertEquals(
+                0,
+                jdbc.queryForObject("SELECT count(*) FROM platform_event_outbox", Integer.class));
+        assertEquals(
+                0,
+                jdbc.queryForObject("SELECT count(*) FROM platform_notification", Integer.class));
+        assertEquals(null, auditedAction);
     }
 
     @Test
@@ -314,5 +429,35 @@ class NotificationAdminServiceDatabaseTest {
     private static NotificationAdminService.Publish rolePublish(List<UUID> roles) {
         return new NotificationAdminService.Publish(
                 "ROLES", null, roles, "Title", "Body", null, null);
+    }
+
+    private DurableEventConsumerPort.Event onlyBroadcastEvent() {
+        List<DurableEventConsumerPort.Event> events = broadcastEvents();
+        assertEquals(1, events.size());
+        return events.getFirst();
+    }
+
+    private List<DurableEventConsumerPort.Event> broadcastEvents() {
+        return jdbc.query(
+                "SELECT id,source_type,event_type,event_key,payload::text,attempts"
+                        + " FROM platform_event_outbox ORDER BY event_key",
+                (rs, row) ->
+                        new DurableEventConsumerPort.Event(
+                                rs.getObject("id", UUID.class),
+                                rs.getString("source_type"),
+                                rs.getString("event_type"),
+                                rs.getString("event_key"),
+                                rs.getString("payload"),
+                                rs.getInt("attempts")));
+    }
+
+    private static List<String> globalNotificationWriteChecks() {
+        return List.of(
+                "require:" + NotificationAdminService.READ,
+                "global:" + NotificationAdminService.READ,
+                "require:" + NotificationAdminService.CREATE,
+                "global:" + NotificationAdminService.CREATE,
+                "global:" + NotificationAdminService.READ,
+                "global:" + NotificationAdminService.CREATE);
     }
 }

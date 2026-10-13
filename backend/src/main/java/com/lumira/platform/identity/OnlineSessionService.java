@@ -25,7 +25,7 @@ public class OnlineSessionService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<OnlineSessionRepository.Entry> list(String actor, PageRequest request) {
-        guard.requireGlobal(actor, "platform:users:read");
+        guard.requirePageGlobal(actor, PlatformPageId.ONLINE_USERS);
         long now = System.currentTimeMillis();
         return new PageResult<>(
                 sessions.list(request, now),
@@ -36,7 +36,7 @@ public class OnlineSessionService {
 
     @Transactional
     public void revoke(String actor, UUID id) {
-        guard.requireGlobal(actor, "platform:users:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.ONLINE_USER_TERMINATE_SESSION);
         if (!sessions.revoke(id))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "sessionNotFound");
         audit.append(actor, "session.adminRevoke", id);
@@ -44,7 +44,7 @@ public class OnlineSessionService {
 
     @Transactional
     public int revokeUser(String actor, UUID userId) {
-        guard.requireGlobal(actor, "platform:users:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.ONLINE_USER_TERMINATE_SESSION);
         int count = sessions.revokeUser(userId);
         if (count > 0) audit.append(actor, "session.adminRevokeUser", userId);
         return count;

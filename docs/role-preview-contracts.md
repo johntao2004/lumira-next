@@ -45,6 +45,6 @@ SQL 不使用连接级 SET 或 ThreadLocal 隐式改变数据库身份。查询�
 
 角色列表提供“只读预览”；普通账号安全入口提供本人角色选择。始终显示角色、真实操作者、10分钟到期和退出按钮；BLOCKED 明确提示重新选择或退出，不能自动退出。进入/退出通过 BroadcastChannel 提醒其它标签重新读取 session、导航、列表及权限缓存，安全性依靠服务器 revision。
 
-新增权限 `platform:roles:preview` 纳入权限目录与全新数据库 bootstrap 管理员。已有部署需要定向、带原因和审计的引导命令，仅授予该一个权限给拥有全局 roles:write 与 settings:write 的指定管理账号；不自动赋予所有角色读用户。未执行首次授予时管理员可继续查看本人已分配角色。
+新增权限 `platform:roles:preview` 纳入权限目录与全新数据库 bootstrap 管理员。已有部署需要定向、带原因和审计的引导命令，仅授予该一个权限给同时拥有全局 `platform:roles:update` 与 `platform:settings:update` 的指定管理账号；不自动赋予所有角色读用户。未执行首次授予时管理员可继续查看本人已分配角色。
 
 验收必须包含直接 URL/API、两普通账号所有权隔离、SELF 与组织范围交集、两标签进入/退出、过期/撤销 BLOCKED、旧 revision 的写请求和资源票据、多实例共享上下文，以及未知插件端点拒绝。生产和开发热更新的插件运行行为分别记录。

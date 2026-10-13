@@ -56,6 +56,7 @@ class PasswordRecoveryServiceTest {
         tx = new TransactionTemplate(manager);
         jdbc.execute(
                 "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT,password_hash TEXT,enabled BOOLEAN,deleted_at TIMESTAMPTZ)");
+        jdbc.execute("CREATE TABLE platform_password_change_requirement(user_id UUID PRIMARY KEY)");
         jdbc.update(
                 "INSERT INTO platform_user(id,username,password_hash,enabled) VALUES(?,'fixture','old-hash',true)",
                 id);

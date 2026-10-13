@@ -1,5 +1,5 @@
 "use client";
-import { FileUsage } from "./file-usage";
+import { FileUsage } from "@/platform/components/file-usage";
 import { useEffect, useRef, useState } from "react";
 import { App, Tabs } from "antd";
 import { TableActions } from "@/platform/components/table-actions";
@@ -15,7 +15,7 @@ import { useListRequest } from "@/platform/routing/use-list-request";
 import { listRequestParams } from "@/platform/api/pagination";
 import { FileTrashActions } from "./file-trash-actions";
 import { FileDownloadAction } from "./file-download-action";
-import { FilePreviewModal } from "./file-preview-modal";
+import { FilePreviewDrawer } from "./file-preview-drawer";
 import { FileNameCell } from "./file-name-cell";
 import { fileCreatedAtColumn, fileDeletedAtColumn, fileIdentityColumns } from "./file-table-columns";
 import { useFileCleanupTracker } from "./use-file-cleanup-tracker";
@@ -119,6 +119,6 @@ export function FilesPage() {
     { key: "files", label: t("filesTab"), disabled: batchPending, children: filesTable },
     ...(!previewActive ? [{ key: "trash", label: t("fileTrash"), disabled: batchPending, children: trashTable }] : []),
   ]} />
-    <FilePreviewModal key={previewFile?.id ?? "closed"} file={previewFile} onClose={() => setPreviewFile(null)} />
+    <FilePreviewDrawer file={previewFile} onClose={() => setPreviewFile(null)} />
   </>;
 }

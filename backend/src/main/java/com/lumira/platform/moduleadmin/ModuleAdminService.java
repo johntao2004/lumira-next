@@ -1,6 +1,8 @@
 package com.lumira.platform.moduleadmin;
 
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.modules.*;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,7 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ModuleAdminService {
-    public static final String WRITE = "platform:modules:write";
+    public static final String UPDATE = PlatformOperation.MODULE_UPDATE.permission();
 
     public record View(
             String id,
@@ -53,7 +55,8 @@ public class ModuleAdminService {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public List<View> list() {
+    public List<View> list(String actor) {
+        guard.requirePageGlobal(actor, PlatformPageId.MODULES);
         var current = new HashMap<String, ModuleStateStore.State>();
         states.states().forEach(state -> current.put(state.moduleId(), state));
         return registry.modules().stream()
@@ -86,8 +89,7 @@ public class ModuleAdminService {
 
     @Transactional
     public State change(String actor, String id, Change input) {
-        guard.require(actor, WRITE);
-        guard.requireGlobal(actor, WRITE);
+        guard.requireOperationGlobal(actor, PlatformOperation.MODULE_UPDATE);
         if (input == null || input.enabled() == null || input.version() == null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidModuleChange");
         changeGuard.requireChangeAllowed(id, input.enabled());

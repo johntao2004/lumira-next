@@ -4,6 +4,8 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthorizationContextBoundaryPort;
 import com.lumira.platform.common.AuthorizationContextProjectionPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.modules.ModuleCapabilityPort;
 import com.lumira.platform.modules.ModuleRegistry;
 import java.util.*;
@@ -116,13 +118,13 @@ public class NavigationMenuService {
 
     @Transactional(readOnly = true)
     public List<NavigationMenuRepository.Menu> adminList(String actor) {
-        guard.requireGlobal(actor, "platform:navigation:read");
+        guard.requirePageGlobal(actor, PlatformPageId.NAVIGATION);
         return repository.list(true);
     }
 
     @Transactional(readOnly = true)
     public NavigationMenuRepository.Menu find(UUID id, String actor) {
-        guard.requireGlobal(actor, "platform:navigation:read");
+        guard.requirePageGlobal(actor, PlatformPageId.NAVIGATION);
         return repository.find(id);
     }
 
@@ -229,8 +231,7 @@ public class NavigationMenuService {
 
     @Transactional
     public NavigationMenuRepository.Menu create(Input input, String actor) {
-        guard.require(actor, "platform:navigation:write");
-        guard.requireGlobal(actor, "platform:navigation:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.NAVIGATION_CREATE);
         repository.lockGraph();
         validate(null, input);
         var menuCode = input.menuCode().strip();
@@ -268,8 +269,7 @@ public class NavigationMenuService {
 
     @Transactional
     public NavigationMenuRepository.Menu update(UUID id, Input input, String actor) {
-        guard.require(actor, "platform:navigation:write");
-        guard.requireGlobal(actor, "platform:navigation:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.NAVIGATION_UPDATE);
         repository.lockGraph();
         var old = repository.find(id);
         if (old.builtIn()) fail(HttpStatus.CONFLICT, "navigationBuiltIn");
@@ -312,8 +312,7 @@ public class NavigationMenuService {
     @Transactional
     public NavigationMenuRepository.Menu status(
             UUID id, long version, boolean enabled, String actor) {
-        guard.require(actor, "platform:navigation:write");
-        guard.requireGlobal(actor, "platform:navigation:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.NAVIGATION_UPDATE);
         repository.lockGraph();
         var old = repository.find(id);
         if (old.builtIn()) fail(HttpStatus.CONFLICT, "navigationBuiltIn");
@@ -325,8 +324,7 @@ public class NavigationMenuService {
 
     @Transactional
     public void delete(UUID id, long version, String actor) {
-        guard.require(actor, "platform:navigation:write");
-        guard.requireGlobal(actor, "platform:navigation:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.NAVIGATION_DELETE);
         repository.lockGraph();
         var old = repository.find(id);
         if (old.builtIn()) fail(HttpStatus.CONFLICT, "navigationBuiltIn");
@@ -337,8 +335,7 @@ public class NavigationMenuService {
 
     @Transactional
     public List<NavigationMenuRepository.Menu> reorder(List<ReorderItem> items, String actor) {
-        guard.require(actor, "platform:navigation:write");
-        guard.requireGlobal(actor, "platform:navigation:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.NAVIGATION_UPDATE);
         repository.lockGraph();
         if (items == null || items.size() > 1000) fail(HttpStatus.BAD_REQUEST, "invalidNavigation");
         var rows = repository.list(false);

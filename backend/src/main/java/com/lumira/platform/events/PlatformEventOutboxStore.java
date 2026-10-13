@@ -1,5 +1,6 @@
 package com.lumira.platform.events;
 
+import com.lumira.platform.common.DurableEventPublisherPort;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -10,7 +11,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Durable, idempotent event boundary shared by platform modules and future business modules. */
 @Repository
-public class PlatformEventOutboxStore {
+public class PlatformEventOutboxStore implements DurableEventPublisherPort {
     public static final int MAX_ATTEMPTS = 8;
 
     public record Claim(UUID id, UUID token, int attempts) {}
@@ -36,6 +37,14 @@ public class PlatformEventOutboxStore {
     }
 
     /** First write wins for the same source/event/key. Call from the producer transaction. */
+    @Override
+    @Transactional
+    public boolean publish(
+            UUID id, String sourceType, String eventType, String eventKey, String payload) {
+        return append(id, sourceType, eventType, eventKey, payload);
+    }
+
+    /** Legacy method retained for existing platform callers and tests. */
     @Transactional
     public boolean append(
             UUID id, String sourceType, String eventType, String eventKey, String payload) {
@@ -43,10 +52,10 @@ public class PlatformEventOutboxStore {
         String normalized = normalize(sourceType, eventType, eventKey, payload);
         return jdbc.sql(
                                 """
-                INSERT INTO platform_event_outbox(id,source_type,event_type,event_key,payload)
-                VALUES(:id,:source,:type,:key,CAST(:payload AS jsonb))
-                ON CONFLICT DO NOTHING
-                """)
+                                INSERT INTO platform_event_outbox(id,source_type,event_type,event_key,payload)
+                                VALUES(:id,:source,:type,:key,CAST(:payload AS jsonb))
+                                ON CONFLICT DO NOTHING
+                                """)
                         .param("id", id)
                         .param("source", sourceType)
                         .param("type", eventType)
@@ -59,10 +68,10 @@ public class PlatformEventOutboxStore {
     public Optional<Event> event(Claim claim) {
         return jdbc.sql(
                         """
-                SELECT id,source_type,event_type,event_key,payload::text,attempts
-                FROM platform_event_outbox
-                WHERE id=:id AND lease_token=:token AND status='PROCESSING' AND lease_until>now()
-                """)
+                        SELECT id,source_type,event_type,event_key,payload::text,attempts
+                        FROM platform_event_outbox
+                        WHERE id=:id AND lease_token=:token AND status='PROCESSING' AND lease_until>clock_timestamp()
+                        """)
                 .param("id", claim.id())
                 .param("token", claim.token())
                 .query(
@@ -83,16 +92,16 @@ public class PlatformEventOutboxStore {
         UUID token = UUID.randomUUID();
         return jdbc.sql(
                         """
-            WITH candidate AS (
-              SELECT id FROM platform_event_outbox
-              WHERE status='PENDING' AND available_at<=now() AND attempts<:max
-              ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
-            ) UPDATE platform_event_outbox e
-            SET status='PROCESSING',attempts=attempts+1,lease_token=:token,
-                lease_until=now()+interval '2 minutes',updated_at=now()
-            FROM candidate c WHERE e.id=c.id
-            RETURNING e.id,e.lease_token AS token,e.attempts
-            """)
+                        WITH candidate AS (
+                          SELECT id FROM platform_event_outbox
+                          WHERE status='PENDING' AND available_at<=now() AND attempts<:max
+                          ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
+                        ) UPDATE platform_event_outbox e
+                        SET status='PROCESSING',attempts=attempts+1,lease_token=:token,
+                            lease_until=clock_timestamp()+interval '2 minutes',updated_at=now()
+                        FROM candidate c WHERE e.id=c.id
+                        RETURNING e.id,e.lease_token AS token,e.attempts
+                        """)
                 .param("max", MAX_ATTEMPTS)
                 .param("token", token)
                 .query(Claim.class)
@@ -103,10 +112,10 @@ public class PlatformEventOutboxStore {
     public boolean deliver(Claim claim) {
         return jdbc.sql(
                                 """
-            UPDATE platform_event_outbox SET status='DELIVERED',delivered_at=now(),
-              lease_token=NULL,lease_until=NULL,last_error=NULL,updated_at=now()
-            WHERE id=:id AND lease_token=:token AND status='PROCESSING' AND lease_until>now()
-            """)
+                                UPDATE platform_event_outbox SET status='DELIVERED',delivered_at=now(),
+                                  lease_token=NULL,lease_until=NULL,last_error=NULL,updated_at=now()
+                                WHERE id=:id AND lease_token=:token AND status='PROCESSING' AND lease_until>clock_timestamp()
+                                """)
                         .param("id", claim.id())
                         .param("token", claim.token())
                         .update()
@@ -122,14 +131,35 @@ public class PlatformEventOutboxStore {
                         : error.substring(0, Math.min(1000, error.length()));
         return jdbc.sql(
                                 """
-            UPDATE platform_event_outbox SET
-              status=CASE WHEN attempts>=:max THEN 'DEAD_LETTER' ELSE 'PENDING' END,
-              available_at=CASE WHEN attempts>=:max THEN available_at ELSE now()+least(960,60*power(2,attempts-1))*interval '1 second' END,
-              last_error=:error,lease_token=NULL,lease_until=NULL,updated_at=now()
-            WHERE id=:id AND lease_token=:token AND status='PROCESSING'
-            """)
+                                UPDATE platform_event_outbox SET
+                                  status=CASE WHEN attempts>=:max THEN 'DEAD_LETTER' ELSE 'PENDING' END,
+                                  available_at=CASE WHEN attempts>=:max THEN available_at ELSE now()+least(960,60*power(2,attempts-1))*interval '1 second' END,
+                                  last_error=:error,lease_token=NULL,lease_until=NULL,updated_at=now()
+                                WHERE id=:id AND lease_token=:token AND status='PROCESSING'
+                                  AND lease_until>clock_timestamp()
+                                """)
                         .param("max", MAX_ATTEMPTS)
                         .param("error", safe)
+                        .param("id", claim.id())
+                        .param("token", claim.token())
+                        .update()
+                == 1;
+    }
+
+    /**
+     * Releases a claim when its event type has no registered consumer. This is not a handler
+     * attempt: keep it pending and observable, retain a bounded retry delay and do not consume the
+     * finite failure budget.
+     */
+    @Transactional
+    public boolean releaseWithoutConsumer(Claim claim) {
+        return jdbc.sql(
+                                """
+                                UPDATE platform_event_outbox SET status='PENDING',attempts=GREATEST(0,attempts-1),
+                                  available_at=now()+interval '5 minutes',last_error='NO_CONSUMER',
+                                  lease_token=NULL,lease_until=NULL,updated_at=now()
+                                WHERE id=:id AND lease_token=:token AND status='PROCESSING' AND lease_until>clock_timestamp()
+                                """)
                         .param("id", claim.id())
                         .param("token", claim.token())
                         .update()
@@ -141,17 +171,17 @@ public class PlatformEventOutboxStore {
     public List<Recovery> recoverExpired() {
         return jdbc.sql(
                         """
-            WITH expired AS (
-              SELECT id FROM platform_event_outbox
-              WHERE status='PROCESSING' AND lease_until<=now()
-              ORDER BY updated_at,id FOR UPDATE SKIP LOCKED LIMIT 1000
-            ) UPDATE platform_event_outbox e SET
-              status=CASE WHEN attempts>=:max THEN 'DEAD_LETTER' ELSE 'PENDING' END,
-              available_at=CASE WHEN attempts>=:max THEN available_at ELSE now() END,
-              last_error='LEASE_EXPIRED',lease_token=NULL,lease_until=NULL,updated_at=now()
-            FROM expired x WHERE e.id=x.id
-            RETURNING e.id,e.status
-            """)
+                        WITH expired AS (
+                          SELECT id FROM platform_event_outbox
+                          WHERE status='PROCESSING' AND lease_until<=clock_timestamp()
+                          ORDER BY updated_at,id FOR UPDATE SKIP LOCKED LIMIT 1000
+                        ) UPDATE platform_event_outbox e SET
+                          status=CASE WHEN attempts>=:max THEN 'DEAD_LETTER' ELSE 'PENDING' END,
+                          available_at=CASE WHEN attempts>=:max THEN available_at ELSE now() END,
+                          last_error='LEASE_EXPIRED',lease_token=NULL,lease_until=NULL,updated_at=now()
+                        FROM expired x WHERE e.id=x.id
+                        RETURNING e.id,e.status
+                        """)
                 .param("max", MAX_ATTEMPTS)
                 .query(Recovery.class)
                 .list();
@@ -159,7 +189,8 @@ public class PlatformEventOutboxStore {
 
     public long count(String status) {
         return jdbc.sql(
-                        "SELECT count(*) FROM platform_event_outbox WHERE (:status='' OR status=:status)")
+                        "SELECT count(*) FROM platform_event_outbox WHERE (:status='' OR"
+                                + " status=:status)")
                 .param("status", status == null ? "" : status)
                 .query(Long.class)
                 .single();
@@ -188,11 +219,11 @@ public class PlatformEventOutboxStore {
         }
         jdbc.sql(
                         """
-            UPDATE platform_event_outbox SET status='PENDING',attempts=0,
-              available_at=now(),last_error=NULL,delivered_at=NULL,
-              lease_token=NULL,lease_until=NULL,updated_at=now()
-            WHERE id=:id AND status='DEAD_LETTER'
-            """)
+                        UPDATE platform_event_outbox SET status='PENDING',attempts=0,
+                          available_at=now(),last_error=NULL,delivered_at=NULL,
+                          lease_token=NULL,lease_until=NULL,updated_at=now()
+                        WHERE id=:id AND status='DEAD_LETTER'
+                        """)
                 .param("id", id)
                 .update();
         return new Replay(id, "PENDING", 0);
@@ -214,15 +245,15 @@ public class PlatformEventOutboxStore {
         var cutoff = OffsetDateTime.now().minus(retention);
         return jdbc.sql(
                         """
-            WITH expired AS (
-              SELECT e.id FROM platform_event_outbox e
-              WHERE e.status='DELIVERED' AND e.updated_at<:cutoff
-                AND NOT EXISTS (
-                  SELECT 1 FROM platform_event_replay_approval a WHERE a.event_id=e.id
-                )
-              ORDER BY e.updated_at,e.id FOR UPDATE OF e SKIP LOCKED LIMIT :limit
-            ) DELETE FROM platform_event_outbox e USING expired x WHERE e.id=x.id
-            """)
+                        WITH expired AS (
+                          SELECT e.id FROM platform_event_outbox e
+                          WHERE e.status='DELIVERED' AND e.updated_at<:cutoff
+                            AND NOT EXISTS (
+                              SELECT 1 FROM platform_event_replay_approval a WHERE a.event_id=e.id
+                            )
+                          ORDER BY e.updated_at,e.id FOR UPDATE OF e SKIP LOCKED LIMIT :limit
+                        ) DELETE FROM platform_event_outbox e USING expired x WHERE e.id=x.id
+                        """)
                 .param("cutoff", cutoff)
                 .param("limit", batchSize)
                 .update();

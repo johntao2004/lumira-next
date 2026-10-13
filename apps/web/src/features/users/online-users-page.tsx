@@ -25,7 +25,7 @@ type OnlineSession = {
 };
 
 /** Global session console. It intentionally reuses the account session contract without exposing session cookies. */
-export function OnlineUsersPage({ canWrite }: { canWrite: boolean }) {
+export function OnlineUsersPage({ canTerminateSessions }: { canTerminateSessions: boolean }) {
   const { t, locale } = usePreferences();
   const client = useQueryClient();
   const [request, setRequest] = useListRequest();
@@ -48,7 +48,7 @@ export function OnlineUsersPage({ canWrite }: { canWrite: boolean }) {
       { title: t("sessionCreated"), dataIndex: "createdAt", valueType: "dateTimeRange", render: (_, row) => format(row.createdAt) },
       { title: t("lastAccess"), dataIndex: "lastAccessAt", valueType: "dateTimeRange", render: (_, row) => format(row.lastAccessAt) },
       { title: t("sessionExpires"), dataIndex: "expiresAt", valueType: "dateTimeRange", render: (_, row) => format(row.expiresAt) },
-      ...(canWrite ? [{ title: t("actions"), key: "actions", search: false, render: (_: unknown, row: OnlineSession) => <TableActions><DeleteAction name={row.username} actionLabel={t("revokeOnlineSession")} confirmation={t("revokeOnlineSessionConfirm", { name: row.username })} onDelete={async () => { await mutate(`/platform/online-users/${row.id}`, "DELETE", {}); await client.invalidateQueries({ queryKey: ["online-users"] }); }} /></TableActions> }] : []),
+      ...(canTerminateSessions ? [{ title: t("actions"), key: "actions", search: false, render: (_: unknown, row: OnlineSession) => <TableActions><DeleteAction name={row.username} actionLabel={t("revokeOnlineSession")} confirmation={t("revokeOnlineSessionConfirm", { name: row.username })} onDelete={async () => { await mutate(`/platform/online-users/${row.id}`, "DELETE", {}); await client.invalidateQueries({ queryKey: ["online-users"] }); }} /></TableActions> }] : []),
     ]}
   />;
 }

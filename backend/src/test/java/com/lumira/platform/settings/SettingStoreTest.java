@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +57,7 @@ class SettingStoreTest {
                                                 && sql.contains(
                                                         "ON CONFLICT(section) DO NOTHING")));
         verify(audit).append("admin", "setting.update", saved.id());
+        verify(guard).requireOperationGlobal("admin", PlatformOperation.WATERMARK_UPDATE);
     }
 
     @Test
@@ -93,6 +95,20 @@ class SettingStoreTest {
         store.save("passkey", "{}", "admin", 0, " ");
 
         verify(statement, times(2)).param("reason", SettingStore.SYSTEM_SAVE_REASON);
+        verify(guard).requireOperationGlobal("admin", PlatformOperation.SECURITY_UPDATE);
+        verify(guard).requireOperationGlobal("admin", PlatformOperation.PASSKEY_UPDATE);
+    }
+
+    @Test
+    void wechatAndFileRetentionWritesUseTheirOwningOperations() {
+        when(result.optional())
+                .thenReturn(Optional.of(new SettingStore.Snapshot(UUID.randomUUID(), 1, "{}")));
+
+        store.save("wechat", "{}", "admin", 0, "Update WeChat");
+        store.save("file-retention", "{}", "admin", 0, "Update retention");
+
+        verify(guard).requireOperationGlobal("admin", PlatformOperation.WECHAT_UPDATE);
+        verify(guard).requireOperationGlobal("admin", PlatformOperation.FILE_RETENTION_UPDATE);
     }
 
     @Test
@@ -117,5 +133,17 @@ class SettingStoreTest {
         assertEquals("staleRecord", error.getReason());
         verify(audit, never())
                 .append(anyString(), anyString(), org.mockito.ArgumentMatchers.any(UUID.class));
+    }
+
+    @Test
+    void unknownSectionsAreRejectedBeforeAWriteOrAuthorizationFallback() {
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> store.save("unknown", "{}", "admin", 0, "Write"));
+
+        assertEquals(HttpStatus.NOT_FOUND, error.getStatusCode());
+        assertEquals("settingNotFound", error.getReason());
+        verify(jdbc, never()).sql(anyString());
     }
 }

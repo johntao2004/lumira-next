@@ -37,8 +37,7 @@ public class ProfileFieldsController {
     }
 
     private void validate(ProfileFields data, String actor) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.PROFILE_FIELDS_UPDATE);
         try {
             data.validate();
         } catch (ProfileFields.Invalid error) {
@@ -59,7 +58,12 @@ public class ProfileFieldsController {
     }
 
     @GetMapping("/api/platform/settings/profile-fields")
-    public View read() {
+    public View read(Authentication actor) {
+        guard.requirePageGlobal(actor.getName(), PlatformPageId.PROFILE_FIELDS);
+        return readDocument();
+    }
+
+    View readDocument() {
         var schema = schemas.read();
         return new View(schema.version(), schema.data());
     }
@@ -68,6 +72,17 @@ public class ProfileFieldsController {
     public View accountSchema() {
         var schema = schemas.read();
         return new View(schema.version(), schema.data().forHost("account-profile"));
+    }
+
+    @GetMapping("/api/platform/settings/profile-fields/dictionaries")
+    public PageResult<ProfileDictionaryPort.EnabledDictionary> dictionaries(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(defaultValue = "") String search,
+            Authentication actor) {
+        guard.requireOperationGlobal(
+                actor.getName(), PlatformOperation.PROFILE_FIELDS_READ_DICTIONARIES);
+        return dictionaries.listEnabled(new PageRequest(page, pageSize, search));
     }
 
     @org.springframework.transaction.annotation.Transactional

@@ -1,0 +1,103 @@
+.captcha-settings-page {
+  min-width: 0;
+}
+
+.captcha-settings-page > .captcha-settings-readiness {
+  margin-block-end: 16px;
+}
+
+:root .authentication-security-workspace .captcha-settings-form .captcha-policies-panel > h5.ant-typography {
+  margin-block-end: 12px;
+}
+
+.captcha-settings-form .captcha-service-fields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin-block-start: 16px;
+}
+
+.captcha-settings-form .captcha-service-fields > .ant-form-item {
+  min-width: 0;
+  margin-block-end: 0;
+}
+
+.captcha-settings-form .captcha-service-fields .ant-select {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
+.captcha-settings-form .captcha-policy-groups {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.captcha-settings-form .captcha-policy-card {
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius);
+  background: var(--ant-color-bg-container);
+}
+
+.captcha-settings-form .captcha-policy-card-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.captcha-settings-form .captcha-policy-actions {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.captcha-settings-form .captcha-action-policy-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  align-items: center;
+  gap: 8px 12px;
+  padding-block: 3px;
+}
+
+.captcha-settings-form .captcha-action-policy-row > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.captcha-settings-form .captcha-action-policy-row .ant-select {
+  box-sizing: border-box;
+  width: 150px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+@container auth-settings (max-width: 700px) {
+  .captcha-settings-form .captcha-service-fields,
+  .captcha-settings-form .captcha-policy-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .captcha-settings-form .captcha-action-policy-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .captcha-settings-form .captcha-service-fields,
+  .captcha-settings-form .captcha-policy-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .captcha-settings-form .captcha-action-policy-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

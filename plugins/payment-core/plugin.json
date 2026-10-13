@@ -1,0 +1,183 @@
+{
+  "formatVersion": 2,
+  "id": "payment-core",
+  "name": "支付核心与订单",
+  "version": "1.0.5",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.paymentcore.PaymentCorePlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:payment-core:orders-access",
+    "platform:payment-core:orders-read",
+    "platform:payment-core:orders-create",
+    "platform:payment-core:orders-manage",
+    "platform:payment-core:orders-refund"
+  ],
+  "permissionGroups": [
+    {
+      "id": "orders",
+      "title": "pluginPermissionGroupPaymentCore",
+      "permissions": [
+        {
+          "code": "platform:payment-core:orders-access",
+          "label": "pluginPermissionPaymentCoreOrdersAccess"
+        },
+        {
+          "code": "platform:payment-core:orders-read",
+          "label": "pluginPermissionPaymentCoreRead"
+        },
+        {
+          "code": "platform:payment-core:orders-create",
+          "label": "pluginPermissionPaymentCoreOrderCreate"
+        },
+        {
+          "code": "platform:payment-core:orders-manage",
+          "label": "pluginPermissionPaymentCoreOrderManage"
+        },
+        {
+          "code": "platform:payment-core:orders-refund",
+          "label": "pluginPermissionPaymentCoreRefund"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "payment-core-orders",
+      "label": "paymentOrders",
+      "permission": "platform:payment-core:orders-access",
+      "operations": {
+        "read": "platform:payment-core:orders-read",
+        "create": "platform:payment-core:orders-create",
+        "manage": "platform:payment-core:orders-manage",
+        "refund": "platform:payment-core:orders-refund"
+      },
+      "group": "payments",
+      "order": 10,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/plugins/payment-core/orders",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:payment-core:orders-access",
+        "platform:payment-core:orders-read"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/payment-core/orders",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:payment-core:orders-access",
+        "platform:payment-core:orders-create"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/payment-core/orders/*/query",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:payment-core:orders-access",
+        "platform:payment-core:orders-manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/payment-core/orders/*/close",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:payment-core:orders-access",
+        "platform:payment-core:orders-manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/payment-core/orders/*/refund",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:payment-core:orders-access",
+        "platform:payment-core:orders-refund"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/payment-core/orders/*/refund/query",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:payment-core:orders-access",
+        "platform:payment-core:orders-refund"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/payment-core/callbacks/wechat-pay",
+      "authorities": [],
+      "global": false,
+      "publicAccess": true,
+      "signedCallback": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/payment-core/callbacks/alipay-pay",
+      "authorities": [],
+      "global": false,
+      "publicAccess": true,
+      "signedCallback": true
+    }
+  ],
+  "dataSets": [
+    {
+      "table": "plugin_payment_core_order",
+      "label": "支付订单",
+      "column": null,
+      "value": null
+    },
+    {
+      "table": "plugin_payment_core_settings_history",
+      "label": "支付配置历史",
+      "column": null,
+      "value": null
+    },
+    {
+      "table": "plugin_payment_core_settings",
+      "label": "支付配置",
+      "column": null,
+      "value": null
+    },
+    {
+      "table": "platform_secret",
+      "label": "支付微信加密凭据",
+      "column": "secret_context",
+      "value": "plugin:payment-core/wechat-pay"
+    },
+    {
+      "table": "platform_secret",
+      "label": "支付支付宝加密凭据",
+      "column": "secret_context",
+      "value": "plugin:payment-core/alipay-pay"
+    }
+  ]
+}

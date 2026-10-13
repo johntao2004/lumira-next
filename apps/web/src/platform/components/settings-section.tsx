@@ -2,7 +2,7 @@
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { AsyncButton } from "./async-button";
 import { useRef, useState } from "react";
-import { Button, Drawer, Modal, Popconfirm, Space, Spin, Table, Typography } from "antd";
+import { Button, Popconfirm, Space, Spin, Table, Typography } from "antd";
 import type { FormInstance, FormProps, TableColumnsType } from "antd";
 import { ProCard } from "@ant-design/pro-components";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { DEFAULT_TABLE_PAGE_SIZE, listRequestParams, TABLE_PAGE_SIZE_OPTIONS, ty
 import { formatDateTime } from "../i18n/format";
 import { useSubmitAction } from "../forms/use-submit-action";
 import { useSessionScope } from "../auth/use-session-scope";
+import { PlatformDrawer } from "./platform-drawer";
 
 const settingsErrorKeys = ["staleRecord", "settingRevisionNotFound", "invalidSettingRevision", "invalidChangeReason", "forbidden", "invalidBranding", "invalidAgreements", "invalidWatermark", "invalidMaintenance", "invalidSecurity", "invalidPasskeySettings", "invalidProfileFields", "invalidSmtp", "invalidSmtpCredentials", "smtpPasswordRequired", "smtpPasswordReplacementRequired", "invalidSms", "invalidSmsCredentials", "smsCredentialRequired", "smsCredentialReplacementRequired", "secretKeyUnavailable", "invalidFileRetention"] as const satisfies readonly MessageKey[];
 
@@ -242,7 +243,7 @@ function SettingsSecondaryActions<T extends object>({ section, snapshot, canWrit
       </Popconfirm>
     </Space>
 
-    <Drawer title={t("settingHistory")} open={historyOpen} width={900} destroyOnHidden closable={!pending} maskClosable={!pending} keyboard={!pending} onClose={() => { if (!isBusy()) setHistoryOpen(false); }}>
+    <PlatformDrawer title={t("settingHistory")} open={historyOpen} size={900} destroyOnHidden closable={!pending} maskClosable={!pending} keyboard={!pending} onClose={() => { if (!isBusy()) { setSelectedVersion(null); setHistoryOpen(false); } }}>
       {historyQuery.error
         ? <QueryFailure title={t("unavailable")} pending={historyQuery.isFetching} onRetry={() => void historyQuery.refetch()} />
         : <Table<SettingRevision>
@@ -260,17 +261,17 @@ function SettingsSecondaryActions<T extends object>({ section, snapshot, canWrit
           } }}
           scroll={{ x: "max-content" }}
         />}
-    </Drawer>
+    </PlatformDrawer>
 
-    <Modal
+    <PlatformDrawer
       title={t("details")}
       open={selectedVersion !== null}
-      width={720}
+      size={720}
       destroyOnHidden
       closable={!pending}
       maskClosable={!pending}
       keyboard={!pending}
-      onCancel={() => { if (!isBusy()) setSelectedVersion(null); }}
+      onClose={() => { if (!isBusy()) setSelectedVersion(null); }}
       footer={canWrite && <Space className="form-actions">
         <Button onClick={() => { if (!isBusy()) setSelectedVersion(null); }} disabled={pending}>{t("cancel")}</Button>
         <AsyncButton type="primary" form={`restore-${section}`} htmlType="submit" pending={pending} disabled={pending} label={t("restoreSetting")} />
@@ -281,7 +282,7 @@ function SettingsSecondaryActions<T extends object>({ section, snapshot, canWrit
       {detailQuery.data && <>
         <Typography.Paragraph type="secondary">{t("configVersion")}: {detailQuery.data.version} · {detailQuery.data.changedBy} · {formatDateTime(detailQuery.data.createdAt, locale)}</Typography.Paragraph>
         <Typography.Paragraph>{displayReason(detailQuery.data.changeReason)}</Typography.Paragraph>
-        <pre className="settings-history-json">{JSON.stringify(detailQuery.data.data, null, 2)}</pre>
+        <pre className="settings-history-json" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: "55vh", overflow: "auto" }}>{JSON.stringify(detailQuery.data.data, null, 2)}</pre>
         {canWrite && <>
           <Typography.Paragraph type="secondary">{t("restoreSettingHint")}</Typography.Paragraph>
           <Form id={`restore-${section}`} form={restoreForm} layout="vertical" initialValues={initialExtras} disabled={pending} onFinish={restore}>
@@ -290,6 +291,6 @@ function SettingsSecondaryActions<T extends object>({ section, snapshot, canWrit
           <FeedbackBubble id={`settings-${section}-history-error`} content={restoreError ? t(restoreError) : undefined} />
         </>}
       </>}
-    </Modal>
+    </PlatformDrawer>
   </>;
 }

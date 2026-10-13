@@ -1,0 +1,188 @@
+{
+  "formatVersion": 2,
+  "id": "wechat-pay",
+  "name": "微信扫码支付",
+  "version": "1.0.5",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.wechatpay.WechatPayPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "payment-core",
+      "version": "1.0.5"
+    }
+  ],
+  "permissions": [
+    "platform:wechat-pay:orders-access",
+    "platform:wechat-pay:orders-read",
+    "platform:wechat-pay:orders-create",
+    "platform:wechat-pay:orders-manage",
+    "platform:wechat-pay:orders-refund",
+    "platform:wechat-pay:settings-access",
+    "platform:wechat-pay:settings-read",
+    "platform:wechat-pay:settings-update"
+  ],
+  "routes": [
+    {
+      "id": "wechat-pay-orders",
+      "label": "wechatPayOrders",
+      "permission": "platform:wechat-pay:orders-access",
+      "operations": {
+        "read": "platform:wechat-pay:orders-read",
+        "create": "platform:wechat-pay:orders-create",
+        "manage": "platform:wechat-pay:orders-manage",
+        "refund": "platform:wechat-pay:orders-refund"
+      },
+      "group": "payments",
+      "order": 20,
+      "global": true
+    },
+    {
+      "id": "wechat-pay-settings",
+      "label": "wechatPay",
+      "permission": "platform:wechat-pay:settings-access",
+      "operations": {
+        "read": "platform:wechat-pay:settings-read",
+        "update": "platform:wechat-pay:settings-update"
+      },
+      "group": "payments",
+      "order": 40,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/plugins/wechat-pay/settings",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:settings-access",
+        "platform:wechat-pay:settings-read"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/plugins/wechat-pay/settings",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:settings-access",
+        "platform:wechat-pay:settings-update"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/wechat-pay/orders",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:orders-access",
+        "platform:wechat-pay:orders-read"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/wechat-pay/orders",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:orders-access",
+        "platform:wechat-pay:orders-create"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/wechat-pay/orders/*/query",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:orders-access",
+        "platform:wechat-pay:orders-manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/wechat-pay/orders/*/close",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:orders-access",
+        "platform:wechat-pay:orders-manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/wechat-pay/orders/*/refund",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:orders-access",
+        "platform:wechat-pay:orders-refund"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/wechat-pay/orders/*/refund/query",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat-pay:orders-access",
+        "platform:wechat-pay:orders-refund"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ],
+  "permissionGroups": [
+    {
+      "id": "administration",
+      "title": "pluginPermissionGroupPaymentCore",
+      "permissions": [
+        {
+          "code": "platform:wechat-pay:orders-access",
+          "label": "pluginPermissionWechatOrdersAccess"
+        },
+        {
+          "code": "platform:wechat-pay:orders-read",
+          "label": "pluginPermissionWechatPayOrdersRead"
+        },
+        {
+          "code": "platform:wechat-pay:orders-create",
+          "label": "pluginPermissionWechatPayOrderCreate"
+        },
+        {
+          "code": "platform:wechat-pay:orders-manage",
+          "label": "pluginPermissionWechatPayOrderManage"
+        },
+        {
+          "code": "platform:wechat-pay:orders-refund",
+          "label": "pluginPermissionWechatPayOrderRefund"
+        },
+        {
+          "code": "platform:wechat-pay:settings-access",
+          "label": "pluginPermissionWechatSettingsAccess"
+        },
+        {
+          "code": "platform:wechat-pay:settings-read",
+          "label": "pluginPermissionWechatPaySettingsRead"
+        },
+        {
+          "code": "platform:wechat-pay:settings-update",
+          "label": "pluginPermissionWechatPaySettingsUpdate"
+        }
+      ]
+    }
+  ]
+}

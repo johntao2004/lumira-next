@@ -9,6 +9,7 @@ import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
 import type { CaptchaAction, LocalCaptchaChallenge } from "./api-types";
+import { createCaptchaPanelAutoLoader } from "./captcha-panel-runtime.mjs";
 import {
   appendSliderSample,
   buildSliderTrail,
@@ -41,6 +42,7 @@ export function CaptchaPanel({
 }) {
   const { locale, t } = usePreferences();
   const generation = useRef(createCaptchaAttemptGuard());
+  const autoLoader = useRef(createCaptchaPanelAutoLoader());
   const sliderStartedAt = useRef(0);
   const sliderSamples = useRef<SliderSample[]>([]);
   const [challenge, setChallenge] = useState<LocalCaptchaChallenge | null>(null);
@@ -75,9 +77,16 @@ export function CaptchaPanel({
     setSliderX(0);
     sliderSamples.current = [];
     sliderStartedAt.current = 0;
+    return autoLoader.current.schedule({ action: captchaAction, attemptId, locale }, () => {
+      void start(false);
+    });
   }, [captchaAction, attemptId, locale]);
 
   async function start(accessible: boolean) {
+    if (actionState.isPending()) {
+      autoLoader.current.defer(() => { void start(accessible); });
+      return;
+    }
     const currentGeneration = generation.current.begin();
     setChallenge(null);
     setAnswer("");
@@ -86,22 +95,32 @@ export function CaptchaPanel({
     sliderStartedAt.current = 0;
     actionState.setError(null);
     const isCurrent = () => generation.current.isCurrent(currentGeneration);
-    await actionState.run(async () => {
-      const next = await mutate<LocalCaptchaChallenge>("/auth/captcha/challenges", "POST", {
-        action: captchaAction,
-        ...(attemptId ? { attemptId } : {}),
-        accessible,
-        locale,
+    try {
+      await actionState.run(async () => {
+        let next: LocalCaptchaChallenge;
+        try {
+          next = await mutate<LocalCaptchaChallenge>("/auth/captcha/challenges", "POST", {
+            action: captchaAction,
+            ...(attemptId ? { attemptId } : {}),
+            accessible,
+            locale,
+          });
+        } catch (cause) {
+          if (!isCurrent()) return false;
+          throw cause;
+        }
+        if (!isCurrent()) return false;
+        if (!isLocalCaptchaChallenge(next, captchaAction, attemptId)) throw new Error("captchaUnavailable");
+        setChallenge(next);
+        sliderStartedAt.current = Date.now();
+        if (next.type === "SLIDER") {
+          sliderSamples.current = [{ x: 0, y: next.pieceY!, elapsedMs: 0 }];
+        }
+        return false;
       });
-      if (!isCurrent()) return false;
-      if (!isLocalCaptchaChallenge(next, captchaAction, attemptId)) throw new Error("captchaUnavailable");
-      setChallenge(next);
-      sliderStartedAt.current = Date.now();
-      if (next.type === "SLIDER") {
-        sliderSamples.current = [{ x: 0, y: next.pieceY!, elapsedMs: 0 }];
-      }
-      return false;
-    });
+    } finally {
+      autoLoader.current.flush();
+    }
   }
 
   async function verify() {
@@ -109,28 +128,38 @@ export function CaptchaPanel({
     actionState.setError(null);
     const currentGeneration = generation.current.begin();
     const isCurrent = () => generation.current.isCurrent(currentGeneration);
-    await actionState.run(async () => {
-      let payload: Record<string, unknown>;
-      if (challenge.type === "SLIDER") {
-        const durationMs = Math.max(0, Date.now() - sliderStartedAt.current);
-        payload = {
-          challengeId: challenge.challengeId,
-          sliderX,
-          durationMs,
-          trail: buildSliderTrail(sliderX, challenge.pieceY!, durationMs, sliderSamples.current),
-        };
-      } else {
-        if (answer.length !== 6) throw new Error("captchaInvalid");
-        payload = { challengeId: challenge.challengeId, answer };
-      }
-      const proof = await mutate<CaptchaProof>("/auth/captcha/verify", "POST", payload);
-      if (!isCurrent()) return false;
-      if (proof.action !== captchaAction || proof.attemptId !== (attemptId ?? null) || !proof.captchaProofId) {
-        throw new Error("captchaUnavailable");
-      }
-      onVerified(proof);
-      return true;
-    });
+    try {
+      await actionState.run(async () => {
+        let payload: Record<string, unknown>;
+        if (challenge.type === "SLIDER") {
+          const durationMs = Math.max(0, Date.now() - sliderStartedAt.current);
+          payload = {
+            challengeId: challenge.challengeId,
+            sliderX,
+            durationMs,
+            trail: buildSliderTrail(sliderX, challenge.pieceY!, durationMs, sliderSamples.current),
+          };
+        } else {
+          if (answer.length !== 6) throw new Error("captchaInvalid");
+          payload = { challengeId: challenge.challengeId, answer };
+        }
+        let proof: CaptchaProof;
+        try {
+          proof = await mutate<CaptchaProof>("/auth/captcha/verify", "POST", payload);
+        } catch (cause) {
+          if (!isCurrent()) return false;
+          throw cause;
+        }
+        if (!isCurrent()) return false;
+        if (proof.action !== captchaAction || proof.attemptId !== (attemptId ?? null) || !proof.captchaProofId) {
+          throw new Error("captchaUnavailable");
+        }
+        onVerified(proof);
+        return true;
+      });
+    } finally {
+      autoLoader.current.flush();
+    }
   }
 
   function updateSlider(value: number) {
@@ -252,7 +281,8 @@ export function CaptchaPanel({
         onClick={() => void start(challenge.type !== "AUDIO")}
         label={t(challenge.type === "AUDIO" ? "captchaVisualVerification" : "captchaAudioVerification")}
       />}
-      <Button disabled={actionState.pending} onClick={() => {
+      <Button onClick={() => {
+        autoLoader.current.cancel();
         generation.current.invalidate();
         setChallenge(null);
         setAnswer("");

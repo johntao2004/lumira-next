@@ -8,6 +8,8 @@ import com.lumira.platform.common.AiUserDirectoryPort;
 import com.lumira.platform.common.ContentPolicyGuard;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -109,7 +112,7 @@ public class AiAssistantService {
     }
 
     public AttachmentMetadata attachment(UUID id, String actor) {
-        guard.require(actor, "platform:users:read");
+        guard.requirePage(actor, PlatformPageId.AI_CONSOLE);
         var content = readAttachment(actor, id);
         return new AttachmentMetadata(
                 content.id(),
@@ -126,9 +129,15 @@ public class AiAssistantService {
     }
 
     public ChatResponse chat(ChatRequest input, String actor) {
-        guard.require(actor, "platform:users:read");
+        guard.requirePage(actor, PlatformPageId.AI_CONSOLE);
+        boolean canReadUsers = hasOperation(actor, PlatformOperation.AI_CONSOLE_READ_USERS);
+        boolean canCreateUsers = hasOperation(actor, PlatformOperation.AI_CONSOLE_CREATE_USER);
+        boolean canUpdateUsers = hasOperation(actor, PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        boolean canDeleteUsers = hasOperation(actor, PlatformOperation.AI_CONSOLE_DELETE_USER);
+        if (!canReadUsers && !canCreateUsers && !canUpdateUsers && !canDeleteUsers)
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         if (input == null || input.providerId() == null) invalidChat();
-        AiProviderProfile provider = providers.requireEnabled(input.providerId(), actor);
+        AiProviderProfile provider = providers.requireEnabledForConsole(input.providerId(), actor);
         if (provider.providerKind() == ProviderKind.TYPESAFE_JEV
                 || !provider.capabilityCodes().contains("CHAT")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aiChatUnsupported");
@@ -205,11 +214,15 @@ public class AiAssistantService {
                                         model.id().equals(modelName)
                                                 && model.inputModalities().contains("image")))
             throw attachmentError("aiAttachmentVisionRequired");
-        boolean canWriteUsers = guard.hasGlobal(actor, "platform:users:write");
+        var writableOperations = new HashSet<String>();
+        if (canCreateUsers) writableOperations.add("create");
+        if (canReadUsers && canUpdateUsers) writableOperations.add("update");
+        if (canReadUsers && canDeleteUsers) writableOperations.add("delete");
         // The selected model must have its own explicit tool contract; persisted flags are ignored.
         List<Map<String, Object>> toolDefinitions =
                 provider.supportsUserTools(modelName)
-                        ? ModelConnectionService.userToolDefinitions(canWriteUsers)
+                        ? ModelConnectionService.userToolDefinitions(
+                                writableOperations, canReadUsers)
                         : List.of();
         var reply = connections.chat(provider, modelName, modelMessages, toolDefinitions);
         var steps = new ArrayList<ExecutionStep>();
@@ -239,7 +252,9 @@ public class AiAssistantService {
             }
             result = searchUsers(reply.toolCalls(), actor);
         } else {
-            result = resolveTool(reply.toolCalls().getFirst(), actor, canWriteUsers);
+            result =
+                    resolveTool(
+                            reply.toolCalls().getFirst(), actor, writableOperations, canReadUsers);
         }
         if (result.users() != null)
             steps.add(new ExecutionStep("USER_SEARCH", "success", "user-management", "query"));
@@ -293,20 +308,24 @@ public class AiAssistantService {
     }
 
     public void cancel(UUID id, String actor) {
-        guard.require(actor, "platform:users:read");
+        PendingAiActionStore.PendingAction action = actions.findPending(id, actor);
+        PlatformOperation operation = operation(action.kind());
+        if (operation.scope() == PlatformOperation.Scope.GLOBAL)
+            guard.requireOperationActionGlobal(actor, operation);
+        else guard.requireOperationUser(actor, action.userId(), operation);
         actions.cancel(id, actor);
     }
 
     @Transactional
     public ActionResult confirm(UUID id, ConfirmAction input, String actor) {
-        guard.require(actor, "platform:users:write");
-        guard.requireGlobal(actor, "platform:users:write");
-        PendingAiActionStore.PendingAction action = actions.take(id, actor);
+        PendingAiActionStore.PendingAction action = actions.findPending(id, actor);
         return switch (action.kind()) {
             case CREATE_USER -> {
+                guard.requireOperationActionGlobal(actor, PlatformOperation.AI_CONSOLE_CREATE_USER);
                 if (input == null || input.password() == null || input.password().isBlank()) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidUser");
                 }
+                actions.consume(id, actor);
                 AiUserDirectoryPort.UserView created =
                         users.create(
                                 new AiUserDirectoryPort.CreateUser(
@@ -315,7 +334,10 @@ public class AiAssistantService {
                 yield new ActionResult("CREATE_USER", created);
             }
             case UPDATE_USER -> {
+                guard.requireOperationUser(
+                        actor, action.userId(), PlatformOperation.AI_CONSOLE_UPDATE_USER);
                 AiUserDirectoryPort.UserView current = requireUnchangedTarget(action, actor);
+                actions.consume(id, actor);
                 AiUserDirectoryPort.UserView updated =
                         users.update(
                                 action.userId(),
@@ -325,7 +347,10 @@ public class AiAssistantService {
                 yield new ActionResult("UPDATE_USER", updated);
             }
             case DELETE_USER -> {
+                guard.requireOperationUser(
+                        actor, action.userId(), PlatformOperation.AI_CONSOLE_DELETE_USER);
                 AiUserDirectoryPort.UserView current = requireUnchangedTarget(action, actor);
+                actions.consume(id, actor);
                 users.delete(action.userId(), current.version(), actor);
                 yield new ActionResult("DELETE_USER", null);
             }
@@ -333,41 +358,41 @@ public class AiAssistantService {
     }
 
     public List<Capability> capabilities(String actor) {
-        guard.require(actor, "platform:settings:read");
-        boolean canRead =
-                guard.hasGlobal(actor, "platform:users:read")
-                        || hasPermission(actor, "platform:users:read");
-        boolean canWrite = guard.hasGlobal(actor, "platform:users:write");
+        guard.requirePage(actor, PlatformPageId.AI_CONSOLE);
+        boolean canRead = hasOperation(actor, PlatformOperation.AI_CONSOLE_READ_USERS);
+        boolean canCreate = hasOperation(actor, PlatformOperation.AI_CONSOLE_CREATE_USER);
+        boolean canUpdate = hasOperation(actor, PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        boolean canDelete = hasOperation(actor, PlatformOperation.AI_CONSOLE_DELETE_USER);
         return List.of(
                 new Capability(
                         "users.search",
                         "user-management",
                         List.of("query"),
-                        "platform:users:read",
+                        PlatformOperation.AI_CONSOLE_READ_USERS.permission(),
                         canRead),
                 new Capability(
                         "users.create",
                         "user-management",
                         List.of("create"),
-                        "platform:users:write",
-                        canWrite),
+                        PlatformOperation.AI_CONSOLE_CREATE_USER.permission(),
+                        canCreate),
                 new Capability(
                         "users.update",
                         "user-management",
                         List.of("update"),
-                        "platform:users:write",
-                        canWrite),
+                        PlatformOperation.AI_CONSOLE_UPDATE_USER.permission(),
+                        canUpdate),
                 new Capability(
                         "users.delete",
                         "user-management",
                         List.of("soft-delete"),
-                        "platform:users:write",
-                        canWrite));
+                        PlatformOperation.AI_CONSOLE_DELETE_USER.permission(),
+                        canDelete));
     }
 
-    private boolean hasPermission(String actor, String permission) {
+    private boolean hasOperation(String actor, PlatformOperation operation) {
         try {
-            guard.require(actor, permission);
+            guard.requireOperation(actor, operation);
             return true;
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode() == HttpStatus.FORBIDDEN) return false;
@@ -376,17 +401,27 @@ public class AiAssistantService {
     }
 
     private ChatResponse resolveTool(
-            ModelConnectionService.ToolCall call, String actor, boolean canWrite) {
+            ModelConnectionService.ToolCall call,
+            String actor,
+            Set<String> allowedOperations,
+            boolean canReadUsers) {
         JsonNode arguments = toolArguments(call);
         if (arguments == null) return invalidToolResponse();
         return switch (call.name()) {
-            case "users_search" -> searchUsers(List.of(call), actor);
+            case "users_search" ->
+                    canReadUsers ? searchUsers(List.of(call), actor) : invalidToolResponse();
             case "users_propose_create" ->
-                    canWrite ? proposeCreate(arguments, actor) : invalidToolResponse();
+                    allowedOperations.contains("create")
+                            ? proposeCreate(arguments, actor)
+                            : invalidToolResponse();
             case "users_propose_update" ->
-                    canWrite ? proposeUpdate(arguments, actor) : invalidToolResponse();
+                    allowedOperations.contains("update")
+                            ? proposeUpdate(arguments, actor)
+                            : invalidToolResponse();
             case "users_propose_delete" ->
-                    canWrite ? proposeDelete(arguments, actor) : invalidToolResponse();
+                    allowedOperations.contains("delete")
+                            ? proposeDelete(arguments, actor)
+                            : invalidToolResponse();
             default -> invalidToolResponse();
         };
     }
@@ -401,6 +436,7 @@ public class AiAssistantService {
     }
 
     private ChatResponse searchUsers(List<ModelConnectionService.ToolCall> calls, String actor) {
+        guard.requireOperation(actor, PlatformOperation.AI_CONSOLE_READ_USERS);
         var searches = new LinkedHashSet<String>();
         // Validate the entire read-only batch before calling the authorized directory.
         for (var call : calls) {
@@ -500,7 +536,8 @@ public class AiAssistantService {
                 || version < 1
                 || !enabledNode.isBoolean()
                 || !validDisplayName(displayName)) return invalidToolResponse();
-        AiUserDirectoryPort.UserView current = visibleTarget(userId, actor);
+        AiUserDirectoryPort.UserView current =
+                visibleTarget(userId, actor, PlatformOperation.AI_CONSOLE_UPDATE_USER);
         if (current == null || current.version() != version) return invalidToolResponse();
         var target = targetSnapshot(current);
         var proposal =
@@ -520,7 +557,8 @@ public class AiAssistantService {
         UUID userId = uuid(args.path("id").asText(""));
         long version = args.path("version").asLong(-1);
         if (userId == null || version < 1) return invalidToolResponse();
-        AiUserDirectoryPort.UserView current = visibleTarget(userId, actor);
+        AiUserDirectoryPort.UserView current =
+                visibleTarget(userId, actor, PlatformOperation.AI_CONSOLE_DELETE_USER);
         if (current == null || current.version() != version) return invalidToolResponse();
         var target = targetSnapshot(current);
         var proposal =
@@ -540,7 +578,8 @@ public class AiAssistantService {
             PendingAiActionStore.PendingAction action, String actor) {
         PendingAiActionStore.Target expected = action.target();
         if (expected == null || !expected.id().equals(action.userId())) staleAction();
-        AiUserDirectoryPort.UserView current = visibleTarget(action.userId(), actor);
+        AiUserDirectoryPort.UserView current =
+                visibleTarget(action.userId(), actor, operation(action.kind()));
         if (current == null
                 || !expected.username().equals(current.username())
                 || !expected.displayName().equals(current.displayName())
@@ -550,14 +589,23 @@ public class AiAssistantService {
         return current;
     }
 
-    private AiUserDirectoryPort.UserView visibleTarget(UUID id, String actor) {
+    private AiUserDirectoryPort.UserView visibleTarget(
+            UUID id, String actor, PlatformOperation operation) {
         try {
-            return users.find(id, actor);
+            return users.findForOperation(id, actor, operation);
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode() == HttpStatus.NOT_FOUND
                     || exception.getStatusCode() == HttpStatus.FORBIDDEN) return null;
             throw exception;
         }
+    }
+
+    private static PlatformOperation operation(Kind kind) {
+        return switch (kind) {
+            case CREATE_USER -> PlatformOperation.AI_CONSOLE_CREATE_USER;
+            case UPDATE_USER -> PlatformOperation.AI_CONSOLE_UPDATE_USER;
+            case DELETE_USER -> PlatformOperation.AI_CONSOLE_DELETE_USER;
+        };
     }
 
     private static PendingAiActionStore.Target targetSnapshot(AiUserDirectoryPort.UserView user) {

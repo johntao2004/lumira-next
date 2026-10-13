@@ -35,6 +35,10 @@ import org.springframework.web.server.ResponseStatusException;
 /** TOTP provider; all identity policy and challenge state remains owned by the host. */
 @Service
 public class MfaService implements SecondFactorProvider {
+    public static final String ADMIN_ACCESS = "platform:mfa:management-access";
+    public static final String ADMIN_READ = "platform:mfa:management-read";
+    public static final String ADMIN_RESET = "platform:mfa:management-reset";
+
     private static final int SETUP_LIFETIME_SECONDS = 300;
     private static final String PROVIDER = "mfa";
 
@@ -177,7 +181,8 @@ public class MfaService implements SecondFactorProvider {
                     try {
                         UUID factorRevision =
                                 jdbc.sql(
-                                                "SELECT factor_credential_revision FROM platform_user WHERE id=:id")
+                                                "SELECT factor_credential_revision FROM"
+                                                        + " platform_user WHERE id=:id")
                                         .param("id", id)
                                         .query(UUID.class)
                                         .single();
@@ -235,7 +240,8 @@ public class MfaService implements SecondFactorProvider {
                                 return null;
                             UUID currentFactorRevision =
                                     jdbc.sql(
-                                                    "SELECT factor_credential_revision FROM platform_user WHERE id=:id")
+                                                    "SELECT factor_credential_revision FROM"
+                                                            + " platform_user WHERE id=:id")
                                             .param("id", id)
                                             .query(UUID.class)
                                             .single();
@@ -489,7 +495,11 @@ public class MfaService implements SecondFactorProvider {
                 });
     }
 
-    public PageResult<MfaResponse.Account> list(PageRequest page) {
+    public PageResult<MfaResponse.Account> list(PageRequest page, String actor) {
+        administration.require(actor, ADMIN_ACCESS);
+        administration.requireGlobal(actor, ADMIN_ACCESS);
+        administration.require(actor, ADMIN_READ);
+        administration.requireGlobal(actor, ADMIN_READ);
         return store.list(page);
     }
 
@@ -502,12 +512,12 @@ public class MfaService implements SecondFactorProvider {
                     int recoveryRows =
                             jdbc.sql(
                                             """
-                            WITH expired AS (
-                              SELECT id FROM platform_mfa_recovery_ticket
-                               WHERE expires_at<=CURRENT_TIMESTAMP OR consumed_at IS NOT NULL OR revoked_at IS NOT NULL
-                               ORDER BY expires_at,id FOR UPDATE SKIP LOCKED LIMIT :limit
-                            ) DELETE FROM platform_mfa_recovery_ticket t USING expired e WHERE t.id=e.id
-                            """)
+                                            WITH expired AS (
+                                              SELECT id FROM platform_mfa_recovery_ticket
+                                               WHERE expires_at<=CURRENT_TIMESTAMP OR consumed_at IS NOT NULL OR revoked_at IS NOT NULL
+                                               ORDER BY expires_at,id FOR UPDATE SKIP LOCKED LIMIT :limit
+                                            ) DELETE FROM platform_mfa_recovery_ticket t USING expired e WHERE t.id=e.id
+                                            """)
                                     .param("limit", limit)
                                     .update();
                     return pluginRows + recoveryRows;
@@ -532,9 +542,10 @@ public class MfaService implements SecondFactorProvider {
         tx.executeWithoutResult(
                 status -> {
                     policyLock.lockForAuthentication();
-                    administration.require(actor, "platform:mfa:manage");
-                    administration.requireGlobal(actor, "platform:mfa:manage");
-                    administration.requireUser(actor, target, "platform:users:write");
+                    administration.require(actor, ADMIN_ACCESS);
+                    administration.requireGlobal(actor, ADMIN_ACCESS);
+                    administration.require(actor, ADMIN_RESET);
+                    administration.requireUser(actor, target, ADMIN_RESET);
                     UUID actorId = owners.id(actor, false);
                     if (target.equals(actorId))
                         throw error(HttpStatus.CONFLICT, "mfaSelfResetForbidden");
@@ -572,10 +583,13 @@ public class MfaService implements SecondFactorProvider {
                                     UUID.randomUUID(),
                                     email,
                                     "Lumira MFA recovery ticket",
-                                    "Your authenticator was reset by an authorized administrator. "
-                                            + "Use this one-time recovery ticket within 15 minutes in the sign-in recovery flow.\n\n"
+                                    "Your authenticator was reset by an authorized administrator."
+                                            + " Use this one-time recovery ticket within 15 minutes in"
+                                            + " the sign-in recovery flow.\n\n"
                                             + issued.value()
-                                            + "\n\nIf you did not expect this, contact your administrator immediately. / 如果这不是你预期的操作，请立即联系管理员。",
+                                            + "\n\n"
+                                            + "If you did not expect this, contact your"
+                                            + " administrator immediately. / 如果这不是你预期的操作，请立即联系管理员。",
                                     900);
                     if (!queued)
                         throw error(
@@ -601,9 +615,9 @@ public class MfaService implements SecondFactorProvider {
                     boolean pending =
                             jdbc.sql(
                                             """
-                            SELECT recovery_pending FROM platform_second_factor_requirement
-                             WHERE user_id=:id AND provider_id='mfa' FOR UPDATE
-                            """)
+                                            SELECT recovery_pending FROM platform_second_factor_requirement
+                                             WHERE user_id=:id AND provider_id='mfa' FOR UPDATE
+                                            """)
                                     .param("id", id)
                                     .query(Boolean.class)
                                     .optional()
@@ -630,9 +644,12 @@ public class MfaService implements SecondFactorProvider {
                                     UUID.randomUUID(),
                                     email,
                                     "Lumira MFA recovery ticket",
-                                    "Use this one-time recovery ticket within 15 minutes in the sign-in recovery flow.\n\n"
+                                    "Use this one-time recovery ticket within 15 minutes in the"
+                                            + " sign-in recovery flow.\n\n"
                                             + issued.value()
-                                            + "\n\nThe ticket can only unlock restricted authenticator enrollment. / 此票据只允许进入受限验证器重新绑定流程。",
+                                            + "\n\n"
+                                            + "The ticket can only unlock restricted authenticator"
+                                            + " enrollment. / 此票据只允许进入受限验证器重新绑定流程。",
                                     900);
                     if (!queued)
                         throw error(

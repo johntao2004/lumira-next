@@ -1,10 +1,22 @@
 package com.lumira.platform.navigation;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import java.util.HashMap;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 class NavigationMenuServiceTest {
     private static NavigationMenuRepository.Menu page(
@@ -87,5 +99,55 @@ class NavigationMenuServiceTest {
                         java.util.Set.of(),
                         java.util.Set.of());
         assertTrue(deniedLeaf.isEmpty());
+    }
+
+    @Test
+    void adminReadsRequireNavigationPageAccess() {
+        var guard = mock(AdministrationPort.class);
+        var repository = mock(NavigationMenuRepository.class);
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
+                .when(guard)
+                .requirePageGlobal("limited", PlatformPageId.NAVIGATION);
+        var service = new NavigationMenuService(repository, guard, null, null, null, null);
+
+        assertThrows(ResponseStatusException.class, () -> service.adminList("limited"));
+        verify(guard).requirePageGlobal("limited", PlatformPageId.NAVIGATION);
+        clearInvocations(guard);
+
+        assertThrows(
+                ResponseStatusException.class, () -> service.find(UUID.randomUUID(), "limited"));
+        verify(guard).requirePageGlobal("limited", PlatformPageId.NAVIGATION);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void everyNavigationMutationRequiresItsOwnPageAndActionGrant() {
+        var guard = mock(AdministrationPort.class);
+        var repository = mock(NavigationMenuRepository.class);
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
+                .when(guard)
+                .requireOperationGlobal(eq("limited"), any(PlatformOperation.class));
+        var service = new NavigationMenuService(repository, guard, null, null, null, null);
+        UUID id = UUID.randomUUID();
+
+        assertThrows(ResponseStatusException.class, () -> service.create(null, "limited"));
+        verify(guard).requireOperationGlobal("limited", PlatformOperation.NAVIGATION_CREATE);
+        clearInvocations(guard);
+
+        assertThrows(ResponseStatusException.class, () -> service.update(id, null, "limited"));
+        verify(guard).requireOperationGlobal("limited", PlatformOperation.NAVIGATION_UPDATE);
+        clearInvocations(guard);
+
+        assertThrows(ResponseStatusException.class, () -> service.status(id, 0, false, "limited"));
+        verify(guard).requireOperationGlobal("limited", PlatformOperation.NAVIGATION_UPDATE);
+        clearInvocations(guard);
+
+        assertThrows(ResponseStatusException.class, () -> service.delete(id, 0, "limited"));
+        verify(guard).requireOperationGlobal("limited", PlatformOperation.NAVIGATION_DELETE);
+        clearInvocations(guard);
+
+        assertThrows(ResponseStatusException.class, () -> service.reorder(null, "limited"));
+        verify(guard).requireOperationGlobal("limited", PlatformOperation.NAVIGATION_UPDATE);
+        verifyNoInteractions(repository);
     }
 }

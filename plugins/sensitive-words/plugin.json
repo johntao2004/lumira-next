@@ -1,8 +1,8 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "sensitive-words",
   "name": "敏感词策略",
-  "version": "1.0.5",
+  "version": "1.0.8",
   "sdkVersion": "1",
   "entryClass": "com.lumira.platform.sensitive.LumiraPlugin",
   "backend": "backend/plugin.jar",
@@ -18,15 +18,63 @@
     }
   ],
   "permissions": [
-    "platform:sensitive-words:import",
+    "platform:sensitive-words:access",
     "platform:sensitive-words:read",
-    "platform:sensitive-words:write"
+    "platform:sensitive-words:create",
+    "platform:sensitive-words:update",
+    "platform:sensitive-words:delete",
+    "platform:sensitive-words:import",
+    "platform:sensitive-words:policy-update"
+  ],
+  "permissionGroups": [
+    {
+      "id": "management",
+      "title": "pluginPermissionGroupSensitiveWords",
+      "permissions": [
+        {
+          "code": "platform:sensitive-words:access",
+          "label": "pluginPermissionSensitiveWordsAccess"
+        },
+        {
+          "code": "platform:sensitive-words:read",
+          "label": "pluginPermissionSensitiveWordsRead"
+        },
+        {
+          "code": "platform:sensitive-words:create",
+          "label": "pluginPermissionSensitiveWordsCreate"
+        },
+        {
+          "code": "platform:sensitive-words:update",
+          "label": "pluginPermissionSensitiveWordsUpdate"
+        },
+        {
+          "code": "platform:sensitive-words:delete",
+          "label": "pluginPermissionSensitiveWordsDelete"
+        },
+        {
+          "code": "platform:sensitive-words:import",
+          "label": "pluginPermissionSensitiveWordsImport"
+        },
+        {
+          "code": "platform:sensitive-words:policy-update",
+          "label": "pluginPermissionSensitiveWordsPolicyUpdate"
+        }
+      ]
+    }
   ],
   "routes": [
     {
       "id": "sensitive-words",
       "label": "sensitiveWords",
-      "permission": "platform:sensitive-words:read",
+      "permission": "platform:sensitive-words:access",
+      "operations": {
+        "read": "platform:sensitive-words:read",
+        "create": "platform:sensitive-words:create",
+        "update": "platform:sensitive-words:update",
+        "delete": "platform:sensitive-words:delete",
+        "import": "platform:sensitive-words:import",
+        "policy-update": "platform:sensitive-words:policy-update"
+      },
       "group": "content-management",
       "order": 30,
       "global": true
@@ -36,110 +84,134 @@
     {
       "method": "GET",
       "path": "/api/platform/sensitive-policies/roles",
-      "authorities": [
-        "platform:sensitive-words:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:read"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/platform/sensitive-policies/hits",
-      "authorities": [
-        "platform:sensitive-words:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:read"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/sensitive-policies/preview",
-      "authorities": [
-        "platform:sensitive-words:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:read"
+      ]
     },
     {
       "method": "PUT",
       "path": "/api/platform/sensitive-policies/roles/*",
-      "authorities": [
-        "platform:sensitive-words:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:policy-update"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/platform/sensitive-words",
-      "authorities": [
-        "platform:sensitive-words:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:read"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/platform/sensitive-words/*",
-      "authorities": [
-        "platform:sensitive-words:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:read"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/sensitive-words/check",
-      "authorities": [
-        "platform:sensitive-words:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:read"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/sensitive-words/import",
-      "authorities": [
-        "platform:sensitive-words:import"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:import"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/sensitive-words",
-      "authorities": [
-        "platform:sensitive-words:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:create"
+      ]
     },
     {
       "method": "PUT",
       "path": "/api/platform/sensitive-words/*",
-      "authorities": [
-        "platform:sensitive-words:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:update"
+      ]
     },
     {
       "method": "PATCH",
       "path": "/api/platform/sensitive-words/*/status",
-      "authorities": [
-        "platform:sensitive-words:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:update"
+      ]
     },
     {
       "method": "DELETE",
       "path": "/api/platform/sensitive-words/*",
-      "authorities": [
-        "platform:sensitive-words:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:sensitive-words:access",
+        "platform:sensitive-words:delete"
+      ]
     }
   ],
   "dataSets": [

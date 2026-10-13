@@ -24,8 +24,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SensitiveWordService {
+    public static final String ACCESS = "platform:sensitive-words:access";
     public static final String READ = "platform:sensitive-words:read";
-    public static final String WRITE = "platform:sensitive-words:write";
+    public static final String CREATE = "platform:sensitive-words:create";
+    public static final String UPDATE = "platform:sensitive-words:update";
+    public static final String DELETE = "platform:sensitive-words:delete";
+    public static final String POLICY_UPDATE = "platform:sensitive-words:policy-update";
     public static final String IMPORT = "platform:sensitive-words:import";
     public static final String CATEGORY_DICTIONARY = "sensitive_word_category";
     private static final int MAX_WORD_LENGTH = 128;
@@ -117,7 +121,7 @@ public class SensitiveWordService {
             String action,
             Boolean enabled,
             String actor) {
-        guard.requireGlobal(actor, READ);
+        requireGlobalOperation(actor, READ);
         String wordFilter = textFilter(word, MAX_WORD_LENGTH);
         String requestedCategory = categoryFilter(category);
         String categoryFilter =
@@ -135,13 +139,13 @@ public class SensitiveWordService {
 
     @Transactional(readOnly = true)
     public SensitiveWordRepository.Word find(UUID id, String actor) {
-        guard.requireGlobal(actor, READ);
+        requireGlobalOperation(actor, READ);
         return repository.find(id);
     }
 
     @Transactional
     public SensitiveWordRepository.Word create(Input input, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, CREATE);
         if (input == null) fail(HttpStatus.BAD_REQUEST, "invalidSensitiveWord");
         var values = normalize(input, enabledCategory(input.category(), "DEFAULT"));
         if (repository.exists(values.normalizedWord(), null))
@@ -166,7 +170,7 @@ public class SensitiveWordService {
 
     @Transactional
     public SensitiveWordRepository.Word update(UUID id, Input input, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, UPDATE);
         var current = repository.find(id);
         if (input == null || input.version() == null || input.version() != current.version())
             fail(HttpStatus.CONFLICT, "staleRecord");
@@ -201,7 +205,7 @@ public class SensitiveWordService {
     @Transactional
     public SensitiveWordRepository.Word setEnabled(
             UUID id, long version, boolean enabled, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, UPDATE);
         repository.find(id);
         if (repository.setEnabled(id, version, enabled, actor) != 1)
             fail(HttpStatus.CONFLICT, "staleRecord");
@@ -211,7 +215,7 @@ public class SensitiveWordService {
 
     @Transactional
     public void delete(UUID id, long version, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, DELETE);
         repository.find(id);
         if (repository.softDelete(id, version, actor) != 1)
             fail(HttpStatus.CONFLICT, "staleRecord");
@@ -269,13 +273,13 @@ public class SensitiveWordService {
 
     @Transactional(readOnly = true)
     public CheckResult check(String text, String actor) {
-        guard.requireGlobal(actor, READ);
+        requireGlobalOperation(actor, READ);
         return scan(text);
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<CategoryOption> categories(String actor) {
-        guard.requireGlobal(actor, READ);
+        requireGlobalOperation(actor, READ);
         return categoryItems().stream()
                 .map(item -> new CategoryOption(item.value(), item.label(), item.sortOrder()))
                 .toList();
@@ -334,6 +338,15 @@ public class SensitiveWordService {
     }
 
     private void writeGuard(String actor, String permission) {
+        guard.require(actor, ACCESS);
+        guard.requireGlobal(actor, ACCESS);
+        guard.require(actor, permission);
+        guard.requireGlobal(actor, permission);
+    }
+
+    private void requireGlobalOperation(String actor, String permission) {
+        guard.require(actor, ACCESS);
+        guard.requireGlobal(actor, ACCESS);
         guard.require(actor, permission);
         guard.requireGlobal(actor, permission);
     }

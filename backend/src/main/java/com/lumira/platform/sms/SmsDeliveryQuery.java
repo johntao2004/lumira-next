@@ -3,6 +3,7 @@ package com.lumira.platform.sms;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.communication.DeliveryPageQuerySupport;
 import java.time.OffsetDateTime;
 import java.util.Set;
@@ -44,7 +45,7 @@ public class SmsDeliveryQuery {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<Entry> list(String actor, PageRequest page, String state) {
-        guard.requireGlobal(actor, "platform:audit:read");
+        guard.requirePageGlobal(actor, PlatformPageId.SMS_DELIVERIES);
         if (state == null || (!state.isEmpty() && !STATES.contains(state))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidSmsState");
         }

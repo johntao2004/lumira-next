@@ -6,7 +6,7 @@ export const monitoringManifest = {
   required: true,
   dependencies: ["platform", "communication", "events", "notifications", "directory"],
   routes: [
-    { id: "monitoring", label: "monitoring", permission: "platform:audit:read", group: "operations", order: 10 },
-    { id: "api-docs", label: "apiDocs", permission: "platform:audit:read", global: true, group: "operations", order: 15 },
+    { id: "monitoring", label: "monitoring", permission: "platform:monitoring:access", accessScope: "global", group: "operations", order: 10 },
+    { id: "api-docs", label: "apiDocs", permission: "platform:api-docs:access", accessScope: "global", global: true, group: "operations", order: 20 },
   ],
 } as const satisfies FrontendModuleManifest;

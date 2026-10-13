@@ -22,7 +22,7 @@
 
 ## 目录和职责
 
-- `apps/web/src/platform`：跨功能公共组件、请求、路由、表单、草稿、模块契约和壳层；不能依赖具体 feature 实现。
+- `apps/web/src/platform`：跨功能公共组件、请求、路由、表单、模块契约和壳层；不能依赖具体 feature 实现。
 - `apps/web/src/features/<feature>`：宿主功能页面、字段与规则，路由由 manifest/module 声明。
 - `plugins/<id>`：独立插件。前端仅使用 `plugins/sdk/frontend-modules.json` 暴露的宿主接口，不能导入宿主 feature 或其他插件实现。
 - Java 使用 Maven 的 `src/main/java`、`src/main/resources`、`src/test/java` 布局。按功能划分包，禁止按技术层把所有功能混进一个巨大的全局 service/repository 目录。

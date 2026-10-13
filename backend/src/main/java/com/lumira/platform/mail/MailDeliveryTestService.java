@@ -3,6 +3,7 @@ package com.lumira.platform.mail;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.MailConfigurationPort;
+import com.lumira.platform.common.PlatformOperation;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -62,8 +63,7 @@ public class MailDeliveryTestService {
     }
 
     private void requireWrite(String actor) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.SMTP_TEST);
     }
 
     private static void unavailable() {

@@ -2,6 +2,7 @@ package com.lumira.platform.settings;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.BoundedBody;
+import com.lumira.platform.common.PlatformPageId;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -23,8 +24,7 @@ public class WechatSettingsController {
 
     @GetMapping
     public WechatSettingsService.View read(Authentication actor) {
-        guard.require(actor.getName(), "platform:settings:read");
-        guard.requireGlobal(actor.getName(), "platform:settings:read");
+        guard.requirePageGlobal(actor.getName(), PlatformPageId.WECHAT);
         return service.read();
     }
 

@@ -68,19 +68,22 @@ try {
   const drawerBox = await navigationDrawer.boundingBox();
   assert.ok(drawerBox && Math.abs(drawerBox.width - 256) <= 1, `mobile navigation drawer must match the standard 256px ProLayout sider, got ${drawerBox?.width}`);
   await expect(navigationDrawer.getByRole('link', { name: '工作台', exact: true })).toBeVisible();
-  await expect(navigationDrawer.getByRole('link', { name: '品牌设置', exact: true })).not.toBeVisible();
-  await navigationDrawer.getByText('平台管理', { exact: true }).click();
-  await expect(navigationDrawer.getByRole('link', { name: '品牌设置', exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(navigationDrawer.getByRole('link', { name: translate('zh-CN', 'siteSettings'), exact: true })).not.toBeVisible();
+  await navigationDrawer.getByText(translate('zh-CN', 'administration'), { exact: true }).click();
+  await expect(navigationDrawer.getByRole('link', { name: translate('zh-CN', 'siteSettings'), exact: true })).toBeVisible();
+  await navigationDrawer.getByRole('link', { name: translate('zh-CN', 'siteSettings'), exact: true }).click();
+  await page.waitForURL('**/dashboard/branding');
   await expect(navigationDrawer).not.toBeVisible();
 
-  for (const key of ['profile', 'mySessions', 'changePassword']) {
+  for (const [key, path] of [['profile', '/dashboard/account-profile'], ['mySessions', '/dashboard/account-sessions'], ['changePassword', '/dashboard/account-password']]) {
     await page.locator('.pro-account-trigger').click();
     await page.getByRole('menuitem', { name: translate('zh-CN', key), exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: translate('zh-CN', key), exact: true });
-    await expect(dialog).toBeVisible();
-    await dialog.locator('.ant-drawer-close').click();
-    await expect(dialog).not.toBeVisible();
+    await page.waitForURL(`**${path}`);
+    const panel = page.locator('.account-settings-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.locator('.account-settings-title')).toHaveText(translate('zh-CN', key));
+    await expect(panel.locator('.account-settings-title')).toBeFocused();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
 
   mkdirSync('.runtime/browser-checks', { recursive: true });
@@ -94,8 +97,8 @@ try {
   await desktopSider.locator('.ant-pro-sider-collapsed-button').click();
   await expect.poll(() => desktopSider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(256);
   await expect(desktopSider.getByRole('link', { name: '工作台', exact: true })).toBeVisible();
-  await desktopSider.getByText('平台管理', { exact: true }).click();
-  await expect(desktopSider.getByRole('link', { name: '品牌设置', exact: true })).toBeVisible();
+  await desktopSider.getByText(translate('zh-CN', 'administration'), { exact: true }).click();
+  await expect(desktopSider.getByRole('link', { name: translate('zh-CN', 'siteSettings'), exact: true })).toBeVisible();
   await expect(page.locator('[data-testid="pro-layout-global-header"] .pro-account-trigger')).toBeVisible();
   await page.screenshot({ path: '.runtime/browser-checks/pro-layout-desktop.png', fullPage: true });
 

@@ -3,6 +3,7 @@ package com.lumira.platform.settings;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.MailConfigurationPort;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.SecretKeys;
 import com.lumira.platform.common.SecretStorePort;
 import java.nio.charset.StandardCharsets;
@@ -180,8 +181,7 @@ public class SmtpSettingsService implements MailConfigurationPort {
 
     @Transactional
     public View save(String actor, Input input) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.SMTP_UPDATE);
         if (input == null || input.data() == null || input.credentials() == null)
             invalid("invalidSmtp");
         input.data().validate();

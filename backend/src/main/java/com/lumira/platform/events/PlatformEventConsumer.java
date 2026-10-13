@@ -1,11 +1,12 @@
 package com.lumira.platform.events;
 
 /**
- * A durable Outbox consumer owned by a platform or business module.
+ * Legacy durable Outbox consumer registration retained for compatibility.
  *
- * <p>Consumers run outside the database transaction that claims an event. The worker acknowledges
- * the claim only after this method returns successfully; an implementation must therefore be
- * idempotent for at-least-once delivery.
+ * <p>The worker adapts this interface to {@code DurableEventConsumerPort} and runs it in the same
+ * database transaction as the delivery acknowledgement. Handlers must restrict side effects to that
+ * transaction's database. They must not perform network calls or other external effects; external
+ * delivery requires its own durable outbox because a database rollback cannot undo it.
  */
 public interface PlatformEventConsumer {
     String sourceType();

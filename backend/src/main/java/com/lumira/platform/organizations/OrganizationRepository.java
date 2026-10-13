@@ -52,8 +52,8 @@ public class OrganizationRepository {
 
     private String visibleOrganizations(AuthorizationContextProjectionPort.Snapshot context) {
         return context != null && context.previewActive()
-                ? "platform_role_preview_visible_organizations(:actor,'platform:organizations:read',:targetRoleId,:targetRoleVersion)"
-                : "platform_visible_organizations(:actor,'platform:organizations:read')";
+                ? "platform_role_preview_visible_organizations(:actor,'platform:organizations:access',:targetRoleId,:targetRoleVersion)"
+                : "platform_visible_organizations(:actor,'platform:organizations:access')";
     }
 
     private JdbcClient.StatementSpec filtered(
@@ -134,7 +134,7 @@ public class OrganizationRepository {
 
     public List<Organization> ancestors(UUID id, String actor) {
         return jdbc.sql(
-                        "WITH RECURSIVE ancestors AS (SELECT o.*,0 AS depth FROM platform_organization o WHERE id=:id UNION ALL SELECT o.*,a.depth+1 FROM platform_organization o JOIN ancestors a ON o.id=a.parent_id) SELECT a.* FROM ancestors a WHERE a.id IN (SELECT organization_id FROM platform_visible_organizations(:actor,'platform:organizations:read')) ORDER BY depth DESC")
+                        "WITH RECURSIVE ancestors AS (SELECT o.*,0 AS depth FROM platform_organization o WHERE id=:id UNION ALL SELECT o.*,a.depth+1 FROM platform_organization o JOIN ancestors a ON o.id=a.parent_id) SELECT a.* FROM ancestors a WHERE a.id IN (SELECT organization_id FROM platform_visible_organizations(:actor,'platform:organizations:access')) ORDER BY depth DESC")
                 .param("id", id)
                 .param("actor", actor)
                 .query((rs, n) -> row(rs))
@@ -166,7 +166,7 @@ public class OrganizationRepository {
 
     public Organization findVisible(UUID id, String actor) {
         return jdbc.sql(
-                        "SELECT * FROM platform_organization WHERE id=:id AND id IN (SELECT organization_id FROM platform_visible_organizations(:actor,'platform:organizations:read'))")
+                        "SELECT * FROM platform_organization WHERE id=:id AND id IN (SELECT organization_id FROM platform_visible_organizations(:actor,'platform:organizations:access'))")
                 .param("id", id)
                 .param("actor", actor)
                 .query((rs, n) -> row(rs))

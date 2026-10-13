@@ -1,11 +1,13 @@
 package com.lumira.platform.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.lumira.platform.common.AuthorizationRevisionPort;
 import com.lumira.platform.identity.AuthenticationPolicyService;
 import com.lumira.platform.identity.api.AccountOwnerPort;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
@@ -42,6 +44,10 @@ class PlatformControllerAuthenticationContextTest {
         var policies = mock(AuthenticationPolicyService.class);
         var owners = mock(AccountOwnerPort.class);
         UUID userId = UUID.randomUUID();
+        var authorizationRevisions = mock(AuthorizationRevisionPort.class);
+        when(authorizationRevisions.revision(
+                        userId, Set.of("platform:users:read"), Set.of("platform:roles:read")))
+                .thenReturn("session-authorization-tag");
         var policy =
                 new EffectivePolicy(
                         UUID.randomUUID(),
@@ -74,7 +80,7 @@ class PlatformControllerAuthenticationContextTest {
                     UsernamePasswordAuthenticationToken.authenticated("alice", null, List.of());
 
             var result =
-                    new PlatformController(jdbc, modules, policies, owners)
+                    new PlatformController(jdbc, modules, policies, owners, authorizationRevisions)
                             .me(authentication, request);
 
             assertEquals(
@@ -88,6 +94,8 @@ class PlatformControllerAuthenticationContextTest {
             assertEquals(List.of("platform:users:read"), result.get("authorities"));
             assertEquals(List.of("platform:roles:read"), result.get("globalAuthorities"));
             assertEquals(userId, result.get("userId"));
+            assertNotNull(result.get("authorizationRevision"));
+            assertEquals("session-authorization-tag", result.get("authorizationRevision"));
             var authorizationContext = (java.util.Map<?, ?>) result.get("authorizationContext");
             assertEquals("authorization-revision", authorizationContext.get("revision"));
             assertEquals(true, authorizationContext.get("rolePreviewSupported"));

@@ -6,6 +6,8 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.identity.api.AuthenticationSession;
 import com.lumira.platform.identity.api.EffectiveAuthenticationPolicyPort.EffectivePolicy;
@@ -101,15 +103,16 @@ final class CurrentAuthorityFilterTestSupport {
                             @SuppressWarnings("unchecked")
                             Set<String> authorities = invocation.getArgument(3);
                             var values = Set.copyOf(authorities);
+                            var globalValues = globalAuthorities(values);
                             return new RequestAuthorizationContext(
                                     principal,
                                     actorId,
                                     request.getSession(false).getId(),
                                     values,
-                                    Set.of(),
+                                    globalValues,
                                     java.util.Map.of(),
                                     values,
-                                    Set.of(),
+                                    globalValues,
                                     java.util.Map.of(),
                                     CONTEXT_REVISION,
                                     request.getHeader(RolePreviewContextService.REVISION_HEADER),
@@ -141,5 +144,18 @@ final class CurrentAuthorityFilterTestSupport {
                 AuthenticationSession.PRIMARY_CREDENTIAL_REVISION,
                 PRIMARY_CREDENTIAL_REVISION.toString());
         return session;
+    }
+
+    private static Set<String> globalAuthorities(Set<String> authorities) {
+        var global = new java.util.HashSet<String>();
+        for (PlatformPageId page : PlatformPageId.values())
+            if (page.scope() == PlatformOperation.Scope.GLOBAL
+                    && authorities.contains(page.accessPermission()))
+                global.add(page.accessPermission());
+        for (PlatformOperation operation : PlatformOperation.values())
+            if (operation.scope() == PlatformOperation.Scope.GLOBAL
+                    && authorities.contains(operation.permission()))
+                global.add(operation.permission());
+        return Set.copyOf(global);
     }
 }

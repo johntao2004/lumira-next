@@ -25,7 +25,7 @@ const dictionaryItemErrorAliases = { duplicateRecord: "duplicateDictionaryItem" 
 const feedbackStatusValues = new Set(["OPEN", "PROCESSING", "RESOLVED", "CLOSED"]);
 
 type Item={id:string;parentId:string|null;value:string;label:string;sortOrder:number;enabled:boolean;remark:string;version:number};
-export function DictionaryItemsPage({dictionary,canWrite,onBack}:{dictionary:Dictionary;canWrite:boolean;onBack:()=>void}) {
+export function DictionaryItemsPage({dictionary,canCreate,canUpdate,canDelete,onBack}:{dictionary:Dictionary;canCreate:boolean;canUpdate:boolean;canDelete:boolean;onBack:()=>void}) {
   const {t}=usePreferences();const client=useQueryClient();const endpoint=`/platform/dictionaries/${dictionary.id}/items`;const lookupEndpoint=`/dictionaries/${encodeURIComponent(dictionary.code)}/items`;
   const [request,setRequest]=useListLocation("items.");
   const [params,updateLocation]=useLocationParams();
@@ -39,8 +39,10 @@ export function DictionaryItemsPage({dictionary,canWrite,onBack}:{dictionary:Dic
   const feedbackDefault=dictionary.code==="work_order_feedback_default";
   const lockedLegacyStatus=feedbackStatus && typeof selected==="string" && !!detail.data && !feedbackStatusValues.has(detail.data.value);
   const sensitiveCategory=dictionary.code==="sensitive_word_category";
-  const canCreateItem=canWrite && !feedbackStatus && !feedbackDefault;
-  const canDeleteItem=canWrite && !feedbackStatus && !feedbackDefault;
+  const canCreateItem=canCreate && !feedbackStatus && !feedbackDefault;
+  const canUpdateItem=canUpdate && !feedbackStatus;
+  const canDeleteItem=canDelete && !feedbackStatus && !feedbackDefault;
+  const canSaveItem=selected===null?canCreateItem:canUpdateItem;
   const ready=selected===null || (!!detail.data && !detail.isFetching && !detail.error);
   const refresh=()=>Promise.all([client.invalidateQueries({queryKey:["dictionary-items",dictionary.id]}),client.invalidateQueries({queryKey:["resource-select",endpoint]}),client.invalidateQueries({queryKey:["resource-select-detail",endpoint]}),client.invalidateQueries({queryKey:["resource-select",lookupEndpoint]}),client.invalidateQueries({queryKey:["resource-select-detail",lookupEndpoint]}),client.invalidateQueries({queryKey:["feedback-options"]}),client.invalidateQueries({queryKey:["dictionary-options"]})]);
   return <>
@@ -53,18 +55,18 @@ export function DictionaryItemsPage({dictionary,canWrite,onBack}:{dictionary:Dic
     <ResourceTable<Item> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={()=>void query.refetch()}
       actions={canCreateItem && <Button type="primary" onClick={()=>setSelected(null)}>{t("createDictionaryItem")}</Button>}
       columns={[{title:t("itemValue"),dataIndex:"value",search:true},{title:t("itemLabel"),dataIndex:"label", search: true,render:(_,row)=>dictionary.structure==="TREE"?<Button type="link" aria-label={`${t("viewChildren")}: ${row.label}`} onClick={()=>navigate(row.id)}>{row.label}</Button>:row.label},{title:t("sortOrder"),dataIndex:"sortOrder",valueType:"digit"},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,row)=><Tag color={row.enabled?"success":"default"}>{t(row.enabled?"enabled":"disabled")}</Tag>},
-        {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions><Button type="link" onClick={()=>setSelected(row.id)}>{t(canWrite && !(feedbackStatus && !feedbackStatusValues.has(row.value))?"edit":"details")}</Button>{canDeleteItem && <DeleteAction name={row.label} onDelete={async()=>{
+        {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions><Button type="link" onClick={()=>setSelected(row.id)}>{t(canUpdateItem && !(feedbackStatus && !feedbackStatusValues.has(row.value))?"edit":"details")}</Button>{canDeleteItem && <DeleteAction name={row.label} onDelete={async()=>{
           await mutate(`${endpoint}/${row.id}?version=${row.version}`,"DELETE",{});setRequest(pageAfterRemoval(request,query.data?.items.length));await refresh();
         }}/>}</TableActions>}]} />
-    <FormDrawer open={selected!==undefined} title={t(lockedLegacyStatus?"details":selected?"dictionaryItems":"createDictionaryItem")} formId="dictionary-item-editor" pending={pending} submitDisabled={!ready || !canWrite || lockedLegacyStatus} onClose={close}>
+    <FormDrawer open={selected!==undefined} title={t(lockedLegacyStatus?"details":selected?"edit":"createDictionaryItem")} formId="dictionary-item-editor" pending={pending} submitDisabled={!ready || !canSaveItem || lockedLegacyStatus} onClose={close}>
       <FeedbackBubble id="dictionary-item-editor-error" content={error ? t(error) : selected && detail.error ? t("unavailable") : undefined}/>
       {selected && detail.isFetching && <Spin />}
-        {ready && <Form key={selected??"new"} id="dictionary-item-editor" layout="vertical" disabled={pending || !canWrite || lockedLegacyStatus} initialValues={selected?detail.data:{enabled:true,sortOrder:0,parentId:parent && parent!=="root"?parent:null,remark:""}} onFinish={values=>run(async()=>{
+        {ready && <Form key={selected??"new"} id="dictionary-item-editor" layout="vertical" disabled={pending || !canSaveItem || lockedLegacyStatus} initialValues={selected?detail.data:{enabled:true,sortOrder:0,parentId:parent && parent!=="root"?parent:null,remark:""}} onFinish={values=>run(async()=>{
 await saveRecord(endpoint,selected,{...values,parentId:values.parentId??null,version:selected?detail.data?.version:undefined});saved();await refresh();
       })}>
         <Form.Item name="value" label={t("itemValue")} rules={[{required:true,whitespace:true,message:t("invalidDictionaryItem")},...(sensitiveCategory?[{validator:(_:unknown,value?:string)=>!value || Array.from(value.trim()).length<=64?Promise.resolve():Promise.reject(new Error(t("invalidDictionaryItem")))}]:[]),...(["work_order_feedback_category","work_order_feedback_priority","work_order_feedback_status"].includes(dictionary.code)?[{pattern:/^[A-Z][A-Z0-9_]{0,31}$/,message:t("invalidDictionaryItem")}]:[])]}><Input maxLength={sensitiveCategory?128:200} readOnly={!!selected && ["work_order_feedback_category","work_order_feedback_priority","work_order_feedback_status","work_order_feedback_default"].includes(dictionary.code)} /></Form.Item>
         <Form.Item name="label" label={t("itemLabel")} rules={[{required:true,whitespace:true,message:t("invalidDictionaryItem")}]}><Input maxLength={200} readOnly={feedbackDefault && !!selected && !["INITIAL_STATUS","DEFAULT_PRIORITY"].includes(detail.data?.value??"")} /></Form.Item>
-        {dictionary.structure==="TREE" && <Form.Item name="parentId" label={t("parentItem")}><ResourceSelect endpoint={endpoint} labelField="label" excludeId={selected??undefined} disabled={pending || !canWrite} /></Form.Item>}
+        {dictionary.structure==="TREE" && <Form.Item name="parentId" label={t("parentItem")}><ResourceSelect endpoint={endpoint} labelField="label" excludeId={selected??undefined} disabled={pending || !canSaveItem} /></Form.Item>}
         <Form.Item name="sortOrder" label={t("sortOrder")} rules={[{required:true,message:t("invalidDictionaryItem")}]}><InputNumber min={-2147483648} max={2147483647} precision={0} /></Form.Item>
         <Form.Item name="remark" label={t("remark")}><Input.TextArea maxLength={1000} showCount readOnly={feedbackStatus && !!selected} /></Form.Item>
         <Form.Item name="enabled" label={t("enabled")} valuePropName="checked"><Switch disabled={feedbackDefault || (feedbackStatus && (!selected || !!detail.data?.enabled))} /></Form.Item>

@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 /** One persistent, policy-aware path for every primary authentication method. */
 @Service
 public class SecondFactorLoginService implements PrimaryAuthenticationPort {
-    private static final String PENDING = "lumira.login.challenge";
+    static final String PENDING = "lumira.login.challenge";
 
     private record Challenge(
             UUID userId,
@@ -113,7 +113,43 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
     private final PasswordCredentialProof passwordProofs;
     private final CaptchaProofAccess captcha;
     private final MfaRecoveryTicketPort recoveryTickets;
+    private final TemporaryPasswordResetService temporaryPasswords;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public SecondFactorLoginService(
+            JdbcClient jdbc,
+            TransactionTemplate tx,
+            PluginExtensionsPort plugins,
+            UserDetailsService users,
+            MaintenancePolicyPort maintenance,
+            LoginAudit audit,
+            ClientAddressResolver addresses,
+            FixedWindowBuckets buckets,
+            AuthenticationPolicyWriteLock policyLock,
+            EffectiveAuthenticationPolicyPort policies,
+            AccountSecurityPort accountSecurity,
+            PasswordCredentialProof passwordProofs,
+            CaptchaProofAccess captcha,
+            MfaRecoveryTicketPort recoveryTickets,
+            TemporaryPasswordResetService temporaryPasswords) {
+        this.jdbc = jdbc;
+        this.tx = tx;
+        this.plugins = plugins;
+        this.users = users;
+        this.maintenance = maintenance;
+        this.audit = audit;
+        this.addresses = addresses;
+        this.buckets = buckets;
+        this.policyLock = policyLock;
+        this.policies = policies;
+        this.accountSecurity = accountSecurity;
+        this.passwordProofs = passwordProofs;
+        this.captcha = captcha;
+        this.recoveryTickets = recoveryTickets;
+        this.temporaryPasswords = temporaryPasswords;
+    }
+
+    /** Compatibility constructor retained for focused authentication-flow tests. */
     public SecondFactorLoginService(
             JdbcClient jdbc,
             TransactionTemplate tx,
@@ -129,20 +165,22 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
             PasswordCredentialProof passwordProofs,
             CaptchaProofAccess captcha,
             MfaRecoveryTicketPort recoveryTickets) {
-        this.jdbc = jdbc;
-        this.tx = tx;
-        this.plugins = plugins;
-        this.users = users;
-        this.maintenance = maintenance;
-        this.audit = audit;
-        this.addresses = addresses;
-        this.buckets = buckets;
-        this.policyLock = policyLock;
-        this.policies = policies;
-        this.accountSecurity = accountSecurity;
-        this.passwordProofs = passwordProofs;
-        this.captcha = captcha;
-        this.recoveryTickets = recoveryTickets;
+        this(
+                jdbc,
+                tx,
+                plugins,
+                users,
+                maintenance,
+                audit,
+                addresses,
+                buckets,
+                policyLock,
+                policies,
+                accountSecurity,
+                passwordProofs,
+                captcha,
+                recoveryTickets,
+                null);
     }
 
     public LoginResponse primary(
@@ -207,6 +245,52 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                                     || !observedPrimaryRevision.equals(
                                             effective.primaryCredentialRevision().toString()))
                                 throw conflict("authenticationProofExpired");
+                            if (temporaryPasswords != null) {
+                                var reset = temporaryPasswords.lockRequirement(userId);
+                                if (reset != null
+                                        && reset.credentialRevision()
+                                                .equals(effective.primaryCredentialRevision())) {
+                                    if (method == PrimaryMethod.PASSWORD) {
+                                        if (!reset.active())
+                                            throw failure("temporaryPasswordExpired");
+                                        if (reset.claimedAt() != null)
+                                            throw failure("temporaryPasswordUsed");
+                                    }
+                                    if (reset.active()
+                                            && reset.claimedAt() == null
+                                            && !temporaryPasswords.claim(
+                                                    userId, effective.primaryCredentialRevision()))
+                                        throw failure("temporaryPasswordUsed");
+                                    Instant expires =
+                                            reset.active()
+                                                    ? reset.expiresAt()
+                                                    : Instant.now().plusSeconds(300);
+                                    UUID challenge = UUID.randomUUID();
+                                    jdbc.sql(
+                                                    "INSERT INTO platform_login_challenge(id,user_id,provider_id,session_hash,requirement_version,primary_method,state,policy_revision,captcha_policy_revision,captcha_satisfied,expires_at) VALUES(:id,:user,'password-change',:session,NULL,:method,'PASSWORD_CHANGE_REQUIRED',:revision,NULL,true,:expires)")
+                                            .param("id", challenge)
+                                            .param("user", userId)
+                                            .param("session", sessionHash(req))
+                                            .param("method", method.name())
+                                            .param("revision", effective.revision())
+                                            .param("expires", java.sql.Timestamp.from(expires))
+                                            .update();
+                                    req.getSession().setAttribute(PENDING, challenge.toString());
+                                    return new PrimaryResult(
+                                            pendingResponse(
+                                                    challenge,
+                                                    expires,
+                                                    "PASSWORD_CHANGE_REQUIRED",
+                                                    effective.revision()),
+                                            auth.getName(),
+                                            userId,
+                                            effective.revision(),
+                                            null);
+                                } else if (reset != null) {
+                                    temporaryPasswords.discardObsolete(
+                                            userId, effective.primaryCredentialRevision());
+                                }
+                            }
                             var captchaGate =
                                     captcha.begin(
                                             CaptchaProofPort.Action.POST_PRIMARY_AUTH,
@@ -360,12 +444,13 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                         clearPending(req, challengeId);
                         return noPending("EXPIRED");
                     }
-                    if (!captchaSatisfactionCurrent(
-                            challenge.get().userId(),
-                            challenge.get().captchaPolicyRevision(),
-                            challenge.get().captchaSatisfied(),
-                            challenge.get().state(),
-                            req)) {
+                    if (!"PASSWORD_CHANGE_REQUIRED".equals(challenge.get().state())
+                            && !captchaSatisfactionCurrent(
+                                    challenge.get().userId(),
+                                    challenge.get().captchaPolicyRevision(),
+                                    challenge.get().captchaSatisfied(),
+                                    challenge.get().state(),
+                                    req)) {
                         deleteChallenge(challenge.get().id(), req);
                         clearPending(req, challengeId);
                         return noPending("EXPIRED");
@@ -1366,13 +1451,21 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
         String next =
                 switch (state) {
                     case "CAPTCHA_REQUIRED" -> "/login/captcha";
+                    case "PASSWORD_CHANGE_REQUIRED" -> "/login/password-change";
                     case "MFA_REQUIRED" -> "/login/second-factor";
                     case "ENROLLMENT_REQUIRED" -> "/login/enroll-authenticator";
                     case "RECOVERY_REQUIRED" -> "/login/recover-authenticator";
                     default -> null;
                 };
         return new LoginResponse(
-                false, true, id, expires, state, revision.toString(), factors, next);
+                false,
+                !"PASSWORD_CHANGE_REQUIRED".equals(state),
+                id,
+                expires,
+                state,
+                revision.toString(),
+                factors,
+                next);
     }
 
     private static void unauthorized(String reason) {

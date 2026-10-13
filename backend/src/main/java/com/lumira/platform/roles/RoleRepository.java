@@ -24,6 +24,15 @@ public class RoleRepository {
 
     public record QuotaLimit(UUID roleId, boolean enabled, Long bytes, Long files) {}
 
+    public record AssignmentOption(
+            UUID id,
+            String code,
+            String name,
+            boolean enabled,
+            Long fileQuotaBytesLimit,
+            Long fileQuotaFilesLimit,
+            boolean assignable) {}
+
     private final JdbcClient jdbc;
     private static final String FILTER =
             " WHERE (:search='' OR strpos(lower(r.code),lower(:search))>0 OR strpos(lower(r.name),lower(:search))>0)";
@@ -77,6 +86,75 @@ public class RoleRepository {
                 .list();
     }
 
+    public com.lumira.platform.common.PageResult<AssignmentOption> assignmentOptions(
+            PageRequest page,
+            Set<UUID> assignedRoleIds,
+            Set<String> delegableAuthorities,
+            boolean includeDelegableCandidates) {
+        var f = filters(page);
+        var params = new HashMap<String, Object>();
+        params.put("search", page.search());
+        params.putAll(f.parameters());
+
+        Set<UUID> assigned = assignedRoleIds == null ? Set.of() : Set.copyOf(assignedRoleIds);
+        if (!includeDelegableCandidates && assigned.isEmpty())
+            return new com.lumira.platform.common.PageResult<>(
+                    List.of(), 0, page.page(), page.pageSize());
+
+        String delegationCheck =
+                "NOT EXISTS (SELECT 1 FROM platform_role_authority ra "
+                        + "WHERE ra.role_id=r.id "
+                        + "AND ra.authority NOT LIKE 'platform:__v50:%' "
+                        + "AND ra.authority NOT IN (:delegableAuthorities))";
+        String assignmentFilter = "";
+        if (includeDelegableCandidates) {
+            params.put(
+                    "delegableAuthorities",
+                    delegableAuthorities.isEmpty() ? Set.of("") : delegableAuthorities);
+            if (assigned.isEmpty()) {
+                assignmentFilter = " AND " + delegationCheck;
+            } else {
+                params.put("assignedRoleIds", assigned);
+                assignmentFilter = " AND (r.id IN (:assignedRoleIds) OR " + delegationCheck + ")";
+            }
+        } else {
+            params.put("assignedRoleIds", assigned);
+            assignmentFilter = " AND r.id IN (:assignedRoleIds)";
+        }
+
+        String where = FILTER + f.sql() + assignmentFilter;
+        String assignableExpression = includeDelegableCandidates ? delegationCheck : "false";
+        long total =
+                jdbc.sql("SELECT count(*) FROM platform_role r" + where)
+                        .params(params)
+                        .query(Long.class)
+                        .single();
+        params.put("limit", page.pageSize());
+        params.put("offset", page.offset());
+        List<AssignmentOption> items =
+                jdbc.sql(
+                                "SELECT r.id,r.code,r.name,r.enabled,r.file_quota_bytes_limit,"
+                                        + "r.file_quota_files_limit,("
+                                        + assignableExpression
+                                        + ") AS assignable FROM platform_role r"
+                                        + where
+                                        + " ORDER BY r.code,r.id LIMIT :limit OFFSET :offset")
+                        .params(params)
+                        .query(
+                                (rs, n) ->
+                                        new AssignmentOption(
+                                                rs.getObject("id", UUID.class),
+                                                rs.getString("code"),
+                                                rs.getString("name"),
+                                                rs.getBoolean("enabled"),
+                                                rs.getObject("file_quota_bytes_limit", Long.class),
+                                                rs.getObject("file_quota_files_limit", Long.class),
+                                                rs.getBoolean("assignable")))
+                        .list();
+        return new com.lumira.platform.common.PageResult<>(
+                items, total, page.page(), page.pageSize());
+    }
+
     public Role find(UUID id) {
         var role =
                 jdbc.sql(
@@ -99,7 +177,10 @@ public class RoleRepository {
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         var grants =
                 jdbc.sql(
-                                "SELECT authority FROM platform_role_authority WHERE role_id=:id ORDER BY authority")
+                                "SELECT stored.authority FROM platform_role_authority stored "
+                                        + "WHERE stored.role_id=:id "
+                                        + "AND stored.authority NOT LIKE 'platform:__v50:%' "
+                                        + "ORDER BY stored.authority")
                         .param("id", id)
                         .query(String.class)
                         .list();
@@ -156,17 +237,28 @@ public class RoleRepository {
 
     public void authorities(UUID id, Set<String> grants) {
         jdbc.sql("DELETE FROM platform_role_authority WHERE role_id=:id").param("id", id).update();
-        for (var grant : grants)
+        for (var grant : grants) {
+            if (grant.startsWith("platform:__v50:")) continue;
             jdbc.sql("INSERT INTO platform_role_authority(role_id,authority) VALUES(:id,:grant)")
                     .param("id", id)
                     .param("grant", grant)
                     .update();
+        }
     }
 
     public Set<String> actorAuthorities(String actor) {
         return new HashSet<>(
                 jdbc.sql(
                                 "SELECT a.authority FROM platform_effective_authority a JOIN platform_user u ON u.id=a.user_id WHERE u.username=:name AND u.enabled")
+                        .param("name", actor)
+                        .query(String.class)
+                        .list());
+    }
+
+    public Set<String> actorGlobalAuthorities(String actor) {
+        return new HashSet<>(
+                jdbc.sql(
+                                "SELECT a.authority FROM platform_global_authority a JOIN platform_user u ON u.id=a.user_id WHERE u.username=:name AND u.enabled")
                         .param("name", actor)
                         .query(String.class)
                         .list());
@@ -235,5 +327,13 @@ public class RoleRepository {
         return jdbc.sql("SELECT platform_has_recovery_administrators()")
                 .query(Boolean.class)
                 .single();
+    }
+
+    public List<String> permissionHistory() {
+        return jdbc.sql(
+                        "SELECT authority FROM (SELECT authority FROM platform_role_authority WHERE authority NOT LIKE 'platform:__v50:%' "
+                                + "UNION SELECT authority FROM platform_authority WHERE authority NOT LIKE 'platform:__v50:%') grants ORDER BY authority")
+                .query(String.class)
+                .list();
     }
 }

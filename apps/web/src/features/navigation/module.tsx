@@ -7,6 +7,10 @@ const NavigationPage = lazy(() => import("./navigation-page").then(({ Navigation
 export const navigationFrontendModule = {
   ...navigationManifest,
   pages: {
-    navigation: ({ hasGlobal }) => <NavigationPage canWrite={hasGlobal("platform:navigation:write")} />,
+    navigation: ({ hasOperation }) => <NavigationPage
+      canCreate={hasOperation("create")}
+      canUpdate={hasOperation("update")}
+      canDelete={hasOperation("delete")}
+    />,
   },
 } satisfies FrontendModule;

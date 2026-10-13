@@ -9,10 +9,14 @@ export const filesFrontendModule = {
   ...filesManifest,
   pages: {
     files: () => <FilesPage />,
-    "files-all": ({ hasGlobal }) => <AdminFilesPage
-      canWrite={hasGlobal("platform:files:write")}
-      canReadRetention={hasGlobal("platform:settings:read")}
-      canWriteRetention={hasGlobal("platform:settings:write")}
+    "files-all": ({ hasRouteAccess, hasOperation, hasRouteOperation }) => <AdminFilesPage
+      canDelete={hasOperation("delete")}
+      canRestore={hasOperation("restore")}
+      canPurge={hasOperation("purge")}
+      canPreview={hasOperation("preview")}
+      canDownload={hasOperation("download")}
+      canReadRetention={hasRouteAccess("file-retention")}
+      canUpdateRetention={hasRouteOperation("file-retention", "update")}
     />,
   },
 } satisfies FrontendModule;

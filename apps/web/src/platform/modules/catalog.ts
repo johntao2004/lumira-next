@@ -15,6 +15,7 @@ import { auditManifest } from "../../features/audit/manifest.ts";
 import { feedbackManifest } from "../../../../../plugins/feedback/frontend/manifest.ts";
 import { sensitiveWordsManifest } from "../../../../../plugins/sensitive-words/frontend/manifest.ts";
 import { localizationManifest } from "../../../../../plugins/localization/frontend/manifest.ts";
+import { mfaManifest } from "../../../../../plugins/mfa/frontend/manifest.ts";
 import { communicationManifest } from "../../features/communication/manifest.ts";
 
 const candidates = [
@@ -32,6 +33,7 @@ const candidates = [
   feedbackManifest,
   sensitiveWordsManifest,
   localizationManifest,
+  mfaManifest,
   communicationManifest,
 ] as const;
 

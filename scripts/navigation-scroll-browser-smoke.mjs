@@ -1,6 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { loadLocaleMessages, translate } from '../apps/web/src/platform/i18n/messages.ts';
 
 const config = JSON.parse(readFileSync('.runtime/local.json', 'utf8'));
 const browser = await chromium.launch({
@@ -13,6 +14,7 @@ const context = await browser.newContext({
 });
 
 try {
+  await loadLocaleMessages('zh-CN');
   const csrf = await (await context.request.get('/api/auth/csrf')).json();
   assert.equal((await context.request.post('/api/auth/login', {
     form: { username: 'admin', password: config.LUMIRA_BOOTSTRAP_PASSWORD },
@@ -22,8 +24,14 @@ try {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  await page.setViewportSize({ width: 1440, height: 759 });
   await page.goto('/dashboard/sms');
-  await expect(page.locator('.ant-page-header-heading-title')).toHaveText('短信服务');
+  const navigation = page.locator('.ant-layout-sider');
+  await expect(navigation.getByText(translate('zh-CN', 'communicationCenter'), { exact: true })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: translate('zh-CN', 'messageChannels'), exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 877, height: 759 });
+  await page.goto('/dashboard/sms');
+  await expect(page.locator('.ant-page-header-heading-title')).toHaveText('消息渠道');
   await page.locator('#data_endpoint').waitFor();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
 
@@ -63,7 +71,7 @@ try {
   assert.ok(scrolled.navigation.bottom <= 760, 'sider must remain within the viewport');
 
   assert.deepEqual(errors, []);
-  console.log('PASS: the standard ProLayout sidebar and utility header remain anchored while the real SMS settings form scrolls');
+  console.log('PASS: communication navigation and its message-channel anchor render; the ProLayout sidebar and utility header remain anchored while the SMS form scrolls');
 } finally {
   try {
     const csrf = await (await context.request.get('/api/auth/csrf')).json();

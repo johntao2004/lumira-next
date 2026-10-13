@@ -18,8 +18,8 @@ public class FileRetentionController {
     }
 
     @GetMapping("/api/platform/settings/file-retention")
-    public FileRetentionPolicy.View read() {
-        return policy.read();
+    public FileRetentionPolicy.View read(Authentication actor) {
+        return policy.read(actor.getName());
     }
 
     @PutMapping("/api/platform/settings/file-retention")

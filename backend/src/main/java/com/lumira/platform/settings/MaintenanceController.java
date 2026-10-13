@@ -1,8 +1,10 @@
 package com.lumira.platform.settings;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.BoundedBody;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformPageId;
 import java.time.Instant;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -15,13 +17,16 @@ public class MaintenanceController {
     public record PublicStatus(boolean active, String title, String message, Instant endAt) {}
 
     private final MaintenanceService service;
+    private final AdministrationPort administration;
 
-    public MaintenanceController(MaintenanceService service) {
+    public MaintenanceController(MaintenanceService service, AdministrationPort administration) {
         this.service = service;
+        this.administration = administration;
     }
 
     @GetMapping("/api/platform/settings/maintenance")
-    public MaintenanceService.View read() {
+    public MaintenanceService.View read(Authentication auth) {
+        administration.requirePageGlobal(auth.getName(), PlatformPageId.MAINTENANCE);
         return service.read();
     }
 
@@ -29,7 +34,9 @@ public class MaintenanceController {
     public PageResult<MaintenanceService.RoleOption> roles(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
-            @RequestParam(defaultValue = "") String search) {
+            @RequestParam(defaultValue = "") String search,
+            Authentication auth) {
+        administration.requirePageGlobal(auth.getName(), PlatformPageId.MAINTENANCE);
         return service.roles(new PageRequest(page, pageSize, search));
     }
 

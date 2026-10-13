@@ -14,21 +14,31 @@ public class AgreementController {
 
     private final SettingDocuments documents;
     private final AgreementSnapshotService snapshots;
+    private final AdministrationPort administration;
 
-    public AgreementController(SettingDocuments documents, AgreementSnapshotService snapshots) {
+    public AgreementController(
+            SettingDocuments documents,
+            AgreementSnapshotService snapshots,
+            AdministrationPort administration) {
         this.documents = documents;
         this.snapshots = snapshots;
+        this.administration = administration;
     }
 
     @GetMapping("/api/platform/settings/agreements")
-    public View read() {
+    public View read(Authentication auth) {
+        administration.requirePageGlobal(auth.getName(), PlatformPageId.AGREEMENTS);
+        return readDocument();
+    }
+
+    View readDocument() {
         var snapshot = documents.read("agreements", Agreements.class, Agreements::defaults);
         return new View(snapshot.version(), snapshot.data());
     }
 
     @GetMapping("/api/public/agreements")
     public Agreements published() {
-        return read().data();
+        return readDocument().data();
     }
 
     @PutMapping("/api/platform/settings/agreements")

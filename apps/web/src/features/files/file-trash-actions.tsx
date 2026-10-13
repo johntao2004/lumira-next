@@ -8,12 +8,14 @@ import { usePreferences } from "@/platform/providers";
 
 export type TrashFile = { id: string; originalName: string; version: number };
 
-export function FileTrashActions({ file, endpoint, onChanged, onCleanupStarted, disabled = false }: {
+export function FileTrashActions({ file, endpoint, onChanged, onCleanupStarted, disabled = false, canRestore = true, canDelete = true }: {
   file: TrashFile;
   endpoint: string;
   onChanged: () => Promise<void>;
   onCleanupStarted?: (id: string) => void;
   disabled?: boolean;
+  canRestore?: boolean;
+  canDelete?: boolean;
 }) {
   const { t } = usePreferences();
   const { message } = App.useApp();
@@ -34,8 +36,8 @@ export function FileTrashActions({ file, endpoint, onChanged, onCleanupStarted, 
   }
 
   return <>
-    <Button type="link" disabled={disabled} loading={restoring} onClick={() => void restore()}>{t("restoreFile")}</Button>
-    <DeleteAction
+    {canRestore && <Button type="link" disabled={disabled} loading={restoring} onClick={() => void restore()}>{t("restoreFile")}</Button>}
+    {canDelete && <DeleteAction
       name={file.originalName}
       actionLabel={t("purgeFile")}
       confirmation={t("purgeFileConfirm", { name: file.originalName })}
@@ -48,6 +50,6 @@ export function FileTrashActions({ file, endpoint, onChanged, onCleanupStarted, 
           await onChanged();
         }
       }}
-    />
+    />}
   </>;
 }

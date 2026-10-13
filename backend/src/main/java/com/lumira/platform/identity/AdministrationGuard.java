@@ -23,6 +23,71 @@ public class AdministrationGuard
     private static final long SECTION_LOCK_RANGE = 1_000_000_000L;
     private static final long ADMIN_RECOVERY_LOCK = SHARED_SCHEMA_LOCK + SECTION_LOCK_RANGE + 1;
     private static final String PLATFORM_PERMISSION_PREFIX = "platform:";
+    private static final Set<String> SHARED_SCHEMA_PAGES =
+            Set.of(
+                    "settings",
+                    "branding",
+                    "smtp",
+                    "sms",
+                    "profile-fields",
+                    "agreements",
+                    "watermark",
+                    "maintenance",
+                    "security",
+                    "authentication",
+                    "passkey",
+                    "wechat",
+                    "captcha",
+                    "registration",
+                    "file-retention");
+    private static final Set<String> RECOVERY_ADMINISTRATION_WRITES =
+            Set.of(
+                    "platform:users:create",
+                    "platform:users:update",
+                    "platform:users:delete",
+                    "platform:users:reset-password",
+                    "platform:users:assign-roles",
+                    "platform:users:assign-organizations",
+                    "platform:roles:create",
+                    "platform:roles:update",
+                    "platform:roles:delete",
+                    "platform:roles:update-authentication-policy",
+                    "platform:organizations:create",
+                    "platform:organizations:update",
+                    "platform:organizations:delete",
+                    "platform:dictionaries:create",
+                    "platform:dictionaries:update",
+                    "platform:dictionaries:delete",
+                    "platform:dictionaries:import",
+                    "platform:branding:update",
+                    "platform:smtp:update",
+                    "platform:sms:update",
+                    "platform:profile-fields:update",
+                    "platform:agreements:update",
+                    "platform:watermark:update",
+                    "platform:maintenance:update",
+                    "platform:security:update",
+                    "platform:authentication:update",
+                    "platform:passkey:update",
+                    "platform:wechat:update",
+                    "platform:captcha:update",
+                    "platform:registration:update",
+                    "platform:registration:assign-default-role",
+                    "platform:file-retention:update",
+                    "platform:ai-models:create",
+                    "platform:ai-models:update",
+                    "platform:ai-models:delete",
+                    "platform:modules:install",
+                    "platform:modules:update",
+                    "platform:modules:uninstall",
+                    "platform:navigation:create",
+                    "platform:navigation:update",
+                    "platform:navigation:delete",
+                    "platform:files-all:delete",
+                    "platform:files-all:purge",
+                    "platform:files-all:restore",
+                    "platform:event-outbox:replay",
+                    "platform:notifications:create");
     private final JdbcClient jdbc;
     private final AuthorizationContextBoundaryPort authorizationBoundary;
 
@@ -69,8 +134,7 @@ public class AdministrationGuard
     }
 
     private static boolean isRecoveryAdministrationWrite(String permission) {
-        return "platform:users:write".equals(permission)
-                || "platform:roles:write".equals(permission);
+        return RECOVERY_ADMINISTRATION_WRITES.contains(permission);
     }
 
     private void lock(long key) {
@@ -92,12 +156,13 @@ public class AdministrationGuard
     static long lockKey(String permission) {
         if (permission == null || permission.isBlank())
             throw new IllegalArgumentException("Permission is required");
-        int separator =
-                permission.startsWith(PLATFORM_PERMISSION_PREFIX)
-                        ? permission.indexOf(':', PLATFORM_PERMISSION_PREFIX.length())
-                        : permission.indexOf(':');
-        String section = separator > 0 ? permission.substring(0, separator) : permission;
-        if (section.equals("platform:settings") || section.equals("platform:modules"))
+        int first = permission.indexOf(':');
+        int separator = permission.indexOf(':', first + 1);
+        String section =
+                permission.startsWith(PLATFORM_PERMISSION_PREFIX) && separator > 0
+                        ? permission.substring(first + 1, separator)
+                        : permission;
+        if (SHARED_SCHEMA_PAGES.contains(section) || section.equals("modules"))
             return SHARED_SCHEMA_LOCK;
         long hash = 1469598103934665603L;
         for (int i = 0; i < section.length(); i++) {
@@ -149,14 +214,14 @@ public class AdministrationGuard
         RequestAuthorizationContext requestContext = currentAuthorization(actor);
         if (requestContext != null && requestContext.previewActive())
             return requestContext.effectiveGlobalAuthorities().contains(permission);
-        boolean allowed =
-                jdbc.sql(
-                                "SELECT EXISTS(SELECT 1 FROM platform_user u JOIN platform_authority a ON a.user_id=u.id WHERE u.username=:actor AND u.enabled AND a.authority=:permission) OR EXISTS(SELECT 1 FROM platform_user u JOIN platform_user_role ur ON ur.user_id=u.id JOIN platform_role r ON r.id=ur.role_id JOIN platform_role_authority a ON a.role_id=r.id WHERE u.username=:actor AND u.enabled AND r.enabled AND r.data_scope='ALL' AND a.authority=:permission)")
-                        .param("actor", actor)
-                        .param("permission", permission)
-                        .query(Boolean.class)
-                        .single();
-        return allowed;
+        return jdbc.sql(
+                        "SELECT EXISTS(SELECT 1 FROM platform_global_authority a "
+                                + "JOIN platform_user u ON u.id=a.user_id "
+                                + "WHERE u.username=:actor AND u.enabled AND a.authority=:permission)")
+                .param("actor", actor)
+                .param("permission", permission)
+                .query(Boolean.class)
+                .single();
     }
 
     private static RequestAuthorizationContext currentAuthorization(String actor) {

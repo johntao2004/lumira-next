@@ -2,7 +2,7 @@
 
 这是 Lumira 的独立插件，包含完整前后端源码与插件清单。
 
-运行 `pnpm plugins:build localization`，安装包生成在 `dist/localization-1.0.6.lumira-plugin.zip`。在平台模块的可管理模块页导入并安装。
+运行 `pnpm plugins:build localization`，安装包生成在 `dist/localization-1.0.11.lumira-plugin.zip`。在平台模块的可管理模块页导入并安装。
 
 依赖：platform。默认卸载保留业务数据、配置、源码与发布包；选择保留数据后重新安装兼容版本恢复使用。
 

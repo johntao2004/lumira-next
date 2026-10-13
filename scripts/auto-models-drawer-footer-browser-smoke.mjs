@@ -36,10 +36,11 @@ try{
  for(const [path,label,formId] of [['/dashboard/users','新增用户','user-editor'],['/dashboard/organizations','新增组织','organization-editor'],['/dashboard/roles','新增角色','role-editor'],['/dashboard/dictionaries','新增字典','dictionary-editor'],['/dashboard/sensitive-words','新增敏感词','sensitive-word-editor']]){
   await p.goto(path);await p.getByRole('button',{name:label,exact:true}).click();const g=await footer(/保\s*存/,formId);pass(`shared footer ${formId}`,g);await cancel();
  }
- // Personal nested drawers: check final actions without requesting codes or modifying identity.
- await p.goto('/dashboard/home');await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();pass('profile footer',await footer(/保\s*存/,'account-profile'));
- await drawer().getByRole('button',{name:'账号邮箱',exact:true}).click();pass('email confirmation footer',await footer('确认邮箱','account-email-confirm'));await cancel();
- await drawer().getByRole('button',{name:'账号手机',exact:true}).click();pass('phone confirmation footer',await footer('确认手机号','account-phone-confirm'));await cancel();await cancel();
+ // The profile save action is inline on its route; only nested identity flows keep drawer footers.
+ await p.goto('/dashboard/home');await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();await p.waitForURL('**/dashboard/account-profile');
+ const profileForm=p.locator('#account-profile');await expect(profileForm).toBeVisible();const profileSubmit=profileForm.getByRole('button',{name:/保\s*存/});assert.equal(await profileSubmit.getAttribute('type'),'submit');assert.equal(await profileSubmit.evaluate(node=>node.form?.id),'account-profile');assert.equal(await p.locator('.account-settings-content .account-settings-form-surface').count(),1);pass('profile inline save action stays with account-profile form');
+ await p.locator('.account-settings-panel').getByRole('button',{name:'账号邮箱',exact:true}).click();pass('email confirmation footer',await footer('确认邮箱','account-email-confirm'));await cancel();
+ await p.locator('.account-settings-panel').getByRole('button',{name:'账号手机',exact:true}).click();pass('phone confirmation footer',await footer('确认手机号','account-phone-confirm'));await cancel();
  await p.goto('/dashboard/ai-models');await add();await choose('DeepSeek');await p.setViewportSize({width:390,height:520});const mobile=await footer(/保\s*存/,'ai-provider-editor');assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:`${folder}/mobile-fixed-footer.png`});pass('390px fixed footer and no horizontal overflow',mobile);await cancel();
  assert.deepEqual(writes,[]);assert.deepEqual(await(await ctx.request.get('/api/platform/ai/providers')).json(),baseline);assert.deepEqual(errors,[]);pass('no provider configuration writes, no page errors, saved configuration unchanged');
  const token=await(await ctx.request.get('/api/auth/csrf')).json();logoutStatus=(await ctx.request.post('/api/auth/logout',{headers:{[token.headerName]:token.token}})).status();assert.equal(logoutStatus,204);

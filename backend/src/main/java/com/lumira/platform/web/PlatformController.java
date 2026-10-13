@@ -1,5 +1,6 @@
 package com.lumira.platform.web;
 
+import com.lumira.platform.common.AuthorizationRevisionPort;
 import com.lumira.platform.identity.api.AccountOwnerPort;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.AuthenticationSession;
@@ -18,16 +19,19 @@ public class PlatformController {
     private final com.lumira.platform.modules.ModuleCapabilityPort modules;
     private final EffectiveAuthenticationPolicyPort authenticationPolicies;
     private final AccountOwnerPort owners;
+    private final AuthorizationRevisionPort authorizationRevisions;
 
     public PlatformController(
             JdbcClient jdbc,
             com.lumira.platform.modules.ModuleCapabilityPort modules,
             EffectiveAuthenticationPolicyPort authenticationPolicies,
-            AccountOwnerPort owners) {
+            AccountOwnerPort owners,
+            AuthorizationRevisionPort authorizationRevisions) {
         this.jdbc = jdbc;
         this.modules = modules;
         this.authenticationPolicies = authenticationPolicies;
         this.owners = owners;
+        this.authorizationRevisions = authorizationRevisions;
     }
 
     @GetMapping("/api/auth/csrf")
@@ -96,13 +100,7 @@ public class PlatformController {
                 requestAuthorization == null || !requestAuthorization.rolePreviewSupported()
                         ? null
                         : requestAuthorization.preview());
-        var result = new LinkedHashMap<String, Object>();
-        result.put("enabledModules", modules.enabledModules());
-        result.put("username", auth.getName());
-        result.put("userId", userId);
-        result.put("displayName", displayName);
-        result.put(
-                "globalAuthorities",
+        var globalAuthorities =
                 requestAuthorization == null
                         ? jdbc.sql(
                                         "SELECT a.authority FROM platform_global_authority a JOIN platform_user u ON u.id=a.user_id WHERE u.username=:username AND u.enabled ORDER BY a.authority")
@@ -111,12 +109,25 @@ public class PlatformController {
                                 .list()
                         : requestAuthorization.effectiveGlobalAuthorities().stream()
                                 .sorted()
-                                .toList());
-        result.put(
-                "authorities",
+                                .toList();
+        var authorities =
                 requestAuthorization == null
-                        ? auth.getAuthorities().stream().map(a -> a.getAuthority()).toList()
-                        : requestAuthorization.effectiveAuthorities().stream().sorted().toList());
+                        ? auth.getAuthorities().stream()
+                                .map(a -> a.getAuthority())
+                                .sorted()
+                                .toList()
+                        : requestAuthorization.effectiveAuthorities().stream().sorted().toList();
+        var result = new LinkedHashMap<String, Object>();
+        result.put("enabledModules", modules.enabledModules());
+        result.put("username", auth.getName());
+        result.put("userId", userId);
+        result.put("displayName", displayName);
+        result.put("globalAuthorities", globalAuthorities);
+        result.put("authorities", authorities);
+        result.put(
+                "authorizationRevision",
+                authorizationRevisions.revision(
+                        userId, Set.copyOf(authorities), Set.copyOf(globalAuthorities)));
         result.put("authenticationEvidence", evidence);
         result.put("effectiveAuthentication", effectiveView);
         result.put("authorizationContext", authorizationContext);

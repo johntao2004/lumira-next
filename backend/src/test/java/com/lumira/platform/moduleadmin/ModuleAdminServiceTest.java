@@ -3,6 +3,8 @@ package com.lumira.platform.moduleadmin;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.AdministrationGuard;
 import com.lumira.platform.modules.*;
 import java.util.*;
@@ -23,10 +25,10 @@ class ModuleAdminServiceTest {
     final ModuleAdminService service = new ModuleAdminService(registry, states, guard);
 
     @Test
-    void checksGlobalScopeBeforeStateEngine() {
+    void checksGlobalModulePageAndUpdateActionBeforeStateEngine() {
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
                 .when(guard)
-                .requireGlobal("limited", ModuleAdminService.WRITE);
+                .requireOperationGlobal("limited", PlatformOperation.MODULE_UPDATE);
         assertThrows(
                 ResponseStatusException.class,
                 () ->
@@ -35,8 +37,19 @@ class ModuleAdminServiceTest {
                                 "core",
                                 new ModuleAdminService.Change(false, 0L, "reason")));
         var order = inOrder(guard);
-        order.verify(guard).require("limited", ModuleAdminService.WRITE);
-        order.verify(guard).requireGlobal("limited", ModuleAdminService.WRITE);
+        order.verify(guard).requireOperationGlobal("limited", PlatformOperation.MODULE_UPDATE);
+        verifyNoInteractions(states);
+    }
+
+    @Test
+    void checksGlobalModulePageBeforeReadingModuleState() {
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
+                .when(guard)
+                .requirePageGlobal("limited", PlatformPageId.MODULES);
+
+        assertThrows(ResponseStatusException.class, () -> service.list("limited"));
+
+        verify(guard).requirePageGlobal("limited", PlatformPageId.MODULES);
         verifyNoInteractions(states);
     }
 
@@ -99,14 +112,14 @@ class ModuleAdminServiceTest {
                                 new ModuleStateStore.State("core", true, 7),
                                 new ModuleStateStore.State("audit-console", true, 0),
                                 new ModuleStateStore.State("optional", false, 0)));
-        var view = service.list().getFirst();
+        var view = service.list("admin").getFirst();
         assertEquals("1.0", view.version());
         assertEquals(7, view.stateVersion());
         assertTrue(view.required());
         assertTrue(view.core());
         assertTrue(view.enabled());
         var audit =
-                service.list().stream()
+                service.list("admin").stream()
                         .filter(row -> row.id().equals("audit-console"))
                         .findFirst()
                         .orElseThrow();
@@ -114,11 +127,12 @@ class ModuleAdminServiceTest {
         assertTrue(audit.core());
         assertTrue(audit.enabled());
         var optional =
-                service.list().stream()
+                service.list("admin").stream()
                         .filter(row -> row.id().equals("optional"))
                         .findFirst()
                         .orElseThrow();
         assertFalse(optional.core());
         assertFalse(optional.enabled());
+        verify(guard, times(3)).requirePageGlobal("admin", PlatformPageId.MODULES);
     }
 }

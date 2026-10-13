@@ -5,6 +5,8 @@ export interface CurrentUser {
   displayName: string;
   authorities: string[];
   globalAuthorities: string[];
+  /** Opaque revision for effective grants and data scopes; independent of preview revision. */
+  authorizationRevision?: string | null;
   authenticationEvidence?: AuthenticationEvidence;
   effectiveAuthentication?: EffectiveAuthentication;
   authorizationContext?: AuthorizationContext;
@@ -18,6 +20,7 @@ export type LoginState =
   | "MFA_REQUIRED"
   | "ENROLLMENT_REQUIRED"
   | "RECOVERY_REQUIRED"
+  | "PASSWORD_CHANGE_REQUIRED"
   | "COMPLETE"
   | "EXPIRED"
   | "LOCKED"

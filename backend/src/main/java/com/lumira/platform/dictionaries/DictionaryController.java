@@ -22,14 +22,17 @@ public class DictionaryController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(defaultValue = "") String search,
-            @RequestParam java.util.Map<String, String> parameters) {
-        return service.list(PageRequest.fromQueryParameters(page, pageSize, search, parameters))
+            @RequestParam java.util.Map<String, String> parameters,
+            Authentication auth) {
+        return service.list(
+                        PageRequest.fromQueryParameters(page, pageSize, search, parameters),
+                        auth.getName())
                 .map(DictionaryResponse::from);
     }
 
     @GetMapping("/{id}")
-    public DictionaryResponse find(@PathVariable UUID id) {
-        return DictionaryResponse.from(service.find(id));
+    public DictionaryResponse find(@PathVariable UUID id, Authentication auth) {
+        return DictionaryResponse.from(service.find(id, auth.getName()));
     }
 
     @PostMapping

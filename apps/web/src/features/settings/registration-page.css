@@ -1,0 +1,122 @@
+@container auth-settings (min-width: 768px) {
+  .authentication-security-workspace .auth-config-form.registration-settings-form .auth-config-panels {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  }
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .auth-config-panel,
+.authentication-security-workspace .auth-config-form.registration-settings-form .auth-config-stack,
+.authentication-security-workspace .auth-config-form.registration-settings-form .auth-config-fields,
+.authentication-security-workspace .auth-config-form.registration-settings-form .auth-config-fields > * {
+  min-width: 0;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .auth-config-panel > h5.ant-typography {
+  overflow-wrap: anywhere;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-phone-recovery-alert {
+  margin-block-start: 12px;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-selected-candidate-alert {
+  margin: 0;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-select .ant-select-selection-item,
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-select .ant-select-selection-placeholder,
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-select .ant-select-selection-item-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.registration-role-option {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  white-space: normal;
+}
+
+.registration-role-option .registration-role-option-name {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.registration-role-option > .ant-space-item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-pagination {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-block: 4px 0;
+  row-gap: 6px;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-pagination .ant-pagination-total-text,
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-pagination .ant-pagination-options {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-role-pagination .ant-pagination-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: 4px;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-readiness-list {
+  display: grid;
+  min-width: 0;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-readiness-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 42%);
+  align-items: center;
+  gap: 8px 16px;
+  padding-block: 10px;
+  border-block-start: 1px solid var(--ant-color-border-secondary);
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-readiness-row:first-child {
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-readiness-row > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.authentication-security-workspace .auth-config-form.registration-settings-form .registration-readiness-row > .ant-tag {
+  justify-self: end;
+  max-width: 100%;
+  margin-inline-end: 0;
+  overflow-wrap: anywhere;
+  text-align: end;
+  white-space: normal;
+}

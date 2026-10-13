@@ -13,7 +13,8 @@ try{
  const csrf=await(await context.request.get('/api/auth/csrf')).json();assert.equal((await context.request.post('/api/auth/login',{form:{username,password:config.LUMIRA_BOOTSTRAP_PASSWORD},headers:{[csrf.headerName]:csrf.token}})).status(),200);
  const p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
  await p.goto('/dashboard/home');await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();
- const profile=p.getByRole('dialog',{name:'个人资料',exact:true});await profile.locator('#account-profile_displayName').fill('Unsaved profile');
+ await p.waitForURL('**/dashboard/account-profile');
+ const profile=p.locator('.account-settings-panel');await profile.locator('#account-profile_displayName').fill('Unsaved profile');
  await profile.getByRole('button',{name:'账号邮箱',exact:true}).click();
  const email=p.getByRole('dialog',{name:'账号邮箱',exact:true});
  await expect(email.getByText('已验证邮箱: 尚未验证',{exact:true})).toBeVisible();
@@ -36,7 +37,7 @@ try{
  await email.getByRole('button',{name:'确认邮箱',exact:true}).click();await expect(p.locator('.ant-message-notice').filter({hasText:'邮箱验证成功。'})).toBeVisible();
  await expect(email.getByText('已验证邮箱: '+username+'@example.invalid',{exact:true})).toBeVisible();
  await email.getByRole('button',{name:'关闭',exact:true}).click();await expect(email).not.toBeVisible();await expect(profile.locator('#account-profile_displayName')).toHaveValue('Unsaved profile');
- await p.reload();await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();await profile.getByRole('button',{name:'账号邮箱',exact:true}).click();
+ await p.reload();await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();await p.waitForURL('**/dashboard/account-profile');await profile.getByRole('button',{name:'账号邮箱',exact:true}).click();
  await expect(email.getByText('已验证邮箱: '+username+'@example.invalid',{exact:true})).toBeVisible();
  await p.setViewportSize({width:390,height:844});await expect.poll(()=>p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  assert.deepEqual(errors,[]);console.log('PASS: email drawer, independent profile state, request failure feedback/password clearing, real single-use confirmation, reload persistence and mobile bounds; no email sent');

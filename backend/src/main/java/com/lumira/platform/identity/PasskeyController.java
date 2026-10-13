@@ -52,6 +52,8 @@ public class PasskeyController {
                     PasskeyRequests.Authentication input,
             HttpServletRequest request,
             HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store, max-age=0");
+        response.setHeader("Pragma", "no-cache");
         return service.completeAuthentication(input, request, response);
     }
 

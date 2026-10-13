@@ -57,7 +57,16 @@ public class SecurityConfiguration {
                                                         new org.springframework.security
                                                                 .authorization
                                                                 .AuthorizationDecision(
-                                                                apiDocsAccess.getIfAvailable()
+                                                                PlatformHttpPermissionPolicy
+                                                                                .authorize(
+                                                                                        authentication
+                                                                                                .get(),
+                                                                                        context
+                                                                                                .getRequest(),
+                                                                                        plugins
+                                                                                                .getIfAvailable())
+                                                                        && apiDocsAccess
+                                                                                        .getIfAvailable()
                                                                                 != null
                                                                         && apiDocsAccess
                                                                                 .getIfAvailable()
@@ -76,6 +85,30 @@ public class SecurityConfiguration {
                                         .denyAll()
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
+                                                "/api/platform/modules/plugins/frontend",
+                                                "/api/platform/modules/plugins/assets/**",
+                                                "/api/platform/navigation")
+                                        .authenticated()
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.POST,
+                                                "/api/platform/role-preview/bootstrap")
+                                        .authenticated()
+                                        .requestMatchers("/api/platform/**")
+                                        .access(
+                                                (authentication, context) ->
+                                                        new org.springframework.security
+                                                                .authorization
+                                                                .AuthorizationDecision(
+                                                                PlatformHttpPermissionPolicy
+                                                                        .authorize(
+                                                                                authentication
+                                                                                        .get(),
+                                                                                context
+                                                                                        .getRequest(),
+                                                                                plugins
+                                                                                        .getIfAvailable())))
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.GET,
                                                 "/api/auth/methods",
                                                 "/api/auth/login/state",
                                                 "/api/auth/registration/profile-schema",
@@ -91,6 +124,7 @@ public class SecurityConfiguration {
                                                 "/api/auth/captcha/challenges",
                                                 "/api/auth/captcha/verify",
                                                 "/api/auth/login/captcha/confirm",
+                                                "/api/auth/login/password-change",
                                                 "/api/auth/wechat/attempts",
                                                 "/api/auth/registration/challenges",
                                                 "/api/auth/registration/challenges/verify",
@@ -114,60 +148,6 @@ public class SecurityConfiguration {
                                                 "/api/auth/second-factor/recovery/verify",
                                                 "/api/auth/second-factor/cancel")
                                         .permitAll()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/modules/plugins/frontend",
-                                                "/api/platform/modules/plugins/assets/**")
-                                        .authenticated()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/modules/plugins/**")
-                                        .hasAuthority("platform:modules:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/modules/plugins/**")
-                                        .hasAuthority("platform:modules:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/feedback/manage",
-                                                "/api/feedback/manage/*")
-                                        .hasAuthority("platform:feedback:manage")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/feedback/manage/*")
-                                        .hasAuthority("platform:feedback:manage")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/feedback/images/*")
-                                        .hasAnyAuthority(
-                                                "platform:feedback:read",
-                                                "platform:feedback:manage")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/feedback/images")
-                                        .hasAuthority("platform:feedback:create")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/feedback",
-                                                "/api/feedback/*")
-                                        .hasAuthority("platform:feedback:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/feedback")
-                                        .hasAuthority("platform:feedback:create")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/account/drafts",
-                                                "/api/account/drafts/*")
-                                        .authenticated()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/account/drafts/*")
-                                        .authenticated()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/account/drafts/*")
-                                        .authenticated()
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
                                                 "/api/account/authentication-policy")
@@ -201,31 +181,6 @@ public class SecurityConfiguration {
                                                 org.springframework.http.HttpMethod.DELETE,
                                                 "/api/account/wechat")
                                         .authenticated()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/captcha")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/captcha")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/wechat")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/wechat")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/registration",
-                                                "/api/platform/settings/registration/roles")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/registration")
-                                        .hasAuthority("platform:settings:write")
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
                                                 "/api/account/security-events")
@@ -286,190 +241,9 @@ public class SecurityConfiguration {
                                         .authenticated()
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/mail-deliveries")
-                                        .hasAuthority("platform:audit:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/sms-deliveries")
-                                        .hasAuthority("platform:audit:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/event-outbox")
-                                        .hasAuthority("platform:audit:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/event-outbox/*/replay")
-                                        .hasAuthority("platform:events:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/monitoring/summary")
-                                        .hasAuthority("platform:audit:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/sensitive-policies/roles",
-                                                "/api/platform/sensitive-policies/hits")
-                                        .hasAuthority("platform:sensitive-words:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/sensitive-policies/preview")
-                                        .hasAuthority("platform:sensitive-words:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/sensitive-policies/roles/*")
-                                        .hasAuthority("platform:sensitive-words:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/sensitive-words",
-                                                "/api/platform/sensitive-words/*")
-                                        .hasAuthority("platform:sensitive-words:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/sensitive-words/check")
-                                        .hasAuthority("platform:sensitive-words:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/sensitive-words/import")
-                                        .hasAuthority("platform:sensitive-words:import")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/sensitive-words")
-                                        .hasAuthority("platform:sensitive-words:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/sensitive-words/*")
-                                        .hasAuthority("platform:sensitive-words:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PATCH,
-                                                "/api/platform/sensitive-words/*/status")
-                                        .hasAuthority("platform:sensitive-words:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/sensitive-words/*")
-                                        .hasAuthority("platform:sensitive-words:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/localization/entries",
-                                                "/api/platform/localization/entries/*",
-                                                "/api/platform/localization/locales")
-                                        .hasAuthority("platform:localization:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/localization/entries")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/localization/entries/*")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PATCH,
-                                                "/api/platform/localization/entries/*/status")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/localization/entries/*")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/localization/import")
-                                        .hasAuthority("platform:localization:import")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/localization/translations")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/localization/translations/*")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/localization/bundle/preview",
-                                                "/api/platform/localization/bundle/import")
-                                        .hasAuthority("platform:localization:import")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/localization/ai/providers")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/localization/ai/translate")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/localization/publish/*")
-                                        .hasAuthority("platform:localization:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
                                                 "/api/public/localization/bundle/*",
                                                 "/api/public/localization/locales")
                                         .permitAll()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/navigation")
-                                        .authenticated()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/navigation/menus",
-                                                "/api/platform/navigation/menus/*")
-                                        .hasAuthority("platform:navigation:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/navigation/menus")
-                                        .hasAuthority("platform:navigation:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/navigation/menus/*",
-                                                "/api/platform/navigation/menus/reorder")
-                                        .hasAuthority("platform:navigation:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PATCH,
-                                                "/api/platform/navigation/menus/*/status")
-                                        .hasAuthority("platform:navigation:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/navigation/menus/*")
-                                        .hasAuthority("platform:navigation:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/online-users")
-                                        .hasAuthority("platform:users:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/online-users/*",
-                                                "/api/platform/online-users/user/*")
-                                        .hasAuthority("platform:users:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/files",
-                                                "/api/platform/files/*",
-                                                "/api/platform/files/*/preview",
-                                                "/api/platform/files/*/content")
-                                        .hasAuthority("platform:files:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/files/*",
-                                                "/api/platform/files/*/purge")
-                                        .hasAuthority("platform:files:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/files/*/restore")
-                                        .hasAuthority("platform:files:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/notifications")
-                                        .hasAuthority("platform:notifications:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/notifications/roles")
-                                        .hasAuthority("platform:notifications:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/notifications/recipients",
-                                                "/api/platform/notifications/recipients/*")
-                                        .hasAuthority("platform:notifications:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/notifications")
-                                        .hasAuthority("platform:notifications:write")
                                         .dispatcherTypeMatchers(
                                                 jakarta.servlet.DispatcherType.ERROR)
                                         .permitAll()
@@ -498,114 +272,16 @@ public class SecurityConfiguration {
                                         .authenticated()
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/*/history",
-                                                "/api/platform/settings/*/history/*")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/settings/*/rollback")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/smtp")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/smtp")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/settings/smtp/test")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/sms")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/sms")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/settings/sms/test")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/security")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/security")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/passkey")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/passkey")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/profile-fields")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/profile-fields")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
                                                 "/api/public/maintenance")
                                         .permitAll()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/maintenance",
-                                                "/api/platform/settings/maintenance/roles")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/maintenance")
-                                        .hasAuthority("platform:settings:write")
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
                                                 "/api/public/watermark")
                                         .permitAll()
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/watermark")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/watermark")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
                                                 "/api/public/agreements")
                                         .permitAll()
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/authentication")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/authentication")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/roles/*/authentication-policy")
-                                        .hasAuthority("platform:roles:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/roles/*/authentication-policy")
-                                        .hasAuthority("platform:roles:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/agreements")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/agreements")
-                                        .hasAuthority("platform:settings:write")
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
                                                 "/api/public/branding")
@@ -623,151 +299,21 @@ public class SecurityConfiguration {
                                         .permitAll()
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/organizations/*/ancestors",
-                                                "/api/platform/organizations",
-                                                "/api/platform/organizations/*",
-                                                "/api/platform/users/*/organizations")
-                                        .hasAuthority("platform:organizations:read")
-                                        .requestMatchers(
-                                                "/api/platform/organizations",
-                                                "/api/platform/organizations/*",
-                                                "/api/platform/users/*/organizations")
-                                        .hasAuthority("platform:organizations:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/branding")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/branding")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/settings/branding/assets")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/settings/file-retention")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/settings/file-retention")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/ai/providers",
-                                                "/api/platform/ai/capabilities")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/ai/providers/*/models")
-                                        .hasAuthority("platform:settings:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/ai/providers/discover-models")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/ai/providers",
-                                                "/api/platform/ai/providers/*/test",
-                                                "/api/platform/ai/judgments")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/ai/providers/*")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/ai/providers/*")
-                                        .hasAuthority("platform:settings:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/ai/attachments/*")
-                                        .hasAuthority("platform:users:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/ai/chat")
-                                        .hasAuthority("platform:users:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.POST,
-                                                "/api/platform/ai/actions/*/confirm")
-                                        .hasAuthority("platform:users:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.DELETE,
-                                                "/api/platform/ai/actions/*")
-                                        .hasAuthority("platform:users:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/dictionaries/*/export",
-                                                "/api/platform/dictionaries/*/items/*/ancestors",
-                                                "/api/platform/dictionaries",
-                                                "/api/platform/dictionaries/*",
-                                                "/api/platform/dictionaries/*/items",
-                                                "/api/platform/dictionaries/*/items/*")
-                                        .hasAuthority("platform:dictionaries:read")
-                                        .requestMatchers(
-                                                "/api/platform/dictionaries",
-                                                "/api/platform/dictionaries/*",
-                                                "/api/platform/dictionaries/*/items",
-                                                "/api/platform/dictionaries/*/items/*")
-                                        .hasAuthority("platform:dictionaries:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/audit")
-                                        .hasAuthority("platform:audit:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/modules")
-                                        .hasAuthority("platform:modules:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/modules/*/state")
-                                        .hasAuthority("platform:modules:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/roles",
-                                                "/api/platform/roles/*",
-                                                "/api/platform/permissions",
-                                                "/api/platform/users/*/roles")
-                                        .hasAuthority("platform:roles:read")
-                                        .requestMatchers(
-                                                "/api/platform/roles",
-                                                "/api/platform/roles/*",
-                                                "/api/platform/users/*/roles")
-                                        .hasAuthority("platform:roles:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/users/*/file-quota")
-                                        .hasAuthority("platform:users:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/users/*/profile-values")
-                                        .hasAuthority("platform:users:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/users/*/file-quota/preview")
-                                        .hasAuthority("platform:roles:read")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.PUT,
-                                                "/api/platform/users/*/editor")
-                                        .hasAnyAuthority(
-                                                "platform:users:write",
-                                                "platform:roles:write",
-                                                "platform:organizations:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
-                                                "/api/platform/users",
-                                                "/api/platform/users/export",
-                                                "/api/platform/users/*")
-                                        .hasAuthority("platform:users:read")
-                                        .requestMatchers(
-                                                "/api/platform/users", "/api/platform/users/*")
-                                        .hasAuthority("platform:users:write")
-                                        .requestMatchers(
-                                                org.springframework.http.HttpMethod.GET,
                                                 "/api/dictionaries/*/items",
                                                 "/api/dictionaries/*/items/*")
-                                        .authenticated()
+                                        .access(
+                                                (authentication, context) ->
+                                                        new org.springframework.security
+                                                                .authorization
+                                                                .AuthorizationDecision(
+                                                                PlatformHttpPermissionPolicy
+                                                                        .authorize(
+                                                                                authentication
+                                                                                        .get(),
+                                                                                context
+                                                                                        .getRequest(),
+                                                                                plugins
+                                                                                        .getIfAvailable())))
                                         .requestMatchers(
                                                 "/api/auth/me",
                                                 "/api/auth/logout",
@@ -825,7 +371,23 @@ public class SecurityConfiguration {
                                                                                                                 .AnonymousAuthenticationToken))))
                                         .anyRequest()
                                         .denyAll())
-                .csrf(csrf -> csrf.csrfTokenRepository(CsrfTokenContract.sessionRepository()))
+                .csrf(
+                        csrf ->
+                                csrf.csrfTokenRepository(CsrfTokenContract.sessionRepository())
+                                        .ignoringRequestMatchers(
+                                                request -> {
+                                                    var authorization = plugins.getIfAvailable();
+                                                    if (authorization == null) return false;
+                                                    String path = request.getRequestURI();
+                                                    String contextPath = request.getContextPath();
+                                                    if (contextPath != null
+                                                            && !contextPath.isEmpty()
+                                                            && path.startsWith(contextPath + "/")) {
+                                                        path = path.substring(contextPath.length());
+                                                    }
+                                                    return authorization.signedCallback(
+                                                            request.getMethod(), path);
+                                                }))
                 .headers(
                         headers ->
                                 headers.contentSecurityPolicy(

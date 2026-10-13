@@ -31,9 +31,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class LocalizationService {
+    public static final String ACCESS = "platform:localization:access";
     public static final String READ = "platform:localization:read";
-    public static final String WRITE = "platform:localization:write";
+    public static final String CREATE = "platform:localization:create";
+    public static final String UPDATE = "platform:localization:update";
+    public static final String DELETE = "platform:localization:delete";
     public static final String IMPORT = "platform:localization:import";
+    public static final String PUBLISH = "platform:localization:publish";
     private static final int MAX_IMPORT_ENTRIES = 20_000;
     private static final long MAX_PACKAGE_CHARACTERS = 5_000_000;
     private static final Pattern MESSAGE_KEY = Pattern.compile("[A-Za-z][A-Za-z0-9_.:-]{0,199}");
@@ -229,7 +233,7 @@ public class LocalizationService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<CatalogEntry> list(
             PageRequest page, String requestedLocale, Boolean enabled, String actor) {
-        guard.requireGlobal(actor, READ);
+        requireGlobalOperation(actor, READ);
         var language = requireLocale(requestedLocale);
         var chain = fallbackChain(language);
         var rows = repository.allActive();
@@ -273,13 +277,13 @@ public class LocalizationService {
 
     @Transactional(readOnly = true)
     public LocalizationRepository.Entry find(UUID id, String actor) {
-        guard.requireGlobal(actor, READ);
+        requireGlobalOperation(actor, READ);
         return repository.find(id);
     }
 
     @Transactional(readOnly = true)
     public List<LocaleView> locales(String actor) {
-        guard.requireGlobal(actor, READ);
+        requireGlobalOperation(actor, READ);
         return localeViews();
     }
 
@@ -313,7 +317,7 @@ public class LocalizationService {
 
     @Transactional
     public LocalizationRepository.Entry create(Input input, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, CREATE);
         Values values = values(input);
         if (!CUSTOM_KEY.matcher(values.messageKey()).matches()
                 || !"custom".equals(values.namespace()))
@@ -337,7 +341,7 @@ public class LocalizationService {
 
     @Transactional
     public LocalizationRepository.Entry update(UUID id, Input input, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, UPDATE);
         repository.lockCatalogForWrite();
         var current = repository.find(id);
         if (builtins.hasKey(current.messageKey()))
@@ -370,7 +374,7 @@ public class LocalizationService {
     @Transactional
     public LocalizationRepository.Entry setEnabled(
             UUID id, long version, boolean enabled, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, UPDATE);
         repository.lockCatalogForWrite();
         var current = repository.find(id);
         if (builtins.hasKey(current.messageKey()))
@@ -383,7 +387,7 @@ public class LocalizationService {
 
     @Transactional
     public void delete(UUID id, long version, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, DELETE);
         repository.lockCatalogForWrite();
         var current = repository.find(id);
         if (builtins.hasKey(current.messageKey()))
@@ -396,7 +400,7 @@ public class LocalizationService {
     /** Saves selected locale values without replacing other locales or unrelated keys. */
     @Transactional
     public OverrideResult saveOverrides(OverrideRequest input, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, UPDATE);
         if (input == null
                 || input.entries() == null
                 || input.entries().isEmpty()
@@ -467,7 +471,7 @@ public class LocalizationService {
     @Transactional
     public void restoreTranslation(
             String requestedLocale, String requestedKey, long expectedVersion, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, UPDATE);
         repository.lockCatalogForWrite();
         var language = requireLocale(requestedLocale);
         String key = validKey(requestedKey);
@@ -504,7 +508,7 @@ public class LocalizationService {
 
     @Transactional(readOnly = true)
     public BundlePreview previewBundle(BundlePreviewRequest request, String actor) {
-        guard.requireGlobal(actor, IMPORT);
+        requireGlobalOperation(actor, IMPORT);
         var checked = validateBundle(request == null ? null : request.bundle());
         return bundlePreview(checked, Boolean.TRUE.equals(request.overwriteExisting()), null);
     }
@@ -676,7 +680,7 @@ public class LocalizationService {
      */
     @Transactional
     public PublishResult publish(String requestedLocale, String actor) {
-        writeGuard(actor, WRITE);
+        writeGuard(actor, PUBLISH);
         repository.lockCatalogForWrite();
         var language = requireLocale(requestedLocale);
         long version = repository.publish(language.locale(), actor);
@@ -1141,6 +1145,15 @@ public class LocalizationService {
     }
 
     private void writeGuard(String actor, String permission) {
+        guard.require(actor, ACCESS);
+        guard.requireGlobal(actor, ACCESS);
+        guard.require(actor, permission);
+        guard.requireGlobal(actor, permission);
+    }
+
+    private void requireGlobalOperation(String actor, String permission) {
+        guard.require(actor, ACCESS);
+        guard.requireGlobal(actor, ACCESS);
         guard.require(actor, permission);
         guard.requireGlobal(actor, permission);
     }

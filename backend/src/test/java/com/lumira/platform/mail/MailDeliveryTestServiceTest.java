@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.MailConfigurationPort;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.settings.SmtpSettingsService;
 import jakarta.mail.Address;
 import jakarta.mail.Message;
@@ -21,19 +22,19 @@ import org.springframework.web.server.ResponseStatusException;
 
 class MailDeliveryTestServiceTest {
     @Test
-    void requiresTheExistingGlobalSettingsWritePermission() {
+    void requiresTheSmtpPageAndTestAction() {
         var settings = mock(SmtpSettingsService.class);
         var gateway = mock(SmtpGateway.class);
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
                 .when(guard)
-                .require("reader", "platform:settings:write");
+                .requireOperationGlobal("reader", PlatformOperation.SMTP_TEST);
 
         var service = new MailDeliveryTestService(settings, gateway, guard, audit);
         assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("reader"));
         verifyNoInteractions(settings, gateway, audit);
-        verify(guard, never()).requireGlobal(any(), any());
+        verify(guard, never()).requireOperationGlobal("reader", PlatformOperation.SMTP_UPDATE);
     }
 
     @Test
@@ -102,8 +103,7 @@ class MailDeliveryTestServiceTest {
         assertEquals(
                 "lumira-qa@example.invalid",
                 ((InternetAddress) message.getValue().getFrom()[0]).getAddress());
-        verify(guard).require("admin", "platform:settings:write");
-        verify(guard).requireGlobal("admin", "platform:settings:write");
+        verify(guard).requireOperationGlobal("admin", PlatformOperation.SMTP_TEST);
         var auditTarget = org.mockito.ArgumentCaptor.forClass(UUID.class);
         verify(audit).append(eq("admin"), eq("mail.localTest.ACCEPTED"), auditTarget.capture());
         assertNotNull(auditTarget.getValue());

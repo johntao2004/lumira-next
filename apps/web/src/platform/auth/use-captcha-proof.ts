@@ -12,6 +12,8 @@ export type UseCaptchaProofOptions = {
   alwaysActions?: readonly string[] | null;
   supported: boolean;
   unavailableMessage: string;
+  /** Refresh public CAPTCHA capability when a stale policy receives captchaRequired. */
+  refreshSupported?: () => Promise<boolean>;
   /** Some legacy callers intentionally recognize captchaRequired from any Error. */
   isCaptchaRequired?: (cause: unknown) => boolean;
 };
@@ -48,6 +50,7 @@ export function useCaptchaProof(options: UseCaptchaProofOptions) {
     return controllerRef.current.run(actionName, {
       shouldPreflight: requestedAction => captchaRequiresPreflight(requestedAction, optionsRef.current.alwaysActions),
       get supported() { return optionsRef.current.supported; },
+      refreshSupported: optionsRef.current.refreshSupported,
       unavailableError: () => new ApiError(503, optionsRef.current.unavailableMessage),
       isCaptchaRequired: cause => optionsRef.current.isCaptchaRequired?.(cause)
         ?? (cause instanceof ApiError && cause.message === "captchaRequired"),

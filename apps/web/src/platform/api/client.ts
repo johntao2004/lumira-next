@@ -44,7 +44,8 @@ function isContextBootstrapExempt(route: string) {
 
 function isAnonymousPublicRead(route: string, method: string | undefined) {
   const normalizedMethod = method?.toUpperCase() ?? "GET";
-  return route.startsWith("/public/") && (normalizedMethod === "GET" || normalizedMethod === "HEAD");
+  return (route.startsWith("/public/") || route === "/auth/methods")
+    && (normalizedMethod === "GET" || normalizedMethod === "HEAD");
 }
 
 async function ensureAuthorizationContext(signal?: AbortSignal) {
@@ -185,7 +186,10 @@ export async function api<T>(
 ): Promise<T> {
   const route = path.split("?", 1)[0];
   const anonymousPublicRead = isAnonymousPublicRead(route, init.method);
-  const sessionBound = !route.startsWith("/public/");
+  const policyMethod = init.method?.toUpperCase() ?? "GET";
+  const publicPolicyRead = route === "/auth/methods"
+    && (policyMethod === "GET" || policyMethod === "HEAD");
+  const sessionBound = !route.startsWith("/public/") && !publicPolicyRead;
   const identityBootstrap = route === "/auth/me";
   const startingSessionRevision = currentSessionRevision();
   const signals = [

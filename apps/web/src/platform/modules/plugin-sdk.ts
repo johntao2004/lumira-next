@@ -13,8 +13,6 @@ import * as module11 from "@/platform/components/resource-table";
 import * as module12 from "@/platform/components/rich-text-editor";
 import * as module13 from "@/platform/components/table-actions";
 import * as module14 from "@/platform/components/use-centered-modal-confirm";
-import * as module15 from "@/platform/drafts/draft-actions";
-import * as module16 from "@/platform/drafts/use-account-draft";
 import * as module17 from "@/platform/forms/use-crud-drawer";
 import * as module18 from "@/platform/forms/use-submit-action";
 import * as module19 from "@/platform/i18n/format";
@@ -47,8 +45,6 @@ export const pluginSdkModules = {
  "@/platform/components/rich-text-editor": module12,
  "@/platform/components/table-actions": module13,
  "@/platform/components/use-centered-modal-confirm": module14,
- "@/platform/drafts/draft-actions": module15,
- "@/platform/drafts/use-account-draft": module16,
  "@/platform/forms/use-crud-drawer": module17,
  "@/platform/forms/use-submit-action": module18,
  "@/platform/i18n/format": module19,

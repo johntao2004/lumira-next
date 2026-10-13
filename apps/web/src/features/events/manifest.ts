@@ -6,6 +6,6 @@ export const eventsManifest = {
   required: true,
   dependencies: ["platform"],
   routes: [
-    { id: "event-outbox", label: "eventOutbox", permission: "platform:audit:read", group: "operations", order: 60 },
+    { id: "event-outbox", label: "eventOutbox", permission: "platform:event-outbox:access", accessScope: "global", operations: { replay: "platform:event-outbox:replay" }, group: "operations", order: 40 },
   ],
 } as const satisfies FrontendModuleManifest;

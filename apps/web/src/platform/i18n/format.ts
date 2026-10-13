@@ -35,3 +35,14 @@ export function formatQuotaBytes(bytes: number, locale: string): string {
   const formatted = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(bytes / 1024 ** unit);
   return `${formatted} ${["B", "KiB", "MiB", "GiB"][unit]}`;
 }
+
+/** Format role/effective storage limits, where 0 is unlimited and null inherits. */
+export function formatQuotaLimitBytes(
+  bytes: number | null,
+  locale: string,
+  labels: { unlimited: string; inherited: string },
+): string {
+  if (bytes === null) return labels.inherited;
+  if (bytes === 0) return labels.unlimited;
+  return formatQuotaBytes(bytes, locale);
+}

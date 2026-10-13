@@ -5,6 +5,8 @@ import static org.mockito.Mockito.*;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.AccountOwnerPort;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -18,13 +20,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 class FilePreviewAuthorizationTest {
     @Test
-    void managedPreviewRequiresGlobalReadBeforeOpeningBlob() throws Exception {
+    void downloadGrantAloneDoesNotAuthorizeManagedPreview() throws Exception {
         var repo = mock(FileRepository.class);
         var blobs = mock(BlobStore.class);
-        var guard = mock(AdministrationPort.class);
-        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
-                .when(guard)
-                .requireGlobal("actor", "platform:files:read");
+        var guard = globalGuard(PlatformOperation.FILE_DOWNLOAD);
         var service = service(repo, blobs, guard);
 
         var error =
@@ -41,7 +40,7 @@ class FilePreviewAuthorizationTest {
     void managedPreviewReadsTextThroughSameDecoder() throws Exception {
         var repo = mock(FileRepository.class);
         var blobs = mock(BlobStore.class);
-        var guard = mock(AdministrationPort.class);
+        var guard = globalGuard(PlatformOperation.FILE_PREVIEW);
         var id = UUID.randomUUID();
         byte[] content = "managed preview".getBytes(StandardCharsets.UTF_8);
         when(repo.findManaged(id))
@@ -66,7 +65,40 @@ class FilePreviewAuthorizationTest {
         assertEquals(
                 "managed preview",
                 service(repo, blobs, guard).previewManaged("admin", id, 1).text());
-        verify(guard).requireGlobal("admin", "platform:files:read");
+        assertThrows(
+                ResponseStatusException.class,
+                () -> guard.requireOperationGlobal("admin", PlatformOperation.FILE_DOWNLOAD));
+    }
+
+    private AdministrationPort globalGuard(PlatformOperation grantedOperation) {
+        var grants =
+                java.util.Set.of(
+                        PlatformPageId.FILES_ALL.accessPermission(), grantedOperation.permission());
+        return new AdministrationPort() {
+            @Override
+            public java.util.Set<String> require(String actor, String permission) {
+                if (!grants.contains(permission))
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+                return grants;
+            }
+
+            @Override
+            public void requireUser(String actor, UUID target, String permission) {
+                if (!grants.contains(permission))
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+            }
+
+            @Override
+            public void requireGlobal(String actor, String permission) {
+                if (!grants.contains(permission))
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+            }
+
+            @Override
+            public boolean hasGlobal(String actor, String permission) {
+                return grants.contains(permission);
+            }
+        };
     }
 
     private FileService service(FileRepository repo, BlobStore blobs, AdministrationPort guard) {

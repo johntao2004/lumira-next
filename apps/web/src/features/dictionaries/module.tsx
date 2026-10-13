@@ -7,6 +7,12 @@ const DictionariesPage = lazy(() => import("./dictionaries-page").then(({ Dictio
 export const dictionariesFrontendModule = {
   ...dictionariesManifest,
   pages: {
-    dictionaries: ({ hasGlobal }) => <DictionariesPage canWrite={hasGlobal("platform:dictionaries:write")} />,
+    dictionaries: ({ hasOperation }) => <DictionariesPage
+      canCreate={hasOperation("create")}
+      canUpdate={hasOperation("update")}
+      canDelete={hasOperation("delete")}
+      canImport={hasOperation("import")}
+      canExport={hasOperation("export")}
+    />,
   },
 } satisfies FrontendModule;

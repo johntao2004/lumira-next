@@ -96,6 +96,7 @@ public class SettingRollbackService {
         if (input == null || input.version() < 0 || input.sourceVersion() < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidSettingRevision");
         }
+        guard.requireOperationGlobal(actor, SettingStore.updateOperation(section));
         var revision =
                 store.revision(section, input.sourceVersion())
                         .orElseThrow(
@@ -221,8 +222,6 @@ public class SettingRollbackService {
     private View rollbackProfileFields(String payload, Input input, String actor) {
         ProfileFields data =
                 mapper.readValue(payload, ProfileFields.class).withResolvedPlacements();
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
         try {
             data.validate();
         } catch (ProfileFields.Invalid error) {

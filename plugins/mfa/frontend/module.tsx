@@ -9,6 +9,8 @@ export const mfaFrontendModule = {
   ...mfaManifest,
   pages: {
     "mfa-authenticator": () => <AuthenticatorPage />,
-    "mfa-management": () => <ManagementPage />,
+    "mfa-management": ({ hasOperation, readOnlyPreview }) => (
+      <ManagementPage canReset={!readOnlyPreview && hasOperation("reset")} />
+    ),
   },
 } satisfies FrontendModule;

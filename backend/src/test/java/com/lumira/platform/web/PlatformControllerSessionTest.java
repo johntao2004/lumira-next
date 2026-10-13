@@ -5,6 +5,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.lumira.platform.common.AuthorizationRevisionPort;
 import com.lumira.platform.identity.AuthenticationPolicyService;
 import com.lumira.platform.identity.api.AccountOwnerPort;
 import com.lumira.platform.identity.api.EffectiveAuthenticationPolicyPort.EffectivePolicy;
@@ -37,8 +38,11 @@ class PlatformControllerSessionTest {
         when(modules.enabledModules()).thenReturn(List.of("identity"));
         var policies = mock(AuthenticationPolicyService.class);
         var owners = mock(AccountOwnerPort.class);
+        var authorizationRevisions = mock(AuthorizationRevisionPort.class);
         UUID userId = UUID.randomUUID();
         when(owners.id("alice", false)).thenReturn(userId);
+        when(authorizationRevisions.revision(userId, Set.of(), Set.of("platform:settings:read")))
+                .thenReturn("session-authorization-tag");
         when(policies.resolve(userId))
                 .thenReturn(
                         new EffectivePolicy(
@@ -47,11 +51,12 @@ class PlatformControllerSessionTest {
         var authentication =
                 UsernamePasswordAuthenticationToken.authenticated("alice", null, List.of());
         var result =
-                new PlatformController(jdbc, modules, policies, owners)
+                new PlatformController(jdbc, modules, policies, owners, authorizationRevisions)
                         .me(authentication, new MockHttpServletRequest());
 
         assertEquals(userId, result.get("userId"));
         assertEquals("alice", result.get("username"));
         assertEquals("Alice", result.get("displayName"));
+        assertEquals("session-authorization-tag", result.get("authorizationRevision"));
     }
 }

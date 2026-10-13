@@ -16,7 +16,7 @@ export function SecondFactorForm({
   onCancel,
 }: {
   challenge: LoginResponse;
-  onComplete: () => void;
+  onComplete: (result: LoginResponse) => void;
   onCancel: () => void;
 }) {
   const { t } = usePreferences();
@@ -35,12 +35,11 @@ export function SecondFactorForm({
         challengeId: challenge.challengeId,
         code: code.trim(),
       });
-      if (result.authenticated) {
-        onComplete();
-        return;
+      if (result.state === "MFA_REQUIRED" || result.secondFactorRequired) {
+        action.setError("secondFactorInvalid");
+        return false;
       }
-      action.setError(result.secondFactorRequired ? "secondFactorInvalid" : "secondFactorExpired");
-      return false;
+      onComplete(result);
     });
   }
 

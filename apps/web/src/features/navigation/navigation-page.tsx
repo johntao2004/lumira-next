@@ -97,7 +97,7 @@ function collectExpandableKeys(nodes: NavigationTreeRow[]): Key[] {
   ]);
 }
 
-export function NavigationPage({ canWrite }: { canWrite: boolean }) {
+export function NavigationPage({ canCreate, canUpdate, canDelete }: { canCreate: boolean; canUpdate: boolean; canDelete: boolean }) {
   const { t } = usePreferences();
   const { message } = App.useApp();
   const client = useQueryClient();
@@ -172,7 +172,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     setCreating(true);
   };
   const openEdit = (row: NavigationMenu) => {
-    if (!canWrite || row.builtIn) return;
+    if (!canUpdate || row.builtIn) return;
     form.setFieldsValue({
       parentId: row.parentId,
       menuCode: row.menuCode,
@@ -201,7 +201,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     }
   };
   const save = async (values: EditorValues) => {
-    if (!canWrite || actionPending) return;
+    if ((editor ? !canUpdate : !canCreate) || actionPending) return;
     const payload = {
       parentId: values.parentId || null,
       menuCode: values.menuCode,
@@ -231,7 +231,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     });
   };
   const toggle = async (row: NavigationMenu) => {
-    if (!canWrite || row.builtIn || actionPending) return;
+    if (!canUpdate || row.builtIn || actionPending) return;
     setPendingMutation(row.id);
     try {
       await mutate(`/platform/navigation/menus/${row.id}/status`, "PATCH", { version: row.version, enabled: !row.enabled });
@@ -244,7 +244,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     }
   };
   const remove = async (row: NavigationMenu) => {
-    if (actionPending) return;
+    if (!canDelete || actionPending) return;
     setPendingMutation(row.id);
     try {
       await mutate(`/platform/navigation/menus/${row.id}?version=${row.version}`, "DELETE");
@@ -258,7 +258,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
     }
   };
   const move = async (row: NavigationMenu, direction: -1 | 1) => {
-    if (!canWrite || row.builtIn || actionPending) return;
+    if (!canUpdate || row.builtIn || actionPending) return;
     const siblings = flattened.filter((candidate) => candidate.parentId === row.parentId).sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
     const index = siblings.findIndex((candidate) => candidate.id === row.id);
     const neighbor = siblings[index + direction];
@@ -288,7 +288,7 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
       onRetry={() => void query.refetch()}
       expandable={{ expandedRowKeys, onExpandedRowsChange: keys => setExpandedRowKeys([...keys]), indentSize: 24 }}
       searchInitialValues={{ labelDefault: request.filters?.labelDefault, menuType: request.filters?.menuType, enabled: request.filters?.enabled }}
-      actions={canWrite ? <Button type="primary" icon={<PlusOutlined />} disabled={actionPending} onClick={openCreate}>{t("createNavigation")}</Button> : undefined}
+      actions={canCreate ? <Button type="primary" icon={<PlusOutlined />} disabled={actionPending} onClick={openCreate}>{t("createNavigation")}</Button> : undefined}
       columns={[
         { title: t("navigationLabel"), dataIndex: "labelDefault", className: "navigation-label-cell", width: 300, search: true, render: (_, row) => <EllipsisText text={localizedNavigationLabel(row.labelKey, row.labelDefault, t)} /> },
         { title: t("navigationCode"), dataIndex: "menuCode", width: 200, render: (_, row) => <EllipsisText text={row.menuCode} /> },
@@ -296,17 +296,17 @@ export function NavigationPage({ canWrite }: { canWrite: boolean }) {
         { title: t("status"), dataIndex: "enabled", width: 100, search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
         { title: t("navigationBuiltIn"), dataIndex: "builtIn", width: 110, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, row) => row.builtIn ? <Tag>{t("enabled")}</Tag> : "—" },
         { title: t("actions"), key: "actions", search: false, render: (_, row) => <TableActions>
-          {canWrite && !row.builtIn && <Button icon={<EditOutlined />} disabled={actionPending} onClick={() => openEdit(row)} aria-label={t("edit")}>{t("edit")}</Button>}
-          {canWrite && !row.builtIn && <Button disabled={actionPending} loading={pendingMutation === row.id} onClick={() => void toggle(row)}>{t(row.enabled ? "disabled" : "enabled")}</Button>}
-          {canWrite && !row.builtIn && <Button icon={<ArrowUpOutlined />} disabled={actionPending || !siblingsCanMove(flattened, row, -1)} loading={pendingMutation === row.id} onClick={() => void move(row, -1)} aria-label={t("moveUp")} />}
-          {canWrite && !row.builtIn && <Button icon={<ArrowDownOutlined />} disabled={actionPending || !siblingsCanMove(flattened, row, 1)} loading={pendingMutation === row.id} onClick={() => void move(row, 1)} aria-label={t("moveDown")} />}
-          {canWrite && !row.builtIn && <DeleteAction name={localizedNavigationLabel(row.labelKey, row.labelDefault, t)} disabled={actionPending || hasChildren(row.id)} onDelete={() => remove(row)} />}
+          {canUpdate && !row.builtIn && <Button icon={<EditOutlined />} disabled={actionPending} onClick={() => openEdit(row)} aria-label={t("edit")}>{t("edit")}</Button>}
+          {canUpdate && !row.builtIn && <Button disabled={actionPending} loading={pendingMutation === row.id} onClick={() => void toggle(row)}>{t(row.enabled ? "disabled" : "enabled")}</Button>}
+          {canUpdate && !row.builtIn && <Button icon={<ArrowUpOutlined />} disabled={actionPending || !siblingsCanMove(flattened, row, -1)} loading={pendingMutation === row.id} onClick={() => void move(row, -1)} aria-label={t("moveUp")} />}
+          {canUpdate && !row.builtIn && <Button icon={<ArrowDownOutlined />} disabled={actionPending || !siblingsCanMove(flattened, row, 1)} loading={pendingMutation === row.id} onClick={() => void move(row, 1)} aria-label={t("moveDown")} />}
+          {canDelete && !row.builtIn && <DeleteAction name={localizedNavigationLabel(row.labelKey, row.labelDefault, t)} disabled={actionPending || hasChildren(row.id)} onDelete={() => remove(row)} />}
         </TableActions> },
       ]}
     />
     <FormDrawer open={creating || !!editor} title={creating ? t("createNavigation") : t("edit")} pending={actionPending} formId="navigation-editor" size={520} onClose={close}>
       <Typography.Paragraph type="secondary">{t("navigationHint")}</Typography.Paragraph>
-      <Form id="navigation-editor" form={form} layout="vertical" onFinish={save}>
+      <Form id="navigation-editor" form={form} layout="vertical" disabled={actionPending || (editor ? !canUpdate : !canCreate)} onFinish={save}>
         <Form.Item name="menuCode" label={t("navigationCode")} rules={[{ required: true }, { pattern: /^[a-z][a-z0-9._:-]{1,127}$/ }]}><Input maxLength={128} disabled={!!editor} /></Form.Item>
         <Form.Item name="labelKey" label={t("navigationLabelKey")} rules={[{ required: true }, { pattern: /^[a-z][a-zA-Z0-9._:-]{0,127}$/ }]}><Input maxLength={128} /></Form.Item>
         <Form.Item name="labelDefault" label={t("navigationLabel")} rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input maxLength={200} /></Form.Item>

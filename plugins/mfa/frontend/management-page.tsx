@@ -19,7 +19,7 @@ import { useReauthenticationTicket } from "@/platform/auth/use-reauthentication-
 import { ReauthenticationFields } from "./reauthentication-fields";
 import { mfaErrorKeys, type MfaAccount, type MfaActionValues } from "./types";
 
-export function ManagementPage() {
+export function ManagementPage({ canReset }: { canReset: boolean }) {
   const { t, locale } = usePreferences();
   const { message } = App.useApp();
   const client = useQueryClient();
@@ -81,7 +81,7 @@ export function ManagementPage() {
                   <Button type="link" disabled>{t("mfaReset")}</Button>
                 </span>
               </Tooltip>
-            ) : (
+            ) : canReset ? (
               <TableActions>
                 <Button type="link" danger onClick={() => {
                   close();
@@ -90,7 +90,7 @@ export function ManagementPage() {
                   {t("mfaReset")}
                 </Button>
               </TableActions>
-            ),
+            ) : null,
           },
         ]}
       />

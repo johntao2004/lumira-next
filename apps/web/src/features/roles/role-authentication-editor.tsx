@@ -124,7 +124,7 @@ export function RoleAuthenticationEditor({ role, canWrite }: { role: Role; canWr
           { value: "INHERIT", label: t("authenticationInherit") },
           { value: "ALWAYS", label: t("authenticationRequired") },
         ]} />
-      </Form.Item> : <Alert type="info" showIcon title={t("roleCaptchaCapabilityUnavailable")} />}
+      </Form.Item> : <Form.Item><Alert type="info" showIcon title={t("roleCaptchaCapabilityUnavailable")} /></Form.Item>}
       <FeedbackBubble id={`role-auth-policy-${role.id}-error`} content={action.errorMessage} />
       <Space className="form-actions" wrap>
         <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />

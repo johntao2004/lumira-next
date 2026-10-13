@@ -11,6 +11,8 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.GlobalAuthenticationPolicyPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PluginExtensionsPort;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.common.RoleAuthenticationPolicyPort;
@@ -210,12 +212,22 @@ class SecondFactorPolicyReadinessDatabaseTest {
         ObjectProvider<com.lumira.platform.common.CaptchaProofPort> captcha =
                 (ObjectProvider<com.lumira.platform.common.CaptchaProofPort>)
                         mock(ObjectProvider.class);
+        var guard = mock(AdministrationPort.class);
+        String rolePage = PlatformPageId.ROLES.accessPermission();
+        when(guard.require("admin", rolePage)).thenReturn(Set.of(rolePage));
+        when(guard.hasGlobal("admin", rolePage)).thenReturn(true);
+        when(guard.hasGlobal(
+                        "admin", PlatformOperation.ROLE_READ_AUTHENTICATION_POLICY.permission()))
+                .thenReturn(true);
+        when(guard.hasGlobal(
+                        "admin", PlatformOperation.ROLE_UPDATE_AUTHENTICATION_POLICY.permission()))
+                .thenReturn(false);
         var service =
                 new RoleAuthenticationPolicyService(
                         JdbcClient.create(jdbc.getDataSource()),
                         new RoleAuthenticationPolicyRepository(
                                 JdbcClient.create(jdbc.getDataSource())),
-                        mock(AdministrationPort.class),
+                        guard,
                         mock(AuditPort.class),
                         mock(GlobalAuthenticationPolicyPort.class),
                         mock(AuthenticationReachabilityPort.class),

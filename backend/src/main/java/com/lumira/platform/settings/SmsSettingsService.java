@@ -2,6 +2,7 @@ package com.lumira.platform.settings;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.SecretKeys;
 import com.lumira.platform.common.SecretStorePort;
 import com.lumira.platform.common.SmsConfigurationPort;
@@ -171,8 +172,7 @@ public class SmsSettingsService implements SmsConfigurationPort {
 
     @Transactional
     public View save(String actor, Input input) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.SMS_UPDATE);
         if (input == null || input.data() == null || input.credentials() == null)
             invalid("invalidSms");
         input.data().validate();

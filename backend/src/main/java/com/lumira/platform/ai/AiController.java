@@ -46,6 +46,17 @@ public class AiController {
         return providers.models(id, auth.getName());
     }
 
+    @GetMapping("/console/providers")
+    public List<AiProviderService.ConsoleProviderView> consoleProviders(Authentication auth) {
+        return providers.listForConsole(auth.getName());
+    }
+
+    @GetMapping("/console/providers/{id}/models")
+    public ModelConnectionService.ConnectionResult consoleModels(
+            @PathVariable UUID id, Authentication auth) {
+        return providers.configuredModelsForConsole(id, auth.getName());
+    }
+
     @PostMapping("/providers/discover-models")
     public ModelConnectionService.ConnectionResult discoverModels(
             @BoundedBody(maxBytes = 16384, errorCode = "invalidAiProvider") @RequestBody

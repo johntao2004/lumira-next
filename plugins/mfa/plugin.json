@@ -1,8 +1,8 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "mfa",
   "name": "二次认证与验证器",
-  "version": "1.0.5",
+  "version": "1.0.9",
   "sdkVersion": "1",
   "entryClass": "com.lumira.platform.mfa.LumiraPlugin",
   "backend": "backend/plugin.jar",
@@ -14,24 +14,53 @@
     }
   ],
   "permissions": [
-    "platform:mfa:manage"
+    "platform:mfa:management-access",
+    "platform:mfa:management-read",
+    "platform:mfa:management-reset"
+  ],
+  "permissionGroups": [
+    {
+      "id": "administration",
+      "title": "pluginPermissionGroupMfa",
+      "permissions": [
+        {
+          "code": "platform:mfa:management-access",
+          "label": "pluginPermissionMfaManagementAccess"
+        },
+        {
+          "code": "platform:mfa:management-read",
+          "label": "pluginPermissionMfaRead"
+        },
+        {
+          "code": "platform:mfa:management-reset",
+          "label": "pluginPermissionMfaReset"
+        }
+      ]
+    }
   ],
   "routes": [
     {
       "id": "mfa-authenticator",
       "label": "mfaAuthenticator",
       "permission": null,
-      "group": "overview",
+      "group": "user-management",
       "order": 30,
       "global": false
     },
     {
       "id": "mfa-management",
       "label": "mfaManagement",
-      "permission": "platform:mfa:manage",
-      "group": "administration",
-      "order": 210,
-      "global": true
+      "permission": "platform:mfa:management-access",
+      "group": "user-management",
+      "order": 120,
+      "global": true,
+      "operations": {
+        "read": "platform:mfa:management-read",
+        "reset": "platform:mfa:management-reset"
+      },
+      "scopedOperations": [
+        "reset"
+      ]
     }
   ],
   "apiRules": [
@@ -110,20 +139,27 @@
     {
       "method": "GET",
       "path": "/api/mfa/manage",
-      "authorities": [
-        "platform:mfa:manage"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:mfa:management-access",
+        "platform:mfa:management-read"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/mfa/manage/*/reset",
-      "authorities": [
-        "platform:mfa:manage"
+      "authorities": [],
+      "global": false,
+      "publicAccess": false,
+      "globalAuthorities": [
+        "platform:mfa:management-access"
       ],
-      "global": true,
-      "publicAccess": false
+      "allAuthorities": [
+        "platform:mfa:management-access",
+        "platform:mfa:management-reset"
+      ]
     }
   ]
 }

@@ -4,6 +4,7 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -119,8 +120,7 @@ public class SettingStore {
             long expectedVersion,
             String changeReason,
             Long sourceVersion) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, updateOperation(section));
         String reason = changeReason == null ? "" : changeReason.strip();
         if (reason.length() > 1000) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidChangeReason");
@@ -216,6 +216,23 @@ public class SettingStore {
         writeRevision(saved, payload, actor, reason, sourceVersion);
         audit.append(actor, "setting.update", saved.id());
         return saved;
+    }
+
+    static PlatformOperation updateOperation(String section) {
+        return switch (section) {
+            case "branding" -> PlatformOperation.BRANDING_UPDATE;
+            case "smtp" -> PlatformOperation.SMTP_UPDATE;
+            case "sms" -> PlatformOperation.SMS_UPDATE;
+            case "profile-fields" -> PlatformOperation.PROFILE_FIELDS_UPDATE;
+            case "agreements" -> PlatformOperation.AGREEMENTS_UPDATE;
+            case "watermark" -> PlatformOperation.WATERMARK_UPDATE;
+            case "maintenance" -> PlatformOperation.MAINTENANCE_UPDATE;
+            case "passkey" -> PlatformOperation.PASSKEY_UPDATE;
+            case "security" -> PlatformOperation.SECURITY_UPDATE;
+            case "wechat" -> PlatformOperation.WECHAT_UPDATE;
+            case "file-retention" -> PlatformOperation.FILE_RETENTION_UPDATE;
+            default -> throw new ResponseStatusException(HttpStatus.NOT_FOUND, "settingNotFound");
+        };
     }
 
     private void writeRevision(

@@ -28,20 +28,26 @@ try {
   const menu = sider.locator('.ant-pro-sider-menu');
   const collapseButton = sider.locator('.ant-pro-sider-collapsed-button');
   await expect(sider).toBeVisible();
-  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(64);
-  await expect(menu).toHaveClass(/ant-menu-inline-collapsed/);
+  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(256);
+  await expect(menu).not.toHaveClass(/ant-menu-inline-collapsed/);
   await expect(collapseButton).toBeVisible();
 
   await collapseButton.click();
-  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(208);
+  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(64);
+  await expect(menu).toHaveClass(/ant-menu-inline-collapsed/);
   await expect(menu.getByRole('link', { name: '工作台', exact: true })).toBeVisible();
-  await expect(menu.getByRole('link', { name: '品牌设置', exact: true })).not.toBeVisible();
+  await expect(menu.getByRole('link', { name: '站点设置', exact: true })).not.toBeVisible();
 
-  await menu.getByText('平台管理', { exact: true }).click();
-  await expect(menu.getByRole('link', { name: '品牌设置', exact: true })).toBeVisible();
-  await menu.getByRole('link', { name: '水印设置', exact: true }).click();
+  await collapseButton.click();
+  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(256);
+  await expect(menu).not.toHaveClass(/ant-menu-inline-collapsed/);
+
+  await menu.getByText('平台配置', { exact: true }).click();
+  await menu.getByRole('link', { name: '站点设置', exact: true }).click();
+  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(256);
+  await page.getByRole('tab', { name: '水印设置', exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard\/watermark$/);
-  await expect(page.locator('.ant-menu-item-selected')).toContainText('水印设置');
+  await expect(page.locator('.ant-tabs-tab-active')).toContainText('水印设置');
 
   for (const testId of [
     'dual-sider',
@@ -59,7 +65,7 @@ try {
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await collapseButton.click();
-  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(208);
+  await expect.poll(() => sider.evaluate(node => Math.round(node.getBoundingClientRect().width))).toBe(256);
   const transitionSeconds = await sider.evaluate(node => {
     const raw = getComputedStyle(node).transitionDuration.split(',')[0];
     return raw.endsWith('ms') ? Number.parseFloat(raw) / 1000 : Number.parseFloat(raw);

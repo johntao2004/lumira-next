@@ -18,6 +18,7 @@ import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
 import { announceSessionChangeAcrossTabs, subscribeSessionBoundary } from "@/platform/auth/session-lifecycle";
 import { createSessionActionEpoch } from "./session-action-epoch.mjs";
+import { restorePendingLogin } from "./login-state-restoration.mjs";
 import { AgreementLinks } from "./agreement-links";
 import { MaintenanceNotice } from "./maintenance-notice";
 import { createPasskeyCredential, isPasskeySupported, toAuthenticationPayload, toPublicKeyRequestOptions } from "./passkey";
@@ -27,9 +28,11 @@ import { SecondFactorForm } from "./second-factor-form";
 import { PreauthEnrollmentForm } from "./preauth-enrollment-form";
 import { RecoveryTicketForm } from "./recovery-ticket-form";
 import { LoginCodeForm } from "./login-code-form";
+import { MandatoryPasswordChangeForm } from "./mandatory-password-change-form";
 import { CaptchaPanel } from "./captcha-panel";
 import { useCaptchaProof } from "./use-captcha-proof";
 import { isTrustedWechatAuthorizationUrl } from "./wechat-url";
+import { isLoginResponse as isLoginResponseValue, loginResponseDisposition } from "./login-response-contract.mjs";
 
 type LoginValues = { username: string; password: string };
 
@@ -39,6 +42,7 @@ type PasswordLoginFormProps = {
   pending: boolean;
   passkeyPending: boolean;
   wechatPending: boolean;
+  authMethodsReady: boolean;
   passkeyLoginEnabled: boolean;
   wechatLoginAvailable: boolean;
   registrationAvailable: boolean;
@@ -59,6 +63,7 @@ function PasswordLoginForm({
   pending,
   passkeyPending,
   wechatPending,
+  authMethodsReady,
   passkeyLoginEnabled,
   wechatLoginAvailable,
   registrationAvailable,
@@ -108,14 +113,20 @@ function PasswordLoginForm({
       />
     </Form.Item>
     <div className="login-actions">
-      <AsyncButton type="primary" htmlType="submit" block pending={pending || passkeyPending || wechatPending} label={t("signIn")} />
+      <AsyncButton
+        type="primary"
+        htmlType="submit"
+        block
+        pending={pending || passkeyPending || wechatPending || !authMethodsReady}
+        label={t("signIn")}
+      />
       {passkeyLoginEnabled && <Button
         type="default"
         aria-label={t("passkeyLogin")}
         icon={<KeyOutlined />}
         block
         loading={passkeyPending}
-        disabled={pending || passkeyPending || wechatPending}
+        disabled={pending || passkeyPending || wechatPending || !authMethodsReady}
         onClick={onPasskeyClick}
       >
         {t("passkeyLogin")}
@@ -126,7 +137,7 @@ function PasswordLoginForm({
         icon={<QrcodeOutlined />}
         block
         loading={wechatPending}
-        disabled={pending || passkeyPending}
+        disabled={pending || passkeyPending || !authMethodsReady}
         onClick={onWechatClick}
       >{t("wechatLogin")}</Button>}
       <Button type="link" disabled={pending || passkeyPending} onClick={onRecoveryClick}>
@@ -137,7 +148,6 @@ function PasswordLoginForm({
     {loginCodeAvailable && <Button type="link" block onClick={onLoginCodeClick}>{t("loginCodeSignIn")}</Button>}
   </Form>;
 }
-
 export function LoginPage() {
   const branding = useBranding();
   const client = useQueryClient();
@@ -154,12 +164,53 @@ export function LoginPage() {
   const [passkeyLoginEnabled, setPasskeyLoginEnabled] = useState(false);
   const [authMethods, setAuthMethods] = useState<LoginMethodAvailability | null>(null);
   const [authMethodsLoaded, setAuthMethodsLoaded] = useState(false);
+  const [authMethodsReady, setAuthMethodsReady] = useState(false);
+  const [authMethodsLoadFailed, setAuthMethodsLoadFailed] = useState(false);
+  const authMethodsRequestRevision = useRef(0);
+  const authMethodsResolved = useRef(false);
+  const [captchaLoginUnavailable, setCaptchaLoginUnavailable] = useState(false);
   const [loginCodeOpen, setLoginCodeOpen] = useState(false);
   const [captchaPanelRevision, setCaptchaPanelRevision] = useState(0);
+  const loadAuthMethods = useCallback(async (signal?: AbortSignal) => {
+    const requestRevision = ++authMethodsRequestRevision.current;
+    setAuthMethodsLoaded(false);
+    setAuthMethodsReady(false);
+    setAuthMethodsLoadFailed(false);
+    setAuthMethods(null);
+    try {
+      const value = await api<LoginMethodAvailability>("/auth/methods", signal ? { signal } : {});
+      if (signal?.aborted || requestRevision !== authMethodsRequestRevision.current) return null;
+      if (!isLoginMethodAvailability(value)) throw new Error("invalidLoginMethodAvailability");
+      authMethodsResolved.current = true;
+      setAuthMethods(value);
+      setAuthMethodsReady(true);
+      setCaptchaLoginUnavailable(
+        !value.capabilities.captcha && value.captcha.alwaysActions.includes("PASSWORD_LOGIN"),
+      );
+      return value;
+    } catch (cause) {
+      if (signal?.aborted || requestRevision !== authMethodsRequestRevision.current
+        || (cause instanceof DOMException && cause.name === "AbortError")) return null;
+      authMethodsResolved.current = true;
+      setAuthMethods(null);
+      setAuthMethodsReady(false);
+      setAuthMethodsLoadFailed(true);
+      return null;
+    } finally {
+      if (!signal?.aborted && requestRevision === authMethodsRequestRevision.current) setAuthMethodsLoaded(true);
+    }
+  }, []);
+  const refreshCaptchaCapability = useCallback(async () => {
+    const latest = await loadAuthMethods();
+    const supported = latest?.capabilities.captcha === true;
+    if (!supported) setCaptchaLoginUnavailable(true);
+    return supported;
+  }, [loadAuthMethods]);
   const captchaProof = useCaptchaProof({
     alwaysActions: authMethods?.captcha.alwaysActions,
     supported: authMethods?.capabilities.captcha === true,
     unavailableMessage: "captchaUnavailable",
+    refreshSupported: refreshCaptchaCapability,
   });
   const captchaProofRef = useRef(captchaProof);
   captchaProofRef.current = captchaProof;
@@ -173,6 +224,7 @@ export function LoginPage() {
   }, []);
   const [postPrimaryCaptchaOpen, setPostPrimaryCaptchaOpen] = useState(false);
   const [enrollmentRequired, setEnrollmentRequired] = useState(false);
+  const [passwordChangeComplete, setPasswordChangeComplete] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState<MessageKey | null>(null);
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
@@ -189,7 +241,7 @@ export function LoginPage() {
   useEffect(() => {
     // Keep the epoch and keyed FormStore aligned when Strict Mode replays effects.
     setLoginFormRevision(loginActionEpoch.capture());
-    const unsubscribe = subscribeSessionBoundary(() => {
+    const unsubscribe = subscribeSessionBoundary(boundary => {
       const nextRevision = loginActionEpoch.renew();
       setLoginFormRevision(nextRevision);
       captchaProofRef.current.cancel();
@@ -201,17 +253,19 @@ export function LoginPage() {
       setRetryAfterSeconds(null);
       setChallenge(null);
       setEnrollmentRequired(false);
+      setPasswordChangeComplete(false);
       setLoginCodeOpen(false);
       setPostPrimaryCaptchaOpen(false);
       setRecoveryOpen(false);
       setRecovered(false);
+      if (boundary.kind === "invalidated" && authMethodsResolved.current) void loadAuthMethods();
     });
     return () => {
       loginActionEpoch.renew();
       captchaProofRef.current.cancel();
       unsubscribe();
     };
-  }, [loginActionEpoch]);
+  }, [loginActionEpoch, loadAuthMethods]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -224,21 +278,19 @@ export function LoginPage() {
       .catch(() => {
         if (controller.signal.aborted) return;
         client.clear();
-        void api<LoginResponse>("/auth/login/state", { signal: controller.signal })
-          .then(value => {
-            if (controller.signal.aborted) return;
-            if (value.state === "ENROLLMENT_REQUIRED") {
-              setChallenge(value);
-              setEnrollmentRequired(true);
-            } else if (value.state === "MFA_REQUIRED" || value.state === "CAPTCHA_REQUIRED" || value.state === "RECOVERY_REQUIRED" || value.secondFactorRequired) {
-              continueLogin(value);
+        void restorePendingLogin({
+          epoch: loginActionEpoch,
+          signal: controller.signal,
+          loadLoginState: () => api<LoginResponse>("/auth/login/state", { signal: controller.signal }),
+          loadSecondFactorPending: () => api<LoginResponse>("/auth/second-factor/pending", { signal: controller.signal }),
+          onState: (value, revision) => {
+            if (value.state === "ENROLLMENT_REQUIRED" || value.state === "PASSWORD_CHANGE_REQUIRED"
+              || value.state === "MFA_REQUIRED" || value.state === "CAPTCHA_REQUIRED"
+              || value.state === "RECOVERY_REQUIRED" || value.secondFactorRequired) {
+              continueLogin(value, undefined, revision);
             }
-          })
-          .catch(() => api<LoginResponse>("/auth/second-factor/pending", { signal: controller.signal })
-            .then(value => {
-              if (!controller.signal.aborted && value.secondFactorRequired) setChallenge(value);
-            })
-            .catch(() => {}))
+          },
+        })
           .finally(() => {
             if (!controller.signal.aborted) setCheckingSession(false);
           });
@@ -248,13 +300,7 @@ export function LoginPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void api<LoginMethodAvailability>("/auth/methods", { signal: controller.signal })
-      .then(value => {
-        if (!controller.signal.aborted) { setAuthMethods(value); setAuthMethodsLoaded(true); }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) { setAuthMethods(null); setAuthMethodsLoaded(true); }
-      });
+    void loadAuthMethods(controller.signal);
     void api<PasskeyAuthenticationAvailability>("/auth/passkeys/authentication/availability", { signal: controller.signal })
       .then(({ enabled }) => {
         if (!controller.signal.aborted) setPasskeyLoginEnabled(enabled);
@@ -263,7 +309,7 @@ export function LoginPage() {
         if (!controller.signal.aborted) setPasskeyLoginEnabled(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [loadAuthMethods]);
 
   useEffect(() => {
     if (!authMethodsLoaded || challenge?.state !== "CAPTCHA_REQUIRED" || !challenge.challengeId) return;
@@ -286,7 +332,7 @@ export function LoginPage() {
   }
 
   async function submit(values: LoginValues) {
-    if (!isCurrentLoginAction()) return;
+    if (!isCurrentLoginAction() || !authMethodsReady || captchaLoginUnavailable) return;
     setPending(true);
     setError(null);
     setRetryAfterSeconds(null);
@@ -300,6 +346,8 @@ export function LoginPage() {
       if (e instanceof ApiError && e.message === "passwordHashCapacity") {
         setRetryAfterSeconds(e.retryAfterSeconds ?? 1);
         setError("passwordHashCapacity");
+      } else if (e instanceof ApiError && (e.message === "temporaryPasswordExpired" || e.message === "temporaryPasswordUsed")) {
+        setError("temporaryPasswordUnavailable");
       } else setError(
         e instanceof ApiError && e.message === "captchaUnavailable" ? "captchaUnavailable" :
         e instanceof ApiError && e.message === "captchaRequired" ? "captchaRequired" :
@@ -320,7 +368,7 @@ export function LoginPage() {
   }
 
   async function signInWithPasskey() {
-    if (!isCurrentLoginAction() || pending || passkeyPending) return;
+    if (!isCurrentLoginAction() || !authMethodsReady || captchaLoginUnavailable || pending || passkeyPending) return;
     setPasskeyPending(true);
     setError(null);
     try {
@@ -349,7 +397,7 @@ export function LoginPage() {
   }
 
   async function signInWithWechat() {
-    if (!isCurrentLoginAction() || pending || passkeyPending || wechatPending || !wechatLoginAvailable) return;
+    if (!isCurrentLoginAction() || !authMethodsReady || captchaLoginUnavailable || pending || passkeyPending || wechatPending || !wechatLoginAvailable) return;
     setWechatPending(true);
     setError(null);
     try {
@@ -374,31 +422,39 @@ export function LoginPage() {
     }
   }
 
-  function continueLogin(result: LoginResponse, nextPath?: string) {
-    if (!isCurrentLoginAction()) return;
+  function continueLogin(result: LoginResponse, nextPath?: string, expectedRevision = renderedLoginActionRevision) {
+    if (!loginActionEpoch.isCurrent(expectedRevision)) return;
     setLoginCodeOpen(false);
-    if (result.state === "ENROLLMENT_REQUIRED") {
+    setError(null);
+    setPasswordChangeComplete(false);
+    const disposition = loginResponseDisposition(result);
+    if (disposition === "enrollment") {
       setChallenge(result);
       setEnrollmentRequired(true);
       return;
     }
-    if (result.state === "MFA_REQUIRED" || result.secondFactorRequired) {
+    if (disposition === "password-change") {
+      setChallenge(result);
+      setEnrollmentRequired(false);
+      setPostPrimaryCaptchaOpen(false);
+      return;
+    }
+    if (disposition === "mfa") {
       setChallenge(result);
       setEnrollmentRequired(false);
       return;
     }
-    if (result.state === "CAPTCHA_REQUIRED" && result.challengeId) {
+    if (disposition === "captcha") {
       setChallenge(result);
       setEnrollmentRequired(false);
       return;
     }
-    if (result.state === "RECOVERY_REQUIRED") {
+    if (disposition === "recovery") {
       setChallenge(result);
       setEnrollmentRequired(false);
-      setError(null);
       return;
     }
-    if (result.state && result.state !== "COMPLETE") {
+    if (disposition !== "complete") {
       setChallenge(result);
       setError("loginContinuationUnavailable");
       return;
@@ -407,6 +463,16 @@ export function LoginPage() {
     setEnrollmentRequired(false);
     if (result.authenticated) announceSessionChangeAcrossTabs();
     history.replace(safeReturnPath(nextPath ?? new URLSearchParams(window.location.search).get("returnTo")));
+  }
+
+  function requiredPasswordChanged(completedChallengeId: string) {
+    if (!isCurrentLoginAction() || challenge?.state !== "PASSWORD_CHANGE_REQUIRED" || challenge.challengeId !== completedChallengeId) return;
+    setChallenge(null);
+    setEnrollmentRequired(false);
+    setPostPrimaryCaptchaOpen(false);
+    setError(null);
+    setPasswordChangeComplete(true);
+    loginFormRef.current?.setFieldValue("password", undefined);
   }
 
   async function confirmPostPrimaryCaptcha(proof: Parameters<typeof captchaProof.finish>[0] & { attemptId: string | null }) {
@@ -451,6 +517,7 @@ export function LoginPage() {
       setPostPrimaryCaptchaOpen(false);
       setChallenge(null);
       setEnrollmentRequired(false);
+      setPasswordChangeComplete(false);
       setError(null);
       return;
     }
@@ -503,11 +570,20 @@ export function LoginPage() {
         <div className="login-content">
           <h1>{t("welcome", { name: branding.websiteName })}</h1>
           <MaintenanceNotice />
-          <div className="login-tab">{t(enrollmentRequired ? "preauthEnrollmentTitle" : challenge ? "mfaTitle" : loginCodeOpen ? "loginCodeSignIn" : "passwordLogin")}</div>
+          <div className="login-tab">{t(enrollmentRequired ? "preauthEnrollmentTitle" : challenge?.state === "PASSWORD_CHANGE_REQUIRED" ? "mandatoryPasswordChangeTitle" : challenge ? "mfaTitle" : loginCodeOpen ? "loginCodeSignIn" : "passwordLogin")}</div>
           <FeedbackBubble kind="success" id="login-recovered" content={recovered ? t("passwordRecovered") : undefined} />
+          <FeedbackBubble kind="success" id="login-password-changed" content={passwordChangeComplete ? t("mandatoryPasswordChangeComplete") : undefined} />
           <FeedbackBubble id="login-error" content={error ? t(error, error === "passwordHashCapacity" ? { seconds: retryAfterSeconds ?? 1 } : undefined) : undefined} />
+          {authMethodsLoadFailed && <Space direction="vertical" style={{ width: "100%" }}>
+            <Alert type="warning" showIcon title={t("unavailable")} />
+            <Button block disabled={!authMethodsLoaded} onClick={() => { void loadAuthMethods(); }}>{t("retry")}</Button>
+          </Space>}
+          {captchaLoginUnavailable && !authMethodsLoadFailed && <Space direction="vertical" style={{ width: "100%" }}>
+            <Alert type="warning" showIcon title={t("captchaRequiredUnavailable")} />
+            <Button block disabled={!authMethodsLoaded} onClick={() => { void loadAuthMethods(); }}>{t("retry")}</Button>
+          </Space>}
           {captchaProof.action && <CaptchaPanel
-            key={loginFormRevision}
+            key={`captcha-proof:${loginFormRevision}`}
             action={captchaProof.action}
             onVerified={proof => { if (isCurrentLoginAction()) captchaProof.finish(proof); }}
             onCancel={() => {
@@ -528,6 +604,13 @@ export function LoginPage() {
               onCancel={() => { void cancelRestrictedLogin(); }}
               onComplete={result => continueLogin(result)}
             />
+          ) : challenge?.state === "PASSWORD_CHANGE_REQUIRED" && challenge.challengeId ? (
+            <MandatoryPasswordChangeForm
+              challengeId={challenge.challengeId}
+              expiresAt={challenge.expiresAt}
+              onCancel={() => { void cancelRestrictedLogin(); }}
+              onChanged={requiredPasswordChanged}
+            />
           ) : challenge?.state === "RECOVERY_REQUIRED" && challenge.challengeId ? (
             <RecoveryTicketForm
               challengeId={challenge.challengeId}
@@ -538,7 +621,7 @@ export function LoginPage() {
             <SecondFactorForm
               challenge={challenge}
               onCancel={() => { void cancelRestrictedLogin(); }}
-              onComplete={() => continueLogin({ ...challenge, state: "COMPLETE", authenticated: true, secondFactorRequired: false })}
+              onComplete={result => continueLogin(result)}
             />
           ) : challenge && challenge.state === "CAPTCHA_REQUIRED" ? <>
             {authMethodsLoaded && !authMethods?.capabilities.captcha && <Alert type="warning" showIcon title={t("captchaRequiredUnavailable")} />}
@@ -556,12 +639,13 @@ export function LoginPage() {
               setError(null);
             }}
           /> : <PasswordLoginForm
-            key={loginFormRevision}
+            key={`password-login:${loginFormRevision}`}
             onFinish={submit}
             onFormReady={onLoginFormReady}
             pending={pending}
             passkeyPending={passkeyPending}
             wechatPending={wechatPending}
+            authMethodsReady={authMethodsReady && !captchaLoginUnavailable}
             passkeyLoginEnabled={authMethods ? authMethods.methods.includes("PASSKEY") : passkeyLoginEnabled}
             wechatLoginAvailable={wechatLoginAvailable}
             registrationAvailable={authMethods?.registration.supported === true
@@ -586,10 +670,27 @@ export function LoginPage() {
 }
 
 function isLoginResponse(value: unknown): value is LoginResponse {
+  return isLoginResponseValue(value);
+}
+
+function isLoginMethodAvailability(value: unknown): value is LoginMethodAvailability {
   if (!value || typeof value !== "object") return false;
-  const result = value as Partial<LoginResponse>;
-  return typeof result.authenticated === "boolean"
-    && typeof result.secondFactorRequired === "boolean"
-    && (result.challengeId === null || typeof result.challengeId === "string")
-    && (result.state === undefined || ["PRIMARY_REQUIRED", "CAPTCHA_REQUIRED", "MFA_REQUIRED", "ENROLLMENT_REQUIRED", "RECOVERY_REQUIRED", "COMPLETE", "EXPIRED", "LOCKED", "CANCELLED", "NONE"].includes(result.state));
+  const methods = value as Partial<LoginMethodAvailability>;
+  return Array.isArray(methods.methods)
+    && methods.methods.every(method => typeof method === "string")
+    && typeof methods.registration?.supported === "boolean"
+    && typeof methods.registration.available === "boolean"
+    && Array.isArray(methods.registration.channels)
+    && methods.registration.channels.every(channel => typeof channel === "string")
+    && (methods.registration.path === null || typeof methods.registration.path === "string")
+    && typeof methods.capabilities?.loginCode === "boolean"
+    && typeof methods.capabilities.wechat === "boolean"
+    && typeof methods.capabilities.captcha === "boolean"
+    && typeof methods.capabilities.rolePreview === "boolean"
+    && typeof methods.captcha?.required === "boolean"
+    && (methods.captcha.type === null || typeof methods.captcha.type === "string")
+    && Array.isArray(methods.captcha.actions)
+    && methods.captcha.actions.every(action => typeof action === "string")
+    && Array.isArray(methods.captcha.alwaysActions)
+    && methods.captcha.alwaysActions.every(action => typeof action === "string");
 }

@@ -92,9 +92,18 @@ export function createCaptchaProofController(onActionChange = () => {}) {
       interruptRun = () => resolve({ kind: "cancelled" });
     });
     activeRunCancellation = interruptRun;
-    const acquire = force => {
-      if (!force && !options.shouldPreflight(action)) return Promise.resolve(undefined);
-      if (!options.supported) return Promise.reject(options.unavailableError());
+    const acquire = async force => {
+      if (!force && !options.shouldPreflight(action)) return undefined;
+      let supported = options.supported;
+      if (force && !supported && options.refreshSupported) {
+        try {
+          supported = await options.refreshSupported();
+        } catch {
+          supported = false;
+        }
+      }
+      if (!isCurrent()) return null;
+      if (!supported) throw options.unavailableError();
       return requestProof(action);
     };
     const cancelled = () => ({ status: "cancelled" });

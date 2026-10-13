@@ -6,7 +6,9 @@ import static org.mockito.Mockito.*;
 import com.lumira.platform.TestMigration;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.common.PageRequest;
+import com.lumira.platform.events.PlatformEventOutboxStore;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -15,7 +17,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -23,8 +27,10 @@ import tools.jackson.databind.json.JsonMapper;
 class NotificationHrefBoundaryDatabaseTest {
     private JdbcTemplate admin;
     private JdbcTemplate jdbc;
+    private TransactionTemplate tx;
     private NotificationStore store;
     private NotificationAdminService service;
+    private NotificationBroadcastEventConsumer consumer;
     private String schema;
     private final UUID recipient = UUID.randomUUID();
 
@@ -42,10 +48,12 @@ class NotificationHrefBoundaryDatabaseTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(dataSource);
+        tx = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         var client = JdbcClient.create(dataSource);
         var json = new JsonMapper();
         jdbc.execute(
-                "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text UNIQUE,enabled boolean,display_name text DEFAULT 'Recipient')");
+                "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text UNIQUE,enabled"
+                        + " boolean,display_name text DEFAULT 'Recipient',deleted_at timestamptz)");
         jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
         jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
         jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
@@ -53,9 +61,16 @@ class NotificationHrefBoundaryDatabaseTest {
                 "INSERT INTO platform_user(id,username,enabled) VALUES(?,'recipient',true)",
                 recipient);
         store = new NotificationStore(client, jdbc, json);
+        var outbox = new PlatformEventOutboxStore(client, json);
+        consumer = new NotificationBroadcastEventConsumer(store, json);
         service =
                 new NotificationAdminService(
-                        store, client, mock(AdministrationPort.class), mock(AuditPort.class), json);
+                        store,
+                        client,
+                        mock(AdministrationPort.class),
+                        mock(AuditPort.class),
+                        json,
+                        outbox::append);
     }
 
     @AfterEach
@@ -125,7 +140,9 @@ class NotificationHrefBoundaryDatabaseTest {
 
         for (String unsafe : List.of("/\\outside.invalid/check", "/\t/outside.invalid/check"))
             jdbc.update(
-                    "INSERT INTO platform_notification(id,recipient_id,dedupe_key,kind,title_key,body_key,params,href) VALUES(?,?,'legacy:' || ?,'feedback','title','body','{}',?)",
+                    "INSERT INTO"
+                            + " platform_notification(id,recipient_id,dedupe_key,kind,title_key,body_key,params,href)"
+                            + " VALUES(?,?,'legacy:' || ?,'feedback','title','body','{}',?)",
                     UUID.randomUUID(),
                     recipient,
                     key(unsafe),
@@ -141,16 +158,35 @@ class NotificationHrefBoundaryDatabaseTest {
     }
 
     private NotificationAdminService.Published publish(String href) {
-        return service.publish(
-                "publisher",
-                new NotificationAdminService.Publish(
-                        "USERS",
-                        List.of(recipient),
-                        List.of(),
-                        "Fixture title",
-                        "Fixture body",
-                        href,
-                        null));
+        var published =
+                tx.execute(
+                        status ->
+                                service.publish(
+                                        "publisher",
+                                        new NotificationAdminService.Publish(
+                                                "USERS",
+                                                List.of(recipient),
+                                                List.of(),
+                                                "Fixture title",
+                                                "Fixture body",
+                                                href,
+                                                null)));
+        assertNotNull(published);
+        DurableEventConsumerPort.Event event =
+                jdbc.queryForObject(
+                        "SELECT id,source_type,event_type,event_key,payload::text,attempts"
+                                + " FROM platform_event_outbox WHERE event_key=?",
+                        (rs, row) ->
+                                new DurableEventConsumerPort.Event(
+                                        rs.getObject("id", UUID.class),
+                                        rs.getString("source_type"),
+                                        rs.getString("event_type"),
+                                        rs.getString("event_key"),
+                                        rs.getString("payload"),
+                                        rs.getInt("attempts")),
+                        "broadcast:" + published.broadcastId() + ":0");
+        tx.executeWithoutResult(status -> consumer.consume(event));
+        return published;
     }
 
     private NotificationStore.CreateRequest request(String key, String href) {

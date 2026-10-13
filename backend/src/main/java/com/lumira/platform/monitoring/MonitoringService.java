@@ -1,6 +1,9 @@
 package com.lumira.platform.monitoring;
 
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.DurableEventProducerPort;
+import com.lumira.platform.common.DurableEventTopologyPort;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.modules.ModuleCapabilityPort;
 import com.sun.management.OperatingSystemMXBean;
 import com.zaxxer.hikari.HikariDataSource;
@@ -38,8 +41,16 @@ public class MonitoringService {
             Integer maxConnections) {}
 
     public record EventFlow(
+            String status,
+            int producerTypes,
+            int consumerTypes,
+            int connectedTypes,
+            int unmatchedConsumerTypes,
+            List<DurableEventProducerPort.EventType> missingConsumers,
             long createdLast5m,
             long deliveredLast5m,
+            long retryPending,
+            long overdue,
             List<MonitoringRepository.FlowEvent> recentEvents) {}
 
     public record Snapshot(
@@ -52,21 +63,24 @@ public class MonitoringService {
     private final AdministrationPort guard;
     private final ModuleCapabilityPort modules;
     private final DataSource dataSource;
+    private final DurableEventTopologyPort eventTopology;
 
     public MonitoringService(
             MonitoringRepository repository,
             AdministrationPort guard,
             ModuleCapabilityPort modules,
-            DataSource dataSource) {
+            DataSource dataSource,
+            DurableEventTopologyPort eventTopology) {
         this.repository = repository;
         this.guard = guard;
         this.modules = modules;
         this.dataSource = dataSource;
+        this.eventTopology = eventTopology;
     }
 
     @Transactional(readOnly = true)
     public Snapshot summary(String actor) {
-        guard.requireGlobal(actor, "platform:audit:read");
+        guard.requirePageGlobal(actor, PlatformPageId.MONITORING);
         var value = repository.summary(System.currentTimeMillis());
         var counters =
                 new MonitoringRepository.Summary(
@@ -87,14 +101,26 @@ public class MonitoringService {
                         value.processingOutbox(),
                         value.eventsCreatedLast5m(),
                         value.eventsDeliveredLast5m(),
+                        value.retryPendingOutbox(),
+                        value.overdueOutbox(),
                         value.measuredAt());
+        var topology = eventTopology.snapshot();
+        var flowStatus = EventFlowStatus.resolve(topology, counters);
         return new Snapshot(
                 counters,
                 machineRuntime(),
                 databaseRuntime(),
                 new EventFlow(
+                        flowStatus.name(),
+                        topology.producerTypes(),
+                        topology.consumerTypes(),
+                        topology.connectedTypes(),
+                        Math.max(0, topology.consumerTypes() - topology.connectedTypes()),
+                        topology.missingConsumers(),
                         counters.eventsCreatedLast5m(),
                         counters.eventsDeliveredLast5m(),
+                        counters.retryPendingOutbox(),
+                        counters.overdueOutbox(),
                         repository.recentFlow()));
     }
 

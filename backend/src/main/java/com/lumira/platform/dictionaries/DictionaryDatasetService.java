@@ -1,6 +1,8 @@
 package com.lumira.platform.dictionaries;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
 import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,20 +16,24 @@ public class DictionaryDatasetService {
     private final DictionaryItemRepository items;
     private final JdbcTemplate jdbc;
     private final AuditPort audit;
+    private final AdministrationPort guard;
 
     public DictionaryDatasetService(
             DictionaryService dictionaries,
             DictionaryItemRepository items,
             JdbcTemplate jdbc,
-            AuditPort audit) {
+            AuditPort audit,
+            AdministrationPort guard) {
         this.dictionaries = dictionaries;
         this.items = items;
         this.jdbc = jdbc;
         this.audit = audit;
+        this.guard = guard;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public DictionaryDataset export(UUID id) {
+    public DictionaryDataset export(UUID id, String actor) {
+        guard.requireOperationGlobal(actor, PlatformOperation.DICTIONARY_EXPORT);
         var type = dictionaries.find(id);
         long count =
                 jdbc.queryForObject(
@@ -65,7 +71,7 @@ public class DictionaryDatasetService {
     public record Preview(String code, String name, String structure, int itemCount) {}
 
     @Transactional(readOnly = true)
-    public Preview preview(DictionaryDataset dataset) {
+    private Preview previewUnchecked(DictionaryDataset dataset) {
         DictionaryService.validate(
                 new DictionaryService.Input(
                         dataset.code(),
@@ -86,11 +92,18 @@ public class DictionaryDatasetService {
         return new Preview(dataset.code(), dataset.name(), dataset.structure(), ordered.size());
     }
 
+    @Transactional(readOnly = true)
+    public Preview preview(DictionaryDataset dataset, String actor) {
+        guard.requireOperationGlobal(actor, PlatformOperation.DICTIONARY_IMPORT);
+        return previewUnchecked(dataset);
+    }
+
     @Transactional
     public DictionaryRepository.Dictionary importNew(DictionaryDataset dataset, String actor) {
+        guard.requireOperationGlobal(actor, PlatformOperation.DICTIONARY_IMPORT);
         var ordered = dataset.validatedOrder();
         var type =
-                dictionaries.create(
+                dictionaries.createFromImport(
                         new DictionaryService.Input(
                                 dataset.code(),
                                 dataset.name(),

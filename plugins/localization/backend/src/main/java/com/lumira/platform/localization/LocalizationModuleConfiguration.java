@@ -10,6 +10,6 @@ import org.springframework.context.annotation.Configuration;
 public class LocalizationModuleConfiguration {
     @Bean
     PlatformModule localizationModule() {
-        return new PlatformModule("localization", "运行时本地化", "1.0.6", List.of("platform"));
+        return new PlatformModule("localization", "运行时本地化", "1.0.11", List.of("platform"));
     }
 }

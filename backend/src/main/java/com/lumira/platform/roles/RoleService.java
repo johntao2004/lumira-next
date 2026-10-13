@@ -1,7 +1,10 @@
 package com.lumira.platform.roles;
 
 import com.lumira.platform.common.*;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.AuthenticationReachabilityPort;
+import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.EffectiveAuthenticationPolicyPort;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,44 +18,80 @@ import org.springframework.web.server.ResponseStatusException;
 public class RoleService {
     public static Set<String> permissions() {
         var result = new java.util.HashSet<>(PERMISSIONS);
-        result.addAll(com.lumira.platform.modules.PluginPermissions.values());
+        result.addAll(pluginPermissions());
         return Set.copyOf(result);
     }
 
-    public static final Set<String> PERMISSIONS =
-            new java.util.concurrent.CopyOnWriteArraySet<>(
-                    Set.of(
-                            "platform:feedback:read",
-                            "platform:feedback:create",
-                            "platform:feedback:manage",
-                            "platform:sensitive-words:read",
-                            "platform:sensitive-words:write",
-                            "platform:sensitive-words:import",
-                            "platform:localization:read",
-                            "platform:localization:write",
-                            "platform:localization:import",
-                            "platform:modules:read",
-                            "platform:modules:write",
-                            "platform:events:write",
-                            "platform:users:read",
-                            "platform:users:write",
-                            "platform:roles:read",
-                            "platform:roles:write",
-                            "platform:roles:preview",
-                            "platform:organizations:read",
-                            "platform:organizations:write",
-                            "platform:audit:read",
-                            "platform:dictionaries:read",
-                            "platform:dictionaries:write",
-                            "platform:settings:read",
-                            "platform:settings:write",
-                            "platform:navigation:read",
-                            "platform:navigation:write",
-                            "platform:files:read",
-                            "platform:files:write",
-                            "platform:notifications:read",
-                            "platform:notifications:write"));
+    private static Set<String> pluginPermissions() {
+        var result = new HashSet<>(com.lumira.platform.modules.PluginPermissions.values());
+        result.removeAll(PERMISSIONS);
+        return Set.copyOf(result);
+    }
 
+    public static final Set<String> PERMISSIONS = PlatformPermissionCatalog.permissions();
+
+    public record PermissionCatalogPage(
+            String id,
+            String path,
+            String title,
+            String navigationGroup,
+            int navigationOrder,
+            String accessPermission,
+            List<String> operationPermissions,
+            String accessScope,
+            Map<String, String> operationScopes,
+            String mappingStatus) {
+        public PermissionCatalogPage {
+            operationPermissions =
+                    List.copyOf(operationPermissions == null ? List.of() : operationPermissions);
+            accessScope = accessScope == null ? "global" : accessScope;
+            operationScopes = Map.copyOf(operationScopes == null ? Map.of() : operationScopes);
+        }
+
+        /** Compatibility fallback for catalog entries without a route-to-permission mapping. */
+        public PermissionCatalogPage(String path, String title) {
+            this(
+                    pageIdFromPath(path),
+                    path,
+                    title,
+                    "unassigned",
+                    0,
+                    null,
+                    List.of(),
+                    "global",
+                    Map.of(),
+                    "UNASSIGNED");
+        }
+    }
+
+    public record PermissionCatalogPermission(
+            String code, String label, List<String> requires, boolean editable, boolean retired) {
+        public PermissionCatalogPermission {
+            requires = List.copyOf(requires == null ? List.of() : requires);
+        }
+
+        public PermissionCatalogPermission(String code, String label) {
+            this(code, label, List.of(), false, false);
+        }
+
+        public PermissionCatalogPermission(String code, String label, List<String> requires) {
+            this(code, label, requires, false, false);
+        }
+    }
+
+    public record PermissionCatalogGroup(
+            String id,
+            String title,
+            String source,
+            List<PermissionCatalogPage> pages,
+            List<PermissionCatalogPermission> permissions,
+            int catalogVersion) {}
+
+    /**
+     * The final component is a request-only compatibility sentinel. It accepts only null or an
+     * empty set; non-empty values are rejected so a stale client cannot request legacy projection
+     * behavior.
+     */
     public record RoleInput(
             String code,
             String name,
@@ -61,11 +100,42 @@ public class RoleService {
             Set<String> authorities,
             String dataScope,
             Long fileQuotaBytesLimit,
-            Long fileQuotaFilesLimit) {}
+            Long fileQuotaFilesLimit,
+            Set<String> legacyProjectionPermissions) {
+        public RoleInput(
+                String code,
+                String name,
+                Boolean enabled,
+                Long version,
+                Set<String> authorities,
+                String dataScope,
+                Long fileQuotaBytesLimit,
+                Long fileQuotaFilesLimit) {
+            this(
+                    code,
+                    name,
+                    enabled,
+                    version,
+                    authorities,
+                    dataScope,
+                    fileQuotaBytesLimit,
+                    fileQuotaFilesLimit,
+                    null);
+        }
+    }
 
     public record Assignment(Long version, Set<UUID> roleIds) {}
 
     public record UserRoles(long version, List<UUID> roleIds) {}
+
+    public record AssignmentRoleOption(
+            UUID id,
+            String code,
+            String name,
+            boolean enabled,
+            Long fileQuotaBytesLimit,
+            Long fileQuotaFilesLimit,
+            boolean assignable) {}
 
     private final com.lumira.platform.common.AdministrationPort guard;
     private final RoleRepository roles;
@@ -126,18 +196,64 @@ public class RoleService {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResult<RoleRepository.Role> list(PageRequest p, String actor) {
+        if (!hasPage(actor, PlatformPageId.ROLES)) {
+            guard.requirePage(actor, PlatformPageId.USERS);
+            if (!hasOperation(actor, PlatformOperation.USER_READ_ROLES)
+                    && !hasOperation(actor, PlatformOperation.USER_ASSIGN_ROLES))
+                fail(HttpStatus.FORBIDDEN, "forbidden");
+        }
+        return list(p);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResult<AssignmentRoleOption> assignmentOptions(
+            UUID userId, PageRequest page, String actor) {
+        boolean canAssign = hasUserOperation(actor, userId, PlatformOperation.USER_ASSIGN_ROLES);
+        if (!canAssign && !hasUserOperation(actor, userId, PlatformOperation.USER_READ_ROLES))
+            fail(HttpStatus.FORBIDDEN, "forbidden");
+
+        Set<String> delegableAuthorities = Set.of();
+        if (canAssign) {
+            Set<String> globalAuthorities = globalAuthorities(actor);
+            var delegable = new HashSet<>(permissions());
+            delegable.retainAll(globalAuthorities);
+            if (globalAuthorities.contains("platform:modules:install"))
+                delegable.addAll(pluginPermissions());
+            delegableAuthorities = Set.copyOf(delegable);
+        }
+
+        return roles.assignmentOptions(
+                        page, Set.copyOf(roles.userRoles(userId)), delegableAuthorities, canAssign)
+                .map(
+                        option ->
+                                new AssignmentRoleOption(
+                                        option.id(),
+                                        option.code(),
+                                        option.name(),
+                                        option.enabled(),
+                                        option.fileQuotaBytesLimit(),
+                                        option.fileQuotaFilesLimit(),
+                                        option.assignable()));
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public RoleRepository.Role find(UUID id) {
         return roles.find(id);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public RoleRepository.Role find(UUID id, String actor) {
+        guard.requirePageGlobal(actor, PlatformPageId.ROLES);
+        return find(id);
     }
 
     private static void fail(HttpStatus status, String code) {
         throw new ResponseStatusException(status, code);
     }
 
-    private Set<String> begin(String actor) {
-        var held = guard.require(actor, "platform:roles:write");
-        guard.requireGlobal(actor, "platform:roles:write");
-        return held;
+    private Set<String> begin(String actor, PlatformOperation operation) {
+        return guard.requireOperationGlobal(actor, operation);
     }
 
     private void validateInput(RoleInput in) {
@@ -146,30 +262,283 @@ public class RoleService {
                 || in.name().strip().length() > 200
                 || in.enabled() == null
                 || in.authorities() == null
-                || in.authorities().stream().anyMatch(Objects::isNull))
+                || in.authorities().stream().anyMatch(Objects::isNull)
+                || (in.legacyProjectionPermissions() != null
+                        && in.legacyProjectionPermissions().stream().anyMatch(Objects::isNull)))
+            fail(HttpStatus.BAD_REQUEST, "invalidRole");
+        if (in.legacyProjectionPermissions() != null && !in.legacyProjectionPermissions().isEmpty())
             fail(HttpStatus.BAD_REQUEST, "invalidRole");
         if (!validQuota(in.fileQuotaBytesLimit()) || !validQuota(in.fileQuotaFilesLimit()))
             fail(HttpStatus.BAD_REQUEST, "invalidFileQuota");
         if (in.dataScope() != null
                 && !Set.of("SELF", "ORGANIZATION", "SUBTREE", "ALL").contains(in.dataScope()))
             fail(HttpStatus.BAD_REQUEST, "invalidRole");
-        if (!permissions().containsAll(in.authorities()))
-            fail(HttpStatus.BAD_REQUEST, "invalidRole");
     }
 
-    private void validateHeldAuthorities(RoleInput in, Set<String> held) {
-        if (!held.containsAll(in.authorities())) fail(HttpStatus.FORBIDDEN, "forbidden");
+    private void validateAssignableAuthorities(
+            Collection<String> requested, Collection<String> retained) {
+        var allowed = new HashSet<>(permissions());
+        allowed.addAll(retained);
+        if (!allowed.containsAll(requested)) fail(HttpStatus.FORBIDDEN, "forbidden");
     }
 
-    /** A manager may re-delegate only permissions they hold across every recipient scope. */
-    private void requireDelegation(String actor, Collection<String> authorities) {
-        for (String authority : new TreeSet<>(authorities)) guard.requireGlobal(actor, authority);
+    /**
+     * New platform grants require global possession; installer can bootstrap active plugin codes.
+     */
+    private void requireDelegation(
+            String actor, UUID targetRoleId, Collection<String> authorities) {
+        Set<String> pluginPermissions = pluginPermissions();
+        var pluginBootstrap = new TreeSet<String>();
+        for (String authority : new TreeSet<>(authorities)) {
+            if (PERMISSIONS.contains(authority) || !pluginPermissions.contains(authority)) {
+                guard.requireGlobal(actor, authority);
+            } else if (!guard.hasGlobal(actor, authority)) {
+                pluginBootstrap.add(authority);
+            }
+        }
+        if (pluginBootstrap.isEmpty()) return;
+        if (isPreview(actor) || !guard.hasGlobal(actor, "platform:modules:install"))
+            fail(HttpStatus.FORBIDDEN, "forbidden");
+        for (String authority : pluginBootstrap)
+            audit.append(actor, "role.pluginPermission.bootstrap:" + authority, targetRoleId);
     }
 
-    private static Set<String> unionAuthorities(Collection<String> left, Collection<String> right) {
-        var result = new HashSet<>(left);
-        result.addAll(right);
-        return result;
+    private void requireCurrentDelegation(String actor, Collection<String> authorities) {
+        Set<String> active = permissions();
+        for (String authority : new TreeSet<>(authorities))
+            if (active.contains(authority)) guard.requireGlobal(actor, authority);
+    }
+
+    private void requireCurrentDelegation(String actor, RoleRepository.Role role) {
+        requireCurrentDelegation(actor, role.authorities());
+    }
+
+    private void requireUpdateDelegation(
+            String actor, UUID targetRoleId, Collection<String> previous, Collection<String> next) {
+        var existing = new HashSet<>(previous);
+        requireCurrentDelegation(actor, existing);
+        var additions = new HashSet<>(next);
+        additions.removeAll(existing);
+        requireDelegation(actor, targetRoleId, additions);
+    }
+
+    private static int scopeRank(String scope) {
+        return switch (scope) {
+            case "SELF" -> 0;
+            case "ORGANIZATION" -> 1;
+            case "SUBTREE" -> 2;
+            case "ALL" -> 3;
+            default -> throw new IllegalArgumentException("Unknown data scope");
+        };
+    }
+
+    private static boolean isPreview(String actor) {
+        var snapshot = AuthenticationRequestContext.current();
+        return snapshot != null
+                && actor.equals(snapshot.principalName())
+                && snapshot.authorization() != null
+                && snapshot.authorization().previewActive();
+    }
+
+    public List<PermissionCatalogGroup> permissionCatalog() {
+        return permissionCatalog(null, false);
+    }
+
+    public List<PermissionCatalogGroup> permissionCatalog(String actor) {
+        guard.requirePageGlobal(actor, PlatformPageId.ROLES);
+        return permissionCatalog(actor, true);
+    }
+
+    public List<String> permissionCodes(String actor) {
+        guard.requirePageGlobal(actor, PlatformPageId.ROLES);
+        return permissions().stream().sorted().toList();
+    }
+
+    private List<PermissionCatalogGroup> permissionCatalog(
+            String actor, boolean includeEditability) {
+        var catalog = new ArrayList<PermissionCatalogGroup>();
+        for (var group : PlatformPermissionCatalog.groups()) {
+            catalog.add(
+                    new PermissionCatalogGroup(
+                            group.id(),
+                            group.title(),
+                            "platform",
+                            group.pages().stream().map(RoleService::catalogPage).toList(),
+                            group.permissions().stream()
+                                    .map(
+                                            permission ->
+                                                    new PermissionCatalogPermission(
+                                                            permission.code(),
+                                                            permission.label(),
+                                                            List.of(),
+                                                            editable(
+                                                                    actor,
+                                                                    permission.code(),
+                                                                    "platform",
+                                                                    includeEditability),
+                                                            false))
+                                    .toList(),
+                            PlatformPermissionCatalog.VERSION));
+        }
+        Set<String> activePluginPermissions = pluginPermissions();
+        for (var group : com.lumira.platform.modules.PluginPermissions.catalogGroups()) {
+            var groupPermissions =
+                    group.permissions().stream()
+                            .filter(
+                                    permission ->
+                                            activePluginPermissions.contains(permission.code()))
+                            .map(
+                                    permission ->
+                                            new PermissionCatalogPermission(
+                                                    permission.code(),
+                                                    permission.label(),
+                                                    permission.requires(),
+                                                    editable(
+                                                            actor,
+                                                            permission.code(),
+                                                            "plugin",
+                                                            includeEditability),
+                                                    false))
+                            .toList();
+            if (groupPermissions.isEmpty()) continue;
+            catalog.add(
+                    new PermissionCatalogGroup(
+                            group.id(),
+                            group.title(),
+                            "plugin",
+                            group.pages().stream()
+                                    .map(page -> catalogPage(page, activePluginPermissions))
+                                    .toList(),
+                            groupPermissions,
+                            PlatformPermissionCatalog.VERSION));
+        }
+        var active = permissions();
+        var retired =
+                roles.permissionHistory().stream()
+                        .filter(authority -> !active.contains(authority))
+                        .distinct()
+                        .sorted()
+                        .map(
+                                authority ->
+                                        new PermissionCatalogPermission(
+                                                authority, authority, List.of(), false, true))
+                        .toList();
+        if (!retired.isEmpty())
+            catalog.add(
+                    new PermissionCatalogGroup(
+                            "retired-permissions",
+                            "permissionRetired",
+                            "platform",
+                            List.of(),
+                            retired,
+                            PlatformPermissionCatalog.VERSION));
+        return catalog.stream().sorted(Comparator.comparing(PermissionCatalogGroup::id)).toList();
+    }
+
+    private static PermissionCatalogPage catalogPage(PlatformPermissionCatalog.Page page) {
+        return new PermissionCatalogPage(
+                page.id(),
+                page.path(),
+                page.title(),
+                page.navigationGroup(),
+                page.navigationOrder(),
+                page.accessPermission(),
+                page.operationPermissions(),
+                page.accessScope(),
+                page.operationScopes(),
+                "MAPPED");
+    }
+
+    private static PermissionCatalogPage catalogPage(
+            com.lumira.platform.modules.PluginPermissions.Page page,
+            Set<String> activePluginPermissions) {
+        boolean accessIsDeclared =
+                page.accessPermission() != null
+                        && activePluginPermissions.contains(page.accessPermission());
+        String access = accessIsDeclared ? page.accessPermission() : null;
+        List<String> operations =
+                accessIsDeclared
+                        ? page.operationPermissions().stream()
+                                .filter(activePluginPermissions::contains)
+                                .sorted()
+                                .toList()
+                        : List.of();
+        Map<String, String> operationScopes =
+                operations.stream()
+                        .collect(
+                                java.util.stream.Collectors.toUnmodifiableMap(
+                                        permission -> permission,
+                                        permission ->
+                                                page.operationScopes()
+                                                        .getOrDefault(permission, "global")));
+        String group =
+                page.navigationGroup() == null || page.navigationGroup().isBlank()
+                        ? "unassigned"
+                        : page.navigationGroup();
+        String status = access == null || "unassigned".equals(group) ? "UNASSIGNED" : "MAPPED";
+        return new PermissionCatalogPage(
+                page.id() == null || page.id().isBlank() ? pageIdFromPath(page.path()) : page.id(),
+                page.path(),
+                page.title(),
+                group,
+                page.navigationOrder(),
+                access,
+                operations,
+                page.accessScope(),
+                operationScopes,
+                status);
+    }
+
+    private boolean editable(
+            String actor, String permission, String source, boolean includeEditability) {
+        if (!includeEditability || actor == null || isPreview(actor)) return false;
+        return guard.hasGlobal(actor, permission)
+                || ("plugin".equals(source) && guard.hasGlobal(actor, "platform:modules:install"));
+    }
+
+    private boolean hasPage(String actor, PlatformPageId page) {
+        try {
+            guard.requirePage(actor, page);
+            return true;
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() == HttpStatus.FORBIDDEN) return false;
+            throw exception;
+        }
+    }
+
+    private boolean hasOperation(String actor, PlatformOperation operation) {
+        try {
+            guard.requireOperation(actor, operation);
+            return true;
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() == HttpStatus.FORBIDDEN) return false;
+            throw exception;
+        }
+    }
+
+    private boolean hasUserOperation(String actor, UUID userId, PlatformOperation operation) {
+        try {
+            guard.requireOperationUser(actor, userId, operation);
+            return true;
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() == HttpStatus.FORBIDDEN) return false;
+            throw exception;
+        }
+    }
+
+    private Set<String> globalAuthorities(String actor) {
+        var snapshot = AuthenticationRequestContext.current();
+        if (snapshot != null
+                && actor.equals(snapshot.principalName())
+                && snapshot.authorization() != null)
+            return snapshot.authorization().effectiveGlobalAuthorities();
+        return roles.actorGlobalAuthorities(actor);
+    }
+
+    private static String pageIdFromPath(String path) {
+        if (path == null || path.isBlank()) return "";
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? path : path.substring(slash + 1);
     }
 
     private static boolean validQuota(Long value) {
@@ -183,12 +552,12 @@ public class RoleService {
     @Transactional
     public RoleRepository.Role create(RoleInput in, String actor) {
         validateInput(in);
+        validateAssignableAuthorities(in.authorities(), Set.of());
         if (in.code() == null || !in.code().matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}"))
             fail(HttpStatus.BAD_REQUEST, "invalidRole");
-        var held = begin(actor);
-        validateHeldAuthorities(in, held);
-        requireDelegation(actor, in.authorities());
+        begin(actor, PlatformOperation.ROLE_CREATE);
         var id = UUID.randomUUID();
+        requireDelegation(actor, id, in.authorities());
         roles.create(
                 id,
                 in.code(),
@@ -207,8 +576,7 @@ public class RoleService {
         validateInput(in);
         // Authentication policy lock must precede AdministrationGuard's session boundary.
         lockPolicyMutation();
-        var held = begin(actor);
-        validateHeldAuthorities(in, held);
+        begin(actor, PlatformOperation.ROLE_UPDATE);
         lockRegistrationPolicyMutation();
         if (jdbc != null)
             jdbc.sql("SELECT id FROM platform_role WHERE id=:id FOR UPDATE")
@@ -218,8 +586,23 @@ public class RoleService {
         var old = roles.find(id);
         if (in.version() == null || old.version() != in.version())
             fail(HttpStatus.CONFLICT, "staleRecord");
-        if (!held.containsAll(old.authorities())) fail(HttpStatus.FORBIDDEN, "forbidden");
-        requireDelegation(actor, unionAuthorities(old.authorities(), in.authorities()));
+        validateAssignableAuthorities(in.authorities(), old.authorities());
+        String requestedScope = in.dataScope() == null ? old.dataScope() : in.dataScope();
+        boolean reenabled = !old.enabled() && Boolean.TRUE.equals(in.enabled());
+        boolean scopeWidened = scopeRank(requestedScope) > scopeRank(old.dataScope());
+        boolean authoritiesChanged = !new HashSet<>(old.authorities()).equals(in.authorities());
+        if (authoritiesChanged || reenabled || scopeWidened) {
+            Set<String> active = permissions();
+            if ((reenabled || scopeWidened)
+                    && old.authorities().stream()
+                            .anyMatch(
+                                    authority ->
+                                            in.authorities().contains(authority)
+                                                    && !active.contains(authority)))
+                fail(HttpStatus.FORBIDDEN, "forbidden");
+            if (authoritiesChanged || reenabled || scopeWidened)
+                requireUpdateDelegation(actor, id, old.authorities(), in.authorities());
+        }
         if (isDefaultRegistrationRole(id)
                 && (!Boolean.TRUE.equals(in.enabled())
                         || !"SELF".equals(in.dataScope() == null ? old.dataScope() : in.dataScope())
@@ -230,10 +613,10 @@ public class RoleService {
                 id,
                 in.name().strip(),
                 in.enabled(),
-                in.dataScope() == null ? old.dataScope() : in.dataScope(),
+                requestedScope,
                 in.fileQuotaBytesLimit(),
                 in.fileQuotaFilesLimit());
-        roles.authorities(id, in.authorities());
+        if (authoritiesChanged) roles.authorities(id, in.authorities());
         if (Boolean.TRUE.equals(in.enabled())) validateAssignedPoliciesForRole(id);
         protect();
         audit.append(actor, "role.update", id);
@@ -243,7 +626,7 @@ public class RoleService {
     @Transactional
     public void delete(UUID id, long version, String actor) {
         lockPolicyMutation();
-        var held = begin(actor);
+        begin(actor, PlatformOperation.ROLE_DELETE);
         lockRegistrationPolicyMutation();
         if (jdbc != null)
             jdbc.sql("SELECT id FROM platform_role WHERE id=:id FOR UPDATE")
@@ -252,17 +635,22 @@ public class RoleService {
                     .optional();
         var role = roles.find(id);
         if (role.version() != version) fail(HttpStatus.CONFLICT, "staleRecord");
-        if (!held.containsAll(role.authorities())) fail(HttpStatus.FORBIDDEN, "forbidden");
-        requireDelegation(actor, role.authorities());
         if (isDefaultRegistrationRole(id)) fail(HttpStatus.CONFLICT, "registrationRoleInUse");
         if (roles.assigned(id)) fail(HttpStatus.CONFLICT, "roleInUse");
+        requireCurrentDelegation(actor, role);
         roles.delete(id);
+        protect();
         audit.append(actor, "role.delete", id);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public UserRoles userRoles(UUID id, String actor) {
-        guard.requireUser(actor, id, "platform:roles:read");
+        try {
+            guard.requireOperationUser(actor, id, PlatformOperation.USER_READ_ROLES);
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() != HttpStatus.FORBIDDEN) throw exception;
+            guard.requireOperationUser(actor, id, PlatformOperation.USER_ASSIGN_ROLES);
+        }
         return new UserRoles(users.versionSnapshot(id), roles.userRoles(id));
     }
 
@@ -273,7 +661,7 @@ public class RoleService {
                 || in.roleIds().stream().anyMatch(Objects::isNull))
             fail(HttpStatus.BAD_REQUEST, "invalidRole");
         lockPolicyMutation();
-        var held = begin(actor);
+        guard.requireOperationUser(actor, id, PlatformOperation.USER_ASSIGN_ROLES);
         if (jdbc != null)
             jdbc.sql("SELECT id FROM platform_user WHERE id=:id AND deleted_at IS NULL FOR UPDATE")
                     .param("id", id)
@@ -286,15 +674,17 @@ public class RoleService {
         var version = users.version(id);
         if (in.version() == null || version != in.version())
             fail(HttpStatus.CONFLICT, "staleRecord");
-        var touched = new HashSet<>(roles.userRoles(id));
-        touched.addAll(in.roleIds());
-        var affectedAuthorities = new HashSet<String>();
-        for (var roleId : touched) {
+        var additions = new HashSet<>(in.roleIds());
+        var currentRoleIds = new HashSet<>(roles.userRoles(id));
+        additions.removeAll(currentRoleIds);
+        for (var roleId : additions) {
             var role = roles.find(roleId);
-            if (!held.containsAll(role.authorities())) fail(HttpStatus.FORBIDDEN, "forbidden");
-            affectedAuthorities.addAll(role.authorities());
+            validateAssignableAuthorities(role.authorities(), Set.of());
+            requireDelegation(actor, roleId, role.authorities());
         }
-        requireDelegation(actor, affectedAuthorities);
+        var removals = new HashSet<>(currentRoleIds);
+        removals.removeAll(in.roleIds());
+        for (var roleId : removals) requireCurrentDelegation(actor, roles.find(roleId));
         roles.assign(id, in.roleIds());
         validateAssignedPolicies(id);
         protect();

@@ -2,6 +2,7 @@ package com.lumira.platform.feedback;
 
 import com.lumira.platform.common.*;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import com.lumira.platform.notifications.api.NotificationProducerPort;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -42,7 +43,41 @@ public class FeedbackStore {
             OffsetDateTime handledAt,
             long version,
             OffsetDateTime createdAt,
-            OffsetDateTime updatedAt) {}
+            OffsetDateTime updatedAt,
+            boolean canUpdateStatus,
+            boolean canReply) {
+        public Detail(
+                UUID id,
+                UUID ownerId,
+                String title,
+                String detailHtml,
+                String priority,
+                String category,
+                String status,
+                String adminReply,
+                UUID handledBy,
+                OffsetDateTime handledAt,
+                long version,
+                OffsetDateTime createdAt,
+                OffsetDateTime updatedAt) {
+            this(
+                    id,
+                    ownerId,
+                    title,
+                    detailHtml,
+                    priority,
+                    category,
+                    status,
+                    adminReply,
+                    handledBy,
+                    handledAt,
+                    version,
+                    createdAt,
+                    updatedAt,
+                    false,
+                    false);
+        }
+    }
 
     private final JdbcClient jdbc;
     private final AuditPort audit;
@@ -63,7 +98,8 @@ public class FeedbackStore {
         if (id == null
                 || actor == null
                 || jdbc.sql(
-                                "SELECT id FROM platform_user WHERE id=:id AND username=:actor AND enabled FOR SHARE")
+                                "SELECT id FROM platform_user WHERE id=:id AND username=:actor AND"
+                                        + " enabled FOR SHARE")
                         .param("id", id)
                         .param("actor", actor)
                         .query(UUID.class)
@@ -93,7 +129,9 @@ public class FeedbackStore {
             throw fail(HttpStatus.BAD_REQUEST, "invalidFeedback");
         UUID id = UUID.randomUUID();
         jdbc.sql(
-                        "INSERT INTO platform_feedback(id,owner_id,title,detail_html,priority,category,status) VALUES(:id,:owner,:title,:html,:priority,:category,:status)")
+                        "INSERT INTO"
+                                + " platform_feedback(id,owner_id,title,detail_html,priority,category,status)"
+                                + " VALUES(:id,:owner,:title,:html,:priority,:category,:status)")
                 .param("id", id)
                 .param("owner", owner)
                 .param("title", content.title())
@@ -118,14 +156,17 @@ public class FeedbackStore {
         for (UUID fileId : new LinkedHashSet<>(imageIds)) {
             if (fileId == null
                     || jdbc.sql(
-                                    "SELECT id FROM platform_file WHERE id=:id AND owner_id=:owner AND state='READY' AND media_type='image/png' FOR UPDATE")
+                                    "SELECT id FROM platform_file WHERE id=:id AND owner_id=:owner"
+                                            + " AND state='READY' AND media_type='image/png' FOR"
+                                            + " UPDATE")
                             .param("id", fileId)
                             .param("owner", owner)
                             .query(UUID.class)
                             .optional()
                             .isEmpty()) throw fail(HttpStatus.BAD_REQUEST, "invalidFeedback");
             jdbc.sql(
-                            "INSERT INTO platform_feedback_file(feedback_id,file_id) VALUES(:feedback,:file)")
+                            "INSERT INTO platform_feedback_file(feedback_id,file_id)"
+                                    + " VALUES(:feedback,:file)")
                     .param("feedback", feedbackId)
                     .param("file", fileId)
                     .update();
@@ -135,7 +176,9 @@ public class FeedbackStore {
     @Transactional(readOnly = true)
     public Detail findOwned(UUID owner, UUID id) {
         Objects.requireNonNull(owner, "owner");
-        return jdbc.sql("SELECT * FROM platform_feedback WHERE id=:id AND owner_id=:owner")
+        return jdbc.sql(
+                        "SELECT f.*,false AS can_update_status,false AS can_reply FROM"
+                                + " platform_feedback f WHERE id=:id AND owner_id=:owner")
                 .param("id", id)
                 .param("owner", owner)
                 .query(Detail.class)
@@ -145,7 +188,20 @@ public class FeedbackStore {
 
     @Transactional(readOnly = true)
     public Detail findForManagement(UUID id) {
-        return jdbc.sql("SELECT * FROM platform_feedback WHERE id=:id")
+        return jdbc.sql(
+                        "SELECT f.*,false AS can_update_status,false AS can_reply FROM"
+                                + " platform_feedback f WHERE id=:id")
+                .param("id", id)
+                .query(Detail.class)
+                .optional()
+                .orElseThrow(() -> fail(HttpStatus.NOT_FOUND, "feedbackNotFound"));
+    }
+
+    @Transactional
+    public Detail findForManagementForUpdate(UUID id) {
+        return jdbc.sql(
+                        "SELECT f.*,false AS can_update_status,false AS can_reply FROM"
+                                + " platform_feedback f WHERE id=:id FOR UPDATE")
                 .param("id", id)
                 .query(Detail.class)
                 .optional()
@@ -166,7 +222,9 @@ public class FeedbackStore {
             throw fail(HttpStatus.BAD_REQUEST, "invalidFeedback");
         String normalized = FeedbackContent.reply(reply);
         var current =
-                jdbc.sql("SELECT * FROM platform_feedback WHERE id=:id FOR UPDATE")
+                jdbc.sql(
+                                "SELECT f.*,false AS can_update_status,false AS can_reply FROM"
+                                        + " platform_feedback f WHERE id=:id FOR UPDATE")
                         .param("id", id)
                         .query(Detail.class)
                         .optional()
@@ -174,7 +232,10 @@ public class FeedbackStore {
         if (current.version() != version) throw fail(HttpStatus.CONFLICT, "staleRecord");
         boolean terminal = policy.statuses().get(status);
         jdbc.sql(
-                        "UPDATE platform_feedback SET status=:status,admin_reply=:reply,handled_by=:handler,handled_at=CASE WHEN :terminal THEN clock_timestamp() ELSE NULL END,version=version+1,updated_at=clock_timestamp() WHERE id=:id")
+                        "UPDATE platform_feedback SET"
+                                + " status=:status,admin_reply=:reply,handled_by=:handler,handled_at=CASE"
+                                + " WHEN :terminal THEN clock_timestamp() ELSE NULL"
+                                + " END,version=version+1,updated_at=clock_timestamp() WHERE id=:id")
                 .param("status", status)
                 .param("reply", normalized)
                 .param("handler", handler)
@@ -201,6 +262,59 @@ public class FeedbackStore {
         return list(null, true, page, status, priority, category);
     }
 
+    /**
+     * Lists rows visible through both the feedback page grant and the read action grant. The
+     * authorization functions keep role-preview semantics in the database before pagination.
+     */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResult<Summary> listForManagement(
+            PageRequest page,
+            String status,
+            String priority,
+            String category,
+            String actor,
+            RequestAuthorizationContext context,
+            boolean includeDeletedOwners) {
+        String accessUsers = visibleUsers(context, "accessPermission");
+        String readUsers = visibleUsers(context, "readPermission");
+        String scope =
+                "(f.owner_id IN (SELECT user_id FROM "
+                        + accessUsers
+                        + " INTERSECT SELECT user_id FROM "
+                        + readUsers
+                        + ") OR (:includeDeletedOwners AND (f.owner_id IS NULL OR"
+                        + " (u.id=f.owner_id AND u.deleted_at IS NOT NULL))))";
+        var params = new HashMap<String, Object>();
+        params.put("actor", actor);
+        params.put("accessPermission", FeedbackService.ACCESS);
+        params.put("readPermission", FeedbackService.READ);
+        params.put("includeDeletedOwners", includeDeletedOwners);
+        authorizationContextParams(params, context);
+        return list(page, status, priority, category, scope, params);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isDeletedOwner(UUID ownerId) {
+        return jdbc.sql(
+                        "SELECT EXISTS(SELECT 1 FROM platform_user WHERE id=:owner AND"
+                                + " deleted_at IS NOT NULL)")
+                .param("owner", ownerId)
+                .query(Boolean.class)
+                .single();
+    }
+
+    /** Returns candidate ticket owners for an image; callers must authorize a candidate first. */
+    @Transactional(readOnly = true)
+    public List<UUID> findManagementImageOwners(UUID imageId) {
+        return jdbc.sql(
+                        "SELECT DISTINCT f.owner_id FROM platform_feedback_file ff"
+                                + " JOIN platform_feedback f ON f.id=ff.feedback_id"
+                                + " WHERE ff.file_id=:image")
+                .param("image", imageId)
+                .query(UUID.class)
+                .list();
+    }
+
     private PageResult<Summary> list(
             UUID owner,
             boolean all,
@@ -208,10 +322,26 @@ public class FeedbackStore {
             String status,
             String priority,
             String category) {
+        String scope = all ? "true" : "f.owner_id=:owner";
+        var params = new HashMap<String, Object>();
+        if (!all) params.put("owner", owner);
+        return list(page, status, priority, category, scope, params);
+    }
+
+    private PageResult<Summary> list(
+            PageRequest page,
+            String status,
+            String priority,
+            String category,
+            String scope,
+            Map<String, Object> params) {
         String from = " FROM platform_feedback f LEFT JOIN platform_user u ON u.id=f.owner_id";
         String filter =
-                (all ? " WHERE true" : " WHERE f.owner_id=:owner")
-                        + " AND (:status='' OR f.status=:status) AND (:priority='' OR f.priority=:priority) AND (:category='' OR f.category=:category) AND (:search='' OR strpos(lower(f.title),lower(:search))>0)";
+                " WHERE "
+                        + scope
+                        + " AND (:status='' OR f.status=:status) AND (:priority='' OR"
+                        + " f.priority=:priority) AND (:category='' OR f.category=:category) AND"
+                        + " (:search='' OR strpos(lower(f.title),lower(:search))>0)";
         var fieldFilter =
                 PageFilterSql.build(
                         page,
@@ -228,8 +358,7 @@ public class FeedbackStore {
                                 "f.category",
                                 "updatedAt",
                                 "f.updated_at"));
-        Map<String, Object> params = new HashMap<>();
-        if (!all) params.put("owner", owner);
+        params = new HashMap<>(params);
         params.put("status", status == null ? "" : status);
         params.put("priority", priority == null ? "" : priority);
         params.put("category", category == null ? "" : category);
@@ -242,17 +371,37 @@ public class FeedbackStore {
                         .single();
         var rows =
                 jdbc.sql(
-                                "SELECT f.id,f.owner_id,coalesce(u.display_name,u.username) AS owner_name,f.title,f.priority,f.category,f.status,f.version,f.created_at,f.updated_at"
+                                "SELECT f.id,f.owner_id,coalesce(u.display_name,u.username) AS"
+                                        + " owner_name,f.title,f.priority,f.category,f.status,f.version,f.created_at,f.updated_at"
                                         + from
                                         + filter
                                         + fieldFilter.sql()
-                                        + " ORDER BY f.created_at DESC,f.id DESC LIMIT :limit OFFSET :offset")
+                                        + " ORDER BY f.created_at DESC,f.id DESC LIMIT :limit"
+                                        + " OFFSET :offset")
                         .params(params)
                         .param("limit", page.pageSize())
                         .param("offset", page.offset())
                         .query(Summary.class)
                         .list();
         return new PageResult<>(rows, count, page.page(), page.pageSize());
+    }
+
+    private static String visibleUsers(
+            RequestAuthorizationContext context, String permissionParameter) {
+        String permission = ":" + permissionParameter;
+        return context != null && context.previewActive()
+                ? "platform_role_preview_visible_users(:actor,"
+                        + permission
+                        + ",:targetRoleId,:targetRoleVersion)"
+                : "platform_visible_users(:actor," + permission + ")";
+    }
+
+    private static void authorizationContextParams(
+            Map<String, Object> params, RequestAuthorizationContext context) {
+        if (context != null && context.previewActive()) {
+            params.put("targetRoleId", context.targetRoleId());
+            params.put("targetRoleVersion", context.preview().roleVersion());
+        }
     }
 
     private static ResponseStatusException fail(HttpStatus status, String code) {

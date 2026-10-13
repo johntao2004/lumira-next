@@ -1,8 +1,10 @@
 package com.lumira.platform.settings;
 
+import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.BoundedBody;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformPageId;
 import java.time.OffsetDateTime;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
@@ -51,20 +53,27 @@ public class SettingHistoryController {
     private final SettingStore store;
     private final SettingRollbackService rollback;
     private final ObjectMapper mapper;
+    private final AdministrationPort administration;
 
     public SettingHistoryController(
-            SettingStore store, SettingRollbackService rollback, ObjectMapper mapper) {
+            SettingStore store,
+            SettingRollbackService rollback,
+            ObjectMapper mapper,
+            AdministrationPort administration) {
         this.store = store;
         this.rollback = rollback;
         this.mapper = mapper;
+        this.administration = administration;
     }
 
     @GetMapping("/{section}/history")
     public PageResult<HistoryItem> history(
             @PathVariable String section,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int pageSize) {
+            @RequestParam(defaultValue = "10") int pageSize,
+            Authentication actor) {
         requireSection(section);
+        administration.requirePageGlobal(actor.getName(), page(section));
         var request = new PageRequest(page, pageSize, "");
         var result = store.history(section, request);
         return new PageResult<>(
@@ -84,8 +93,10 @@ public class SettingHistoryController {
     }
 
     @GetMapping("/{section}/history/{version}")
-    public HistoryDetail detail(@PathVariable String section, @PathVariable long version) {
+    public HistoryDetail detail(
+            @PathVariable String section, @PathVariable long version, Authentication actor) {
         requireSection(section);
+        administration.requirePageGlobal(actor.getName(), page(section));
         if (version < 1)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidSettingRevision");
         var row =
@@ -116,5 +127,9 @@ public class SettingHistoryController {
     private static void requireSection(String section) {
         if (!SECTIONS.contains(section))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "settingNotFound");
+    }
+
+    private static PlatformPageId page(String section) {
+        return SettingStore.updateOperation(section).page();
     }
 }

@@ -40,7 +40,6 @@ async function auditPage(page, name, path, ready) {
       theme: document.documentElement.dataset.theme,
       title: document.title,
       siderWidth: Math.round(sider?.getBoundingClientRect().width ?? 0),
-      navigationGroupCount: document.querySelectorAll('.ant-pro-sider-menu > .ant-menu-submenu').length,
       retiredSidebarControlCount: document.querySelectorAll('[data-testid="navigation-mode-switch"], [data-testid="dual-label-toggle"], [data-testid="dual-pin-toggle"]').length,
       workbenchVerticalGaps: blocks.slice(1).map((rect, index) => Math.round(rect.top - blocks[index].bottom)),
       workbenchCardGaps: cards.slice(1).map((rect, index) => Math.round(rect.left - cards[index].right)),
@@ -48,8 +47,7 @@ async function auditPage(page, name, path, ready) {
   });
   assert.equal(metrics.horizontalOverflow, false, `${name} has horizontal overflow`);
   if (name.startsWith('home-1440')) {
-    assert.equal(metrics.siderWidth, 64, `${name} must default to the compact 64px ProLayout sider`);
-    assert.equal(metrics.navigationGroupCount, 2, `${name} must expose both permission-filtered navigation groups`);
+    assert.equal(metrics.siderWidth, 256, `${name} must default to the expanded 256px ProLayout sider`);
     assert.equal(metrics.retiredSidebarControlCount, 0, `${name} must not render retired dual-sidebar controls`);
     assert.deepEqual(metrics.workbenchVerticalGaps, [24, 24], `${name} must use 24px between page modules`);
     assert.deepEqual(metrics.workbenchCardGaps, [16, 16], `${name} must use 16px between related statistic cards`);
@@ -97,9 +95,9 @@ try {
   const page = await context.newPage();
   const routes = [
     ["home-1440-light", "/dashboard/home", "工作台"],
-    ["users-1440-light", "/dashboard/users", "用户管理"],
-    ["branding-1440-light", "/dashboard/branding", "品牌设置"],
-    ["sms-1440-light", "/dashboard/sms", "短信服务"],
+    ["users-1440-light", "/dashboard/users", "用户列表"],
+    ["branding-1440-light", "/dashboard/branding", "站点设置"],
+    ["sms-1440-light", "/dashboard/sms", "消息渠道"],
     ["navigation-1440-light", "/dashboard/navigation", "导航管理"],
   ];
   for (const [name, path, heading] of routes) {
@@ -107,9 +105,12 @@ try {
     assert.equal(await page.getByRole("heading", { name: heading, exact: true }).count(), 1, `${path} repeats its PageContainer title`);
     if (name === "home-1440-light") {
       const sider = page.locator('.ant-layout-sider');
-      await sider.locator('.ant-pro-sider-collapsed-button').click();
-      await sider.getByText("平台管理", { exact: true }).click();
-      await sider.getByRole("link", { name: "品牌设置", exact: true }).waitFor();
+      const menu = sider.locator('.ant-pro-sider-menu');
+      for (const group of ['工作空间', 'AI 中心', '用户与权限', '内容与资源', '消息与反馈', '系统运维', '平台配置']) {
+        await menu.getByText(group, { exact: true }).waitFor();
+      }
+      await sider.getByText("平台配置", { exact: true }).click();
+      await sider.getByRole("link", { name: "站点设置", exact: true }).waitFor();
       const standardMetrics = await sider.evaluate(node => ({
         siderWidth: Math.round(node.getBoundingClientRect().width),
         scrollbarWidth: (() => {
@@ -117,16 +118,21 @@ try {
           const scrollParent = menu?.parentElement;
           return scrollParent ? Math.round(scrollParent.getBoundingClientRect().width - scrollParent.clientWidth) : 0;
         })(),
-        visibleRouteCount: Array.from(node.querySelectorAll('a')).filter(link => link.getBoundingClientRect().width > 0).length,
+        platformSettingsRouteCount: (() => {
+          const group = Array.from(node.querySelectorAll('.ant-menu-submenu')).find(item =>
+            item.querySelector('.ant-menu-submenu-title')?.textContent?.trim() === '平台配置',
+          );
+          return group ? Array.from(group.querySelectorAll('a')).filter(link => link.getBoundingClientRect().width > 0).length : 0;
+        })(),
       }));
-      assert.equal(standardMetrics.siderWidth, 208);
+      assert.equal(standardMetrics.siderWidth, 256);
       assert.equal(standardMetrics.scrollbarWidth, 0, `sidebar scrollbar must not reserve a gutter, got ${standardMetrics.scrollbarWidth}px`);
-      assert.ok(standardMetrics.visibleRouteCount > 10, "expanded administration group must expose the real route list");
+      assert.equal(standardMetrics.platformSettingsRouteCount, 3, "platform settings exposes modules, site settings, and navigation after tab collapse");
       const standardScreenshot = `${output}/navigation-standard-1440-light.png`;
       await page.screenshot({ path: standardScreenshot });
       records.push({ name: "navigation-standard-1440-light", path, screenshot: standardScreenshot, ...standardMetrics });
       const focusedScreenshot = ".runtime/browser-checks/sidebar-reference/implementation-sidebar-standard.png";
-      await page.screenshot({ path: focusedScreenshot, clip: { x: 0, y: 0, width: 208, height: 1000 } });
+      await page.screenshot({ path: focusedScreenshot, clip: { x: 0, y: 0, width: 256, height: 1000 } });
       records.push({ name: "navigation-standard-focused-1440-light", path, screenshot: focusedScreenshot, ...standardMetrics });
     }
   }
@@ -152,9 +158,9 @@ try {
   const drawer = page.getByRole("dialog");
   await drawer.waitFor();
   const drawerBox = await drawer.boundingBox();
-  assert.ok(drawerBox && Math.abs(drawerBox.width - 208) <= 1, `mobile navigation drawer must be 208px, got ${drawerBox?.width}`);
+  assert.ok(drawerBox && Math.abs(drawerBox.width - 256) <= 1, `mobile navigation drawer must be 256px, got ${drawerBox?.width}`);
   assert.equal(await drawer.getByRole("link", { name: "工作台", exact: true }).isVisible(), true);
-  assert.equal(await drawer.getByRole("link", { name: "品牌设置", exact: true }).isVisible(), false);
+  assert.equal(await drawer.getByRole("link", { name: "站点设置", exact: true }).isVisible(), false);
   const mobileScreenshot = `${output}/navigation-drawer-390-light.png`;
   await page.screenshot({ path: mobileScreenshot });
   records.push({ name: "navigation-drawer-390-light", path: "/dashboard/home", screenshot: mobileScreenshot, drawerWidth: Math.round(drawerBox.width) });

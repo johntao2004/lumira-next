@@ -74,10 +74,12 @@ public class RoleAuthenticationPolicyService {
 
     @Transactional(readOnly = true)
     public View read(UUID roleId, String actor) {
-        guard.require(actor, "platform:roles:read");
-        guard.requireGlobal(actor, "platform:roles:read");
-        guard.require(actor, "platform:settings:read");
-        guard.requireGlobal(actor, "platform:settings:read");
+        guard.requirePageGlobal(actor, PlatformPageId.ROLES);
+        if (!guard.hasGlobal(actor, PlatformOperation.ROLE_READ_AUTHENTICATION_POLICY.permission())
+                && !guard.hasGlobal(
+                        actor, PlatformOperation.ROLE_UPDATE_AUTHENTICATION_POLICY.permission())) {
+            throw error(HttpStatus.FORBIDDEN, "forbidden");
+        }
         return view(roleId);
     }
 
@@ -93,10 +95,7 @@ public class RoleAuthenticationPolicyService {
         // Policy lock must precede the guard's session boundary; preview transitions use
         // the same order (policy SHARE -> session FOR UPDATE).
         policyLock.lockForUpdate();
-        guard.require(actor, "platform:roles:write");
-        guard.requireGlobal(actor, "platform:roles:write");
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.ROLE_UPDATE_AUTHENTICATION_POLICY);
         Long currentRoleVersion =
                 jdbc.sql("SELECT version FROM platform_role WHERE id=:id FOR UPDATE")
                         .param("id", roleId)

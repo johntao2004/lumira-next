@@ -179,10 +179,11 @@ public class MfaController {
 
     @GetMapping("/manage")
     public PageResult<MfaResponse.Account> list(
+            Authentication actor,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(defaultValue = "") String search) {
-        return service.list(new PageRequest(page, pageSize, search));
+        return service.list(new PageRequest(page, pageSize, search), actor.getName());
     }
 
     @PostMapping("/manage/{id}/reset")

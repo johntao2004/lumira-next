@@ -19,6 +19,7 @@ import {
   MailOutlined,
   MenuOutlined,
   MessageOutlined,
+  PayCircleOutlined,
   SafetyCertificateOutlined,
   SafetyOutlined,
   RobotOutlined,
@@ -48,6 +49,8 @@ function groupIcon(groupId: string): ReactNode {
   if (groupId === "ai-management") return <RobotOutlined />;
   if (groupId === "user-management") return <TeamOutlined />;
   if (groupId === "content-management") return <FolderOutlined />;
+  if (groupId === "communication") return <MessageOutlined />;
+  if (groupId === "payments") return <PayCircleOutlined />;
   if (groupId === "operations") return <DashboardOutlined />;
   if (groupId === "administration") return <SettingOutlined />;
   return <AppstoreOutlined />;
@@ -82,6 +85,11 @@ function pageIcon(pageId: string): ReactNode {
     audit: <AuditOutlined />,
     "event-outbox": <SendOutlined />,
     feedback: <CommentOutlined />,
+    "payment-core-orders": <PayCircleOutlined />,
+    "wechat-pay-orders": <PayCircleOutlined />,
+    "alipay-pay-orders": <PayCircleOutlined />,
+    "wechat-pay-settings": <PayCircleOutlined />,
+    "alipay-pay-settings": <PayCircleOutlined />,
     navigation: <MenuOutlined />,
   };
   return icons[pageId] ?? <FileOutlined />;

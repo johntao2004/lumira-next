@@ -12,7 +12,7 @@ const csrf=await (await context.request.get('/api/auth/csrf')).json();
 try {
  const login=await context.request.post('/api/auth/login',{form:{username:'admin',password:config.LUMIRA_BOOTSTRAP_PASSWORD},headers:{[csrf.headerName]:csrf.token}});assert.equal(login.status(),200);
  await page.goto('/dashboard/dictionaries');
- await page.getByRole('button',{name:'导入字典 · TXT / Excel',exact:true}).click();
+ await page.getByRole('button',{name:'导入字典',exact:true}).click();
  const drawer=page.getByRole('dialog');
  await drawer.locator('input[id="dictionary-file-import_code"]').fill(code);
  await drawer.locator('input[id="dictionary-file-import_name"]').fill('Browser file QA');
@@ -52,6 +52,35 @@ try {
  await page.reload();await page.getByRole('row').filter({hasText:code}).waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth),false);
  console.log(format, 'PASS: browser invalid-file row feedback and save denial, file replacement, preview, metadata invalidation, save, JSON download, refresh persistence and desktop width');
+ if(format==='txt'){
+  await page.getByRole('button',{name:'导入字典',exact:true}).click();
+  const unified=page.getByRole('dialog');
+  const jsonCode=`qa_json_preview_${Date.now()}`;
+  const jsonDataset={schemaVersion:1,code:jsonCode,name:'Browser JSON Preview',enabled:true,structure:'TREE',remark:'',items:[{value:'root',label:'Root',parentValue:null,sortOrder:0,enabled:true,remark:''},{value:'child',label:'Child',parentValue:'root',sortOrder:1,enabled:true,remark:''}]};
+  const jsonSave=unified.getByRole('button',{name:/保.*存/});
+  await unified.locator('input[type="file"]').setInputFiles({name:'dictionary.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(jsonDataset))});
+  assert.equal(await unified.locator('input[id="dictionary-file-import_code"]').count(),0);
+  assert.equal(await unified.getByText(jsonCode,{exact:true}).count(),0);
+  assert.equal(await jsonSave.isDisabled(),true);
+  const jsonPreview=observeResponse(page,r=>r.url().includes('/api/platform/dictionaries/preview')&&r.request().method()==='POST');
+  await unified.getByRole('button',{name:'预览并校验',exact:true}).click();
+  assert.equal((await jsonPreview).status(),200);
+  await unified.getByText(jsonCode,{exact:true}).waitFor();
+  assert.equal(await jsonSave.isEnabled(),true);
+  await unified.locator('input[type="file"]').setInputFiles({name:'switch.txt',mimeType:'text/plain',buffer:Buffer.from('itemValue\titemLabel\nalpha\tAlpha\n')});
+  await unified.locator('input[id="dictionary-file-import_code"]').fill(`qa_switch_${Date.now()}`);
+  await unified.locator('input[id="dictionary-file-import_name"]').fill('Browser format switch');
+  assert.equal(await unified.getByText(jsonCode,{exact:true}).count(),0);
+  assert.equal(await jsonSave.isDisabled(),true);
+  const switchedPreview=observeResponse(page,r=>r.url().includes('/api/platform/dictionaries/file-preview?')&&r.request().method()==='POST');
+  await unified.getByRole('button',{name:'预览并校验',exact:true}).click();
+  assert.equal((await switchedPreview).status(),200);
+  await unified.getByRole('cell',{name:'Alpha',exact:true}).waitFor();
+  assert.equal(await jsonSave.isEnabled(),true);
+  await unified.locator('.ant-upload-list-item-actions button').last().click();
+  await unified.getByRole('cell',{name:'Alpha',exact:true}).waitFor({state:'detached'});
+  assert.equal(await jsonSave.isDisabled(),true);
+ }
 } catch(error) {
  mkdirSync('.runtime/browser-failures',{recursive:true});
  await page.screenshot({path:`.runtime/browser-failures/dictionary-${format}.png`,fullPage:true});

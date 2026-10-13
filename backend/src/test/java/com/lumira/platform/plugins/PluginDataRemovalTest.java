@@ -50,30 +50,22 @@ class PluginDataRemovalTest {
     }
 
     @Test
-    void deletesFeedbackAndLinksButPreservesOtherDraftsFilesAndMigrationHistory() {
+    void deletesFeedbackAndLinksButPreservesLegacyDraftsFilesAndMigrationHistory() {
         jdbc.execute(
                 "CREATE TABLE platform_feedback(id int PRIMARY KEY);CREATE TABLE platform_feedback_file(id int REFERENCES platform_feedback);CREATE TABLE platform_account_draft(draft_key text);CREATE TABLE platform_file(id int);CREATE TABLE plugin_feedback_schema_history(id int)");
         jdbc.execute(
                 "INSERT INTO platform_feedback VALUES(1);INSERT INTO platform_feedback_file VALUES(1);INSERT INTO platform_account_draft VALUES('feedback.create'),('other.create');INSERT INTO platform_file VALUES(1);INSERT INTO plugin_feedback_schema_history VALUES(1)");
-        var sets =
-                List.of(
-                        set("platform_feedback_file"),
-                        set("platform_feedback"),
-                        new PluginManifest.DataSet(
-                                "platform_account_draft",
-                                "drafts",
-                                "draft_key",
-                                "feedback.create"));
+        var sets = List.of(set("platform_feedback_file"), set("platform_feedback"));
         PluginDataRemoval.validate("feedback", sets);
         assertEquals(
-                List.of(1L, 1L, 1L),
+                List.of(1L, 1L),
                 PluginDataRemoval.counts(client, sets).stream()
                         .map(PluginDataRemoval.Count::count)
                         .toList());
         tx.executeWithoutResult(s -> PluginDataRemoval.delete(client, sets));
         assertEquals(0, count("platform_feedback"));
         assertEquals(0, count("platform_feedback_file"));
-        assertEquals(1, count("platform_account_draft"));
+        assertEquals(2, count("platform_account_draft"));
         assertEquals(1, count("platform_file"));
         assertEquals(1, count("plugin_feedback_schema_history"));
     }
@@ -109,14 +101,17 @@ class PluginDataRemovalTest {
     }
 
     @Test
-    void refusesCoreTablesUnscopedDraftsAndMigrationRecords() {
+    void refusesCoreTablesDraftsAndMigrationRecords() {
         for (var set :
                 List.of(
                         set("platform_user"),
                         set("platform_account_draft"),
                         set("plugin_feedback_schema_history"),
                         new PluginManifest.DataSet(
-                                "platform_account_draft", "drafts", "draft_key", "other.create")))
+                                "platform_account_draft",
+                                "drafts",
+                                "draft_key",
+                                "feedback.create")))
             assertThrows(
                     IllegalArgumentException.class,
                     () -> PluginDataRemoval.validate("feedback", List.of(set)));

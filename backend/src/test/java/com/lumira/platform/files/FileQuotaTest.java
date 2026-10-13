@@ -29,6 +29,17 @@ class FileQuotaTest {
     }
 
     @Test
+    void zeroByteLimitIsUnlimitedWithoutChangingFileCountLimit() {
+        var unlimited = new FileQuota(0, 2);
+        assertDoesNotThrow(() -> unlimited.requireCapacity(Long.MAX_VALUE, 1, 0));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> unlimited.requireCapacity(Long.MAX_VALUE - 10, 1, 11));
+        assertThrows(
+                ResponseStatusException.class, () -> new FileQuota(0, 0).requireCapacity(0, 0, 0));
+    }
+
+    @Test
     void invalidConfigurationAndUsageFail() {
         assertThrows(IllegalArgumentException.class, () -> new FileQuota(-1, 1));
         assertThrows(IllegalArgumentException.class, () -> new FileQuota(1, -1));

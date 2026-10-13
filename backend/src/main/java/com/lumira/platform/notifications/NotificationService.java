@@ -13,25 +13,28 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Service
 public class NotificationService implements NotificationProducerPort {
+    static final String FEEDBACK_SOURCE = "feedback";
+    static final String FEEDBACK_EVENT = "feedback.notification.requested";
     private final NotificationStore store;
     private final JdbcClient jdbc;
     private final ObjectMapper mapper;
     private final AuthorizationContextBoundaryPort authorizationBoundary;
+    private final DurableEventPublisherPort eventPublisher;
+    private final FeedbackNotificationAudience feedbackAudience;
 
-    public NotificationService(NotificationStore store, JdbcClient jdbc, ObjectMapper mapper) {
-        this(store, jdbc, mapper, null);
-    }
-
-    @org.springframework.beans.factory.annotation.Autowired
     public NotificationService(
             NotificationStore store,
             JdbcClient jdbc,
             ObjectMapper mapper,
-            AuthorizationContextBoundaryPort authorizationBoundary) {
+            AuthorizationContextBoundaryPort authorizationBoundary,
+            DurableEventPublisherPort eventPublisher,
+            FeedbackNotificationAudience feedbackAudience) {
         this.store = store;
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.authorizationBoundary = authorizationBoundary;
+        this.eventPublisher = eventPublisher;
+        this.feedbackAudience = feedbackAudience;
     }
 
     private UUID owner(String actor) {
@@ -85,24 +88,27 @@ public class NotificationService implements NotificationProducerPort {
         if (recipientId == null) return;
         // A manager processing their own fixture/content does not need an inbox copy.
         // This also prevents operational self-actions from polluting the personal inbox.
-        if (jdbc.sql(
-                        "SELECT EXISTS(SELECT 1 FROM platform_effective_authority WHERE user_id=:id AND authority='platform:feedback:manage')")
-                .param("id", recipientId)
-                .query(Boolean.class)
-                .single()) return;
-        String key = "feedback:" + feedbackId + ":" + (handled ? "handled:" + version : "created");
+        if (feedbackAudience.isGlobalManager(recipientId)) return;
+        if (eventPublisher == null)
+            throw new IllegalStateException(
+                    "Durable feedback notification publisher is unavailable");
+        ObjectNode payload = mapper.createObjectNode();
+        payload.put("recipientId", recipientId.toString());
+        payload.put("feedbackId", feedbackId.toString());
+        payload.put("version", version);
+        payload.put("action", handled ? "handled" : "created");
+        payload.put("title", title == null ? "" : title);
+        if (handled) payload.put("status", status == null ? "" : status);
         ObjectNode params = mapper.createObjectNode();
         params.put("title", title == null ? "" : title);
         if (handled) params.put("status", status == null ? "" : status);
-        String serialized = mapper.writeValueAsString(params);
-        store.create(
-                recipientId,
-                null,
+        store.normalizeParams(mapper.writeValueAsString(params));
+        String key = "feedback:" + feedbackId + ":" + version;
+        eventPublisher.publish(
+                UUID.randomUUID(),
+                FEEDBACK_SOURCE,
+                FEEDBACK_EVENT,
                 key,
-                "feedback",
-                handled ? "notificationFeedbackUpdated" : "notificationFeedbackSubmitted",
-                handled ? "notificationFeedbackUpdatedBody" : "notificationFeedbackCreatedBody",
-                serialized,
-                "/dashboard/feedback");
+                mapper.writeValueAsString(payload));
     }
 }

@@ -18,20 +18,21 @@ public class DictionaryDatasetController {
     }
 
     @GetMapping("/{id}/export")
-    public ResponseEntity<DictionaryDataset> export(@PathVariable UUID id) {
+    public ResponseEntity<DictionaryDataset> export(@PathVariable UUID id, Authentication auth) {
         return ResponseEntity.ok()
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"dictionary-" + id + ".json\"")
-                .body(service.export(id));
+                .body(service.export(id, auth.getName()));
     }
 
     @PostMapping("/preview")
     public DictionaryDatasetService.Preview preview(
             @BoundedBody(maxBytes = 20 * 1024 * 1024, errorCode = "dictionaryDatasetTooLarge")
                     @RequestBody
-                    DictionaryDataset dataset) {
-        return service.preview(dataset);
+                    DictionaryDataset dataset,
+            Authentication auth) {
+        return service.preview(dataset, auth.getName());
     }
 
     @PostMapping("/import")

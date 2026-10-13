@@ -2,6 +2,7 @@ package com.lumira.platform.sms;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.SmsConfigurationPort;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -54,8 +55,7 @@ public class SmsDeliveryTestService {
     }
 
     private void requireWrite(String actor) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.SMS_TEST);
     }
 
     private static void unavailable() {

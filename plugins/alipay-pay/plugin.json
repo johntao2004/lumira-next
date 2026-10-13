@@ -1,0 +1,188 @@
+{
+  "formatVersion": 2,
+  "id": "alipay-pay",
+  "name": "支付宝扫码支付",
+  "version": "1.0.5",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.alipaypay.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "payment-core",
+      "version": "1.0.5"
+    }
+  ],
+  "permissions": [
+    "platform:alipay-pay:orders-access",
+    "platform:alipay-pay:orders-read",
+    "platform:alipay-pay:orders-create",
+    "platform:alipay-pay:orders-manage",
+    "platform:alipay-pay:orders-refund",
+    "platform:alipay-pay:settings-access",
+    "platform:alipay-pay:settings-read",
+    "platform:alipay-pay:settings-update"
+  ],
+  "routes": [
+    {
+      "id": "alipay-pay-orders",
+      "label": "alipayPayOrders",
+      "permission": "platform:alipay-pay:orders-access",
+      "operations": {
+        "read": "platform:alipay-pay:orders-read",
+        "create": "platform:alipay-pay:orders-create",
+        "manage": "platform:alipay-pay:orders-manage",
+        "refund": "platform:alipay-pay:orders-refund"
+      },
+      "group": "payments",
+      "order": 30,
+      "global": true
+    },
+    {
+      "id": "alipay-pay-settings",
+      "label": "alipayPay",
+      "permission": "platform:alipay-pay:settings-access",
+      "operations": {
+        "read": "platform:alipay-pay:settings-read",
+        "update": "platform:alipay-pay:settings-update"
+      },
+      "group": "payments",
+      "order": 50,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/plugins/alipay-pay/settings",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:settings-access",
+        "platform:alipay-pay:settings-read"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/plugins/alipay-pay/settings",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:settings-access",
+        "platform:alipay-pay:settings-update"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/alipay-pay/orders",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:orders-access",
+        "platform:alipay-pay:orders-read"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/alipay-pay/orders",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:orders-access",
+        "platform:alipay-pay:orders-create"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/alipay-pay/orders/*/query",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:orders-access",
+        "platform:alipay-pay:orders-manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/alipay-pay/orders/*/close",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:orders-access",
+        "platform:alipay-pay:orders-manage"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/alipay-pay/orders/*/refund",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:orders-access",
+        "platform:alipay-pay:orders-refund"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/alipay-pay/orders/*/refund/query",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:alipay-pay:orders-access",
+        "platform:alipay-pay:orders-refund"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ],
+  "permissionGroups": [
+    {
+      "id": "administration",
+      "title": "pluginPermissionGroupPaymentCore",
+      "permissions": [
+        {
+          "code": "platform:alipay-pay:orders-access",
+          "label": "pluginPermissionAlipayOrdersAccess"
+        },
+        {
+          "code": "platform:alipay-pay:orders-read",
+          "label": "pluginPermissionAlipayPayOrdersRead"
+        },
+        {
+          "code": "platform:alipay-pay:orders-create",
+          "label": "pluginPermissionAlipayPayOrderCreate"
+        },
+        {
+          "code": "platform:alipay-pay:orders-manage",
+          "label": "pluginPermissionAlipayPayOrderManage"
+        },
+        {
+          "code": "platform:alipay-pay:orders-refund",
+          "label": "pluginPermissionAlipayPayOrderRefund"
+        },
+        {
+          "code": "platform:alipay-pay:settings-access",
+          "label": "pluginPermissionAlipaySettingsAccess"
+        },
+        {
+          "code": "platform:alipay-pay:settings-read",
+          "label": "pluginPermissionAlipayPaySettingsRead"
+        },
+        {
+          "code": "platform:alipay-pay:settings-update",
+          "label": "pluginPermissionAlipayPaySettingsUpdate"
+        }
+      ]
+    }
+  ]
+}

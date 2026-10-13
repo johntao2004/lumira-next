@@ -4,6 +4,8 @@ import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.CsvWriter;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.PasswordContract;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import com.lumira.platform.identity.api.SecurityPolicyPort;
@@ -57,6 +59,15 @@ public class UserService {
 
     @Transactional
     public UserSummary create(CreateUser input, String actor) {
+        return create(input, actor, PlatformOperation.USER_CREATE);
+    }
+
+    @Transactional
+    public UserSummary createForAi(CreateUser input, String actor) {
+        return create(input, actor, PlatformOperation.AI_CONSOLE_CREATE_USER);
+    }
+
+    private UserSummary create(CreateUser input, String actor, PlatformOperation operation) {
         if (input == null)
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST, "invalidUser");
@@ -70,8 +81,7 @@ public class UserService {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST, "invalidUser");
         var hash = encoder.encode(input.password());
-        guard.require(actor, "platform:users:write");
-        guard.requireGlobal(actor, "platform:users:write");
+        guard.requireOperationActionGlobal(actor, operation);
         var id = java.util.UUID.randomUUID();
         repository.create(id, input.username(), displayName, hash);
         audit.append(actor, "user.create", id);
@@ -80,12 +90,21 @@ public class UserService {
 
     @Transactional
     public UserSummary update(java.util.UUID id, UpdateUser input, String actor) {
+        return update(id, input, actor, PlatformOperation.USER_UPDATE);
+    }
+
+    @Transactional
+    public UserSummary updateForAi(java.util.UUID id, UpdateUser input, String actor) {
+        return update(id, input, actor, PlatformOperation.AI_CONSOLE_UPDATE_USER);
+    }
+
+    private UserSummary update(
+            java.util.UUID id, UpdateUser input, String actor, PlatformOperation operation) {
         String displayName = name(input.displayName());
         if (input.enabled() == null || input.version() == null)
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST, "invalidUser");
-        guard.require(actor, "platform:users:write");
-        guard.requireUser(actor, id, "platform:users:write");
+        guard.requireOperationUser(actor, id, operation);
         var user = repository.find(id);
         if (user.version() != input.version())
             throw new org.springframework.web.server.ResponseStatusException(
@@ -102,21 +121,47 @@ public class UserService {
 
     /** Apply the same user-scope authorization before a profile-value-only edit. */
     public void requireUpdate(java.util.UUID id, String actor) {
-        guard.require(actor, "platform:users:write");
-        guard.requireUser(actor, id, "platform:users:write");
+        guard.requireOperationUser(actor, id, PlatformOperation.USER_UPDATE);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public UserSummary find(java.util.UUID id, String actor) {
-        guard.require(actor, "platform:users:read");
-        guard.requireUser(actor, id, "platform:users:read");
+        guard.requirePage(actor, PlatformPageId.USERS);
+        guard.requireUser(actor, id, PlatformPageId.USERS.accessPermission());
+        return repository.findSnapshot(id);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public UserSummary findForAi(java.util.UUID id, String actor) {
+        guard.requireOperationUser(actor, id, PlatformOperation.AI_CONSOLE_READ_USERS);
+        return repository.findSnapshot(id);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public UserSummary findForAiAction(
+            java.util.UUID id, String actor, PlatformOperation operation) {
+        if (operation.page() != PlatformPageId.AI_CONSOLE
+                || (operation != PlatformOperation.AI_CONSOLE_READ_USERS
+                        && operation != PlatformOperation.AI_CONSOLE_UPDATE_USER
+                        && operation != PlatformOperation.AI_CONSOLE_DELETE_USER))
+            throw new IllegalArgumentException("Unsupported AI user lookup operation");
+        guard.requireOperationUser(actor, id, operation);
         return repository.findSnapshot(id);
     }
 
     @Transactional
     public void delete(java.util.UUID id, long version, String actor) {
-        guard.require(actor, "platform:users:write");
-        guard.requireUser(actor, id, "platform:users:write");
+        delete(id, version, actor, PlatformOperation.USER_DELETE);
+    }
+
+    @Transactional
+    public void deleteForAi(java.util.UUID id, long version, String actor) {
+        delete(id, version, actor, PlatformOperation.AI_CONSOLE_DELETE_USER);
+    }
+
+    private void delete(
+            java.util.UUID id, long version, String actor, PlatformOperation operation) {
+        guard.requireOperationUser(actor, id, operation);
         var user = repository.find(id);
         if (user.version() != version)
             throw new org.springframework.web.server.ResponseStatusException(
@@ -139,10 +184,33 @@ public class UserService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<UserSummary> list(
             PageRequest request, String actor, RequestAuthorizationContext authorization) {
-        guard.require(actor, "platform:users:read");
+        guard.requirePage(actor, PlatformPageId.USERS);
         long total = repository.count(request, actor, authorization);
         return new PageResult<>(
                 repository.findPage(request, actor, authorization),
+                total,
+                request.page(),
+                request.pageSize());
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResult<UserSummary> listForAi(PageRequest request, String actor) {
+        guard.requireOperation(actor, PlatformOperation.AI_CONSOLE_READ_USERS);
+        String permission = PlatformOperation.AI_CONSOLE_READ_USERS.permission();
+        long total =
+                repository.count(
+                        request,
+                        actor,
+                        null,
+                        permission,
+                        PlatformPageId.AI_CONSOLE.accessPermission());
+        return new PageResult<>(
+                repository.findPage(
+                        request,
+                        actor,
+                        null,
+                        permission,
+                        PlatformPageId.AI_CONSOLE.accessPermission()),
                 total,
                 request.page(),
                 request.pageSize());
@@ -156,10 +224,15 @@ public class UserService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public byte[] exportCsv(
             PageRequest request, String actor, RequestAuthorizationContext authorization) {
-        guard.require(actor, "platform:users:read");
+        guard.requireOperation(actor, PlatformOperation.USER_EXPORT);
         var users =
                 repository.findExport(
-                        request, actor, MAX_SYNCHRONOUS_EXPORT_ROWS + 1, authorization);
+                        request,
+                        actor,
+                        MAX_SYNCHRONOUS_EXPORT_ROWS + 1,
+                        authorization,
+                        PlatformOperation.USER_EXPORT.permission(),
+                        PlatformPageId.USERS.accessPermission());
         if (users.size() > MAX_SYNCHRONOUS_EXPORT_ROWS) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.PAYLOAD_TOO_LARGE,

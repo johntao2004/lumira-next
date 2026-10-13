@@ -22,23 +22,24 @@ type Hit={id:string;actor:string;source:string;action:string;matchCount:number;c
 type Preview={hit:boolean;blocked:boolean;totalMatchCount:number;matches:{maskedWord:string;action:string}[]};
 const errors=["forbidden","staleRecord","invalidRole","invalidSensitiveWord","moduleUnavailable","sensitiveTextTooLong"] as const;
 
-export function SensitiveWordsPage({canWrite,canImport}:{canWrite:boolean;canImport:boolean}) {
+export function SensitiveWordsPage({canRead,canCreate,canUpdate,canDelete,canImport,canPolicyUpdate}:{canRead:boolean;canCreate:boolean;canUpdate:boolean;canDelete:boolean;canImport:boolean;canPolicyUpdate:boolean}) {
   const {t}=usePreferences();
   return <>
+    {!canRead&&<Alert type="info" showIcon title={t("forbidden")}/>}
     <Tabs defaultActiveKey="roles" destroyOnHidden items={[
-      {key:"roles",label:t("sensitiveRoleControl"),children:<RoleControl canWrite={canWrite}/>},
-      {key:"words",label:t("sensitiveSharedDictionary"),children:<SensitiveWordLibrary canWrite={canWrite} canImport={canImport}/>},
-      {key:"hits",label:t("sensitiveHitRecords"),children:<HitRecords/>},
-      {key:"preview",label:t("sensitivePolicyTrial"),children:<PolicyTrial/>},
+      {key:"roles",label:t("sensitiveRoleControl"),children:<RoleControl canRead={canRead} canPolicyUpdate={canPolicyUpdate}/>},
+      {key:"words",label:t("sensitiveSharedDictionary"),children:<SensitiveWordLibrary canRead={canRead} canCreate={canCreate} canUpdate={canUpdate} canDelete={canDelete} canImport={canImport}/>},
+      {key:"hits",label:t("sensitiveHitRecords"),children:<HitRecords canRead={canRead}/>},
+      {key:"preview",label:t("sensitivePolicyTrial"),children:<PolicyTrial canRead={canRead}/>},
     ]}/>
   </>;
 }
 
-function RoleControl({canWrite}:{canWrite:boolean}) {
+function RoleControl({canRead,canPolicyUpdate}:{canRead:boolean;canPolicyUpdate:boolean}) {
   const {t}=usePreferences();const client=useQueryClient();
   const [request,setRequest]=useListRequest();const [editing,setEditing]=useState<Policy|null>(null);
   const {pending,error,setError,run}=useSubmitAction({errorKeys:errors});
-  const query=useQuery({queryKey:["sensitive-role-policies",request],queryFn:async({signal})=>{
+  const query=useQuery({queryKey:["sensitive-role-policies",request],enabled:canRead,queryFn:async({signal})=>{
     const result=await api<PageResult<Policy>>(`/platform/sensitive-policies/roles?${listRequestParams(request,{search:request.filters?.roleName??request.search})}`,{signal});
     return {...result,items:result.items.map(row=>({...row,id:row.roleId}))};
   }});
@@ -48,15 +49,15 @@ function RoleControl({canWrite}:{canWrite:boolean}) {
       {title:t("roleCode"),dataIndex:"roleCode",search:false},
       {title:t("status"),dataIndex:"roleEnabled",search:false,render:(_,r)=><Tag>{t(r.roleEnabled?"enabled":"disabled")}</Tag>},
       {title:t("sensitiveRoleControl"),dataIndex:"mode",search:false,render:(_,r)=><Space><Tag color={r.mode==="ON"?"success":"default"}>{t(r.mode==="ON"?"enableSensitiveWord":"disableSensitiveWord")}</Tag>{r.version===0&&<Typography.Text type="secondary">{t("sensitiveDefaultControl")}</Typography.Text>}</Space>},
-      {title:t("actions"), key: "actions",search:false,render:(_,r)=>canWrite&&<Button type="link" onClick={()=>{setError(null);setEditing(r);}}>{t("edit")}</Button>},
+      {title:t("actions"), key: "actions",search:false,render:(_,r)=>canPolicyUpdate&&<Button type="link" onClick={()=>{setError(null);setEditing(r);}}>{t("edit")}</Button>},
     ]}/>
     <FormDrawer open={!!editing} title={t("sensitiveRoleControl")} pending={pending} formId="role-content-policy" onClose={()=>{setEditing(null);setError(null);}}>
       <FeedbackBubble id="role-content-policy-error" content={error?t(error):undefined}/>
       {editing&&<Form key={editing.roleId} name="role-content-policy" id="role-content-policy" layout="vertical" initialValues={{controlled:editing.mode==="ON"}} onFinish={values=>run(async()=>{
-        if(!canWrite)return false;await mutate(`/platform/sensitive-policies/roles/${editing.roleId}`,"PUT",{mode:values.controlled?"ON":"OFF",version:editing.version});setEditing(null);await client.invalidateQueries({queryKey:["sensitive-role-policies"]});
+        if(!canPolicyUpdate)return false;await mutate(`/platform/sensitive-policies/roles/${editing.roleId}`,"PUT",{mode:values.controlled?"ON":"OFF",version:editing.version});setEditing(null);await client.invalidateQueries({queryKey:["sensitive-role-policies"]});
       })}>
         <Typography.Paragraph>{editing.roleName} · {editing.roleCode}</Typography.Paragraph>
-        <Form.Item name="controlled" label={t("sensitiveRoleControl")} valuePropName="checked" extra={t("sensitiveRoleControlHint")}><Switch disabled={pending||!canWrite}/></Form.Item>
+        <Form.Item name="controlled" label={t("sensitiveRoleControl")} valuePropName="checked" extra={t("sensitiveRoleControlHint")}><Switch disabled={pending||!canPolicyUpdate}/></Form.Item>
       </Form>}
     </FormDrawer>
   </>;
@@ -75,9 +76,9 @@ function sourceLabel(source:string):MessageKey {
   return "systemSettings";
 }
 
-function HitRecords() {
+function HitRecords({canRead}:{canRead:boolean}) {
   const {t,locale}=usePreferences();const [request,setRequest]=useListRequest();
-  const query=useQuery({queryKey:["sensitive-policy-hits",request],queryFn:({signal})=>api<PageResult<Hit>>(`/platform/sensitive-policies/hits?${listRequestParams(request,{search:request.filters?.actor??request.search})}`,{signal})});
+  const query=useQuery({queryKey:["sensitive-policy-hits",request],enabled:canRead,queryFn:({signal})=>api<PageResult<Hit>>(`/platform/sensitive-policies/hits?${listRequestParams(request,{search:request.filters?.actor??request.search})}`,{signal})});
   return <>
     <ResourceTable<Hit> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={()=>void query.refetch()} columns={[
       {title:t("username"),dataIndex:"actor",search:true},{title:t("sensitiveSubmissionSource"),dataIndex:"source",search:false,render:(_,r)=>t(sourceLabel(r.source))},
@@ -88,10 +89,10 @@ function HitRecords() {
   </>;
 }
 
-function PolicyTrial() {
+function PolicyTrial({canRead}:{canRead:boolean}) {
   const {t}=usePreferences();const [role,setRole]=useState<string>();const [text,setText]=useState("");
   const [result,setResult]=useState<Preview|null>(null);const {pending,error,setError,run}=useSubmitAction({errorKeys:errors});
-  const roles=useQuery({queryKey:["sensitive-trial-roles"],queryFn:async({signal})=>{
+  const roles=useQuery({queryKey:["sensitive-trial-roles"],enabled:canRead,queryFn:async({signal})=>{
     const rows:Policy[]=[];let page=1;
     while(true){const r=await api<PageResult<Policy>>(`/platform/sensitive-policies/roles?page=${page++}&pageSize=100`,{signal});rows.push(...r.items);if(rows.length>=r.total||!r.items.length)break;}
     return rows;
@@ -101,7 +102,7 @@ function PolicyTrial() {
     <Space orientation="vertical" style={{width:"100%"}} size="middle">
       <Select aria-label={t("roles")} placeholder={t("roles")} allowClear showSearch optionFilterProp="label" value={role} loading={roles.isFetching} style={{width:"100%"}} options={roles.data?.filter(r=>r.roleEnabled).map(r=>({value:r.roleId,label:r.roleName}))} onChange={r=>{setRole(r);setResult(null);}}/>
       <Input.TextArea aria-label={t("sensitiveCheckText")} value={text} maxLength={200000} rows={6} onChange={e=>{setText(e.target.value);setResult(null);}}/>
-      <Button type="primary" loading={pending} disabled={!text.trim()} onClick={()=>run(async()=>{setResult(await mutate<Preview>("/platform/sensitive-policies/preview","POST",{roleId:role??null,text}));})}>{t("checkSensitiveContent")}</Button>
+      <Button type="primary" loading={pending} disabled={!canRead||!text.trim()} onClick={()=>run(async()=>{setResult(await mutate<Preview>("/platform/sensitive-policies/preview","POST",{roleId:role??null,text}));})}>{t("checkSensitiveContent")}</Button>
       {result&&<Alert showIcon type={result.blocked?"error":result.hit?"warning":"success"} title={t(result.blocked?"sensitiveContentBlocked":result.hit?"sensitiveContentLogged":"sensitiveContentClean")} description={t("sensitiveCheckResultCount",{count:result.totalMatchCount})}/>}
     </Space>
     <FeedbackBubble id="sensitive-trial-error" content={error?t(error):undefined}/>

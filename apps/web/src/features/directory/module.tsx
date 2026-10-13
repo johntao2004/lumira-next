@@ -10,20 +10,24 @@ const OrganizationsPage = lazy(() => import("@/features/organizations/organizati
 const RolesPage = lazy(() => import("@/features/roles/roles-page").then(({ RolesPage }) => ({ default: RolesPage })));
 const UsersPage = lazy(() => import("@/features/users/users-page").then(({ UsersPage }) => ({ default: UsersPage })));
 
-function UserManagementTabs({ authorities, hasGlobal, readOnlyPreview = false }: { authorities: string[]; hasGlobal: (permission: string) => boolean; readOnlyPreview?: boolean }) {
+function UserManagementTabs({ hasRouteAccess, hasRouteOperation, readOnlyPreview = false }: { hasRouteAccess: (routeId: string) => boolean; hasRouteOperation: (routeId: string, actionId: string) => boolean; readOnlyPreview?: boolean }) {
   const previewReadOnly = readOnlyPreview || isRolePreviewReadOnly();
   const childrenByRoute: Record<string, ReactNode | undefined> = {};
-  if (authorities.includes("platform:users:read")) {
+  if (hasRouteAccess("users")) {
     childrenByRoute.users = <UsersPage
         readOnlyPreview={previewReadOnly}
-        canCreate={!previewReadOnly && hasGlobal("platform:users:write")}
-        canAssignOrganizations={!previewReadOnly && hasGlobal("platform:organizations:write") && authorities.includes("platform:organizations:read")}
-        canAssignRoles={!previewReadOnly && hasGlobal("platform:roles:write") && authorities.includes("platform:roles:read")}
-        canWrite={!previewReadOnly && authorities.includes("platform:users:write")}
+        canCreate={hasRouteOperation("users", "create")}
+        canUpdate={hasRouteOperation("users", "update")}
+        canDelete={hasRouteOperation("users", "delete")}
+        canResetPassword={hasRouteOperation("users", "resetPassword")}
+        canAssignOrganizations={hasRouteOperation("users", "assignOrganizations")}
+        canAssignRoles={hasRouteOperation("users", "assignRoles")}
+        canReadRoles={hasRouteOperation("users", "readRoles") || hasRouteOperation("users", "assignRoles")}
+        canExport={hasRouteOperation("users", "export")}
       />;
   }
-  if (!previewReadOnly && hasGlobal("platform:users:read")) {
-    childrenByRoute["online-users"] = <OnlineUsersPage canWrite={hasGlobal("platform:users:write")} />;
+  if (!previewReadOnly && hasRouteAccess("online-users")) {
+    childrenByRoute["online-users"] = <OnlineUsersPage canTerminateSessions={hasRouteOperation("online-users", "terminateSession")} />;
   }
   return <RouteTabs tabs={routeTabsForGroup(directoryManifest, "user-activity", childrenByRoute)} />;
 }
@@ -31,15 +35,24 @@ function UserManagementTabs({ authorities, hasGlobal, readOnlyPreview = false }:
 export const directoryFrontendModule = {
   ...directoryManifest,
   pages: {
-    organizations: ({ hasGlobal, readOnlyPreview }) => <OrganizationsPage canWrite={hasGlobal("platform:organizations:write")} readOnlyPreview={readOnlyPreview} />,
-    roles: ({ hasGlobal, authorities, readOnlyPreview }) => <RolesPage
-      canWrite={hasGlobal("platform:roles:write")}
-      authorities={authorities}
-      canManageAuthenticationPolicy={hasGlobal("platform:roles:read") && hasGlobal("platform:roles:write") && hasGlobal("platform:settings:read") && hasGlobal("platform:settings:write")}
-      canReadRegistrationSettings={!readOnlyPreview && authorities.includes("platform:settings:read")}
+    organizations: ({ hasRouteOperation, readOnlyPreview }) => <OrganizationsPage
+      canCreate={hasRouteOperation("organizations", "create")}
+      canUpdate={hasRouteOperation("organizations", "update")}
+      canDelete={hasRouteOperation("organizations", "delete")}
       readOnlyPreview={readOnlyPreview}
     />,
-    users: ({ hasGlobal, authorities, readOnlyPreview }) => <UserManagementTabs authorities={authorities} hasGlobal={hasGlobal} readOnlyPreview={readOnlyPreview} />,
-    "online-users": ({ hasGlobal, authorities, readOnlyPreview }) => <UserManagementTabs authorities={authorities} hasGlobal={hasGlobal} readOnlyPreview={readOnlyPreview} />,
+    roles: ({ hasGlobal, hasRouteOperation, hasRouteAccess, authorities, readOnlyPreview }) => <RolesPage
+      canCreate={hasRouteOperation("roles", "create")}
+      canUpdate={hasRouteOperation("roles", "update")}
+      canDelete={hasRouteOperation("roles", "delete")}
+      canManagePluginPermissions={hasRouteOperation("modules", "install")}
+      authorities={authorities.filter((permission) => hasGlobal(permission))}
+      canReadAuthenticationPolicy={hasRouteOperation("roles", "readAuthenticationPolicy")}
+      canManageAuthenticationPolicy={hasRouteOperation("roles", "updateAuthenticationPolicy")}
+      canReadRegistrationSettings={!readOnlyPreview && hasRouteAccess("registration")}
+      readOnlyPreview={readOnlyPreview}
+    />,
+    users: ({ hasRouteAccess, hasRouteOperation, readOnlyPreview }) => <UserManagementTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} readOnlyPreview={readOnlyPreview} />,
+    "online-users": ({ hasRouteAccess, hasRouteOperation, readOnlyPreview }) => <UserManagementTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} readOnlyPreview={readOnlyPreview} />,
   },
 } satisfies FrontendModule;

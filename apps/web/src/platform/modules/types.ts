@@ -6,6 +6,8 @@ export type NavigationGroupId =
   | "ai-management"
   | "user-management"
   | "content-management"
+  | "communication"
+  | "payments"
   | "operations"
   | "administration";
 
@@ -15,7 +17,14 @@ export type FrontendRoute = {
   readonly label: string;
   /** Optional wording used inside a route tab; sidebar wording remains `label`. */
   readonly tabLabel?: MessageKey;
+  /** Route access permission. Operation grants are declared separately. */
   readonly permission: string | null;
+  /** Whether the page grant is checked in global or caller/data-scoped authorities. */
+  readonly accessScope?: "global" | "scoped";
+  /** Explicit action id to operation-code mappings owned by this page. */
+  readonly operations?: Readonly<Record<string, string>>;
+  /** Action ids whose grants are checked in the caller's effective authorities; other actions are global. */
+  readonly scopedOperations?: readonly string[];
   readonly global?: boolean;
   readonly hidden?: boolean;
   readonly group: NavigationGroupId;
@@ -35,6 +44,10 @@ export type FrontendTabGroup = {
 export type FrontendPageContext = {
   readonly authorities: string[];
   readonly hasGlobal: (permission: string) => boolean;
+  readonly hasRouteAccess: (routeId: string) => boolean;
+  readonly hasRouteOperation: (routeId: string, actionId: string) => boolean;
+  /** Check an action declared by the current page route. */
+  readonly hasOperation: (actionId: string) => boolean;
   readonly readOnlyPreview?: boolean;
 };
 

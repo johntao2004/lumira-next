@@ -1,8 +1,8 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "localization",
   "name": "运行时本地化",
-  "version": "1.0.6",
+  "version": "1.0.11",
   "sdkVersion": "1",
   "entryClass": "com.lumira.platform.localization.LumiraPlugin",
   "backend": "backend/plugin.jar",
@@ -14,17 +14,65 @@
     }
   ],
   "permissions": [
-    "platform:localization:import",
+    "platform:localization:access",
     "platform:localization:read",
-    "platform:localization:write"
+    "platform:localization:create",
+    "platform:localization:update",
+    "platform:localization:delete",
+    "platform:localization:import",
+    "platform:localization:publish"
+  ],
+  "permissionGroups": [
+    {
+      "id": "management",
+      "title": "pluginPermissionGroupLocalization",
+      "permissions": [
+        {
+          "code": "platform:localization:access",
+          "label": "pluginPermissionLocalizationAccess"
+        },
+        {
+          "code": "platform:localization:read",
+          "label": "pluginPermissionLocalizationRead"
+        },
+        {
+          "code": "platform:localization:create",
+          "label": "pluginPermissionLocalizationCreate"
+        },
+        {
+          "code": "platform:localization:update",
+          "label": "pluginPermissionLocalizationUpdate"
+        },
+        {
+          "code": "platform:localization:delete",
+          "label": "pluginPermissionLocalizationDelete"
+        },
+        {
+          "code": "platform:localization:import",
+          "label": "pluginPermissionLocalizationImport"
+        },
+        {
+          "code": "platform:localization:publish",
+          "label": "pluginPermissionLocalizationPublish"
+        }
+      ]
+    }
   ],
   "routes": [
     {
       "id": "localization",
       "label": "localizationManagement",
-      "permission": "platform:localization:read",
-      "group": "administration",
-      "order": 200,
+      "permission": "platform:localization:access",
+      "operations": {
+        "read": "platform:localization:read",
+        "create": "platform:localization:create",
+        "update": "platform:localization:update",
+        "delete": "platform:localization:delete",
+        "import": "platform:localization:import",
+        "publish": "platform:localization:publish"
+      },
+      "group": "content-management",
+      "order": 40,
       "global": true
     }
   ],
@@ -32,137 +80,167 @@
     {
       "method": "GET",
       "path": "/api/platform/localization/entries",
-      "authorities": [
-        "platform:localization:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+          "platform:localization:read"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/platform/localization/entries/*",
-      "authorities": [
-        "platform:localization:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:read"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/platform/localization/locales",
-      "authorities": [
-        "platform:localization:read"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:read"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/localization/entries",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:create"
+      ]
     },
     {
       "method": "PUT",
       "path": "/api/platform/localization/entries/*",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:update"
+      ]
     },
     {
       "method": "PATCH",
       "path": "/api/platform/localization/entries/*/status",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:update"
+      ]
     },
     {
       "method": "DELETE",
       "path": "/api/platform/localization/entries/*",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:delete"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/localization/import",
-      "authorities": [
-        "platform:localization:import"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:import"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/localization/translations",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:update"
+      ]
     },
     {
       "method": "DELETE",
       "path": "/api/platform/localization/translations/*",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:update"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/localization/bundle/preview",
-      "authorities": [
-        "platform:localization:import"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:import"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/localization/bundle/import",
-      "authorities": [
-        "platform:localization:import"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:import"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/platform/localization/ai/providers",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:read"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/localization/ai/translate",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:update"
+      ]
     },
     {
       "method": "POST",
       "path": "/api/platform/localization/publish/*",
-      "authorities": [
-        "platform:localization:write"
-      ],
+      "authorities": [],
       "global": true,
-      "publicAccess": false
+      "publicAccess": false,
+      "allAuthorities": [
+        "platform:localization:access",
+        "platform:localization:publish"
+      ]
     },
     {
       "method": "GET",

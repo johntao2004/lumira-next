@@ -1,6 +1,7 @@
 package com.lumira.platform.dictionaries;
 
 import com.lumira.platform.common.PageRequest;
+import com.lumira.platform.common.PageResult;
 import com.lumira.platform.dictionaries.api.DictionaryLookupPort;
 import com.lumira.platform.identity.api.ProfileDictionaryPort;
 import com.lumira.platform.identity.api.ProfileRegistrationLimits;
@@ -12,6 +13,24 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Repository
 public class DictionaryLookupRepository {
+    public PageResult<ProfileDictionaryPort.EnabledDictionary> listEnabled(PageRequest page) {
+        var items =
+                jdbc.sql(
+                                "SELECT code,name,enabled FROM platform_dictionary WHERE enabled AND (:search='' OR strpos(lower(code),lower(:search))>0 OR strpos(lower(name),lower(:search))>0) ORDER BY code,id LIMIT :limit OFFSET :offset")
+                        .param("search", page.search())
+                        .param("limit", page.pageSize())
+                        .param("offset", page.offset())
+                        .query(ProfileDictionaryPort.EnabledDictionary.class)
+                        .list();
+        long total =
+                jdbc.sql(
+                                "SELECT count(*) FROM platform_dictionary WHERE enabled AND (:search='' OR strpos(lower(code),lower(:search))>0 OR strpos(lower(name),lower(:search))>0)")
+                        .param("search", page.search())
+                        .query(Long.class)
+                        .single();
+        return new PageResult<>(items, total, page.page(), page.pageSize());
+    }
+
     /**
      * Read complete enabled policy trees in one database snapshot, including ancestor filtering.
      */

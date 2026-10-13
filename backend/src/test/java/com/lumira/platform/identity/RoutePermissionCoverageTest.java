@@ -1,7 +1,13 @@
 package com.lumira.platform.identity;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,8 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.support.StaticApplicationContext;
-import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.util.ClassUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,26 +29,59 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
-/**
- * Guards the hand-maintained route table in {@link SecurityConfiguration}. Every controller
- * endpoint must be claimed by an explicit rule; otherwise it silently falls through to {@code
- * denyAll()} and is unreachable, and an endpoint that is publicly reachable must be a deliberate,
- * reviewed entry in {@link #PUBLIC_PREFIXES}.
- */
+/** Keeps the explicit host route policy aligned with every controller and its HTTP test matrix. */
 class RoutePermissionCoverageTest {
     private static final Path SECURITY_SOURCE =
             Path.of("src/main/java/com/lumira/platform/identity/SecurityConfiguration.java");
-
-    /** Public means unauthenticated. Adding an entry here is a security decision. */
-    private static final List<String> PUBLIC_PREFIXES =
-            List.of("/api/public/", "/api/auth/", "/actuator/");
-
-    private static final Pattern RULE =
+    private static final String MATRIX_RESOURCE = "http-security/host-http-cases.json";
+    private static final String TEST_ID = "00000000-0000-0000-0000-000000000001";
+    private static final List<String> SETTING_HISTORY_SECTIONS =
+            List.of(
+                    "branding",
+                    "smtp",
+                    "sms",
+                    "profile-fields",
+                    "agreements",
+                    "watermark",
+                    "maintenance",
+                    "passkey",
+                    "file-retention");
+    private static final AntPathMatcher ANT = new AntPathMatcher();
+    private static final Pattern SECURITY_RULE =
             Pattern.compile(
-                    "requestMatchers\\(\\s*(?:org\\.springframework\\.http\\.HttpMethod\\.(\\w+)\\s*,\\s*)?((?:\"[^\"]+\"\\s*,?\\s*)+)\\)\\s*\\.(\\w+)");
+                    "requestMatchers\\(\\s*"
+                            + "(?:org\\.springframework\\.http\\.HttpMethod\\.(\\w+)\\s*,\\s*)?"
+                            + "((?:\"[^\"]+\"\\s*,?\\s*)+)\\)\\s*\\.(\\w+)");
 
-    private record Rule(String method, PathPattern[] patterns, String kind) {
+    private static final Set<String> AUTHENTICATED_SHELL_ROUTES =
+            Set.of(
+                    "GET /api/platform/modules/plugins/frontend",
+                    "GET /api/platform/modules/plugins/assets/x/x",
+                    "GET /api/platform/navigation",
+                    "POST /api/platform/role-preview/bootstrap");
+
+    private record HttpCase(
+            String pageId,
+            String accessPermission,
+            String accessScope,
+            String operationPermission,
+            String operationScope,
+            String method,
+            String path,
+            String target,
+            List<String> allowedOperationPermissions,
+            Object payload,
+            List<Integer> bodyBytes,
+            String contentType,
+            List<Integer> allowedStatuses,
+            List<String> legacyPermissions) {}
+
+    private record Endpoint(String method, String path, String source) {}
+
+    private record SecurityRule(String method, PathPattern[] patterns, String kind) {
         boolean matches(String httpMethod, String path) {
             if (method != null && !method.equals(httpMethod)) return false;
             var container = org.springframework.http.server.PathContainer.parsePath(path);
@@ -51,138 +90,215 @@ class RoutePermissionCoverageTest {
         }
     }
 
-    private record Endpoint(String method, String path, String source) {}
-
     @Test
-    void everyControllerEndpointIsClaimedByAnExplicitRule() throws Exception {
-        List<Rule> rules = parseRules();
-        assertTrue(rules.size() > 50, "Security rule table could not be parsed: " + rules.size());
-        List<String> unclaimed = new ArrayList<>();
-        List<String> unexpectedlyPublic = new ArrayList<>();
+    void everyHostPlatformControllerEndpointHasAnExplicitPageAndActionOwner() throws Exception {
+        List<String> unowned = new ArrayList<>();
         for (Endpoint endpoint : endpoints()) {
-            Rule first = null;
-            for (Rule rule : rules) {
-                if (rule.matches(endpoint.method(), endpoint.path())) {
-                    first = rule;
-                    break;
-                }
-            }
-            if (first == null) {
-                unclaimed.add(
-                        endpoint.method() + " " + endpoint.path() + "  <- " + endpoint.source());
-            } else if (first.kind().equals("permitAll")
-                    && PUBLIC_PREFIXES.stream().noneMatch(endpoint.path()::startsWith)
-                    && !ALLOWED_PUBLIC_OUTSIDE_PREFIXES.contains(
-                            endpoint.method() + " " + endpoint.path())) {
-                unexpectedlyPublic.add(
-                        endpoint.method() + " " + endpoint.path() + "  <- " + endpoint.source());
+            if (!endpoint.path().startsWith("/api/platform/")) continue;
+            for (String path : policyLookupPaths(endpoint)) {
+                String key = endpoint.method() + " " + path;
+                if (AUTHENTICATED_SHELL_ROUTES.contains(key)) continue;
+                if (PlatformHttpPermissionPolicy.routeFor(endpoint.method(), path) == null)
+                    unowned.add(key + " <- " + endpoint.source());
             }
         }
         assertTrue(
-                unclaimed.isEmpty(),
-                "Endpoints fall through to denyAll (no rule claims them):\n"
-                        + String.join("\n", unclaimed));
-        assertTrue(
-                unexpectedlyPublic.isEmpty(),
-                "Endpoints are public but not in the reviewed allowlist:\n"
-                        + String.join("\n", unexpectedlyPublic));
+                unowned.isEmpty(),
+                "Host platform controller routes lack a page/action owner:\n"
+                        + String.join("\n", unowned));
     }
 
     @Test
-    void registrationPolicyRoutesRequireTheSettingsReadAndWriteAuthorities() throws Exception {
-        String source = Files.readString(SECURITY_SOURCE);
-        String getRule =
-                "requestMatchers(\n"
-                        + "                                                org.springframework.http.HttpMethod.GET,\n"
-                        + "                                                \"/api/platform/settings/registration\",\n"
-                        + "                                                \"/api/platform/settings/registration/roles\")\n"
-                        + "                                        .hasAuthority(\"platform:settings:read\")";
-        String putRule =
-                "requestMatchers(\n"
-                        + "                                                org.springframework.http.HttpMethod.PUT,\n"
-                        + "                                                \"/api/platform/settings/registration\")\n"
-                        + "                                        .hasAuthority(\"platform:settings:write\")";
-        assertTrue(
-                source.contains(getRule),
-                "Registration policy GET routes must require settings:read");
-        assertTrue(
-                source.contains(putRule),
-                "Registration policy PUT route must require settings:write");
-    }
+    void durableHttpCasesMatchThePolicyAndCoverEveryRouteAndAnyOfAction() throws Exception {
+        List<HttpCase> cases = loadCases();
+        assertFalse(cases.isEmpty(), "The independent-permissions HTTP matrix is empty");
 
-    @Test
-    void notificationRoleSelectorRequiresGlobalNotificationWritePermission() throws Exception {
-        String source = Files.readString(SECURITY_SOURCE);
-        Pattern roleOptionsWriteRule =
-                Pattern.compile(
-                        "requestMatchers\\(\\s*org\\.springframework\\.http\\.HttpMethod\\.GET,\\s*"
-                                + "\"/api/platform/notifications/roles\"\\)\\s*"
-                                + "\\.hasAuthority\\(\"platform:notifications:write\"\\)");
-
-        assertTrue(
-                roleOptionsWriteRule.matcher(source).find(),
-                "Notification role options must use notification write access, not notification read access");
-    }
-
-    @Test
-    void notificationRecipientLookupRequiresGlobalNotificationWritePermission() throws Exception {
-        String source = Files.readString(SECURITY_SOURCE);
-        Pattern recipientLookupWriteRule =
-                Pattern.compile(
-                        "requestMatchers\\(\\s*org\\.springframework\\.http\\.HttpMethod\\.GET,\\s*"
-                                + "\"/api/platform/notifications/recipients\",\\s*"
-                                + "\"/api/platform/notifications/recipients/\\*\"\\)\\s*"
-                                + "\\.hasAuthority\\(\"platform:notifications:write\"\\)");
-
-        assertTrue(
-                recipientLookupWriteRule.matcher(source).find(),
-                "Notification recipient lookup must require notification write, not users read");
-    }
-
-    @Test
-    void sensitiveAuthenticationAndRolePreviewRoutesRequireAuthentication() throws Exception {
-        String source = Files.readString(SECURITY_SOURCE);
-        for (String route :
-                List.of(
-                        "\"/api/account/reauthentication/code\"",
-                        "\"/api/account/reauthentication/passkey/options\"",
-                        "\"/api/account/reauthentication/passkey/complete\"",
-                        "\"/api/account/role-preview\"",
-                        "\"/api/account/role-preview/roles\"",
-                        "\"/api/account/role-preview/resource-tickets/*\"",
-                        "\"/api/account/role-preview/resource-tickets\"",
-                        "\"/api/platform/role-preview/bootstrap\"")) {
+        var routeKeys = new TreeSet<String>();
+        for (PlatformHttpPermissionPolicy.Route route :
+                PlatformHttpPermissionPolicy.routesForTesting())
             assertTrue(
-                    source.contains(route), "Missing exact authenticated route rule for " + route);
+                    routeKeys.add(route.method() + " " + route.path()),
+                    "Duplicate host route policy entry " + route.method() + " " + route.path());
+
+        for (HttpCase httpCase : cases) {
+            assertTrue(
+                    httpCase.path().startsWith("/platform/")
+                            || httpCase.path().startsWith("/dictionaries/"),
+                    httpCase.path());
+            assertNotNull(httpCase.accessPermission(), httpCase.path());
+            assertNotNull(httpCase.accessScope(), httpCase.path());
+            var route =
+                    PlatformHttpPermissionPolicy.routeFor(
+                            httpCase.method(), "/api" + pathOnly(httpCase.path()));
+            assertNotNull(
+                    route, "No policy route for " + httpCase.method() + " " + httpCase.path());
+            assertEquals(httpCase.pageId(), route.page().id(), httpCase.path());
+            assertEquals(
+                    route.page().accessPermission(), httpCase.accessPermission(), httpCase.path());
+            assertEquals(route.page().scope().name(), httpCase.accessScope(), httpCase.path());
+            assertEquals(
+                    route.operationsAny().stream().map(PlatformOperation::permission).toList(),
+                    httpCase.allowedOperationPermissions(),
+                    "Complete action allow-list for " + httpCase.method() + " " + httpCase.path());
+            assertFalse(
+                    httpCase.allowedStatuses().contains(403),
+                    "A positive HTTP case must not accept authorization denial: "
+                            + httpCase.path());
+            if (httpCase.target() != null) {
+                assertEquals("qa-actor", httpCase.target(), httpCase.path());
+                assertEquals("GET", httpCase.method(), httpCase.path());
+                assertTrue(httpCase.path().contains(TEST_ID), httpCase.path());
+                assertEquals(List.of(200), httpCase.allowedStatuses(), httpCase.path());
+            }
+            if (httpCase.operationPermission() == null) {
+                assertTrue(route.operationsAny().isEmpty(), httpCase.path());
+                assertEquals(null, httpCase.operationScope(), httpCase.path());
+            } else {
+                PlatformOperation operation =
+                        route.operationsAny().stream()
+                                .filter(
+                                        candidate ->
+                                                candidate
+                                                        .permission()
+                                                        .equals(httpCase.operationPermission()))
+                                .findFirst()
+                                .orElse(null);
+                assertNotNull(
+                        operation,
+                        "Case operation is not accepted by policy for " + httpCase.path());
+                assertEquals(operation.scope().name(), httpCase.operationScope(), httpCase.path());
+            }
         }
-        assertTrue(
-                source.contains(
-                        "/api/account/role-preview/resource-tickets/*\")\n                                        .authenticated()"),
-                "Role preview ticket reads must require an authenticated user");
-        assertTrue(
-                source.contains(
-                        "/api/platform/role-preview/bootstrap\")\n                                        .authenticated()"),
-                "Role preview bootstrap must require an authenticated operator");
+
+        var caseKeys = new TreeSet<String>();
+        for (HttpCase httpCase : cases) {
+            String key =
+                    httpCase.method()
+                            + " "
+                            + pathOnly(httpCase.path())
+                            + " "
+                            + httpCase.operationPermission();
+            assertTrue(caseKeys.add(key), "Duplicate HTTP matrix case " + key);
+        }
+
+        for (PlatformHttpPermissionPolicy.Route route :
+                PlatformHttpPermissionPolicy.routesForTesting()) {
+            String routePath = route.path();
+            boolean caseCoversRoute =
+                    cases.stream()
+                            .anyMatch(
+                                    httpCase ->
+                                            route.method().equals(httpCase.method())
+                                                    && ANT.match(
+                                                            routePath,
+                                                            "/api" + pathOnly(httpCase.path())));
+            assertTrue(
+                    caseCoversRoute, "No HTTP case covers " + route.method() + " " + route.path());
+            for (PlatformOperation operation : route.operationsAny())
+                assertTrue(
+                        cases.stream()
+                                .anyMatch(
+                                        httpCase ->
+                                                route.method().equals(httpCase.method())
+                                                        && ANT.match(
+                                                                routePath,
+                                                                "/api" + pathOnly(httpCase.path()))
+                                                        && operation
+                                                                .permission()
+                                                                .equals(
+                                                                        httpCase
+                                                                                .operationPermission())),
+                        "OR action is absent from the HTTP matrix: " + operation.permission());
+        }
     }
 
     @Test
-    void restrictedSecondFactorRecoveryRoutesArePublicOnlyForPost() throws Exception {
-        List<Rule> rules = parseRules();
+    void auxiliaryLookupsUseTheirOwningPageAndOnlyTheirOwnReadOrWriteAction() {
+        assertOperations(
+                "GET",
+                "/api/platform/users/" + TEST_ID + "/roles",
+                "users",
+                "platform:users:read-roles",
+                "platform:users:assign-roles");
+        assertOperations(
+                "GET",
+                "/api/platform/roles/" + TEST_ID + "/authentication-policy",
+                "roles",
+                "platform:roles:read-authentication-policy",
+                "platform:roles:update-authentication-policy");
+        assertOperations(
+                "GET",
+                "/api/platform/settings/registration/roles",
+                "registration",
+                "platform:registration:read-roles",
+                "platform:registration:assign-default-role");
+        assertOperations(
+                "GET",
+                "/api/platform/notifications/roles",
+                "notifications",
+                "platform:notifications:create");
+        assertOperations(
+                "GET",
+                "/api/platform/notifications/recipients",
+                "notifications",
+                "platform:notifications:create");
+        assertOperations(
+                "GET",
+                "/api/platform/settings/profile-fields/dictionaries",
+                "profile-fields",
+                "platform:profile-fields:read-dictionaries");
+        assertOperations(
+                "GET",
+                "/api/dictionaries/languages/items",
+                "profile-fields",
+                "platform:profile-fields:read-dictionaries");
+        assertOperations(
+                "GET",
+                "/api/dictionaries/languages/items/" + TEST_ID,
+                "profile-fields",
+                "platform:profile-fields:read-dictionaries");
+
+        var quotaPreview =
+                PlatformHttpPermissionPolicy.routeFor(
+                        "GET", "/api/platform/users/" + TEST_ID + "/file-quota/preview");
+        assertNotNull(quotaPreview);
+        assertEquals(PlatformPageId.USERS, quotaPreview.page());
+        assertEquals(List.of(PlatformOperation.USER_ASSIGN_ROLES), quotaPreview.operationsAny());
+    }
+
+    @Test
+    void publicAndAuthenticatedShellAndBootstrapRoutesRemainDeliberateExceptions()
+            throws Exception {
+        String source = Files.readString(SECURITY_SOURCE);
+        for (String path :
+                List.of(
+                        "\"/api/platform/modules/plugins/frontend\"",
+                        "\"/api/platform/modules/plugins/assets/**\"",
+                        "\"/api/platform/navigation\"",
+                        "\"/api/platform/role-preview/bootstrap\""))
+            assertTrue(source.contains(path), "Missing authenticated shell route " + path);
+        assertTrue(
+                source.contains("plugins.getIfAvailable()"),
+                "Unowned plugin API routes must continue to delegate to PluginAuthorizationPort");
+    }
+
+    @Test
+    void pendingSecondFactorRecoveryIsPublicOnlyForPost() throws Exception {
+        List<SecurityRule> rules = securityRules();
         for (String path :
                 List.of(
                         "/api/auth/second-factor/recovery/request",
                         "/api/auth/second-factor/recovery/verify")) {
-            Rule postRule =
-                    rules.stream()
-                            .filter(rule -> rule.matches("POST", path))
-                            .findFirst()
-                            .orElse(null);
-            assertTrue(
-                    postRule != null && postRule.kind().equals("permitAll"),
-                    "Pending-session recovery must be reachable by POST: " + path);
             assertTrue(
                     rules.stream()
-                            .noneMatch(
+                            .anyMatch(
+                                    rule ->
+                                            rule.kind().equals("permitAll")
+                                                    && rule.matches("POST", path)),
+                    "Pending-session recovery POST must remain public: " + path);
+            assertFalse(
+                    rules.stream()
+                            .anyMatch(
                                     rule ->
                                             rule.kind().equals("permitAll")
                                                     && rule.matches("GET", path)),
@@ -190,24 +306,84 @@ class RoutePermissionCoverageTest {
         }
     }
 
-    /** Reviewed exceptions: public endpoints that do not live under a public prefix. */
-    private static final Set<String> ALLOWED_PUBLIC_OUTSIDE_PREFIXES =
-            Set.of(
-                    "POST /api/auth/password-recovery/request",
-                    "POST /api/auth/password-recovery/confirm");
+    @Test
+    void accountRolePreviewAndReauthenticationRoutesRemainAuthenticated() throws Exception {
+        List<SecurityRule> rules = securityRules();
+        for (String route :
+                List.of(
+                        "GET /api/account/role-preview",
+                        "GET /api/account/role-preview/roles",
+                        "POST /api/account/role-preview",
+                        "DELETE /api/account/role-preview",
+                        "GET /api/account/role-preview/resource-tickets/x",
+                        "POST /api/account/role-preview/resource-tickets",
+                        "POST /api/platform/role-preview/bootstrap",
+                        "POST /api/account/reauthentication/code",
+                        "POST /api/account/reauthentication/passkey/options",
+                        "POST /api/account/reauthentication/passkey/complete")) {
+            String[] parts = route.split(" ", 2);
+            assertTrue(
+                    rules.stream()
+                            .anyMatch(
+                                    rule ->
+                                            rule.kind().equals("authenticated")
+                                                    && rule.matches(parts[0], parts[1])),
+                    "Missing authenticated security rule for " + route);
+        }
+    }
 
-    private static List<Rule> parseRules() throws Exception {
+    private static void assertOperations(
+            String method, String path, String pageId, String... expected) {
+        var route = PlatformHttpPermissionPolicy.routeFor(method, path);
+        assertNotNull(route, method + " " + path);
+        assertEquals(pageId, route.page().id(), path);
+        assertEquals(
+                List.of(expected),
+                route.operationsAny().stream().map(PlatformOperation::permission).toList(),
+                path);
+    }
+
+    private static String pathOnly(String path) {
+        int query = path.indexOf('?');
+        return query < 0 ? path : path.substring(0, query);
+    }
+
+    private static List<String> policyLookupPaths(Endpoint endpoint) {
+        if (!endpoint.source().startsWith("SettingHistoryController#"))
+            return List.of(endpoint.path());
+        return SETTING_HISTORY_SECTIONS.stream()
+                .map(
+                        section ->
+                                endpoint.path()
+                                        .replace("/settings/x/", "/settings/" + section + "/"))
+                .toList();
+    }
+
+    private static List<HttpCase> loadCases() throws Exception {
+        try (InputStream stream =
+                RoutePermissionCoverageTest.class
+                        .getClassLoader()
+                        .getResourceAsStream(MATRIX_RESOURCE)) {
+            assertNotNull(stream, "Missing " + MATRIX_RESOURCE);
+            return new ObjectMapper().readValue(stream, new TypeReference<>() {});
+        }
+    }
+
+    private static List<SecurityRule> securityRules() throws Exception {
         String source = Files.readString(SECURITY_SOURCE);
         source = source.substring(0, source.indexOf("anyRequest()"));
+        var rules = new ArrayList<SecurityRule>();
+        var matcher = SECURITY_RULE.matcher(source);
         var parser = PathPatternParser.defaultInstance;
-        var rules = new ArrayList<Rule>();
-        var matcher = RULE.matcher(source);
         while (matcher.find()) {
             List<PathPattern> patterns = new ArrayList<>();
             var literal = Pattern.compile("\"([^\"]+)\"").matcher(matcher.group(2));
             while (literal.find()) patterns.add(parser.parse(literal.group(1)));
-            String method = matcher.group(1);
-            rules.add(new Rule(method, patterns.toArray(PathPattern[]::new), matcher.group(3)));
+            rules.add(
+                    new SecurityRule(
+                            matcher.group(1),
+                            patterns.toArray(PathPattern[]::new),
+                            matcher.group(3)));
         }
         return rules;
     }
@@ -233,7 +409,8 @@ class RoutePermissionCoverageTest {
                     .getPath()
                     .contains("/test-classes/")) continue;
             for (Method method : type.getDeclaredMethods()) {
-                if (AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class)
+                if (org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation(
+                                method, RequestMapping.class)
                         == null) continue;
                 RequestMappingInfo info = mapping.mappingFor(method, type);
                 if (info == null || info.getPathPatternsCondition() == null) continue;
@@ -263,7 +440,6 @@ class RoutePermissionCoverageTest {
         return result;
     }
 
-    /** Exposes the protected mapping resolution so the real Spring rules decide the paths. */
     private static final class ExposedMapping extends RequestMappingHandlerMapping {
         RequestMappingInfo mappingFor(Method method, Class<?> type) {
             try {

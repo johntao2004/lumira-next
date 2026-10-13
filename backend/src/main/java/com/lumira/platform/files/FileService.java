@@ -5,6 +5,8 @@ import com.lumira.platform.common.FileContentPort;
 import com.lumira.platform.common.FileQuotaPolicyPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.AccountOwnerPort;
 import java.io.*;
 import java.util.UUID;
@@ -356,7 +358,7 @@ public class FileService implements FileContentPort {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<FileRepository.ManagedEntry> listManaged(String actor, PageRequest page) {
-        guard.requireGlobal(actor, "platform:files:read");
+        guard.requirePageGlobal(actor, PlatformPageId.FILES_ALL);
         return files.listManaged(page);
     }
 
@@ -368,19 +370,24 @@ public class FileService implements FileContentPort {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<FileRepository.ManagedEntry> listManagedTrash(
             String actor, PageRequest page) {
-        guard.requireGlobal(actor, "platform:files:read");
+        guard.requirePageGlobal(actor, PlatformPageId.FILES_ALL);
         return files.listManagedTrash(page);
     }
 
     public FileRepository.ManagedEntry findManaged(String actor, UUID id) {
-        guard.requireGlobal(actor, "platform:files:read");
+        guard.requireOperationGlobal(actor, PlatformOperation.FILE_DOWNLOAD);
+        return managedEntry(id);
+    }
+
+    private FileRepository.ManagedEntry managedEntry(UUID id) {
         return files.findManaged(id)
                 .orElseThrow(
                         () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "fileNotFound"));
     }
 
     public InputStream openManaged(String actor, UUID id) throws IOException {
-        var entry = findManaged(actor, id);
+        guard.requireOperationGlobal(actor, PlatformOperation.FILE_DOWNLOAD);
+        var entry = managedEntry(id);
         return open(
                 new FileRepository.Entry(
                         entry.id(),
@@ -397,8 +404,7 @@ public class FileService implements FileContentPort {
     }
 
     public void deleteManaged(String actor, UUID id, long version) {
-        guard.require(actor, "platform:files:write");
-        guard.requireGlobal(actor, "platform:files:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.FILE_DELETE);
         transaction.executeWithoutResult(
                 status -> {
                     validateAuthorizationBoundary();
@@ -417,7 +423,7 @@ public class FileService implements FileContentPort {
     }
 
     public void restoreManaged(String actor, UUID id, long version) {
-        requireManagedWrite(actor);
+        requireManagedWrite(actor, PlatformOperation.FILE_RESTORE);
         transaction.executeWithoutResult(
                 status -> {
                     validateAuthorizationBoundary();
@@ -434,7 +440,7 @@ public class FileService implements FileContentPort {
     }
 
     public void purgeManaged(String actor, UUID id, long version) {
-        requireManagedWrite(actor);
+        requireManagedWrite(actor, PlatformOperation.FILE_PURGE);
         transaction.executeWithoutResult(
                 status -> {
                     validateAuthorizationBoundary();
@@ -451,9 +457,8 @@ public class FileService implements FileContentPort {
         deleteFinalizer.finish(id, version + 1);
     }
 
-    private void requireManagedWrite(String actor) {
-        guard.require(actor, "platform:files:write");
-        guard.requireGlobal(actor, "platform:files:write");
+    private void requireManagedWrite(String actor, PlatformOperation operation) {
+        guard.requireOperationGlobal(actor, operation);
     }
 
     public record Usage(
@@ -507,8 +512,8 @@ public class FileService implements FileContentPort {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public UserQuotaView userQuota(String actor, UUID userId) {
-        guard.require(actor, "platform:users:read");
-        guard.requireUser(actor, userId, "platform:users:read");
+        guard.requirePage(actor, PlatformPageId.USERS);
+        guard.requireUser(actor, userId, PlatformPageId.USERS.accessPermission());
         var owner = files.quotaOwner(userId, false);
         var used = files.usage(userId);
         var effective = effectiveQuota(userId);
@@ -518,8 +523,7 @@ public class FileService implements FileContentPort {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public UserQuotaPreview previewUserQuota(
             String actor, UUID userId, java.util.Set<UUID> proposedRoleIds) {
-        guard.require(actor, "platform:roles:read");
-        guard.requireUser(actor, userId, "platform:roles:read");
+        guard.requireOperationUser(actor, userId, PlatformOperation.USER_ASSIGN_ROLES);
         var owner = files.quotaOwner(userId, false);
         var used = files.usage(userId);
         var current = effectiveQuota(userId);
@@ -571,7 +575,8 @@ public class FileService implements FileContentPort {
     }
 
     public FilePreview previewManaged(String actor, UUID id, int page) throws IOException {
-        var entry = findManaged(actor, id);
+        guard.requireOperationGlobal(actor, PlatformOperation.FILE_PREVIEW);
+        var entry = managedEntry(id);
         return preview(
                 new FileRepository.Entry(
                         entry.id(),

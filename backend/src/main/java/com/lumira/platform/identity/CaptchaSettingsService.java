@@ -4,6 +4,8 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.CaptchaProofPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.SecretKeys;
 import java.util.EnumMap;
 import java.util.Map;
@@ -233,13 +235,11 @@ public class CaptchaSettingsService {
     }
 
     private void requireRead(String actor) {
-        guard.require(actor, "platform:settings:read");
-        guard.requireGlobal(actor, "platform:settings:read");
+        guard.requirePageGlobal(actor, PlatformPageId.CAPTCHA);
     }
 
     private void requireWrite(String actor) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.CAPTCHA_UPDATE);
     }
 
     private static void invalid(String code) {

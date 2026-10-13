@@ -59,8 +59,7 @@ public class GlobalAuthenticationPolicyService implements GlobalAuthenticationPo
 
     @Transactional(readOnly = true)
     public View read(String actor) {
-        guard.require(actor, "platform:settings:read");
-        guard.requireGlobal(actor, "platform:settings:read");
+        guard.requirePageGlobal(actor, PlatformPageId.AUTHENTICATION);
         return view();
     }
 
@@ -98,8 +97,7 @@ public class GlobalAuthenticationPolicyService implements GlobalAuthenticationPo
         // Lock order is authentication policy -> request/session context -> settings rows.
         // The guard reaches the session boundary, so it must not run before this exclusive lock.
         policyLock.lockForUpdate();
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.AUTHENTICATION_UPDATE);
         Policy before = readPolicy();
         if (before.version() != input.version()) throw error(HttpStatus.CONFLICT, "staleRecord");
         // An enabled but currently unavailable method can be retained while another method is

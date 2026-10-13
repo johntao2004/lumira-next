@@ -10,6 +10,10 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.PageRequest;
+import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.ProfileDictionaryPort;
 import com.lumira.platform.identity.api.ProfileFields;
 import java.util.ArrayList;
@@ -23,6 +27,30 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 class ProfileFieldsControllerTest {
+    @Test
+    void settingsSchemaReadRequiresItsOwnPageBeforeLoadingTheSchema() {
+        var store = mock(SettingStore.class);
+        var guard = mock(AdministrationPort.class);
+        org.mockito.Mockito.doThrow(
+                        new ResponseStatusException(
+                                org.springframework.http.HttpStatus.FORBIDDEN, "forbidden"))
+                .when(guard)
+                .requirePageGlobal("reader", PlatformPageId.PROFILE_FIELDS);
+        var controller =
+                new ProfileFieldsController(
+                        store,
+                        new ObjectMapper(),
+                        guard,
+                        mock(ProfileDictionaryPort.class),
+                        new ProfileSchemaReader(store, new ObjectMapper()));
+        var auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("reader");
+
+        assertThrows(ResponseStatusException.class, () -> controller.read(auth));
+
+        org.mockito.Mockito.verifyNoInteractions(store);
+    }
+
     @Test
     void legacyReadSuppliesImageAndSortsWithoutWritingSettings() {
         var fields = new ArrayList<>(ProfileFields.defaults().fields());
@@ -160,13 +188,10 @@ class ProfileFieldsControllerTest {
 
         var mapper = new ObjectMapper();
         var schemas = new ProfileSchemaReader(store, mapper);
+        var guard = mock(AdministrationPort.class);
         var controller =
                 new ProfileFieldsController(
-                        store,
-                        mapper,
-                        mock(AdministrationPort.class),
-                        mock(ProfileDictionaryPort.class),
-                        schemas);
+                        store, mapper, guard, mock(ProfileDictionaryPort.class), schemas);
         var authentication = mock(Authentication.class);
         when(authentication.getName()).thenReturn("test-admin");
 
@@ -174,7 +199,7 @@ class ProfileFieldsControllerTest {
                 controller.write(
                         new ProfileFieldsController.Input(1, data, "Add emergency contact"),
                         authentication);
-        var reloaded = controller.read();
+        var reloaded = controller.readDocument();
 
         assertEquals(2, written.version());
         assertEquals(2, reloaded.version());
@@ -189,6 +214,64 @@ class ProfileFieldsControllerTest {
                         eq(1L),
                         eq("Add emergency contact"));
         assertEquals(normalized, mapper.readValue(persistedJson.getValue(), ProfileFields.class));
+        verify(guard).requireOperationGlobal("test-admin", PlatformOperation.PROFILE_FIELDS_UPDATE);
+    }
+
+    @Test
+    void dictionaryLookupUsesItsOwnProfileFieldsReadOperation() {
+        var store = mock(SettingStore.class);
+        var guard = mock(AdministrationPort.class);
+        var dictionaries = mock(ProfileDictionaryPort.class);
+        var expected =
+                new PageResult<>(
+                        java.util.List.of(
+                                new ProfileDictionaryPort.EnabledDictionary(
+                                        "districts", "Districts", true)),
+                        1,
+                        2,
+                        5);
+        when(dictionaries.listEnabled(new PageRequest(2, 5, "district"))).thenReturn(expected);
+        var controller =
+                new ProfileFieldsController(
+                        store,
+                        new ObjectMapper(),
+                        guard,
+                        dictionaries,
+                        new ProfileSchemaReader(store, new ObjectMapper()));
+        var auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("profile-editor");
+
+        assertEquals(expected, controller.dictionaries(2, 5, "district", auth));
+
+        verify(guard)
+                .requireOperationGlobal(
+                        "profile-editor", PlatformOperation.PROFILE_FIELDS_READ_DICTIONARIES);
+        verify(dictionaries).listEnabled(new PageRequest(2, 5, "district"));
+    }
+
+    @Test
+    void deniedDictionaryLookupDoesNotQueryTheDictionaryCatalog() {
+        var guard = mock(AdministrationPort.class);
+        var dictionaries = mock(ProfileDictionaryPort.class);
+        org.mockito.Mockito.doThrow(
+                        new ResponseStatusException(
+                                org.springframework.http.HttpStatus.FORBIDDEN, "forbidden"))
+                .when(guard)
+                .requireOperationGlobal(
+                        "reader", PlatformOperation.PROFILE_FIELDS_READ_DICTIONARIES);
+        var controller =
+                new ProfileFieldsController(
+                        mock(SettingStore.class),
+                        new ObjectMapper(),
+                        guard,
+                        dictionaries,
+                        new ProfileSchemaReader(mock(SettingStore.class), new ObjectMapper()));
+        var auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("reader");
+
+        assertThrows(ResponseStatusException.class, () -> controller.dictionaries(1, 10, "", auth));
+
+        org.mockito.Mockito.verifyNoInteractions(dictionaries);
     }
 
     @Test

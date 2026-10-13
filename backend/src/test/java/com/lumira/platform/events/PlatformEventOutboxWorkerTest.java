@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class PlatformEventOutboxWorkerTest {
     @Test
-    void consumesOutsideStoreAndAcknowledgesWithTheClaim() {
+    void consumesThroughTheCommonAdapterAndAcknowledgesWithTheClaim() {
         var store = mock(PlatformEventOutboxStore.class);
         var claim = new PlatformEventOutboxStore.Claim(UUID.randomUUID(), UUID.randomUUID(), 1);
         var event =
@@ -29,7 +29,7 @@ class PlatformEventOutboxWorkerTest {
 
                     @Override
                     public void consume(PlatformEventOutboxStore.Event actual) {
-                        assertSame(event, actual);
+                        assertEquals(event, actual);
                     }
                 };
         when(store.event(claim)).thenReturn(Optional.of(event));
@@ -87,7 +87,7 @@ class PlatformEventOutboxWorkerTest {
                         store, new PlatformEventConsumerRegistry(java.util.List.of()));
         try {
             noHandler.process(claim);
-            verify(store).fail(claim, "NO_CONSUMER");
+            verify(store).releaseWithoutConsumer(claim);
         } finally {
             noHandler.close();
         }

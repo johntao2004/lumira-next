@@ -15,8 +15,8 @@ try {
   const page = await context.newPage(); const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/dashboard/sms'); await expect(page.getByRole('heading', { name: '短信服务', exact: true })).toBeVisible();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false);
-  await page.goto('/dashboard/home'); await page.locator('.pro-account-trigger').click(); await page.getByRole('menuitem', { name: '个人资料', exact: true }).click();
-  const profile = page.getByRole('dialog', { name: '个人资料', exact: true }); await profile.getByRole('button', { name: '账号手机', exact: true }).click();
+  await page.goto('/dashboard/home'); await page.locator('.pro-account-trigger').click(); await page.getByRole('menuitem', { name: '个人资料', exact: true }).click(); await page.waitForURL('**/dashboard/account-profile');
+  const profile = page.locator('.account-settings-panel'); await profile.getByRole('button', { name: '账号手机', exact: true }).click();
   const phone = page.getByRole('dialog', { name: '账号手机', exact: true }); await expect(phone.getByText('已验证手机号: 尚未验证', { exact: true })).toBeVisible();
   let submissions = 0;
   await page.route('**/api/account/phone/request', async route => { submissions++; await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 'smsUnavailable', message: 'smsUnavailable' }) }); });

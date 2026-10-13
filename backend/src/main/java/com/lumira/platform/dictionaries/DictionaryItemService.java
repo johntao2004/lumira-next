@@ -71,9 +71,8 @@ public class DictionaryItemService {
         throw new ResponseStatusException(status, code);
     }
 
-    private void begin(String actor) {
-        guard.require(actor, "platform:dictionaries:write");
-        guard.requireGlobal(actor, "platform:dictionaries:write");
+    private void begin(String actor, PlatformOperation operation) {
+        guard.requireOperationGlobal(actor, operation);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -90,14 +89,34 @@ public class DictionaryItemService {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResult<DictionaryItemRepository.Item> list(
+            UUID dictionary, PageRequest p, String parentValue, String actor) {
+        guard.requirePage(actor, PlatformPageId.DICTIONARIES);
+        return list(dictionary, p, parentValue);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public java.util.List<DictionaryItemRepository.Item> ancestors(UUID dictionary, UUID id) {
         items.find(dictionary, id);
         return items.ancestors(dictionary, id);
     }
 
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public java.util.List<DictionaryItemRepository.Item> ancestors(
+            UUID dictionary, UUID id, String actor) {
+        guard.requirePage(actor, PlatformPageId.DICTIONARIES);
+        return ancestors(dictionary, id);
+    }
+
     @Transactional(readOnly = true)
     public DictionaryItemRepository.Item find(UUID dictionary, UUID id) {
         return items.find(dictionary, id);
+    }
+
+    @Transactional(readOnly = true)
+    public DictionaryItemRepository.Item find(UUID dictionary, UUID id, String actor) {
+        guard.requirePage(actor, PlatformPageId.DICTIONARIES);
+        return find(dictionary, id);
     }
 
     private void validate(UUID dictionary, UUID id, Input in, boolean creating) {
@@ -138,7 +157,7 @@ public class DictionaryItemService {
 
     @Transactional
     public DictionaryItemRepository.Item create(UUID dictionary, Input input, String actor) {
-        begin(actor);
+        begin(actor, PlatformOperation.DICTIONARY_CREATE);
         var type = dictionaries.find(dictionary);
         var id = UUID.randomUUID();
         validate(dictionary, id, input, true);
@@ -157,7 +176,7 @@ public class DictionaryItemService {
     @Transactional
     public DictionaryItemRepository.Item update(
             UUID dictionary, UUID id, Input input, String actor) {
-        begin(actor);
+        begin(actor, PlatformOperation.DICTIONARY_UPDATE);
         var old = items.find(dictionary, id);
         if (input == null || input.version() == null || input.version() != old.version())
             fail(HttpStatus.CONFLICT, "staleRecord");
@@ -194,7 +213,7 @@ public class DictionaryItemService {
 
     @Transactional
     public void delete(UUID dictionary, UUID id, long version, String actor) {
-        begin(actor);
+        begin(actor, PlatformOperation.DICTIONARY_DELETE);
         var old = items.find(dictionary, id);
         if (old.version() != version) fail(HttpStatus.CONFLICT, "staleRecord");
         var type = dictionaries.find(dictionary);

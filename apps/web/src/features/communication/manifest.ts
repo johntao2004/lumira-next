@@ -7,8 +7,8 @@ export const communicationManifest = {
   required: true,
   dependencies: ["identity", "platform", "settings"],
   routes: [
-    { id: "mail-deliveries", label: "deliveryRecords", tabLabel: "mailDeliveries", permission: "platform:audit:read", group: "operations", order: 40 },
-    { id: "sms-deliveries", label: "smsDeliveries", permission: "platform:audit:read", group: "operations", order: 50 },
+    { id: "mail-deliveries", label: "deliveryRecords", tabLabel: "mailDeliveries", permission: "platform:mail-deliveries:access", accessScope: "global", group: "communication", order: 40 },
+    { id: "sms-deliveries", label: "smsDeliveries", permission: "platform:sms-deliveries:access", accessScope: "global", group: "communication", order: 50 },
   ],
   tabGroups: [
     { id: "delivery-records", routes: ["mail-deliveries", "sms-deliveries"], anchor: "mail-deliveries", collapse: "when-all-visible" },

@@ -2,6 +2,7 @@ package com.lumira.platform;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -32,9 +33,10 @@ class ArchitectureTest {
                     Map.entry("content", Set.of()),
                     Map.entry("dictionaries", Set.of("identity")),
                     Map.entry("directory", Set.of()),
-                    Map.entry("drafts", Set.of()),
                     Map.entry("events", Set.of()),
-                    Map.entry("feedback", Set.of("content", "dictionaries", "notifications")),
+                    Map.entry(
+                            "feedback",
+                            Set.of("content", "dictionaries", "identity", "notifications")),
                     Map.entry("files", Set.of("identity", "settings")),
                     Map.entry("identity", Set.of()),
                     Map.entry("localization", Set.of()),
@@ -114,6 +116,31 @@ class ArchitectureTest {
                     .because(entry.getKey() + " may only depend on " + entry.getValue())
                     .check(production);
         }
+    }
+
+    @Test
+    void feedbackDependsOnlyOnIdentityPublicApi() {
+        Set<String> forbidden = new TreeSet<>();
+        for (var source : production) {
+            String sourcePackage = source.getPackageName();
+            if (!sourcePackage.equals(ROOT + ".feedback")
+                    && !sourcePackage.startsWith(ROOT + ".feedback.")) continue;
+            for (var dependency : source.getDirectDependenciesFromSelf()) {
+                var target = dependency.getTargetClass();
+                String targetPackage = target.getPackageName();
+                boolean identityPackage =
+                        targetPackage.equals(ROOT + ".identity")
+                                || targetPackage.startsWith(ROOT + ".identity.");
+                if (identityPackage
+                        && !targetPackage.equals(ROOT + ".identity.api")
+                        && !targetPackage.startsWith(ROOT + ".identity.api.")) {
+                    forbidden.add(source.getName() + " -> " + target.getName());
+                }
+            }
+        }
+        assertTrue(
+                forbidden.isEmpty(),
+                () -> "Feedback may only depend on identity.api contracts: " + forbidden);
     }
 
     @Test

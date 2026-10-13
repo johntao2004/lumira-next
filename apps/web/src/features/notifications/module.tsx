@@ -7,6 +7,6 @@ const AdminNotificationsPage = lazy(() => import("./admin-notifications-page").t
 export const notificationsFrontendModule = {
   ...notificationsManifest,
   pages: {
-    notifications: ({ hasGlobal }) => <AdminNotificationsPage canWrite={hasGlobal("platform:notifications:write")} />,
+    notifications: ({ hasOperation }) => <AdminNotificationsPage canCreate={hasOperation("create")} />,
   },
 } satisfies FrontendModule;

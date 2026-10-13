@@ -7,6 +7,6 @@ const OutboxPage = lazy(() => import("./outbox-page").then(({ OutboxPage }) => (
 export const eventsFrontendModule = {
   ...eventsManifest,
   pages: {
-    "event-outbox": ({ hasGlobal }) => <OutboxPage canReplay={hasGlobal("platform:events:write")} />,
+    "event-outbox": ({ hasOperation }) => <OutboxPage canReplay={hasOperation("replay")} />,
   },
 } satisfies FrontendModule;

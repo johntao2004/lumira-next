@@ -3,12 +3,16 @@ package com.lumira.platform.identity;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.lumira.platform.common.CaptchaProofPort;
+import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.identity.api.LoginResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.*;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -103,6 +107,59 @@ class PasswordLoginFilterTest {
         assertNotEquals(hash, evidence.hashFingerprint());
         assertTrue(proof.matches(evidence.hashFingerprint(), hash));
         assertEquals(revision, evidence.primaryCredentialRevision());
+    }
+
+    @Test
+    void alwaysRequiredCaptchaWithoutProofIsRejectedBeforePasswordAuthentication()
+            throws Exception {
+        var proofPort = mock(CaptchaProofPort.class);
+        when(proofPort.requirement(
+                        eq(CaptchaProofPort.Action.PASSWORD_LOGIN),
+                        isNull(),
+                        isNull(),
+                        any(CaptchaProofPort.RequestFacts.class)))
+                .thenReturn(
+                        new CaptchaProofPort.Requirement(
+                                true, "always-policy-revision", "IMAGE_TEXT"));
+        when(proofPort.readyForRequiredPolicy()).thenReturn(true);
+        @SuppressWarnings("unchecked")
+        var providers = (ObjectProvider<CaptchaProofPort>) mock(ObjectProvider.class);
+        when(providers.getIfAvailable()).thenReturn(proofPort);
+        var crypto = mock(PublicAuthCrypto.class);
+        when(crypto.sourceDigest(anyString())).thenReturn("source-digest");
+        var captcha = new CaptchaProofAccess(providers, new ClientAddressResolver(""), crypto);
+        var manager = mock(AuthenticationManager.class);
+        var filter =
+                new PasswordLoginFilter(
+                        mock(SecondFactorLoginService.class), new ObjectMapper(), captcha);
+        filter.setAuthenticationManager(manager);
+        filter.setAuthenticationFailureHandler(
+                (request, response, error) -> {
+                    var captchaError =
+                            assertInstanceOf(
+                                    PasswordLoginFilter.CaptchaAuthenticationException.class,
+                                    error);
+                    response.setStatus(captchaError.status());
+                    response.setContentType("application/json");
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write("{\"detail\":\"" + captchaError.code() + "\"}");
+                });
+
+        var request = new MockHttpServletRequest("POST", "/api/auth/login");
+        request.setParameter("username", "alice");
+        request.setParameter("password", "correct horse battery");
+        var response = new MockHttpServletResponse();
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertEquals(400, response.getStatus());
+        assertEquals("{\"detail\":\"captchaRequired\"}", response.getContentAsString());
+        verify(proofPort)
+                .requirement(
+                        eq(CaptchaProofPort.Action.PASSWORD_LOGIN),
+                        isNull(),
+                        isNull(),
+                        any(CaptchaProofPort.RequestFacts.class));
+        verifyNoInteractions(manager);
     }
 
     @Test

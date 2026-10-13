@@ -23,6 +23,9 @@ public interface AiUserDirectoryPort {
     /** Read one currently visible user through the directory's normal authorization path. */
     UserView find(UUID id, String actor);
 
+    /** Load only the target needed by the named AI-console operation. */
+    UserView findForOperation(UUID id, String actor, PlatformOperation operation);
+
     UserView create(CreateUser input, String actor);
 
     UserView update(UUID id, UpdateUser input, String actor);

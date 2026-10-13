@@ -92,6 +92,10 @@ public record AiProviderProfile(
 
     /** Explicit model contract: https://api-docs.deepseek.com/quick_start/pricing/ . */
     public boolean supportsUserTools(String selectedModel) {
+        return supportsUserTools(providerKind, selectedModel);
+    }
+
+    public static boolean supportsUserTools(ProviderKind providerKind, String selectedModel) {
         return providerKind == ProviderKind.DEEPSEEK
                 && ("deepseek-flash".equals(selectedModel)
                         || "deepseek-v4-pro".equals(selectedModel));

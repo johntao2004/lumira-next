@@ -38,20 +38,20 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
     }
 
     public PageResult<RoleContentPolicyRepository.Policy> list(PageRequest page, String actor) {
-        guard.requireGlobal(actor, SensitiveWordService.READ);
+        requireGlobalOperation(actor, SensitiveWordService.READ);
         return new PageResult<>(
                 policies.list(page), policies.count(page), page.page(), page.pageSize());
     }
 
     public PageResult<RoleContentPolicyRepository.Hit> hits(PageRequest page, String actor) {
-        guard.requireGlobal(actor, SensitiveWordService.READ);
+        requireGlobalOperation(actor, SensitiveWordService.READ);
         return new PageResult<>(
                 policies.hits(page), policies.hitCount(page), page.page(), page.pageSize());
     }
 
     @Transactional
     public RoleContentPolicyRepository.Policy save(UUID id, Input input, String actor) {
-        guard.requireGlobal(actor, SensitiveWordService.WRITE);
+        requireGlobalOperation(actor, SensitiveWordService.POLICY_UPDATE);
         var current =
                 policies.find(id)
                         .orElseThrow(
@@ -112,7 +112,7 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
     }
 
     public SensitiveWordService.CheckResult preview(UUID roleId, String text, String actor) {
-        guard.requireGlobal(actor, SensitiveWordService.READ);
+        requireGlobalOperation(actor, SensitiveWordService.READ);
         if (text != null && text.length() > 200_000)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sensitiveTextTooLong");
         if (roleId == null) return dictionary.check(text, actor);
@@ -136,6 +136,13 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
                                         new SensitiveWordService.Match(
                                                 m.word(), m.severity(), m.action(), mask(m.word())))
                         .toList());
+    }
+
+    private void requireGlobalOperation(String actor, String operation) {
+        guard.require(actor, SensitiveWordService.ACCESS);
+        guard.requireGlobal(actor, SensitiveWordService.ACCESS);
+        guard.require(actor, operation);
+        guard.requireGlobal(actor, operation);
     }
 
     private synchronized Snapshot current() {

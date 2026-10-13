@@ -100,10 +100,10 @@ public class NotificationStore {
         String normalizedHref = NotificationHref.normalize(href);
         return jdbc.sql(
                                 """
-            INSERT INTO platform_notification(id,recipient_id,event_id,dedupe_key,kind,title_key,body_key,params,href,expires_at)
-            VALUES(:id,:recipient,:event,:dedupe,:kind,:title,:body,CAST(:params AS jsonb),:href,:expiresAt)
-            ON CONFLICT (recipient_id,dedupe_key) DO NOTHING
-            """)
+                                INSERT INTO platform_notification(id,recipient_id,event_id,dedupe_key,kind,title_key,body_key,params,href,expires_at)
+                                VALUES(:id,:recipient,:event,:dedupe,:kind,:title,:body,CAST(:params AS jsonb),:href,:expiresAt)
+                                ON CONFLICT (recipient_id,dedupe_key) DO NOTHING
+                                """)
                         .param("id", UUID.randomUUID())
                         .param("recipient", recipientId)
                         .param("event", eventId)
@@ -142,10 +142,16 @@ public class NotificationStore {
             int[] results =
                     batchJdbc.batchUpdate(
                             """
-                INSERT INTO platform_notification(id,recipient_id,event_id,dedupe_key,kind,title_key,body_key,params,href,expires_at)
-                VALUES(?,?,?,?,?,?,?,CAST(? AS jsonb),?,?)
-                ON CONFLICT (recipient_id,dedupe_key) DO NOTHING
-                """,
+                            INSERT INTO platform_notification(id,recipient_id,event_id,dedupe_key,kind,title_key,body_key,params,href,expires_at)
+                            SELECT ?,?,?,?,?,?, ?,CAST(? AS jsonb),?,?
+                            WHERE EXISTS (
+                              SELECT 1 FROM platform_user u
+                              WHERE u.id=? AND u.enabled=true AND u.deleted_at IS NULL
+                              FOR SHARE OF u
+                            )
+                            AND (CAST(? AS timestamptz) IS NULL OR CAST(? AS timestamptz)>now())
+                            ON CONFLICT (recipient_id,dedupe_key) DO NOTHING
+                            """,
                             new BatchPreparedStatementSetter() {
                                 @Override
                                 public void setValues(
@@ -164,6 +170,9 @@ public class NotificationStore {
                                     statement.setString(
                                             9, normalizedHrefs.get(chunkOffset + index));
                                     statement.setObject(10, request.expiresAt());
+                                    statement.setObject(11, request.recipientId());
+                                    statement.setObject(12, request.expiresAt());
+                                    statement.setObject(13, request.expiresAt());
                                 }
 
                                 @Override
@@ -193,9 +202,12 @@ public class NotificationStore {
             filter += readState ? " AND read_at IS NOT NULL" : " AND read_at IS NULL";
         var rows =
                 jdbc.sql(
-                                "SELECT id,kind,title_key,body_key,params::text,href,(read_at IS NOT NULL) AS read,created_at,expires_at FROM platform_notification"
+                                "SELECT id,kind,title_key,body_key,params::text,href,(read_at IS"
+                                        + " NOT NULL) AS read,created_at,expires_at FROM"
+                                        + " platform_notification"
                                         + filter
-                                        + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset")
+                                        + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET"
+                                        + " :offset")
                         .param("recipient", recipientId)
                         .param("limit", page.pageSize())
                         .param("offset", page.offset())
@@ -223,7 +235,8 @@ public class NotificationStore {
     @Transactional(readOnly = true)
     public long unreadCount(UUID recipientId) {
         return jdbc.sql(
-                        "SELECT count(*) FROM platform_notification WHERE recipient_id=:recipient AND read_at IS NULL AND (expires_at IS NULL OR expires_at>now())")
+                        "SELECT count(*) FROM platform_notification WHERE recipient_id=:recipient"
+                                + " AND read_at IS NULL AND (expires_at IS NULL OR expires_at>now())")
                 .param("recipient", recipientId)
                 .query(Long.class)
                 .single();
@@ -232,7 +245,9 @@ public class NotificationStore {
     @Transactional
     public boolean markRead(UUID recipientId, UUID id) {
         return jdbc.sql(
-                                "UPDATE platform_notification SET read_at=COALESCE(read_at,now()) WHERE id=:id AND recipient_id=:recipient AND read_at IS NULL")
+                                "UPDATE platform_notification SET read_at=COALESCE(read_at,now())"
+                                        + " WHERE id=:id AND recipient_id=:recipient AND read_at IS"
+                                        + " NULL")
                         .param("id", id)
                         .param("recipient", recipientId)
                         .update()
@@ -242,7 +257,9 @@ public class NotificationStore {
     @Transactional
     public int markAllRead(UUID recipientId) {
         return jdbc.sql(
-                        "UPDATE platform_notification SET read_at=now() WHERE recipient_id=:recipient AND read_at IS NULL AND (expires_at IS NULL OR expires_at>now())")
+                        "UPDATE platform_notification SET read_at=now() WHERE"
+                                + " recipient_id=:recipient AND read_at IS NULL AND (expires_at IS NULL"
+                                + " OR expires_at>now())")
                 .param("recipient", recipientId)
                 .update();
     }
@@ -250,13 +267,18 @@ public class NotificationStore {
     @Transactional(readOnly = true)
     public PageResult<AdminEntry> listAdmin(PageRequest page) {
         String filter =
-                " WHERE (:search='' OR strpos(lower(u.username),lower(:search))>0 OR strpos(lower(u.display_name),lower(:search))>0 OR strpos(lower(n.title_key),lower(:search))>0 OR strpos(lower(n.body_key),lower(:search))>0)";
+                " WHERE (:search='' OR strpos(lower(u.username),lower(:search))>0 OR"
+                        + " strpos(lower(u.display_name),lower(:search))>0 OR"
+                        + " strpos(lower(n.title_key),lower(:search))>0 OR"
+                        + " strpos(lower(n.body_key),lower(:search))>0)";
         var fieldFilter =
                 PageFilterSql.build(
                         page,
                         Map.of(
                                 "ownerUsername",
-                                "CASE WHEN u.username IS NULL THEN '—' ELSE coalesce(u.display_name,u.username) || ' (' || u.username || ')' END",
+                                "CASE WHEN u.username IS NULL THEN '—' ELSE"
+                                        + " coalesce(u.display_name,u.username) || ' (' || u.username"
+                                        + " || ')' END",
                                 "title",
                                 "coalesce(n.params->>'title',n.title_key)",
                                 "body",
@@ -273,10 +295,15 @@ public class NotificationStore {
         rowParams.put("offset", page.offset());
         var rows =
                 jdbc.sql(
-                                "SELECT n.id,n.recipient_id,u.username,u.display_name,n.kind,n.title_key,n.body_key,n.params::text,n.href,(n.read_at IS NOT NULL) AS read,n.created_at,n.expires_at FROM platform_notification n JOIN platform_user u ON u.id=n.recipient_id"
+                                "SELECT"
+                                        + " n.id,n.recipient_id,u.username,u.display_name,n.kind,n.title_key,n.body_key,n.params::text,n.href,(n.read_at"
+                                        + " IS NOT NULL) AS read,n.created_at,n.expires_at FROM"
+                                        + " platform_notification n JOIN platform_user u ON"
+                                        + " u.id=n.recipient_id"
                                         + filter
                                         + fieldFilter.sql()
-                                        + " ORDER BY n.created_at DESC,n.id DESC LIMIT :limit OFFSET :offset")
+                                        + " ORDER BY n.created_at DESC,n.id DESC LIMIT :limit"
+                                        + " OFFSET :offset")
                         .params(rowParams)
                         .query(
                                 (rs, n) ->
@@ -296,7 +323,8 @@ public class NotificationStore {
                         .list();
         var total =
                 jdbc.sql(
-                                "SELECT count(*) FROM platform_notification n JOIN platform_user u ON u.id=n.recipient_id"
+                                "SELECT count(*) FROM platform_notification n JOIN platform_user u"
+                                        + " ON u.id=n.recipient_id"
                                         + filter
                                         + fieldFilter.sql())
                         .params(countParams)
@@ -308,9 +336,9 @@ public class NotificationStore {
     @Transactional(readOnly = true)
     public PageResult<RecipientOption> listRecipientOptions(PageRequest page) {
         String fromAndFilter =
-                " FROM platform_user u WHERE u.enabled=true AND u.deleted_at IS NULL"
-                        + " AND (:search='' OR strpos(lower(coalesce(u.username,'')),lower(:search))>0"
-                        + " OR strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
+                " FROM platform_user u WHERE u.enabled=true AND u.deleted_at IS NULL AND"
+                        + " (:search='' OR strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR"
+                        + " strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
         var parameters =
                 Map.<String, Object>of(
                         "search", page.search(), "limit", page.pageSize(), "offset", page.offset());
@@ -318,7 +346,8 @@ public class NotificationStore {
                 jdbc.sql(
                                 "SELECT u.id,u.username,u.display_name,u.enabled"
                                         + fromAndFilter
-                                        + " ORDER BY lower(coalesce(u.display_name,'')),lower(u.username),u.id"
+                                        + " ORDER BY"
+                                        + " lower(coalesce(u.display_name,'')),lower(u.username),u.id"
                                         + " LIMIT :limit OFFSET :offset")
                         .params(parameters)
                         .query(this::mapRecipientOption)
@@ -351,7 +380,7 @@ public class NotificationStore {
                 rs.getBoolean("enabled"));
     }
 
-    private String normalizeParams(String value) {
+    String normalizeParams(String value) {
         if (value == null) throw new IllegalArgumentException("Invalid notification params");
         final tools.jackson.databind.JsonNode node;
         try {

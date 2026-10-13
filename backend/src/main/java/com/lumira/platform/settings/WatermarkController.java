@@ -12,13 +12,20 @@ public class WatermarkController {
     public record Input(long version, WatermarkSettings data, String changeReason) {}
 
     private final SettingDocuments documents;
+    private final AdministrationPort administration;
 
-    public WatermarkController(SettingDocuments documents) {
+    public WatermarkController(SettingDocuments documents, AdministrationPort administration) {
         this.documents = documents;
+        this.administration = administration;
     }
 
     @GetMapping("/api/platform/settings/watermark")
-    public View read() {
+    public View read(Authentication auth) {
+        administration.requirePageGlobal(auth.getName(), PlatformPageId.WATERMARK);
+        return readDocument();
+    }
+
+    private View readDocument() {
         var snapshot =
                 documents.read("watermark", WatermarkSettings.class, WatermarkSettings::defaults);
         return new View(snapshot.version(), snapshot.data());
@@ -26,7 +33,7 @@ public class WatermarkController {
 
     @GetMapping("/api/public/watermark")
     public WatermarkSettings published() {
-        return read().data();
+        return readDocument().data();
     }
 
     @PutMapping("/api/platform/settings/watermark")

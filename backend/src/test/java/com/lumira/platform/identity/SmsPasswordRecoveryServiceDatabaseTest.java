@@ -74,6 +74,7 @@ class SmsPasswordRecoveryServiceDatabaseTest {
         jdbc = new JdbcTemplate(dataSource);
         jdbc.execute(
                 "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text UNIQUE,password_hash text,enabled boolean NOT NULL,deleted_at timestamptz,primary_credential_revision uuid NOT NULL)");
+        jdbc.execute("CREATE TABLE platform_password_change_requirement(user_id uuid PRIMARY KEY)");
         jdbc.execute("CREATE TABLE platform_role(id uuid PRIMARY KEY)");
         jdbc.execute(
                 readMigration(

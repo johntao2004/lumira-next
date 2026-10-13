@@ -6,11 +6,19 @@ export type { RuntimeNavigationNode } from "../navigation/runtime-types";
 
 /** Shared route catalog assembled from the frontend modules. */
 export type Section = FrontendRouteId;
-export type RouteMetadata = Pick<FrontendRoute, "label" | "permission" | "global"> & { module?: string };
+export type RouteMetadata = Pick<FrontendRoute, "label" | "permission" | "accessScope" | "operations" | "scopedOperations" | "global"> & { module?: string };
 
 const routeEntries = frontendModuleManifests.flatMap((module) => module.routes.map((route) => {
   const optionalModule = module.required ? {} : { module: module.id };
-  return [route.id, { label: route.label, permission: route.permission, ...(route.global ? { global: true } : {}), ...optionalModule }] as const;
+  return [route.id, {
+    label: route.label,
+    permission: route.permission,
+    ...(route.accessScope ? { accessScope: route.accessScope } : {}),
+    ...(route.operations ? { operations: route.operations } : {}),
+    ...(route.scopedOperations ? { scopedOperations: route.scopedOperations } : {}),
+    ...(route.global ? { global: true } : {}),
+    ...optionalModule,
+  }] as const;
 }));
 
 export const routes = Object.fromEntries(routeEntries) as Record<Section, RouteMetadata>;
@@ -56,7 +64,23 @@ export function localizedNavigationLabel(
 export function canAccessSection(section: Section, authorities: readonly string[], enabledModules: readonly string[] = [], globalAuthorities: readonly string[] = authorities) {
   const permission = routes[section].permission;
   const route=routes[section];
-  return (permission === null || (route.global ? globalAuthorities : authorities).includes(permission)) && (!route.module || enabledModules.includes(route.module));
+  const scope = route.accessScope ?? (route.global ? "global" : "scoped");
+  return (permission === null || (scope === "global" ? globalAuthorities : authorities).includes(permission)) && (!route.module || enabledModules.includes(route.module));
+}
+
+/** Operations are available only when both the route access grant and its declared action grant exist. */
+export function canOperateSection(
+  section: string,
+  actionId: string,
+  authorities: readonly string[],
+  enabledModules: readonly string[] = [],
+  globalAuthorities: readonly string[] = authorities,
+) {
+  if (!isSection(section) || !canAccessSection(section, authorities, enabledModules, globalAuthorities)) return false;
+  const route = routes[section];
+  const operation = route.operations?.[actionId];
+  const scoped = route.scopedOperations?.includes(actionId) ?? false;
+  return Boolean(operation && (scoped ? authorities : globalAuthorities).includes(operation));
 }
 
 const groupSpecs = [
@@ -64,6 +88,8 @@ const groupSpecs = [
   { id: "ai-management", label: "aiManagement", subgroup: null },
   { id: "user-management", label: "userManagement", subgroup: null },
   { id: "content-management", label: "contentManagement", subgroup: null },
+  { id: "communication", label: "communicationCenter", subgroup: null },
+  { id: "payments", label: "paymentManagement", subgroup: null },
   { id: "operations", label: "operationsCenter", subgroup: null },
   { id: "administration", label: "administration", subgroup: null },
 ] as const satisfies readonly { id: NavigationGroupId; label: MessageKey; subgroup: MessageKey | null }[];

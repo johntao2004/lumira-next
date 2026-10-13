@@ -91,6 +91,7 @@ public class OrganizationService {
             String actor,
             AuthorizationContextProjectionPort.Snapshot context) {
         validateContextBoundary();
+        guard.requirePage(actor, PlatformPageId.ORGANIZATIONS);
         var filter = ParentFilter.parse(parent);
         if (filter.id() != null) repository.findVisible(filter.id(), actor, context);
         return new PageResult<>(
@@ -109,6 +110,7 @@ public class OrganizationService {
     public List<OrganizationRepository.Organization> ancestors(
             UUID id, String actor, AuthorizationContextProjectionPort.Snapshot context) {
         validateContextBoundary();
+        guard.requirePage(actor, PlatformPageId.ORGANIZATIONS);
         repository.findVisible(id, actor, context);
         return repository.ancestors(id, actor, context);
     }
@@ -127,6 +129,7 @@ public class OrganizationService {
     public OrganizationRepository.Organization find(
             UUID id, String actor, AuthorizationContextProjectionPort.Snapshot context) {
         validateContextBoundary();
+        guard.requirePage(actor, PlatformPageId.ORGANIZATIONS);
         return repository.findVisible(id, actor, context);
     }
 
@@ -152,8 +155,7 @@ public class OrganizationService {
 
     @Transactional
     public OrganizationRepository.Organization create(Input in, String actor) {
-        guard.require(actor, "platform:organizations:write");
-        guard.requireGlobal(actor, "platform:organizations:write");
+        guard.requireOperationActionGlobal(actor, PlatformOperation.ORGANIZATION_CREATE);
         var id = UUID.randomUUID();
         validate(id, in);
         if (in.code() == null || !in.code().matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}"))
@@ -171,8 +173,7 @@ public class OrganizationService {
 
     @Transactional
     public OrganizationRepository.Organization update(UUID id, Input in, String actor) {
-        guard.require(actor, "platform:organizations:write");
-        guard.requireGlobal(actor, "platform:organizations:write");
+        guard.requireOperationActionGlobal(actor, PlatformOperation.ORGANIZATION_UPDATE);
         var old = repository.find(id);
         if (in.version() == null || old.version() != in.version())
             fail(HttpStatus.CONFLICT, "staleRecord");
@@ -187,8 +188,7 @@ public class OrganizationService {
 
     @Transactional
     public void delete(UUID id, long version, String actor) {
-        guard.require(actor, "platform:organizations:write");
-        guard.requireGlobal(actor, "platform:organizations:write");
+        guard.requireOperationActionGlobal(actor, PlatformOperation.ORGANIZATION_DELETE);
         var old = repository.find(id);
         if (old.version() != version) fail(HttpStatus.CONFLICT, "staleRecord");
         if (repository.inUse(id)) fail(HttpStatus.CONFLICT, "organizationInUse");
@@ -198,14 +198,14 @@ public class OrganizationService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Membership memberships(UUID id, String actor) {
-        guard.requireUser(actor, id, "platform:organizations:read");
+        guard.requirePage(actor, PlatformPageId.USERS);
+        guard.requireUser(actor, id, PlatformPageId.USERS.accessPermission());
         return new Membership(users.versionSnapshot(id), repository.memberships(id));
     }
 
     @Transactional
     public Membership assign(UUID id, MembershipInput input, String actor) {
-        guard.require(actor, "platform:organizations:write");
-        guard.requireGlobal(actor, "platform:organizations:write");
+        guard.requireOperationUser(actor, id, PlatformOperation.USER_ASSIGN_ORGANIZATIONS);
         var version = users.version(id);
         if (input.version() == null || input.version() != version)
             fail(HttpStatus.CONFLICT, "staleRecord");

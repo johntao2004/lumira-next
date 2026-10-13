@@ -11,7 +11,6 @@ export type AccountActions = {
   onRolePreview?: () => void;
   onWechat?: () => void;
   onSessions: () => void;
-  onDrafts: () => void;
   onChangePassword: () => void;
   onLogout: () => void;
 };
@@ -32,7 +31,6 @@ export function AccountMenu({ children, open, onOpenChange, placement = "bottomR
     "role-preview": actions.onRolePreview ?? (() => {}),
     wechat: actions.onWechat ?? (() => {}),
     sessions: actions.onSessions,
-    drafts: actions.onDrafts,
     password: actions.onChangePassword,
     logout: actions.onLogout,
   };
@@ -46,7 +44,6 @@ export function AccountMenu({ children, open, onOpenChange, placement = "bottomR
       ...(actions.onWechat ? [{ key: "wechat", label: t("wechatBinding") }] : []),
       { key: "password", label: t("changePassword") },
       { key: "sessions", label: t("mySessions") },
-      { key: "drafts", label: t("drafts") },
       { key: "logout", label: t("logout") },
     ], onClick: ({ key }) => { triggerRef.current?.focus({preventScroll:true}); handlers[key]?.(); } }}>
     {cloneElement(children as ReactElement<{ref:typeof triggerRef}>,{ref:triggerRef})}

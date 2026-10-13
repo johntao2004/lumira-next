@@ -62,17 +62,23 @@ class AiModelRouteSecurityTest {
                 rolePreviewContexts,
                 username ->
                         switch (username) {
-                            case "operator" -> List.of("platform:users:read");
-                            case "reader" -> List.of("platform:settings:read");
-                            default -> List.of("platform:settings:read", "platform:settings:write");
+                            case "operator" ->
+                                    List.of(
+                                            "platform:ai-console:access",
+                                            "platform:ai-console:update-user");
+                            case "console-reader" -> List.of("platform:ai-console:access");
+                            case "models-reader" -> List.of("platform:ai-models:access");
+                            case "models-tester" ->
+                                    List.of("platform:ai-models:access", "platform:ai-models:test");
+                            default -> List.of("platform:settings:read");
                         });
     }
 
     @Test
-    void settingsReaderCanReachModelListRoute() throws Exception {
+    void aiModelsPageCanReachProviderModelListRoute() throws Exception {
         mvc.perform(
                         get("/api/platform/ai/providers/{id}/models", PROVIDER_ID)
-                                .with(user("reader"))
+                                .with(user("models-reader"))
                                 .header(
                                         RolePreviewContextService.REVISION_HEADER,
                                         CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
@@ -83,10 +89,10 @@ class AiModelRouteSecurityTest {
     }
 
     @Test
-    void settingsWriterCanReachDiscoveryRouteWithCsrf() throws Exception {
+    void aiModelsTestActionCanReachDiscoveryRouteWithCsrf() throws Exception {
         mvc.perform(
                         post("/api/platform/ai/providers/discover-models")
-                                .with(user("writer"))
+                                .with(user("models-tester"))
                                 .header(
                                         RolePreviewContextService.REVISION_HEADER,
                                         CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
@@ -100,10 +106,44 @@ class AiModelRouteSecurityTest {
     }
 
     @Test
-    void settingsReaderCannotReachDiscoveryAndControllerIsNotInvoked() throws Exception {
+    void aiConsolePageAndCapabilityCanReachChatWithoutAnOperationPayload() throws Exception {
+        mvc.perform(
+                        post("/api/platform/ai/chat")
+                                .with(user("operator"))
+                                .header(
+                                        RolePreviewContextService.REVISION_HEADER,
+                                        CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
+                                .session(CurrentAuthorityFilterTestSupport.session())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                .andExpect(status().isOk());
+
+        verify(routeProbe).chat();
+    }
+
+    @Test
+    void aiConsolePageOnlyGrantCannotReachChat() throws Exception {
+        mvc.perform(
+                        post("/api/platform/ai/chat")
+                                .with(user("console-reader"))
+                                .header(
+                                        RolePreviewContextService.REVISION_HEADER,
+                                        CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
+                                .session(CurrentAuthorityFilterTestSupport.session())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(routeProbe);
+    }
+
+    @Test
+    void pageOnlyAiModelsGrantCannotReachDiscoveryAndControllerIsNotInvoked() throws Exception {
         mvc.perform(
                         post("/api/platform/ai/providers/discover-models")
-                                .with(user("reader"))
+                                .with(user("models-reader"))
                                 .header(
                                         RolePreviewContextService.REVISION_HEADER,
                                         CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
@@ -142,7 +182,7 @@ class AiModelRouteSecurityTest {
     }
 
     @Test
-    void cancellationRequiresUserReadPermissionAndCsrf() throws Exception {
+    void cancellationRequiresAiConsolePageAndAnOperationActionAndCsrf() throws Exception {
         mvc.perform(
                         delete("/api/platform/ai/actions/{id}", PROVIDER_ID)
                                 .with(user("operator"))
@@ -154,6 +194,15 @@ class AiModelRouteSecurityTest {
         mvc.perform(
                         delete("/api/platform/ai/actions/{id}", PROVIDER_ID)
                                 .with(user("reader"))
+                                .header(
+                                        RolePreviewContextService.REVISION_HEADER,
+                                        CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
+                                .session(CurrentAuthorityFilterTestSupport.session())
+                                .with(csrf()))
+                .andExpect(status().isForbidden());
+        mvc.perform(
+                        delete("/api/platform/ai/actions/{id}", PROVIDER_ID)
+                                .with(user("console-reader"))
                                 .header(
                                         RolePreviewContextService.REVISION_HEADER,
                                         CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
@@ -174,10 +223,10 @@ class AiModelRouteSecurityTest {
     }
 
     @Test
-    void attachmentReadRequiresChatPermissionRatherThanSettingsPermission() throws Exception {
+    void attachmentReadRequiresAiConsolePageAccess() throws Exception {
         mvc.perform(
                         get("/api/platform/ai/attachments/{id}", PROVIDER_ID)
-                                .with(user("reader"))
+                                .with(user("models-reader"))
                                 .header(
                                         RolePreviewContextService.REVISION_HEADER,
                                         CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
@@ -186,7 +235,7 @@ class AiModelRouteSecurityTest {
         verifyNoInteractions(routeProbe);
         mvc.perform(
                         get("/api/platform/ai/attachments/{id}", PROVIDER_ID)
-                                .with(user("operator"))
+                                .with(user("console-reader"))
                                 .header(
                                         RolePreviewContextService.REVISION_HEADER,
                                         CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
@@ -221,6 +270,12 @@ class AiModelRouteSecurityTest {
             return "ok";
         }
 
+        @PostMapping("/api/platform/ai/chat")
+        String chat(@RequestBody java.util.Map<String, Object> ignored) {
+            probe.chat();
+            return "ok";
+        }
+
         @GetMapping("/api/platform/ai/attachments/{id}")
         String readAttachment(@PathVariable UUID id) {
             probe.readAttachment(id);
@@ -236,6 +291,8 @@ class AiModelRouteSecurityTest {
         void cancelAction(UUID id);
 
         void readAttachment(UUID id);
+
+        void chat();
     }
 
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)

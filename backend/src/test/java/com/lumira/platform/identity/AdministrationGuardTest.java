@@ -12,19 +12,19 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 class AdministrationGuardTest {
     @Test
     void keepsSchemaChangingBoundariesOnTheHistoricalLock() {
-        assertEquals(481026L, AdministrationGuard.lockKey("platform:settings:write"));
-        assertEquals(481026L, AdministrationGuard.lockKey("platform:modules:write"));
+        assertEquals(481026L, AdministrationGuard.lockKey("platform:settings:update"));
+        assertEquals(481026L, AdministrationGuard.lockKey("platform:modules:update"));
     }
 
     @Test
     void sharesAStableBucketWithinADomainAndSeparatesCommonDomains() {
         assertEquals(
                 AdministrationGuard.lockKey("platform:users:read"),
-                AdministrationGuard.lockKey("platform:users:write"));
+                AdministrationGuard.lockKey("platform:users:delete"));
         assertNotEquals(
-                AdministrationGuard.lockKey("platform:users:write"),
-                AdministrationGuard.lockKey("platform:files:write"));
-        assertNotEquals(481026L, AdministrationGuard.lockKey("platform:notifications:write"));
+                AdministrationGuard.lockKey("platform:users:delete"),
+                AdministrationGuard.lockKey("platform:files:delete"));
+        assertNotEquals(481026L, AdministrationGuard.lockKey("platform:notifications:create"));
     }
 
     @Test

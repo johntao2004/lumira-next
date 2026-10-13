@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.mail.MailDeliveryTestService;
 import com.lumira.platform.mail.SmtpGateway;
 import com.lumira.platform.mail.SmtpTestController;
@@ -31,7 +32,7 @@ class DeliveryTestControllerSecurityTest {
         var audit = mock(AuditPort.class);
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
                 .when(guard)
-                .require("reader", "platform:settings:write");
+                .requireOperationGlobal("reader", PlatformOperation.SMTP_TEST);
         MockMvc mvc =
                 MockMvcBuilders.standaloneSetup(
                                 new SmtpTestController(
@@ -44,7 +45,8 @@ class DeliveryTestControllerSecurityTest {
         mvc.perform(post("/api/platform/settings/smtp/test").principal(authentication("reader")))
                 .andExpect(status().isForbidden());
 
-        verify(guard).require("reader", "platform:settings:write");
+        verify(guard).requireOperationGlobal("reader", PlatformOperation.SMTP_TEST);
+        verify(guard, never()).requireOperationGlobal("reader", PlatformOperation.SMTP_UPDATE);
         verifyNoInteractions(settings, gateway, audit);
     }
 
@@ -57,7 +59,7 @@ class DeliveryTestControllerSecurityTest {
         var audit = mock(AuditPort.class);
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
                 .when(guard)
-                .require("reader", "platform:settings:write");
+                .requireOperationGlobal("reader", PlatformOperation.SMS_TEST);
         MockMvc mvc =
                 MockMvcBuilders.standaloneSetup(
                                 new SmsTestController(
@@ -70,7 +72,8 @@ class DeliveryTestControllerSecurityTest {
         mvc.perform(post("/api/platform/settings/sms/test").principal(authentication("reader")))
                 .andExpect(status().isForbidden());
 
-        verify(guard).require("reader", "platform:settings:write");
+        verify(guard).requireOperationGlobal("reader", PlatformOperation.SMS_TEST);
+        verify(guard, never()).requireOperationGlobal("reader", PlatformOperation.SMS_UPDATE);
         verifyNoInteractions(settings, source, gateway, audit);
     }
 

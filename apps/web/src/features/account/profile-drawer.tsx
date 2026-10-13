@@ -1,24 +1,20 @@
 "use client";
 
 import { PlatformForm as Form } from "@/platform/components/platform-form";
-import { SecurityEventsDrawer } from "./security-events-drawer";
-import { EmailDrawer } from "./email-drawer";
-import { PhoneDrawer } from "./phone-drawer";
-import { ProfileCompletion } from "./profile-completion";
 import { AvatarEditor } from "./avatar-editor";
-import { PasskeysDrawer } from "./passkeys-drawer";
 import { AnchorTabs as Tabs } from "@/platform/components/anchor-tabs";
 import { ProfileFieldRenderer } from "@/platform/profile-fields/profile-field-renderer";
+import { localizeProfileFieldGroupLabel, localizeProfileFieldLabel } from "@/platform/profile-fields/localization";
 import type { DictionarySelection, ProfileFieldDefinition, ProfilePlacement } from "@/platform/profile-fields/types";
 import { preserveProfileFieldValues } from "@/platform/profile-fields/values";
-import { Alert, Button, Empty, Flex, Input, Spin } from "antd";
-import { useState } from "react";
+import { Alert, App, Button, Empty, Input, Spin } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, mutate } from "@/platform/api/client";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import { FormDrawer } from "@/platform/components/form-drawer";
 import { usePreferences } from "@/platform/providers";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
+import "./account-form-surface.css";
 
 type BuiltInField = ProfileFieldDefinition & {
   key: "displayName" | "realName" | "birthDate" | "region";
@@ -46,9 +42,6 @@ type ProfileValues = {
   dictionarySelections?: Record<string, DictionarySelection>;
 };
 
-const builtInLabelKeys = { displayName: "name", realName: "realName", birthDate: "birthMonth", region: "region" } as const;
-const builtInDefaultLabels = { displayName: "Display name", realName: "Real name", birthDate: "Birth date", region: "Region" } as const;
-
 function placementTab(field: { key: string; custom?: boolean; placements?: readonly ProfilePlacement[] }) {
   const placement = field.placements?.find(item => item.page === "account-profile");
   if (placement) return placement.tab;
@@ -56,7 +49,7 @@ function placementTab(field: { key: string; custom?: boolean; placements?: reado
   return field.key === "displayName" || field.key === "realName" || field.key === "birthDate" || field.key === "region" ? "basic" : undefined;
 }
 
-function BuiltInProfileFields({ fields, t }: { fields: BuiltInField[]; t: (key: string) => string }) {
+function BuiltInProfileFields({ fields, tab, t }: { fields: BuiltInField[]; tab: "basic" | "details"; t: (key: string) => string }) {
   const content: React.ReactNode[] = [];
   let index = 0;
   while (index < fields.length) {
@@ -67,12 +60,17 @@ function BuiltInProfileFields({ fields, t }: { fields: BuiltInField[]; t: (key: 
       groupFields.push(fields[index]);
       index += 1;
     }
-    content.push(<fieldset key={`${field.groupKey}-${index}`} className="mb-4 border-0 p-0">
-      <legend>{field.groupLabel}</legend>
+    const groupLabel = localizeProfileFieldGroupLabel(field, t);
+    const redundantBasicLegend = tab === "basic" && field.groupKey === "basic" && field.groupLabel === "Basic information";
+    content.push(<fieldset
+      key={`${field.groupKey}-${index}`}
+      className="mb-4 border-0 p-0"
+      aria-labelledby={redundantBasicLegend ? "account-profile-basic-tab-label" : undefined}
+    >
+      {!redundantBasicLegend && <legend>{groupLabel}</legend>}
       {groupFields.map(item => {
         const name = item.key === "birthDate" ? "birthMonth" : item.key;
-        const labelKey = builtInLabelKeys[item.key];
-        const label = item.label && item.label !== builtInDefaultLabels[item.key] ? item.label : t(labelKey);
+        const label = localizeProfileFieldLabel(item, t);
         return <Form.Item
           key={item.key}
           name={name}
@@ -86,25 +84,23 @@ function BuiltInProfileFields({ fields, t }: { fields: BuiltInField[]; t: (key: 
   return <>{content}</>;
 }
 
-export function ProfileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [securityOpen, setSecurityOpen] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
-  const [phoneOpen, setPhoneOpen] = useState(false);
-  const [passkeyOpen, setPasskeyOpen] = useState(false);
+export function ProfileDrawer({ open, onClose, embedded = false }: { open: boolean; onClose: () => void; embedded?: boolean }) {
   const { t } = usePreferences();
+  const { message } = App.useApp();
+  const active = open || embedded;
   const client = useQueryClient();
   const { pending, error, setError, run } = useSubmitAction({ errorKeys: ["staleRecord", "invalidProfile", "invalidProfileValues"] });
   const query = useQuery({
     queryKey: ["profile"],
     queryFn: ({ signal }) => api<Profile>("/account/profile", { signal }),
-    enabled: open,
+    enabled: active,
     staleTime: 0,
     refetchOnWindowFocus: false,
   });
   const valuesQuery = useQuery({
     queryKey: ["profile-values"],
     queryFn: ({ signal }) => api<ProfileValues>("/account/profile-values", { signal }),
-    enabled: open,
+    enabled: active,
     staleTime: 0,
     refetchOnWindowFocus: false,
   });
@@ -115,26 +111,7 @@ export function ProfileDrawer({ open, onClose }: { open: boolean; onClose: () =>
   const builtInsFor = (tab: "basic" | "details") => profile?.fields.filter(field => placementTab(field) === tab) ?? [];
   const customFor = (tab: "basic" | "details" | "custom") => profileValues?.fields.filter(field => placementTab(field) === tab) ?? [];
 
-  return <>
-    <SecurityEventsDrawer open={securityOpen} onClose={() => setSecurityOpen(false)} />
-    <EmailDrawer open={emailOpen} onClose={() => setEmailOpen(false)} />
-    <PhoneDrawer open={phoneOpen} onClose={() => setPhoneOpen(false)} />
-    <PasskeysDrawer open={passkeyOpen} onClose={() => setPasskeyOpen(false)} />
-    <FormDrawer
-      title={t("profile")}
-      open={open}
-      formId="account-profile"
-      pending={pending}
-      submitDisabled={!ready}
-      onClose={() => { setError(null); onClose(); }}
-    >
-      <ProfileCompletion open={open} />
-      <Flex className="mb-4" gap="small" wrap>
-        <Button disabled={pending} onClick={() => setSecurityOpen(true)}>{t("securityEvents")}</Button>
-        <Button disabled={pending} onClick={() => setEmailOpen(true)}>{t("accountEmail")}</Button>
-        <Button disabled={pending} onClick={() => setPhoneOpen(true)}>{t("accountPhone")}</Button>
-        <Button disabled={pending} onClick={() => setPasskeyOpen(true)}>{t("passkeyCredentials")}</Button>
-      </Flex>
+  const content = <>
       <FeedbackBubble id="account-profile-error" content={error ? t(error) : query.error || valuesQuery.error ? t("unavailable") : undefined} />
       {(query.isFetching || valuesQuery.isFetching) && <Spin />}
       {(query.error || valuesQuery.error) && <Alert
@@ -162,7 +139,8 @@ export function ProfileDrawer({ open, onClose }: { open: boolean; onClose: () =>
             profileValuesSchemaVersion: profileValues.schemaVersion,
             profileValues: profileValuesPayload,
           });
-          onClose();
+          if (embedded) void message.success(t("settingsSaved"));
+          else onClose();
           await Promise.all([
             client.invalidateQueries({ queryKey: ["profile"] }),
             client.invalidateQueries({ queryKey: ["profile-values"] }),
@@ -172,23 +150,38 @@ export function ProfileDrawer({ open, onClose }: { open: boolean; onClose: () =>
           ]);
         })}
       >
-        <Form.Item label={t("username")}><Input value={profile.username} disabled /></Form.Item>
-        <Tabs anchor="account-profile" items={[
-          { key: "basic", label: t("userBasicInformation"), forceRender: true, children: <>
-            <AvatarEditor />
-            <BuiltInProfileFields fields={builtInsFor("basic")} t={t} />
-            {customFor("basic").length > 0 && <ProfileFieldRenderer fields={customFor("basic")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
-          </> },
-          { key: "details", label: t("details"), forceRender: true, children: <>
-            <BuiltInProfileFields fields={builtInsFor("details")} t={t} />
-            {customFor("details").length > 0 && <ProfileFieldRenderer fields={customFor("details")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
-            {builtInsFor("details").length === 0 && customFor("details").length === 0 && <Empty description={t("noCustomProfileFields")} />}
-          </> },
-          { key: "custom", label: t("fieldCustomGroup"), forceRender: true, children: customFor("custom").length > 0
-            ? <ProfileFieldRenderer fields={customFor("custom")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />
-            : <Empty description={t("noCustomProfileFields")} /> },
-        ]} />
+        <div className="account-profile-layout">
+          <div className="account-profile-main">
+            <Form.Item label={t("username")}><Input value={profile.username} disabled /></Form.Item>
+            <Tabs anchor="account-profile" items={[
+              { key: "basic", label: <span id="account-profile-basic-tab-label">{t("userBasicInformation")}</span>, forceRender: true, children: <>
+                <BuiltInProfileFields fields={builtInsFor("basic")} tab="basic" t={t} />
+                {customFor("basic").length > 0 && <ProfileFieldRenderer fields={customFor("basic")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
+              </> },
+              { key: "details", label: t("details"), forceRender: true, children: <>
+                <BuiltInProfileFields fields={builtInsFor("details")} tab="details" t={t} />
+                {customFor("details").length > 0 && <ProfileFieldRenderer fields={customFor("details")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
+                {builtInsFor("details").length === 0 && customFor("details").length === 0 && <Empty description={t("noCustomProfileFields")} />}
+              </> },
+              { key: "custom", label: t("fieldCustomGroup"), forceRender: true, children: customFor("custom").length > 0
+                ? <ProfileFieldRenderer fields={customFor("custom")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />
+                : <Empty description={t("noCustomProfileFields")} /> },
+            ]} />
+            {embedded && <div className="account-settings-form-footer">
+              <Button type="primary" htmlType="submit" loading={pending} disabled={!ready}>{t("save")}</Button>
+            </div>}
+          </div>
+          <aside className="account-profile-avatar"><AvatarEditor size={144} /></aside>
+        </div>
       </Form>}
-    </FormDrawer>
-  </>;
+    </>;
+
+  return embedded ? <div className="account-settings-form-surface">{content}</div> : <FormDrawer
+      title={t("profile")}
+      open={open}
+      formId="account-profile"
+      pending={pending}
+      submitDisabled={!ready}
+      onClose={() => { setError(null); onClose(); }}
+    >{content}</FormDrawer>;
 }

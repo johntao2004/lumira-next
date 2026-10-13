@@ -11,6 +11,7 @@ import { api } from "@/platform/api/client";
 import type { PageResult } from "@/platform/api/pagination";
 import { SettingsSection } from "@/platform/components/settings-section";
 import { usePreferences } from "@/platform/providers";
+import { localizeProfileFieldEditorValue, localizeProfileFieldGroupLabel, localizeProfileFieldLabel } from "@/platform/profile-fields/localization";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { mergeProfileFieldSettings } from "./profile-field-submission";
 
@@ -70,7 +71,7 @@ function DictionaryCodeControl({
         "filter.enabled": "true",
         "filterMode.enabled": "exact",
       });
-      return api<PageResult<DictionaryOption>>(`/platform/dictionaries?${params}`, { signal });
+      return api<PageResult<DictionaryOption>>(`/platform/settings/profile-fields/dictionaries?${params}`, { signal });
     },
     getNextPageParam: page => page.page * page.pageSize < page.total ? page.page + 1 : undefined,
   });
@@ -138,6 +139,17 @@ function FieldEditor({ index, canReadDictionaries }: { index: number; canReadDic
       key={name}
       name={[index, name]}
       label={t(label)}
+      getValueProps={inputValue => ({
+        value: name === "label" || name === "groupLabel"
+          ? localizeProfileFieldEditorValue({
+            key: value?.key ?? "",
+            label: value?.label ?? "",
+            groupKey: value?.groupKey ?? "",
+            groupLabel: value?.groupLabel ?? "",
+            custom,
+          }, name, inputValue, t)
+          : inputValue,
+      })}
       rules={[
         ...(["key", "label", "groupKey", "groupLabel"].includes(name) ? [{ required: true, whitespace: true, message: t("invalidProfileFields") }] : []),
         ...(["key", "groupKey"].includes(name) ? [{ pattern: /^[A-Za-z][A-Za-z0-9_]{0,63}$/, message: t("invalidProfileFields") }] : []),
@@ -252,7 +264,8 @@ function SortableField({ id, index, value, selected, disabled, onSelect }: {
 }) {
   const { t } = usePreferences();
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, isDragging } = useSortable({ id, disabled, transition: null });
-  const label = value?.label || t("fieldLabel");
+  const label = value?.label ? localizeProfileFieldLabel(value, t) : t("fieldLabel");
+  const groupLabel = value ? localizeProfileFieldGroupLabel(value, t) : "";
   const type = value?.type === "IMAGE" ? t("fieldImage") : t(types.find(([type]) => type === value?.type)?.[1] ?? "fieldText");
   return <div
     ref={setNodeRef}
@@ -264,7 +277,7 @@ function SortableField({ id, index, value, selected, disabled, onSelect }: {
       {...attributes} {...listeners} aria-label={`${t("profileFieldDrag")} · ${label}`} />
     <button type="button" className="profile-field-select" aria-pressed={selected} onClick={onSelect}>
       <span className="profile-field-label"><span className="profile-field-position">{index + 1}</span><strong>{label}</strong></span>
-      <span className="profile-field-meta">{type} · {value?.groupLabel}</span>
+      <span className="profile-field-meta">{type} · {groupLabel}</span>
       <span className="profile-field-tags">
         <Tag>{t(value?.custom ? "profileFieldCustom" : "profileFieldBuiltIn")}</Tag>
         {value?.required && <Tag color="blue">{t("fieldRequired")}</Tag>}
@@ -343,7 +356,7 @@ function FieldList({ canReadDictionaries, selectedIndex, onSelect }: {
         <div className="profile-fields-detail-heading">
           <div>
             <Typography.Text type="secondary">{t("profileFieldSettings")}</Typography.Text>
-            <Typography.Title level={5}>{values[activeIndex]?.label || t("addProfileField")}</Typography.Title>
+            <Typography.Title level={5}>{values[activeIndex]?.label ? localizeProfileFieldLabel(values[activeIndex], t) : t("addProfileField")}</Typography.Title>
           </div>
           <Tag>{t(values[activeIndex]?.custom ? "profileFieldCustom" : "profileFieldBuiltIn")}</Tag>
         </div>

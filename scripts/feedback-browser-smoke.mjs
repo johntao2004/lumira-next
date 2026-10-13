@@ -29,13 +29,6 @@ try {
     })).status(),
     200,
   );
-  // Start from a clean owner-scoped draft so this smoke is repeatable.
-  const existingDraft = await context.request.get("/api/account/drafts/feedback.create");
-  if (existingDraft.status() === 200) {
-    const draft = await existingDraft.json();
-    const draftCsrf = await (await context.request.get("/api/auth/csrf")).json();
-    assert.equal((await context.request.delete(`/api/account/drafts/feedback.create?revision=${encodeURIComponent(draft.revision)}`, { headers: { [draftCsrf.headerName]: draftCsrf.token } })).status(), 204);
-  }
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -47,17 +40,6 @@ try {
   const create = page.getByRole("dialog", { name: "提交反馈", exact: true });
   await create.getByLabel("标题", { exact: true }).fill(title);
   await create.locator('[contenteditable="true"]').fill("页面在窄屏下内容溢出");
-  const draftSaved = page.waitForResponse((response) => response.url().endsWith("/api/account/drafts/feedback.create") && response.request().method() === "PUT");
-  await create.getByRole("button", { name: "保存草稿", exact: true }).click();
-  assert.equal((await draftSaved).status(), 200);
-  await create.getByRole("button", { name: /取\s*消/ }).click();
-  await expect(create).toBeHidden();
-  await page.getByRole("button", { name: "提交反馈", exact: true }).click();
-  await expect(create.getByRole("button", { name: "恢复草稿", exact: true })).toBeVisible();
-  await create.getByRole("button", { name: "恢复草稿", exact: true }).click();
-  await page.locator(".ant-popconfirm").getByRole("button", { name: "恢复草稿", exact: true }).click();
-  await expect(create.getByLabel("标题", { exact: true })).toHaveValue(title);
-  await expect(create.locator('[contenteditable="true"]')).toContainText("页面在窄屏下内容溢出");
   const imageUploaded = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/feedback/images" && response.request().method() === "POST");
   await create.getByRole("button", { name: "插入图片", exact: true }).click();
   await create.locator('input[type="file"]').setInputFiles({
@@ -73,18 +55,15 @@ try {
   await create.getByRole("button", { name: "保存", exact: true }).click();
   assert.equal((await created).status(), 201);
   await expect(create).toBeHidden();
-  const remainingDraft = await context.request.get("/api/account/drafts/feedback.create");
-  assert.equal(remainingDraft.status(), 204);
   await expect(page.getByText(title, { exact: true })).toBeVisible();
 
-  await page.getByText("全部反馈", { exact: true }).click();
   await expect(page.getByText(title, { exact: true })).toBeVisible();
   const row = page.getByRole("row").filter({ hasText: title });
   await row.getByRole("button", { name: "详情", exact: true }).click();
   const details = page.getByRole("dialog", { name: "反馈详情", exact: true });
   await expect(details.getByText("页面在窄屏下内容溢出", { exact: true })).toBeVisible();
-  await expect(details.locator(`img[src="/api/feedback/images/${imageId}"]`)).toHaveCount(1);
-  const imageRequest = await context.request.get(`/api/feedback/images/${imageId}`);
+  await expect(details.locator(`img[src="/api/feedback/manage/images/${imageId}"]`)).toHaveCount(1);
+  const imageRequest = await context.request.get(`/api/feedback/manage/images/${imageId}`);
   assert.equal(imageRequest.status(), 200);
   assert.match(imageRequest.headers()["content-type"] ?? "", /^image\/png/);
   await details.getByRole("button", { name: "处理反馈", exact: true }).click();
@@ -106,7 +85,7 @@ try {
   }).toBeTruthy();
   await page.screenshot({ path: ".runtime/feedback-mobile.png" });
   assert.deepEqual(errors, []);
-  console.log("PASS: feedback route, dictionary-driven filters, reusable draft save/restore/cleanup, rich text create, owner/admin detail, versioned processing and mobile drawer bounds");
+  console.log("PASS: feedback route, dictionary-driven filters, rich text creation, image upload, owner/admin detail, versioned processing and mobile drawer bounds");
 } finally {
   try {
     if (imageId) {
@@ -114,12 +93,6 @@ try {
       sql(`DELETE FROM platform_audit WHERE target_id IN (SELECT id FROM platform_feedback WHERE title='${title.replaceAll("'", "''")}'); DELETE FROM platform_feedback WHERE title='${title.replaceAll("'", "''")}';`);
       const imageCsrf = await (await context.request.get("/api/auth/csrf")).json();
       await context.request.delete(`/api/account/files/${imageId}?version=1`, { headers: { [imageCsrf.headerName]: imageCsrf.token } });
-    }
-    const draft = await context.request.get("/api/account/drafts/feedback.create");
-    if (draft.status() === 200) {
-      const draftValue = await draft.json();
-      const draftCsrf = await (await context.request.get("/api/auth/csrf")).json();
-      await context.request.delete(`/api/account/drafts/feedback.create?revision=${encodeURIComponent(draftValue.revision)}`, { headers: { [draftCsrf.headerName]: draftCsrf.token } });
     }
     const csrf = await (await context.request.get("/api/auth/csrf")).json();
     await context.request.post("/api/auth/logout", { headers: { [csrf.headerName]: csrf.token } });

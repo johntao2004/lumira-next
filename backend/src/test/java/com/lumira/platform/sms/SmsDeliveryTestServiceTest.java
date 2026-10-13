@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.SmsConfigurationPort;
 import com.lumira.platform.settings.SmsSettingsService;
 import java.nio.charset.StandardCharsets;
@@ -15,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 class SmsDeliveryTestServiceTest {
     @Test
-    void requiresTheExistingGlobalSettingsWritePermission() {
+    void requiresTheSmsPageAndTestAction() {
         var settings = mock(SmsSettingsService.class);
         var source = mock(SmsConnectionSource.class);
         var gateway = mock(SmsGateway.class);
@@ -23,12 +24,12 @@ class SmsDeliveryTestServiceTest {
         var audit = mock(AuditPort.class);
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
                 .when(guard)
-                .require("reader", "platform:settings:write");
+                .requireOperationGlobal("reader", PlatformOperation.SMS_TEST);
 
         var service = new SmsDeliveryTestService(settings, source, gateway, guard, audit);
         assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("reader"));
         verifyNoInteractions(settings, source, gateway, audit);
-        verify(guard, never()).requireGlobal(any(), any());
+        verify(guard, never()).requireOperationGlobal("reader", PlatformOperation.SMS_UPDATE);
     }
 
     @Test
@@ -103,8 +104,7 @@ class SmsDeliveryTestServiceTest {
                 "Lumira local SMS transport test. No account code is included.",
                 payload.getValue().text());
         assertArrayEquals(new byte[credential.length], credential);
-        verify(guard).require("admin", "platform:settings:write");
-        verify(guard).requireGlobal("admin", "platform:settings:write");
+        verify(guard).requireOperationGlobal("admin", PlatformOperation.SMS_TEST);
         var auditTarget = org.mockito.ArgumentCaptor.forClass(UUID.class);
         verify(audit).append(eq("admin"), eq("sms.localTest.ACCEPTED"), auditTarget.capture());
         assertNotNull(auditTarget.getValue());

@@ -4,6 +4,7 @@ import { Input, InputNumber, Select } from "antd";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { DictionarySelect } from "@/platform/components/dictionary-select";
 import { usePreferences } from "@/platform/providers";
+import { localizeProfileFieldGroupLabel, localizeProfileFieldLabel } from "./localization";
 import { profileFieldRuns, type DictionarySelection, type ProfileFieldDefinition, type ProfileFieldOption } from "./types";
 
 type Props = {
@@ -30,7 +31,7 @@ export function ProfileFieldRenderer({ fields, disabled = false, dictionarySelec
     return <Form.Item
       key={field.key}
       name={field.key}
-      label={field.label}
+      label={localizeProfileFieldLabel(field, t)}
       extra={field.description || undefined}
       rules={[{ required: field.required, message: t("invalidProfileValues") }]}
       getValueFromEvent={field.type === "SELECT" || field.type === "NUMBER" ? (value: string | number | undefined | null) => value ?? "" : undefined}
@@ -63,7 +64,7 @@ export function ProfileFieldRenderer({ fields, disabled = false, dictionarySelec
   return <>{profileFieldRuns(fields).map((run, index) => run.kind === "field"
     ? renderField(run.field)
     : <fieldset key={`${run.key}-${index}`} className="mb-4 border-0 p-0">
-        <legend>{run.label}</legend>
+        <legend>{localizeProfileFieldGroupLabel({ groupKey: run.key, groupLabel: run.label, custom: run.fields.some(field => field.custom === true) }, t)}</legend>
         {run.fields.map(renderField)}
       </fieldset>)}</>;
 }

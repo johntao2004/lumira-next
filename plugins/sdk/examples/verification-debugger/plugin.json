@@ -1,0 +1,131 @@
+{
+  "formatVersion": 2,
+  "id": "verification-debugger",
+  "name": "验证调试器",
+  "version": "1.0.3",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.verificationdebugger.VerificationDebuggerPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:verification-debugger:access",
+    "platform:verification-debugger:read",
+    "platform:verification-debugger:control",
+    "platform:verification-debugger:fixture"
+  ],
+  "permissionGroups": [
+    {
+      "id": "debugger",
+      "title": "验证调试器",
+      "permissions": [
+        {
+          "code": "platform:verification-debugger:access",
+          "label": "访问验证调试器"
+        },
+        {
+          "code": "platform:verification-debugger:read",
+          "label": "查看调试会话和验证码"
+        },
+        {
+          "code": "platform:verification-debugger:control",
+          "label": "管理调试会话"
+        },
+        {
+          "code": "platform:verification-debugger:fixture",
+          "label": "运行供应商协议示例"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "verification-debugger",
+      "label": "verificationDebuggerTitle",
+      "permission": "platform:verification-debugger:access",
+      "operations": {
+        "read": "platform:verification-debugger:read",
+        "control": "platform:verification-debugger:control",
+        "fixture": "platform:verification-debugger:fixture"
+      },
+      "group": "operations",
+      "order": 950,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/plugins/verification-debugger/status",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:verification-debugger:access",
+        "platform:verification-debugger:read"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins/verification-debugger/messages",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:verification-debugger:access",
+        "platform:verification-debugger:read"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/verification-debugger/sessions",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:verification-debugger:access",
+        "platform:verification-debugger:control"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/plugins/verification-debugger/sessions",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:verification-debugger:access",
+        "platform:verification-debugger:control"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/verification-debugger/fixtures",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:verification-debugger:access",
+        "platform:verification-debugger:control",
+        "platform:verification-debugger:fixture"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/verification-debugger/invoke",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:verification-debugger:access",
+        "platform:verification-debugger:control",
+        "platform:verification-debugger:fixture"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ]
+}

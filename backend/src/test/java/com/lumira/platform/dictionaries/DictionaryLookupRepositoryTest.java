@@ -2,6 +2,8 @@ package com.lumira.platform.dictionaries;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.lumira.platform.common.PageRequest;
+import com.lumira.platform.common.PageResult;
 import com.lumira.platform.identity.api.ProfileDictionaryPort;
 import java.util.List;
 import java.util.Set;
@@ -45,7 +47,7 @@ class DictionaryLookupRepositoryTest {
         repository =
                 new DictionaryLookupRepository(JdbcClient.create(dataSource), new JsonMapper());
         jdbc.execute(
-                "CREATE TABLE platform_dictionary (id UUID PRIMARY KEY, code TEXT UNIQUE NOT NULL, enabled BOOLEAN NOT NULL)");
+                "CREATE TABLE platform_dictionary (id UUID PRIMARY KEY, code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, enabled BOOLEAN NOT NULL)");
         jdbc.execute(
                 "CREATE TABLE platform_dictionary_item (id UUID PRIMARY KEY, dictionary_id UUID NOT NULL, parent_id UUID, value TEXT NOT NULL, label TEXT NOT NULL, sort_order INTEGER NOT NULL, enabled BOOLEAN NOT NULL)");
 
@@ -54,7 +56,7 @@ class DictionaryLookupRepositoryTest {
         itemId = UUID.randomUUID();
         selection = new ProfileDictionaryPort.Selection("qa_choices", itemId);
         jdbc.update(
-                "INSERT INTO platform_dictionary(id,code,enabled) VALUES(?, 'qa_choices', true)",
+                "INSERT INTO platform_dictionary(id,code,name,enabled) VALUES(?, 'qa_choices', 'Choices', true)",
                 dictionaryId);
         jdbc.update(
                 "INSERT INTO platform_dictionary_item(id,dictionary_id,parent_id,value,label,sort_order,enabled) VALUES(?,?,NULL,'ROOT','Root',0,true)",
@@ -114,7 +116,7 @@ class DictionaryLookupRepositoryTest {
     @Test
     void storedUuidMustStillBelongToTheCurrentDictionaryCode() {
         jdbc.update(
-                "INSERT INTO platform_dictionary(id,code,enabled) VALUES(?, 'qa_replacement', true)",
+                "INSERT INTO platform_dictionary(id,code,name,enabled) VALUES(?, 'qa_replacement', 'Replacement', true)",
                 UUID.randomUUID());
         var changedSchemaSelection = new ProfileDictionaryPort.Selection("qa_replacement", itemId);
 
@@ -122,5 +124,37 @@ class DictionaryLookupRepositoryTest {
         assertEquals(Set.of(), repository.enabledSelections(List.of(changedSchemaSelection)));
         assertEquals(
                 java.util.Map.of(), repository.selectionMetadata(List.of(changedSchemaSelection)));
+    }
+
+    @Test
+    void enabledProfileDictionaryPageExecutesSearchProjectionAndPagingAgainstTheDatabase() {
+        jdbc.update(
+                "UPDATE platform_dictionary SET name='Choices region' WHERE id=?", dictionaryId);
+        jdbc.update(
+                "INSERT INTO platform_dictionary(id,code,name,enabled) VALUES(?, 'qa_north', 'Northern region', true)",
+                UUID.randomUUID());
+        jdbc.update(
+                "INSERT INTO platform_dictionary(id,code,name,enabled) VALUES(?, 'qa_south', 'Southern region', true)",
+                UUID.randomUUID());
+        jdbc.update(
+                "INSERT INTO platform_dictionary(id,code,name,enabled) VALUES(?, 'qa_west', 'Western region', false)",
+                UUID.randomUUID());
+
+        var secondPage = repository.listEnabled(new PageRequest(3, 1, "region"));
+
+        assertEquals(
+                new PageResult<>(
+                        List.of(
+                                new ProfileDictionaryPort.EnabledDictionary(
+                                        "qa_south", "Southern region", true)),
+                        3,
+                        3,
+                        1),
+                secondPage);
+        assertEquals(
+                List.of(
+                        new ProfileDictionaryPort.EnabledDictionary(
+                                "qa_north", "Northern region", true)),
+                repository.listEnabled(new PageRequest(1, 10, "north")).items());
     }
 }

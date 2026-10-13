@@ -1,0 +1,214 @@
+.account-settings-panel {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  color: var(--ant-color-text);
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius-lg);
+}
+
+.account-settings-nav {
+  position: relative;
+  min-width: 0;
+  padding: 16px 0;
+}
+
+.account-settings-nav::after {
+  position: absolute;
+  inset-block: 16px;
+  inset-inline-end: 0;
+  width: 1px;
+  background: var(--ant-color-border-secondary);
+  content: "";
+  pointer-events: none;
+}
+
+.account-settings-menu.ant-menu-inline {
+  width: 100%;
+  background: transparent;
+}
+
+.account-settings-content {
+  min-width: 0;
+  padding: 40px 24px;
+}
+
+.account-settings-title {
+  margin: 0 0 24px !important;
+  font-size: 20px !important;
+  line-height: 28px !important;
+}
+
+.account-settings-title:focus {
+  outline: none;
+}
+
+.account-settings-body {
+  min-width: 0;
+}
+
+.account-settings-sessions-body {
+  min-height: 336px;
+}
+
+.account-settings-loading-skeleton {
+  width: 100%;
+  min-width: 0;
+}
+
+.account-sessions-loading {
+  width: 100%;
+  min-width: 0;
+}
+
+.account-sessions-loading-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 16px;
+}
+
+.account-sessions-loading-search > .ant-skeleton-element {
+  width: min(100%, 280px);
+  min-width: 0;
+}
+
+.account-sessions-loading-search-actions {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-sessions-loading-search-actions > .ant-skeleton-element {
+  width: 64px;
+  min-width: 0;
+}
+
+.account-sessions-loading-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  margin-block-end: 12px;
+}
+
+.account-sessions-loading-toolbar > .ant-skeleton-element {
+  width: min(100%, 128px);
+  min-width: 0;
+}
+
+.account-sessions-loading-table {
+  min-width: 0;
+  min-height: 184px;
+  overflow: hidden;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius);
+}
+
+.account-sessions-loading-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 2fr) minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.7fr);
+  align-items: center;
+  gap: clamp(4px, 1.2vw, 12px);
+  min-width: 0;
+  padding: 12px;
+  border-block-end: 1px solid var(--ant-color-border-secondary);
+}
+
+.account-sessions-loading-row:last-child {
+  border-block-end: 0;
+}
+
+.account-sessions-loading-row > .ant-skeleton-element {
+  width: 100%;
+  min-width: 0;
+}
+
+.account-settings-body .account-sessions-loading .ant-skeleton-element {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.account-settings-body .account-sessions-loading .ant-skeleton-element > span.ant-skeleton-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.account-sessions-loading-header {
+  background: var(--ant-color-fill-quaternary);
+}
+
+@media (max-width: 767px) {
+  .account-settings-sessions-body {
+    min-height: 480px;
+  }
+
+  .account-sessions-loading-search {
+    gap: 8px;
+  }
+
+  .account-sessions-loading-search-actions {
+    gap: 4px;
+  }
+
+  .account-sessions-loading-search-actions > .ant-skeleton-element {
+    width: 48px;
+  }
+
+  .account-sessions-loading-row {
+    gap: 4px;
+    padding: 8px;
+  }
+}
+
+@media (max-width: 1199px) {
+  .account-settings-panel {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .account-settings-nav {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px 8px 0;
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--ant-color-border-secondary);
+    scrollbar-width: thin;
+  }
+
+  .account-settings-nav::after {
+    display: none;
+  }
+
+  .account-settings-menu.ant-menu-horizontal {
+    width: max-content;
+    min-width: 100%;
+    border-block-end: 0;
+    background: transparent;
+    white-space: nowrap;
+  }
+
+  .account-settings-menu.ant-menu-horizontal > .ant-menu-item {
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    flex: 0 0 auto;
+    margin-block: 0;
+  }
+
+  .account-settings-content {
+    padding-block: 24px;
+    padding-inline: 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .account-settings-content {
+    padding-inline: 16px;
+  }
+}

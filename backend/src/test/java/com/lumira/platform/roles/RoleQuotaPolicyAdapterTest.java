@@ -66,6 +66,62 @@ class RoleQuotaPolicyAdapterTest {
     }
 
     @Test
+    void zeroByteRoleMeansUnlimitedWhenNoFiniteByteRoleExists() {
+        var roles = mock(RoleRepository.class);
+        var unlimitedRole = UUID.randomUUID();
+        var nullRole = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var assignedRows =
+                List.of(
+                        new RoleRepository.QuotaLimit(unlimitedRole, true, 0L, null),
+                        new RoleRepository.QuotaLimit(nullRole, true, null, null));
+        when(roles.quotaLimits(Set.of(unlimitedRole, nullRole))).thenReturn(assignedRows);
+        when(roles.assignedQuotaLimits(userId)).thenReturn(assignedRows);
+
+        var adapter = new RoleQuotaPolicyAdapter(roles, new FileQuota(GIB, 1_000));
+        var resolved = adapter.forRoles(Set.of(unlimitedRole, nullRole));
+        var assigned = adapter.forUser(userId);
+
+        assertEquals(0, resolved.maximumBytes());
+        assertEquals(1_000, resolved.maximumFiles());
+        assertEquals(0, assigned.maximumBytes());
+        assertEquals(1_000, assigned.maximumFiles());
+    }
+
+    @Test
+    void finiteByteRoleStillConstrainsAnUnlimitedByteRole() {
+        var roles = mock(RoleRepository.class);
+        var unlimitedRole = UUID.randomUUID();
+        var finiteRole = UUID.randomUUID();
+        when(roles.quotaLimits(Set.of(unlimitedRole, finiteRole)))
+                .thenReturn(
+                        List.of(
+                                new RoleRepository.QuotaLimit(unlimitedRole, true, 0L, null),
+                                new RoleRepository.QuotaLimit(finiteRole, true, 4 * GIB, null)));
+
+        var resolved =
+                new RoleQuotaPolicyAdapter(roles, new FileQuota(GIB, 1_000))
+                        .forRoles(Set.of(unlimitedRole, finiteRole));
+
+        assertEquals(4 * GIB, resolved.maximumBytes());
+    }
+
+    @Test
+    void zeroFileCountRemainsARejectingLimit() {
+        var roles = mock(RoleRepository.class);
+        var roleId = UUID.randomUUID();
+        when(roles.quotaLimits(Set.of(roleId)))
+                .thenReturn(List.of(new RoleRepository.QuotaLimit(roleId, true, 0L, 0L)));
+
+        var resolved =
+                new RoleQuotaPolicyAdapter(roles, new FileQuota(GIB, 1_000))
+                        .forRoles(Set.of(roleId));
+
+        assertEquals(0, resolved.maximumBytes());
+        assertEquals(0, resolved.maximumFiles());
+    }
+
+    @Test
     void disabledAndUnassignedRolesDoNotConstrainTheFallback() {
         var roles = mock(RoleRepository.class);
         var userId = UUID.randomUUID();

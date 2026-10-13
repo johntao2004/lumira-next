@@ -595,11 +595,20 @@ public class PasskeyService {
             }
             throw error;
         }
-        var response = new java.util.HashMap<String, Object>();
+        var response = loginResponseBody(result);
+        return response;
+    }
+
+    static java.util.Map<String, Object> loginResponseBody(LoginResponse result) {
+        var response = new java.util.LinkedHashMap<String, Object>();
         response.put("authenticated", result.authenticated());
         response.put("secondFactorRequired", result.secondFactorRequired());
         response.put("challengeId", result.challengeId());
         response.put("expiresAt", result.expiresAt());
+        response.put("state", result.state());
+        response.put("policyRevision", result.policyRevision());
+        response.put("factors", result.factors());
+        response.put("nextPath", result.nextPath());
         return response;
     }
 

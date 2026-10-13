@@ -80,9 +80,11 @@ function requestSearchValues<T>(columns: ProColumns<T>[], request: ListRequest):
   return values;
 }
 
-export function ResourceTable<T extends { id: string }>({ result, loading, error, request, onChange, onRetry, columns, actions, onSearch, searchInitialValues, rowSelection, expandable, searchable = true }: {
+export function ResourceTable<T extends { id: string }>({ result, loading, error, request, onChange, onRetry, columns, actions, onSearch, searchInitialValues, rowSelection, tableAlertOptionRender, expandable, searchable = true, embedded = false, scroll = { x: "max-content" } }: {
   searchable?: boolean; rowSelection?: TableProps<T>["rowSelection"]; actions?: React.ReactNode;
+  tableAlertOptionRender?: false;
   expandable?: TableProps<T>["expandable"];
+  embedded?: boolean; scroll?: TableProps<T>["scroll"];
   onSearch?: (search: ResourceSearch) => void;
   searchInitialValues?: Record<string, unknown>;
   result?: PageResult<T>; loading: boolean; error: Error | null; request: ListRequest;
@@ -128,6 +130,7 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
       className="resource-data"
       formRef={searchFormRef}
       rowSelection={rowSelection}
+      tableAlertOptionRender={tableAlertOptionRender}
       expandable={expandable}
       rowKey="id"
       loading={loading}
@@ -138,9 +141,11 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
       onReset={resetSearch}
       columns={tableColumns}
       cardBordered={false}
+      cardProps={embedded ? { styles: { body: { padding: 0 } } } : undefined}
+      defaultSize="small"
       options={{ reload: onRetry, density: true, setting: true }}
       toolBarRender={() => Children.toArray(actions)}
-      scroll={{ x: "max-content" }}
+      scroll={scroll}
       pagination={{ current: request.page, pageSize: request.pageSize, total: result?.total ?? 0,
         showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS],
         showTotal: total => t("totalRecords", { count: total }),

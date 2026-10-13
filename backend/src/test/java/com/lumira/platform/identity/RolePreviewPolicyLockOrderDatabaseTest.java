@@ -119,7 +119,7 @@ class RolePreviewPolicyLockOrderDatabaseTest {
                 .thenAnswer(
                         invocation -> {
                             lockSessionShared();
-                            return Set.of("platform:settings:write");
+                            return Set.of("platform:settings:update");
                         });
         doAnswer(
                         invocation -> {

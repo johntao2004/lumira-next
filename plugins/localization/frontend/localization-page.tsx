@@ -45,7 +45,7 @@ function sourceState(row: CatalogEntry, t: (key: string) => string) {
   return { label: t("localizationStaticValue"), color: "green" };
 }
 
-export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; canImport: boolean }) {
+export function LocalizationPage({ canRead, canCreate, canUpdate, canDelete, canImport, canPublish }: { canRead: boolean; canCreate: boolean; canUpdate: boolean; canDelete: boolean; canImport: boolean; canPublish: boolean }) {
   const { t, locale: activeLocale } = usePreferences();
   const { message } = App.useApp();
   const client = useQueryClient();
@@ -86,18 +86,19 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
   const bundlePreviewSnapshot = useRef<LocalizationBundlePreviewScope<Bundle, BundlePreview> | null>(null);
   const [bundleBusyGeneration, setBundleBusyGeneration] = useState<number | null>(null);
 
-  const locales = useQuery({ queryKey: ["localization-locales"], queryFn: ({ signal }) => api<LocaleView[]>("/platform/localization/locales", { signal }) });
+  const locales = useQuery({ queryKey: ["localization-locales"], enabled: canRead, queryFn: ({ signal }) => api<LocaleView[]>("/platform/localization/locales", { signal }) });
   const localeOptions = locales.data?.length
     ? locales.data.map((item) => ({ value: item.locale, label: item.displayName || item.locale }))
     : languages.map((item) => ({ value: item.value, label: item.label }));
   const listQuery = useQuery({
     queryKey: ["localization-catalog", locale, request],
+    enabled: canRead,
     queryFn: ({ signal }) => {
       const params = listRequestParams(request, { locale });
       return api<PageResult<CatalogEntry>>(`/platform/localization/entries?${params}`, { signal });
     },
   });
-  const providers = useQuery({ queryKey: ["localization-ai-providers"], enabled: canWrite, queryFn: ({ signal }) => api<ProviderOption[]>("/platform/localization/ai/providers", { signal }) });
+  const providers = useQuery({ queryKey: ["localization-ai-providers"], enabled: canRead, queryFn: ({ signal }) => api<ProviderOption[]>("/platform/localization/ai/providers", { signal }) });
   const selectedProvider = providers.data?.find((item) => item.id === providerId);
   const bundlePreview = bundlePreviewSnapshotValue?.result ?? null;
   const bundleBusy = bundleBusyGeneration !== null;
@@ -162,6 +163,7 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
     window.dispatchEvent(new Event("lumira:localization-changed"));
   };
   const openCreate = () => {
+    if (!canCreate) return;
     editorForm.resetFields();
     editorForm.setFieldsValue({ messageKey: "custom.", defaultMessage: "", currentValue: "" });
     setEditor(null);
@@ -175,7 +177,7 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
   }});
   const saveEditor = async (values: EditorValues) => {
     return runEditor(async () => {
-      if(!canWrite)return false;
+      if (editor ? !canUpdate : !canCreate) return false;
       const signal = sessionSignal();
       signal.throwIfAborted();
       try {
@@ -206,7 +208,7 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
     });
   };
   const restoreDefault = async (row: CatalogEntry) => {
-    if (!canWrite || !row.overridden || restoreBusyKey) return;
+    if (!canUpdate || !row.overridden || restoreBusyKey) return;
     const signal = sessionSignal();
     signal.throwIfAborted();
     setRestoreBusyKey(row.messageKey);
@@ -269,6 +271,7 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
     }
   };
   const confirmImport = async () => {
+    if (!canImport) return;
     const preview = bundlePreviewSnapshot.current;
     if (!preview || !isCurrentLocalizationBundlePreview(preview, { generation: bundleGeneration.current, bundle, overwrite: bundleOverwrite }) || (preview.result.unknown > 0 && !ignoreUnknown)) return;
     const candidate = preview.bundle;
@@ -309,8 +312,19 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
     } catch (error) { if (!signal.aborted) void message.error(t(messageKeyFor(error, errorKeys))); }
   };
 
+  const publishLocale = async () => {
+    if (!canPublish) return;
+    try {
+      const result = await mutate<{ locale: string; version: number; count: number }>(`/platform/localization/publish/${encodeURIComponent(locale)}`, "POST", {});
+      await invalidate();
+      void message.success(t("localizationPublished", result));
+    } catch (error) {
+      void message.error(t(messageKeyFor(error, errorKeys)));
+    }
+  };
+
   const runAi = async (retryKeys?: string[]) => {
-    if (!providerId || !modelName || aiBusy) return;
+    if (!canUpdate || !providerId || !modelName || aiBusy) return;
     const generation = retryKeys ? aiGeneration.current : invalidateAi();
     const currentContext = (sourceBundleVersion: number | null, sourceSnapshotToken: string): LocalizationAiPreviewScope => Object.freeze({
       generation,
@@ -405,6 +419,7 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
     }
   };
   const saveAiSelected = async () => {
+    if (!canUpdate) return;
     const context = aiPreviewScopeRef.current;
     if (!context || !sameLocalizationAiScope(context, Object.freeze({
       ...context,
@@ -473,17 +488,18 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
   const missingOptions = localeOptions;
 
   return <>
-    <ResourceTable<CatalogEntry>
+    {canRead ? <ResourceTable<CatalogEntry>
       result={listQuery.data} loading={listQuery.isFetching} error={listQuery.error} request={request}
       onChange={(next) => { invalidateAi(); if (next.page !== request.page || next.search !== request.search) setSelectedKeys([]); setRequest(next); }}
       onRetry={() => void listQuery.refetch()}
-      rowSelection={canWrite ? { selectedRowKeys: selectedKeys, onChange: (keys) => { invalidateAi(); setSelectedKeys(keys.map(String)); } } : undefined}
+      rowSelection={canUpdate ? { selectedRowKeys: selectedKeys, onChange: (keys) => { invalidateAi(); setSelectedKeys(keys.map(String)); } } : undefined}
       actions={<Space wrap>
-        {canWrite && <Button type="primary" onClick={openCreate}>{t("createLocalizationEntry")}</Button>}
+        {canCreate && <Button type="primary" onClick={openCreate}>{t("createLocalizationEntry")}</Button>}
         {canImport && <Button onClick={() => { invalidateBundle(true); setBundleOpen(true); }}>{t("importLocalizationEntries")}</Button>}
         <Button onClick={() => void exportBundle()}>{t("localizationExportBundle")}</Button>
         <Select aria-label={t("localizationLocale")} value={locale} options={localeOptions} onChange={(value) => { invalidateAi(); setSelectedLocale(value); setSelectedKeys([]); setRequest({ ...request, page: 1 }); }} style={{ minWidth: 150, maxWidth: "100%" }} />
-        {canWrite && <Button onClick={() => { invalidateAi(); setAiTarget(locale); setAiOpen(true); void providers.refetch(); }}>{t("localizationAiTranslate")}</Button>}
+        {canUpdate && <Button onClick={() => { invalidateAi(); setAiTarget(locale); setAiOpen(true); void providers.refetch(); }}>{t("localizationAiTranslate")}</Button>}
+        {canPublish && <AsyncButton label={t("publishLocalization")} pending={locales.isFetching} onClick={publishLocale} />}
       </Space>}
       columns={[
         { title: t("localizationKey"), dataIndex: "messageKey", search: true, ellipsis: true },
@@ -493,8 +509,8 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
         { title: t("localizationValueSource"), dataIndex: "valueSource", render: (_value, row) => { const state = sourceState(row, t); return <Tag color={state.color}>{state.label}</Tag>; } },
         { title: t("status"), dataIndex: "enabled", render: (_value, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
         { title: t("actions"), key: "actions", render: (_value, row) => <TableActions wrap>
-          <Button type="link" onClick={() => openEdit(row)}>{t(canWrite ? "edit" : "details")}</Button>
-          {canWrite && row.overridden && <Popconfirm
+          <Button type="link" onClick={() => openEdit(row)}>{t(canUpdate ? "edit" : "details")}</Button>
+          {canUpdate && row.overridden && <Popconfirm
             title={t("localizationRestoreDefaultConfirm")}
             okText={t("localizationRestoreDefault")}
             cancelText={t("cancel")}
@@ -503,14 +519,14 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
             onConfirm={() => restoreDefault(row)}
             disabled={Boolean(restoreBusyKey)}
           ><Button type="link" loading={restoreBusyKey === row.messageKey} disabled={Boolean(restoreBusyKey)}>{t("localizationRestoreDefault")}</Button></Popconfirm>}
-          {canWrite && !row.builtIn && <AsyncButton type="link" label={t(row.enabled ? "disableLocalization" : "enableLocalization")} pending={editorBusy} onClick={async () => { try { await mutate(`/platform/localization/entries/${row.id}/status`, "PATCH", { enabled: !row.enabled, version: row.version }); await invalidate(); } catch (error) { void message.error(t(messageKeyFor(error, errorKeys))); } }} />}
-          {canWrite && !row.builtIn && <DeleteAction name={row.messageKey} onDelete={async () => { await mutate(`/platform/localization/entries/${row.id}?version=${row.version}`, "DELETE"); await invalidate(); }} />}
+          {canUpdate && !row.builtIn && <AsyncButton type="link" label={t(row.enabled ? "disableLocalization" : "enableLocalization")} pending={editorBusy} onClick={async () => { try { await mutate(`/platform/localization/entries/${row.id}/status`, "PATCH", { enabled: !row.enabled, version: row.version }); await invalidate(); } catch (error) { void message.error(t(messageKeyFor(error, errorKeys))); } }} />}
+          {canDelete && !row.builtIn && <DeleteAction name={row.messageKey} onDelete={async () => { await mutate(`/platform/localization/entries/${row.id}?version=${row.version}`, "DELETE"); await invalidate(); }} />}
         </TableActions> },
       ]}
-    />
+    /> : <Alert type="info" showIcon message={t("forbidden")} />}
 
     <Modal open={editor !== undefined} title={t(editor ? "editLocalizationEntry" : "createLocalizationEntry")} onCancel={() => { if (!editorBusy) setEditor(undefined); }} footer={null} width={640} style={{ maxWidth: "calc(100vw - 24px)" }} styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }} destroyOnHidden>
-      {editor !== undefined && <Form id="localization-editor" name="localization-editor" form={editorForm} layout="vertical" disabled={editorBusy || !canWrite} onFinish={(values) => void saveEditor(values as EditorValues)}>
+      {editor !== undefined && <Form id="localization-editor" name="localization-editor" form={editorForm} layout="vertical" disabled={editorBusy || (editor === null ? !canCreate : !canUpdate)} onFinish={(values) => void saveEditor(values as EditorValues)}>
         <Form.Item name="messageKey" label={t("localizationKey")} rules={[{ required: true, pattern: editor ? /^[A-Za-z][A-Za-z0-9_.:-]{0,199}$/u : /^custom\.[A-Za-z0-9][A-Za-z0-9_.-]{0,193}$/u }]}><Input disabled={Boolean(editor)} maxLength={200} /></Form.Item>
         {editor === null && <Form.Item name="defaultMessage" label={t("localizationDefaultMessage")} rules={[{ required: true, max: 2000 }]}><Input.TextArea rows={4} maxLength={2000} /></Form.Item>}
         {editor === null && <Alert type="info" showIcon message={t("localizationCustomKeyHint")} />}
@@ -518,7 +534,7 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
         <Form.Item name="currentValue" label={t("localizationEffectiveValue")} rules={[{ required: true, whitespace: true, max: 2000 }]}><Input.TextArea rows={6} maxLength={2000} /></Form.Item>
         <Space wrap>
           <Button onClick={() => setEditor(undefined)} disabled={editorBusy}>{t("cancel")}</Button>
-          <Button type="primary" htmlType="submit" form="localization-editor" loading={editorBusy} disabled={!canWrite}>{t("save")}</Button>
+          <Button type="primary" htmlType="submit" form="localization-editor" loading={editorBusy} disabled={editor === null ? !canCreate : !canUpdate}>{t("save")}</Button>
         </Space>
       </Form>}
     </Modal>
@@ -576,7 +592,7 @@ export function LocalizationPage({ canWrite, canImport }: { canWrite: boolean; c
           </Typography.Text>}
           <Checkbox.Group value={aiSelected} onChange={(values) => setAiSelected(values.map(String))} style={{ width: "100%" }}>
             <Space direction="vertical" style={{ width: "100%" }}>
-              {aiResultItems.map(([key, item]) => <div key={key} style={{ border: "1px solid #eee", borderRadius: 6, padding: 10, overflowWrap: "anywhere" }}>
+              {aiResultItems.map(([key, item]) => <div key={key} style={{ border: "1px solid var(--ant-color-border-secondary)", borderRadius: 6, padding: 10, overflowWrap: "anywhere" }}>
                 <Checkbox value={key} disabled={!item.translation || item.generation !== aiPreviewScope?.generation || aiEntryVersions[key] !== item.entry.version}>{key} · v{item.entry.version}</Checkbox>
                 <Typography.Paragraph type="secondary" style={{ margin: "4px 0", overflowWrap: "anywhere" }}>{item.source}</Typography.Paragraph>
                 {item.translation ? <Typography.Paragraph style={{ marginBottom: 0, overflowWrap: "anywhere" }}>{item.translation}</Typography.Paragraph> : <Typography.Text type="danger">{t(item.errorCode ?? "localizationAiItemError")}</Typography.Text>}

@@ -49,7 +49,8 @@ class PlatformEventOutboxStoreTest {
                 )
                 """);
         jdbc.execute(
-                "CREATE INDEX platform_event_replay_approval_event ON platform_event_replay_approval(event_id,created_at DESC,id DESC)");
+                "CREATE INDEX platform_event_replay_approval_event ON"
+                        + " platform_event_replay_approval(event_id,created_at DESC,id DESC)");
     }
 
     @AfterEach
@@ -142,21 +143,60 @@ class PlatformEventOutboxStoreTest {
     }
 
     @Test
-    void failuresBackoffAndBecomeDeadLetterAtAttemptLimit() {
+    void eightConsumerFailuresBecomeDeadLetterAndCanBeReplayed() {
         UUID id = UUID.randomUUID();
         store.append(id, "source", "event", "retry", "{\"ok\":true}");
+        for (int attempt = 1; attempt <= PlatformEventOutboxStore.MAX_ATTEMPTS; attempt++) {
+            jdbc.update("UPDATE platform_event_outbox SET available_at=now() WHERE id=?", id);
+            var claim = store.claim().orElseThrow();
+            assertEquals(attempt, claim.attempts());
+            assertTrue(store.fail(claim, "consumer failed"));
+        }
+        assertEquals(
+                "DEAD_LETTER",
+                jdbc.queryForObject(
+                        "SELECT status FROM platform_event_outbox WHERE id=?", String.class, id));
+        assertEquals(new PlatformEventOutboxStore.Replay(id, "PENDING", 0), store.replay(id));
+        assertEquals(
+                0,
+                jdbc.queryForObject(
+                        "SELECT attempts FROM platform_event_outbox WHERE id=?",
+                        Integer.class,
+                        id));
+    }
+
+    @Test
+    void failureAndNoConsumerReleaseRequireTheCurrentUnexpiredLease() {
+        UUID id = UUID.randomUUID();
+        store.append(id, "source", "event", "unregistered", "{\"ok\":true}");
         var claim = store.claim().orElseThrow();
-        assertTrue(store.fail(claim, "temporary transport error"));
+        assertTrue(store.releaseWithoutConsumer(claim));
         assertEquals(
                 "PENDING",
                 jdbc.queryForObject(
                         "SELECT status FROM platform_event_outbox WHERE id=?", String.class, id));
-        jdbc.update(
-                "UPDATE platform_event_outbox SET available_at=now(),attempts=7 WHERE id=?", id);
-        var last = store.claim().orElseThrow();
-        assertTrue(store.fail(last, "final failure"));
         assertEquals(
-                "DEAD_LETTER",
+                0,
+                jdbc.queryForObject(
+                        "SELECT attempts FROM platform_event_outbox WHERE id=?",
+                        Integer.class,
+                        id));
+        assertEquals(
+                "NO_CONSUMER",
+                jdbc.queryForObject(
+                        "SELECT last_error FROM platform_event_outbox WHERE id=?",
+                        String.class,
+                        id));
+
+        jdbc.update("UPDATE platform_event_outbox SET available_at=now() WHERE id=?", id);
+        var expiredClaim = store.claim().orElseThrow();
+        jdbc.update(
+                "UPDATE platform_event_outbox SET lease_until=now()-interval '1 second' WHERE id=?",
+                id);
+        assertFalse(store.fail(expiredClaim, "stale failure"));
+        assertFalse(store.releaseWithoutConsumer(expiredClaim));
+        assertEquals(
+                "PROCESSING",
                 jdbc.queryForObject(
                         "SELECT status FROM platform_event_outbox WHERE id=?", String.class, id));
     }
@@ -166,7 +206,9 @@ class PlatformEventOutboxStoreTest {
         UUID id = UUID.randomUUID();
         store.append(id, "source", "event", "replay", "{\"ok\":true}");
         jdbc.update(
-                "UPDATE platform_event_outbox SET status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED',delivered_at=NULL WHERE id=?",
+                "UPDATE platform_event_outbox SET"
+                        + " status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED',delivered_at=NULL"
+                        + " WHERE id=?",
                 id);
         var replay = store.replay(id);
         assertEquals(new PlatformEventOutboxStore.Replay(id, "PENDING", 0), replay);
@@ -234,7 +276,9 @@ class PlatformEventOutboxStoreTest {
         UUID deadLetter = UUID.randomUUID();
         store.append(deadLetter, "source", "event", "dead", "{\"ok\":true}");
         jdbc.update(
-                "UPDATE platform_event_outbox SET status='DEAD_LETTER',attempts=8,updated_at=now()-interval '31 days' WHERE id=?",
+                "UPDATE platform_event_outbox SET"
+                        + " status='DEAD_LETTER',attempts=8,updated_at=now()-interval '31 days' WHERE"
+                        + " id=?",
                 deadLetter);
 
         assertEquals(1, store.purgeDelivered(Duration.ofDays(30), 1));
@@ -264,10 +308,13 @@ class PlatformEventOutboxStoreTest {
         UUID referenced = UUID.randomUUID();
         store.append(referenced, "source", "event", "approved", "{\"proof\":true}");
         jdbc.update(
-                "UPDATE platform_event_outbox SET status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days' WHERE id=?",
+                "UPDATE platform_event_outbox SET"
+                        + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
+                        + " WHERE id=?",
                 referenced);
         jdbc.update(
-                "INSERT INTO platform_event_replay_approval(id,event_id,approved_by,reason) VALUES(?,?,?,?)",
+                "INSERT INTO platform_event_replay_approval(id,event_id,approved_by,reason)"
+                        + " VALUES(?,?,?,?)",
                 UUID.randomUUID(),
                 referenced,
                 UUID.randomUUID().toString(),
@@ -276,7 +323,9 @@ class PlatformEventOutboxStoreTest {
         UUID ordinary = UUID.randomUUID();
         store.append(ordinary, "source", "event", "ordinary", "{\"ok\":true}");
         jdbc.update(
-                "UPDATE platform_event_outbox SET status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days' WHERE id=?",
+                "UPDATE platform_event_outbox SET"
+                        + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
+                        + " WHERE id=?",
                 ordinary);
 
         assertEquals(1, store.purgeDelivered(Duration.ofDays(30), 10));

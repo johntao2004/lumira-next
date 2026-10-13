@@ -1,15 +1,16 @@
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.PlatformPageId;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Component;
 
-/** Requires both the audit permission and its global data scope for the API description. */
+/** Requires the API docs page grant and its global data scope for the API description. */
 @Component
 public final class ApiDocsAccessPolicy {
-    public static final String PERMISSION = "platform:audit:read";
+    public static final String PERMISSION = PlatformPageId.API_DOCS.accessPermission();
 
     private final AdministrationPort administration;
 

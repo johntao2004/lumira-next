@@ -48,9 +48,15 @@ deliberately:
    only the quota role.
 
 Role reads/writes continue to enforce the existing role permission and user-scope checks.
-The active-role minimum is applied independently to bytes and file count. The configured
-system value is a fallback for a dimension only when no enabled assigned role sets that
-dimension; role limits may exceed it. The legacy `LUMIRA_FILES_MAXIMUM_BYTES` and
+Limits are resolved independently for storage bytes and file count. Positive byte limits
+combine by minimum; an explicit `0` means unlimited and does not constrain a positive limit
+on another active role. If no active role sets a positive byte limit but at least one sets
+`0`, the effective byte limit is unlimited. A `null` byte value adds no policy; the system
+default is used only when every active role leaves that dimension null. File-count limits
+also combine by minimum, while `0` rejects new files. The configured system value is a
+fallback for a dimension only when no enabled assigned role sets that dimension; role limits
+may exceed it. The legacy
+`LUMIRA_FILES_MAXIMUM_BYTES` and
 `LUMIRA_FILES_MAXIMUM_COUNT` environment names remain accepted as aliases for the system
 fallback values. New deployments should use `LUMIRA_FILES_DEFAULT_BYTES` and
 `LUMIRA_FILES_DEFAULT_COUNT`. Quota values must remain non-negative safe integers so the
@@ -72,13 +78,15 @@ combine by the lower limit per dimension.
 
 ## Runtime behavior and recovery
 
-An unset role dimension adds no capacity. For each dimension, effective quota is the
-minimum of all non-null limits on assigned, enabled roles; if none of those roles sets that
-dimension, the system default is used. A role limit can therefore be higher than the system
-default. Disabled or removed roles are ignored. Existing files remain readable and are not
-deleted when a limit is lowered. Usage can remain above the limit; uploads are rejected
-until usage falls within both limits. Usage reads and upload reservations use the same
-resolver.
+An unset role dimension adds no capacity. For file count, effective quota is the minimum of
+all non-null limits on assigned, enabled roles. For storage bytes, positive limits combine
+by minimum and `0` is an unlimited value, so a finite active role still constrains a user
+who also has an unlimited role. If no active role sets the dimension, the system default is
+used. A role limit can therefore be higher than the system default. Disabled or removed
+roles are ignored. Existing files remain readable and are not deleted when a limit is
+lowered. Usage can remain above a finite limit; uploads are rejected until usage falls
+within both limits. The aggregate byte limit does not change the separate per-file upload
+size limit. Usage reads, role previews, and upload reservations use the same resolver.
 
 The V11 user columns remain the recovery source. To restore the previous application,
 roll back the code version; its existing user-level values are still present. If a database

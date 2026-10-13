@@ -15,6 +15,10 @@ public record RoleResponse(
         Long fileQuotaFilesLimit,
         List<String> authorities,
         boolean defaultRegistrationRole) {
+    public RoleResponse {
+        authorities = List.copyOf(authorities == null ? List.of() : authorities);
+    }
+
     public static RoleResponse from(RoleRepository.Role value) {
         if (value == null) return null;
         return new RoleResponse(

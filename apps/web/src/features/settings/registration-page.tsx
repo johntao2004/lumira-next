@@ -13,6 +13,8 @@ import { SettingsEnabledControls } from "@/platform/components/settings-enabled-
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
+import "./authentication-settings-panels.css";
+import "./registration-page.css";
 
 type RegistrationReadiness = {
   emailAvailable: boolean;
@@ -61,7 +63,7 @@ const roleReasonKeys: Record<string, MessageKey> = {
   registrationRolePermissionsNotAllowed: "registrationRolePermissionsNotAllowed",
 };
 
-export function RegistrationPage({ canWrite, canReadRoles }: { canWrite: boolean; canReadRoles: boolean }) {
+export function RegistrationPage({ canWrite, canReadRoles, canAssignDefaultRole = false }: { canWrite: boolean; canReadRoles: boolean; canAssignDefaultRole?: boolean }) {
   const { t } = usePreferences();
   const client = useQueryClient();
   const [form] = Form.useForm<RegistrationSettingsForm>();
@@ -106,7 +108,7 @@ export function RegistrationPage({ canWrite, canReadRoles }: { canWrite: boolean
         version: query.data!.version,
         enabled: values.enabled,
         channels: values.channels ?? [],
-        defaultRoleId: values.defaultRoleId || null,
+        defaultRoleId: canAssignDefaultRole ? (values.defaultRoleId || null) : query.data!.defaultRoleId,
       });
       client.setQueryData(["settings", "registration"], result);
       form.setFieldsValue({
@@ -127,8 +129,8 @@ export function RegistrationPage({ canWrite, canReadRoles }: { canWrite: boolean
   const roleOptions = candidates.map(candidate => ({
     value: candidate.id,
     disabled: !candidate.eligible,
-    label: <Space size={6} wrap>
-      <span>{candidate.name} ({candidate.code})</span>
+    label: <Space className="registration-role-option" size={6} wrap>
+      <span className="registration-role-option-name">{candidate.name} ({candidate.code})</span>
       {candidate.eligible
         ? <Tag color="success">{t("registrationRoleEligible")}</Tag>
         : <Typography.Text type="danger">{t(roleReasonKeys[candidate.reason ?? ""] ?? "registrationRoleIneligible")}</Typography.Text>}
@@ -138,7 +140,7 @@ export function RegistrationPage({ canWrite, canReadRoles }: { canWrite: boolean
     roleOptions.unshift({
       value: selectedRoleId,
       disabled: true,
-      label: <span>{t("registrationRoleCurrentId", { id: selectedRoleId })}</span>,
+      label: <span className="registration-role-option-name">{t("registrationRoleCurrentId", { id: selectedRoleId })}</span>,
     });
   }
   const readiness: Array<{ key: keyof RegistrationReadiness; label: MessageKey; ready: boolean }> = [
@@ -153,87 +155,111 @@ export function RegistrationPage({ canWrite, canReadRoles }: { canWrite: boolean
 
   return <>
     <Form
-      className="settings-form registration-settings-form"
+      className="settings-form auth-config-form registration-settings-form"
       form={form}
       layout="vertical"
       disabled={!canWrite || action.pending}
       onValuesChange={() => setSaved(false)}
       onFinish={save}
     >
-      <Form.Item name="enabled" label={t("registrationEnabled")} valuePropName="checked" extra={t("registrationEnabledHint")}>
-        <Switch />
-      </Form.Item>
-      <SettingsEnabledControls name="enabled">
-      <Form.Item name="channels" label={t("registrationChannels")}>
-        <Checkbox.Group>
-          <Space wrap>
-            <Checkbox value="EMAIL">{t("registrationChannelEmail")}</Checkbox>
-              <Checkbox value="SMS" disabled={!enabled || (!query.data.readiness.phoneRecoverySupported && !channels.includes("SMS"))}>{t("registrationChannelSms")}</Checkbox>
-          </Space>
-        </Checkbox.Group>
-      </Form.Item>
-      </SettingsEnabledControls>
-      {!query.data.readiness.phoneRecoverySupported && <Alert className="mb-4" type="warning" showIcon title={t("registrationPhoneRecoveryUnavailable")} />}
+      <div className="auth-config-panels">
+        <div className="auth-config-stack">
+          <section className="auth-config-panel">
+            <Typography.Title level={5}>{t("registrationSettingsTitle")}</Typography.Title>
+            <Form.Item className="auth-config-toggle" name="enabled" label={t("registrationEnabled")} valuePropName="checked" extra={t("registrationEnabledHint")}>
+              <Switch />
+            </Form.Item>
+            <SettingsEnabledControls name="enabled">
+              <div className="auth-config-fields">
+                <Form.Item name="channels" label={t("registrationChannels")}>
+                  <Checkbox.Group>
+                    <Space wrap>
+                      <Checkbox value="EMAIL">{t("registrationChannelEmail")}</Checkbox>
+                      <Checkbox value="SMS" disabled={!enabled || (!query.data.readiness.phoneRecoverySupported && !channels.includes("SMS"))}>{t("registrationChannelSms")}</Checkbox>
+                    </Space>
+                  </Checkbox.Group>
+                </Form.Item>
+              </div>
+            </SettingsEnabledControls>
+            {!query.data.readiness.phoneRecoverySupported && <Alert className="registration-phone-recovery-alert" type="warning" showIcon title={t("registrationPhoneRecoveryUnavailable")} />}
+          </section>
 
-      <Typography.Title level={5}>{t("registrationDefaultRole")}</Typography.Title>
-      {!canReadRoles ? <Alert type="warning" showIcon title={t("registrationRolesReadUnavailable")} /> : <>
-        <SettingsEnabledControls name="enabled">
-        <Input.Search
-          className="mb-3"
-          allowClear
-          maxLength={100}
-          value={roleSearchDraft}
-          placeholder={t("registrationRoleSearch")}
-          onChange={event => setRoleSearchDraft(event.target.value)}
-          onSearch={value => { setRoleSearch(value.trim()); setRolePage(1); }}
-        />
-        <Form.Item
-          name="defaultRoleId"
-          rules={enabled ? [{ required: true, message: t("registrationRoleIneligibleError") }] : []}
-        >
-          <Select
-            allowClear
-            showSearch={false}
-            loading={roles.isFetching}
-            options={roleOptions}
-            placeholder={t("registrationDefaultRole")}
-            notFoundContent={roles.isError ? t("unavailable") : t("registrationRoleNotFound")}
-          />
-        </Form.Item>
-        {roles.error && <QueryFailure title={t(roles.error instanceof Error && "status" in roles.error && roles.error.status === 403 ? "forbidden" : "unavailable")} pending={roles.isFetching} onRetry={() => void roles.refetch()} />}
-        {selectedCandidate && !selectedCandidate.eligible && <Alert className="mb-3" type="error" showIcon title={t(roleReasonKeys[selectedCandidate.reason ?? ""] ?? "registrationRoleIneligible")} />}
-        {roles.data && roles.data.total > 0 && <Pagination
-          className="mb-4"
-          current={rolePage}
-          pageSize={rolePageSize}
-          total={roles.data.total}
-          size="small"
-          responsive
-          showSizeChanger
-          pageSizeOptions={[10, 20, 50, 100]}
-          showTotal={total => t("totalRecords", { count: total })}
-          onChange={(page, pageSize) => { setRolePage(pageSize === rolePageSize ? page : 1); setRolePageSize(pageSize); }}
-        />}
-        </SettingsEnabledControls>
-      </>}
+          <section className="auth-config-panel">
+            <Typography.Title level={5}>{t("registrationDefaultRole")}</Typography.Title>
+            {!canReadRoles ? <Alert type="warning" showIcon title={t("registrationRolesReadUnavailable")} /> : <>
+              <SettingsEnabledControls name="enabled">
+                <div className="auth-config-fields">
+                  <Form.Item label={t("registrationRoleSearch")} htmlFor="registration-role-search">
+                    <Input.Search
+                      id="registration-role-search"
+                      allowClear
+                      maxLength={100}
+                      value={roleSearchDraft}
+                      aria-label={t("registrationRoleSearch")}
+                      placeholder={t("registrationRoleSearch")}
+                      onChange={event => setRoleSearchDraft(event.target.value)}
+                      onSearch={value => { setRoleSearch(value.trim()); setRolePage(1); }}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="defaultRoleId"
+                    label={t("registrationDefaultRole")}
+                    rules={enabled ? [{ required: true, message: t("registrationRoleIneligibleError") }] : []}
+                  >
+                    <Select
+                      className="registration-role-select"
+                      aria-label={t("registrationDefaultRole")}
+                      allowClear
+                      disabled={!canAssignDefaultRole}
+                      showSearch={false}
+                      loading={roles.isFetching}
+                      options={roleOptions}
+                      placeholder={t("registrationDefaultRole")}
+                      notFoundContent={roles.isError ? t("unavailable") : t("registrationRoleNotFound")}
+                    />
+                  </Form.Item>
+                  {roles.error && <QueryFailure title={t(roles.error instanceof Error && "status" in roles.error && roles.error.status === 403 ? "forbidden" : "unavailable")} pending={roles.isFetching} onRetry={() => void roles.refetch()} />}
+                  {selectedCandidate && !selectedCandidate.eligible && <Alert className="registration-selected-candidate-alert" type="error" showIcon title={t(roleReasonKeys[selectedCandidate.reason ?? ""] ?? "registrationRoleIneligible")} />}
+                  {roles.data && roles.data.total > 0 && <Pagination
+                    className="registration-role-pagination"
+                    current={rolePage}
+                    pageSize={rolePageSize}
+                    total={roles.data.total}
+                    size="small"
+                    responsive
+                    showSizeChanger
+                    pageSizeOptions={[10, 20, 50, 100]}
+                    showTotal={total => t("totalRecords", { count: total })}
+                    onChange={(page, pageSize) => { setRolePage(pageSize === rolePageSize ? page : 1); setRolePageSize(pageSize); }}
+                  />}
+                </div>
+              </SettingsEnabledControls>
+            </>}
+          </section>
+        </div>
 
-      <Typography.Title level={5}>{t("registrationReadiness")}</Typography.Title>
-      <div className="flex flex-col gap-2 mb-4">
-        {readiness.map(item => {
-          const ready = item.ready;
-          const isMaintenance = item.key === "maintenance" && query.data!.readiness.maintenance;
-          return <Space key={item.key} wrap>
-            <span>{t(item.label)}</span>
-            <Tag color={ready && !isMaintenance ? "success" : "warning"}>
-              {isMaintenance ? t("registrationMaintenanceActive") : t(ready ? "registrationReady" : "registrationNeedsAttention")}
-            </Tag>
-          </Space>;
-        })}
+        <section className="auth-config-panel registration-readiness-panel">
+          <Typography.Title level={5}>{t("registrationReadiness")}</Typography.Title>
+          <div className="registration-readiness-list">
+            {readiness.map(item => {
+              const ready = item.ready;
+              const isMaintenance = item.key === "maintenance" && query.data!.readiness.maintenance;
+              return <div key={item.key} className="registration-readiness-row">
+                <span>{t(item.label)}</span>
+                <Tag color={ready && !isMaintenance ? "success" : "warning"}>
+                  {isMaintenance ? t("registrationMaintenanceActive") : t(ready ? "registrationReady" : "registrationNeedsAttention")}
+                </Tag>
+              </div>;
+            })}
+          </div>
+        </section>
       </div>
 
       <FeedbackBubble id="registration-settings-error" content={action.error ? t(action.error) : undefined} />
       <FeedbackBubble kind="success" id="registration-settings-saved" content={saved ? t("registrationSaved") : undefined} />
-      <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />
+      <Space className="form-actions auth-config-actions" wrap>
+        <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />
+      </Space>
     </Form>
   </>;
 }

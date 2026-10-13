@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 class AiChatAttachmentsTest {
+    private final AdministrationPort guard = mock(AdministrationPort.class);
     private final AiProviderService providers = mock(AiProviderService.class);
     private final ModelConnectionService connections = mock(ModelConnectionService.class);
     private final AiAttachmentPort attachments = mock(AiAttachmentPort.class);
@@ -37,16 +38,32 @@ class AiChatAttachmentsTest {
                     connections,
                     mock(PendingAiActionStore.class),
                     mock(AiUserDirectoryPort.class),
-                    mock(AdministrationPort.class),
+                    guard,
                     new ObjectMapper(),
                     attachments,
                     policy);
 
     private AiAssistantService.ChatRequest input(List<AiAssistantService.ChatMessage> messages) {
-        when(providers.requireEnabled(provider.id(), "actor")).thenReturn(provider);
+        when(providers.requireEnabledForConsole(provider.id(), "actor")).thenReturn(provider);
         when(connections.chat(eq(provider), anyString(), anyList(), anyList()))
                 .thenReturn(new ModelConnectionService.ChatReply("done", List.of()));
         return new AiAssistantService.ChatRequest(provider.id(), "vision-model", messages);
+    }
+
+    @Test
+    void pageAccessAloneCannotStartAiChat() {
+        when(guard.requireOperation(anyString(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"));
+
+        assertThrows(
+                ResponseStatusException.class,
+                () ->
+                        service.chat(
+                                new AiAssistantService.ChatRequest(
+                                        provider.id(), "vision-model", List.of()),
+                                "actor"));
+        verify(providers, never()).requireEnabledForConsole(any(), anyString());
+        verifyNoInteractions(connections);
     }
 
     @Test

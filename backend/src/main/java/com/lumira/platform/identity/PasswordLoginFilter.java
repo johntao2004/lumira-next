@@ -79,9 +79,10 @@ final class PasswordLoginFilter extends UsernamePasswordAuthenticationFilter {
             throws IOException, ServletException {
         res.setContentType("application/json");
         res.setCharacterEncoding("UTF-8");
+        noStore(res);
         try {
             var result = flow.primary(auth, req, res);
-            res.setStatus(result.secondFactorRequired() ? 202 : 200);
+            res.setStatus(result.challengeId() != null ? 202 : 200);
             res.getWriter().write(json.writeValueAsString(result));
         } catch (RuntimeException error) {
             if (!(error instanceof ResponseStatusException)) {
@@ -104,6 +105,11 @@ final class PasswordLoginFilter extends UsernamePasswordAuthenticationFilter {
                                                     ? e.getReason()
                                                     : "unavailable")));
         }
+    }
+
+    private static void noStore(HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store, max-age=0");
+        response.setHeader("Pragma", "no-cache");
     }
 
     private static String sanitizedStack(Throwable error) {

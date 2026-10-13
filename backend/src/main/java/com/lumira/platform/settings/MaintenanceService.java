@@ -1,6 +1,8 @@
 package com.lumira.platform.settings;
 
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.PlatformOperation;
+import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.MaintenancePolicyPort;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -69,7 +71,10 @@ public class MaintenanceService implements MaintenancePolicyPort {
     public boolean canLogin(String username) {
         var setting = read().data();
         if (!setting.activeAt(Instant.now())
-                || guard.hasGlobal(username, "platform:settings:write")) return true;
+                || (guard.hasGlobal(username, PlatformPageId.MAINTENANCE.accessPermission())
+                        && guard.hasGlobal(
+                                username, PlatformOperation.MAINTENANCE_UPDATE.permission())))
+            return true;
         if (setting.allowedRoleIds().isEmpty()) return false;
         return jdbc.sql(
                         "SELECT EXISTS(SELECT 1 FROM platform_user u JOIN platform_user_role ur ON ur.user_id=u.id JOIN platform_role r ON r.id=ur.role_id WHERE u.username=:name AND u.enabled AND r.enabled AND r.id IN (:roles))")
@@ -97,8 +102,7 @@ public class MaintenanceService implements MaintenancePolicyPort {
             long expectedVersion,
             String changeReason,
             Long sourceVersion) {
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.MAINTENANCE_UPDATE);
         if (data == null)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidMaintenance");
         data.validate();

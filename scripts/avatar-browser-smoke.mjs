@@ -53,7 +53,7 @@ try{
  await expect(page.locator('img[alt="头像"]')).toHaveCount(0);
  await page.reload();assert.equal((await(await context.request.get('/api/account/avatar')).json()).fileId,null);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth),false);assert.deepEqual(errors,[]);
- mkdirSync('.runtime/browser-checks',{recursive:true});await page.screenshot({path:'.runtime/browser-checks/avatar-removed.png'});
+ mkdirSync('.runtime/account-settings',{recursive:true});await page.screenshot({path:'.runtime/account-settings/avatar-removed.png'});
  console.log('PASS: invalid image feedback, file chooser upload, decoded ProLayout header avatar, independent save preserves unsaved profile, reload, confirmed removal and fallback, no pageerror or desktop overflow');
 }finally{
  const ids=sql(`SELECT id FROM platform_file WHERE owner_id='${owner}'`).split('\n').filter(Boolean);

@@ -22,15 +22,16 @@ import { MAX_PASSWORD_BYTES, defaultPasswordLengthValid } from "@/platform/auth/
 import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 import { ProfileFieldRenderer } from "@/platform/profile-fields/profile-field-renderer";
 import type { DictionarySelection, ProfileFieldDefinition } from "@/platform/profile-fields/types";
-import { preserveProfileFieldValues } from "@/platform/profile-fields/values";
-import { formatQuotaBytes } from "@/platform/i18n/format";
+import { formatQuotaBytes, formatQuotaLimitBytes } from "@/platform/i18n/format";
+import { RoleAssignmentSearch } from "./role-assignment-search";
+import { buildUserEditorSavePlan } from "./user-editor-save-plan";
 
 const userErrorKeys = ["invalidUser", "duplicateRecord", "staleRecord", "protectedAccount", "forbidden", "invalidRole", "invalidOrganization"] as const satisfies readonly MessageKey[];
 
 type UserDetail = UserSummary;
 type Assignment = { version: number; roleIds: string[] };
 type Membership = { version: number; organizationIds: string[] };
-type LinkedRole = { id: string; code: string; name: string; enabled: boolean; fileQuotaBytesLimit: number | null; fileQuotaFilesLimit: number | null };
+type LinkedRole = { id: string; code: string; name: string; enabled: boolean; fileQuotaBytesLimit: number | null; fileQuotaFilesLimit: number | null; assignable: boolean };
 type LinkedOrganization = { id: string; code: string; name: string; enabled: boolean };
 type QuotaPreview = {
   currentMaximumBytes: number;
@@ -43,8 +44,8 @@ type QuotaPreview = {
   defaultMaximumFiles: number;
   version: number;
 };
-type UserEditValues = { [key: string]: string | boolean | undefined; username?: string; displayName?: string; enabled?: boolean; password?: string };
-type ProfileValuesSnapshot = {
+type UserEditValues = { [key: string]: string | boolean | undefined; username?: string; displayName?: string; enabled?: boolean; password?: string; confirmPassword?: string };
+export type ProfileValuesSnapshot = {
   version: number;
   schemaVersion: number;
   fields: ProfileFieldDefinition[];
@@ -52,11 +53,14 @@ type ProfileValuesSnapshot = {
   dictionarySelections: Record<string, DictionarySelection>;
 };
 
-export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizations, onClose, onSaved }: {
+export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canReadRoles, canAssignOrganizations, canViewRolesOnly, onClose, onSaved }: {
   user: UserSummary | null | undefined;
-  canWrite: boolean;
+  canCreate: boolean;
+  canUpdate: boolean;
   canAssignRoles: boolean;
+  canReadRoles: boolean;
   canAssignOrganizations: boolean;
+  canViewRolesOnly: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -97,7 +101,7 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
   });
   const profileValues = useQuery({
     queryKey: ["user-profile-values", user?.id],
-    enabled: isExisting && canWrite,
+    enabled: isExisting && canUpdate,
     queryFn: ({ signal }) => api<ProfileValuesSnapshot>(`/platform/users/${user!.id}/profile-values`, { signal }),
     staleTime: 0,
   });
@@ -117,7 +121,7 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
   }, [profileValues.data?.version, profileValues.data?.schemaVersion, editorOpen, form]);
   const roles = useQuery({
     queryKey: ["user-assignments", "roles", user?.id],
-    enabled: isExisting && canAssignRoles,
+    enabled: isExisting && canReadRoles,
     queryFn: ({ signal }) => api<Assignment>(`/platform/users/${user!.id}/roles`, { signal }),
     staleTime: 0,
   });
@@ -128,9 +132,9 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
     staleTime: 0,
   });
   const rolesList = useQuery({
-    queryKey: ["roles", rolesRequest],
-    enabled: isExisting && canAssignRoles,
-    queryFn: ({ signal }) => api<PageResult<LinkedRole>>(`/platform/roles?${listRequestParams(rolesRequest)}`, { signal }),
+    queryKey: ["user-assignment-role-options", user?.id, rolesRequest],
+    enabled: isExisting && canReadRoles,
+    queryFn: ({ signal }) => api<PageResult<LinkedRole>>(`/platform/users/${user!.id}/role-options?${listRequestParams(rolesRequest)}`, { signal }),
   });
   const organizationsList = useQuery({
     queryKey: ["organizations", organizationsRequest],
@@ -153,13 +157,17 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
   });
 
   const values = form.getFieldsValue(true);
-  const profileChanged = !!(isExisting && canWrite && detail.data
-    && (values.displayName !== detail.data.displayName || values.enabled !== detail.data.enabled));
-  const currentProfileValues = profileValues.data
-    ? preserveProfileFieldValues(values, profileValues.data.fields, profileValues.data.values)
+  const profilePlan = isExisting && detail.data
+    ? buildUserEditorSavePlan({
+      version: detail.data.version,
+      baseline: detail.data,
+      formValues: values,
+      profileValues: profileValues.data,
+      canSaveProfile: canUpdate,
+    })
     : undefined;
-  const profileValuesChanged = !!(isExisting && canWrite && profileValues.data && currentProfileValues
-    && profileValues.data.fields.some(field => currentProfileValues[field.key] !== (profileValues.data!.values[field.key] ?? "")));
+  const profileChanged = !!profilePlan?.profileChanged;
+  const profileValuesChanged = !!profilePlan?.profileValuesChanged;
   const rolesChanged = !!(canAssignRoles && roles.data && !sameIds(selectedRoleIds, roles.data.roleIds));
   const organizationsChanged = !!(canAssignOrganizations && organizations.data
     && !sameIds(selectedOrganizationIds, organizations.data.organizationIds));
@@ -168,18 +176,18 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
 
   const versions = [
     detail.data?.version,
-    canWrite ? profileValues.data?.version : undefined,
-    canAssignRoles ? roles.data?.version : undefined,
+    canUpdate ? profileValues.data?.version : undefined,
+      canAssignRoles ? roles.data?.version : undefined,
     canAssignOrganizations ? organizations.data?.version : undefined,
     canAssignRoles ? quotaPreview.data?.version : undefined,
   ].filter((version): version is number => version !== undefined);
   const versionMismatch = !!detail.data && versions.some(version => version !== detail.data!.version);
   const roleSaveReady = !rolesChanged || (!!rolesList.data && !rolesList.error && !!quotaPreview.data && !quotaPreview.error);
   const organizationSaveReady = !organizationsChanged || (!!organizationsList.data && !organizationsList.error);
-  const profileSaveReady = !canWrite || (!!profileValues.data && !profileValues.error);
+  const profileSaveReady = !canUpdate || (!!profileValues.data && !profileValues.error);
   const submitDisabled = isExisting
     ? !detail.data || !!detail.error || !profileSaveReady || !hasChanges || versionMismatch || !roleSaveReady || !organizationSaveReady || committed
-    : !canWrite || committed;
+    : !canCreate || committed;
 
   const retrySnapshots = async () => {
     if (refreshingSnapshots || pending) return;
@@ -198,9 +206,10 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
         });
         setFormRevision(value => value + 1);
       }
-      if (canWrite) await profileValues.refetch({ throwOnError: true });
+      if (canUpdate) await profileValues.refetch({ throwOnError: true });
       await Promise.all([
-        canAssignRoles ? roles.refetch({ throwOnError: true }) : Promise.resolve(undefined),
+        canReadRoles ? roles.refetch({ throwOnError: true }) : Promise.resolve(undefined),
+        canReadRoles ? rolesList.refetch({ throwOnError: true }) : Promise.resolve(undefined),
         canAssignOrganizations ? organizations.refetch({ throwOnError: true }) : Promise.resolve(undefined),
       ]);
       if (canAssignRoles && user) {
@@ -251,18 +260,20 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
     const storageChanged = preview.currentMaximumBytes !== preview.proposedMaximumBytes;
     const countChanged = preview.currentMaximumFiles !== preview.proposedMaximumFiles;
     if (!storageChanged && !countChanged) return true;
-    const decrease = preview.proposedMaximumBytes < preview.currentMaximumBytes
+    const currentStorageRank = preview.currentMaximumBytes === 0 ? Number.POSITIVE_INFINITY : preview.currentMaximumBytes;
+    const proposedStorageRank = preview.proposedMaximumBytes === 0 ? Number.POSITIVE_INFINITY : preview.proposedMaximumBytes;
+    const decrease = proposedStorageRank < currentStorageRank
       || preview.proposedMaximumFiles < preview.currentMaximumFiles;
-    const increase = preview.proposedMaximumBytes > preview.currentMaximumBytes
+    const increase = proposedStorageRank > currentStorageRank
       || preview.proposedMaximumFiles > preview.currentMaximumFiles;
     const rows = [
-      storageChanged && `${t("roleFileStorageLimit")}: ${formatQuotaBytes(preview.currentMaximumBytes, locale)} → ${formatQuotaBytes(preview.proposedMaximumBytes, locale)}`,
+      storageChanged && `${t("roleFileStorageLimit")}: ${formatQuotaLimitBytes(preview.currentMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → ${formatQuotaLimitBytes(preview.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}`,
       countChanged && `${t("roleFileCountLimit")}: ${formatCount(preview.currentMaximumFiles, locale)} → ${formatCount(preview.proposedMaximumFiles, locale)}`,
       decrease && t("userQuotaDecreaseConfirm"),
       increase && t("userQuotaIncreaseConfirm"),
     ].filter(Boolean);
     return new Promise<boolean>(resolve => confirm({
-      title: t("userEffectiveQuotaPreview", { storage: formatQuotaBytes(preview.proposedMaximumBytes, locale), files: formatCount(preview.proposedMaximumFiles, locale) }),
+      title: t("userEffectiveQuotaPreview", { storage: formatQuotaLimitBytes(preview.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}), files: formatCount(preview.proposedMaximumFiles, locale) }),
       content: <div className="flex flex-col gap-2">{rows.map((row, index) => <Typography.Paragraph key={index} className="mb-0">{row}</Typography.Paragraph>)}</div>,
       okText: t("confirm"),
       cancelText: t("cancel"),
@@ -276,6 +287,7 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
     setRefreshFailed(false);
     return run(async () => {
       if (!isExisting) {
+        if (!canCreate) return false;
         await mutate("/platform/users", "POST", {
           username: submitted.username,
           displayName: submitted.displayName,
@@ -283,16 +295,21 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
         });
       } else {
         if (!detail.data || versionMismatch) return false;
-        const profileChangedNow = canWrite && (submitted.displayName !== detail.data.displayName || submitted.enabled !== detail.data.enabled);
         const rolesChangedNow = canAssignRoles && !!roles.data && !sameIds(selectedRoleIds, roles.data.roleIds);
         const organizationsChangedNow = canAssignOrganizations && !!organizations.data
           && !sameIds(selectedOrganizationIds, organizations.data.organizationIds);
-        const profileValuesNow = profileValues.data
-          ? preserveProfileFieldValues(submitted, profileValues.data.fields, profileValues.data.values)
-          : undefined;
-        const profileValuesChangedNow = !!(canWrite && profileValues.data && profileValuesNow
-          && profileValues.data.fields.some(field => profileValuesNow[field.key] !== (profileValues.data!.values[field.key] ?? "")));
-        if (!profileChangedNow && !profileValuesChangedNow && !rolesChangedNow && !organizationsChangedNow) return false;
+        const savePlan = buildUserEditorSavePlan({
+          version: detail.data.version,
+          baseline: detail.data,
+          // Tabs may not have mounted every field. Read the full Form store and
+          // let the opening snapshots supply untouched values for unmounted fields.
+          formValues: form.getFieldsValue(true),
+          profileValues: profileValues.data,
+          canSaveProfile: canUpdate,
+          roleIds: rolesChangedNow ? selectedRoleIds : undefined,
+          organizationIds: organizationsChangedNow ? selectedOrganizationIds : undefined,
+        });
+        if (!savePlan.hasChanges) return false;
         if (selectedRoleIds.length > 100 || selectedOrganizationIds.length > 100) {
           setSaveError(selectedRoleIds.length > 100 ? "invalidRole" : "invalidOrganization");
           return false;
@@ -301,16 +318,7 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
           if (!quotaPreview.data || quotaPreview.error) return false;
           if (!await confirmQuotaPolicyChange(quotaPreview.data)) return false;
         }
-        const payload = {
-          version: detail.data.version,
-          ...(profileChangedNow ? { profile: { displayName: submitted.displayName?.trim(), enabled: submitted.enabled } } : {}),
-          ...(profileValuesChangedNow && profileValues.data && profileValuesNow
-            ? { profileSchemaVersion: profileValues.data.schemaVersion, profileValues: profileValuesNow }
-            : {}),
-          ...(rolesChangedNow ? { roleIds: selectedRoleIds } : {}),
-          ...(organizationsChangedNow ? { organizationIds: selectedOrganizationIds } : {}),
-        };
-        await mutate(`/platform/users/${user!.id}/editor`, "PUT", payload);
+        await mutate(`/platform/users/${user!.id}/editor`, "PUT", savePlan.payload);
       }
       setCommitted(true);
       await refreshAfterSave();
@@ -318,23 +326,25 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
     });
   };
 
-  const title = user ? `${t("edit")} · ${user.displayName}` : t("createUser");
+  const title =
+    user ? `${t(canViewRolesOnly ? "permissionReadRoles" : "edit")} · ${user.displayName}` : t("createUser");
   return <FormDrawer open={editorOpen} title={title} pending={pending} submitDisabled={submitDisabled} size={760} formId="user-editor" onClose={requestClose}>
     {editorOpen && <>
     <FeedbackBubble id="user-editor-error" content={saveErrorMessage} />
     {saveError && <Alert className="mb-4" type="error" showIcon message={isExisting ? t("userEditorRolledBack") : saveErrorMessage} description={isExisting ? saveErrorMessage : undefined} />}
     {refreshFailed && <Alert className="mb-4" type="warning" showIcon message={t("userEditorRefreshFailed")} action={<Button size="small" onClick={() => { setRefreshFailed(false); void refreshAfterSave(); }}>{t("retry")}</Button>} />}
-    {!isExisting ? <Form key="create" name="user-editor" id="user-editor" form={form} layout="vertical" initialValues={{ enabled: true }} onValuesChange={(_, allValues) => setCreateChanged(!!(allValues.username || allValues.displayName || allValues.password))} onFinish={onFinish}>
-      <Form.Item name="username" label={t("username")} rules={[{ required: true, message: t("usernameRequired") }, { pattern: /^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}$/, message: t("invalidUser") }]}><Input disabled={pending} autoComplete="off" /></Form.Item>
-      <Form.Item name="displayName" label={t("name")} rules={[{ required: true, whitespace: true, message: t("nameRequired") }, { max: 200, message: t("nameTooLong") }]}><Input maxLength={200} disabled={pending} /></Form.Item>
-      <Form.Item name="password" label={t("password")} rules={[{ required: true, message: t("passwordRequired") }, { validator: (_, value) => !value || defaultPasswordLengthValid(value) ? Promise.resolve() : Promise.reject(new Error(t("invalidUser"))) }]}><Input.Password autoComplete="new-password" maxLength={MAX_PASSWORD_BYTES} disabled={pending} /></Form.Item>
+    {!isExisting ? <Form key="create" name="user-editor" id="user-editor" form={form} layout="vertical" initialValues={{ enabled: true }} onValuesChange={(_, allValues) => setCreateChanged(!!(allValues.username || allValues.displayName || allValues.password || allValues.confirmPassword))} onFinish={onFinish}>
+      <Form.Item name="username" label={t("username")} rules={[{ required: true, message: t("usernameRequired") }, { pattern: /^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}$/, message: t("invalidUser") }]}><Input disabled={pending || !canCreate} autoComplete="off" /></Form.Item>
+      <Form.Item name="displayName" label={t("name")} rules={[{ required: true, whitespace: true, message: t("nameRequired") }, { max: 200, message: t("nameTooLong") }]}><Input maxLength={200} disabled={pending || !canCreate} /></Form.Item>
+      <Form.Item name="password" label={t("password")} rules={[{ required: true, message: t("passwordRequired") }, { validator: (_, value) => !value || defaultPasswordLengthValid(value) ? Promise.resolve() : Promise.reject(new Error(t("invalidUser"))) }]}><Input.Password autoComplete="new-password" maxLength={MAX_PASSWORD_BYTES} disabled={pending || !canCreate} /></Form.Item>
+      <Form.Item name="confirmPassword" label={t("confirmPassword")} dependencies={["password"]} rules={[{ required: true, message: t("passwordRequired") }, { validator: (_, value) => !value || value === form.getFieldValue("password") ? Promise.resolve() : Promise.reject(new Error(t("passwordMismatch"))) }]}><Input.Password autoComplete="new-password" maxLength={MAX_PASSWORD_BYTES} disabled={pending || !canCreate} /></Form.Item>
     </Form> : detail.error ? <QueryFailure title={t("unavailable")} pending={detail.isFetching} onRetry={() => void detail.refetch()} /> : !detail.data || detail.isFetching ? <Spin /> : <>
       {versionMismatch && <Alert className="mb-4" type="warning" showIcon message={t("staleRecord")} action={<Button size="small" loading={refreshingSnapshots} disabled={pending} onClick={() => void retrySnapshots()}>{t("refreshPage")}</Button>} />}
       {(detail.data.fileQuotaBytesOverride !== null || detail.data.fileQuotaFilesOverride !== null)
-        && <Alert className="mb-4" type="warning" showIcon message={t("userLegacyQuotaWarning")} description={`${t("legacyQuotaRoleLabel")}: ${detail.data.fileQuotaBytesOverride === null ? "—" : formatQuotaBytes(detail.data.fileQuotaBytesOverride, locale)} · ${detail.data.fileQuotaFilesOverride === null ? "—" : formatCount(detail.data.fileQuotaFilesOverride, locale)}`} />}
+        && <Alert className="mb-4" type="warning" showIcon message={t("userLegacyQuotaWarning")} description={`${t("legacyQuotaRoleLabel")}: ${detail.data.fileQuotaBytesOverride === null ? t("roleQuotaInherit") : formatQuotaBytes(detail.data.fileQuotaBytesOverride, locale)} · ${detail.data.fileQuotaFilesOverride === null ? t("roleQuotaInherit") : formatCount(detail.data.fileQuotaFilesOverride, locale)}`} />}
       <Form key={detail.data.id} name="user-editor" id="user-editor" form={form} layout="vertical" initialValues={{ username: detail.data.username, displayName: detail.data.displayName, enabled: detail.data.enabled }} onValuesChange={() => setFormRevision(value => value + 1)} onFinish={onFinish}>
         <Tabs anchor="user-editor" items={[
-          ...(canWrite ? [{ key: "profile", label: t("userBasicInformation"), children: <>
+          ...(canUpdate ? [{ key: "profile", label: t("userBasicInformation"), children: <>
             <Form.Item name="username" label={t("username")}><Input disabled /></Form.Item>
             <Form.Item name="displayName" label={t("name")} rules={[{ required: true, whitespace: true, message: t("nameRequired") }, { max: 200, message: t("nameTooLong") }]}><Input maxLength={200} disabled={pending || committed} /></Form.Item>
             <Form.Item name="enabled" label={t("enabled")} valuePropName="checked"><Switch disabled={pending || committed} /></Form.Item>
@@ -348,23 +358,23 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
                     dictionarySelections={profileValues.data.dictionarySelections}
                   />}
           </> }] : []),
-          ...(canAssignRoles ? [{ key: "roles", label: t("assignRoles"), children: <>
+      ...(canReadRoles ? [{ key: "roles", label: t(canAssignRoles ? "assignRoles" : "permissionReadRoles"), children: <>
             {roles.error ? <QueryFailure title={t("unavailable")} pending={roles.isFetching} onRetry={() => void roles.refetch()} /> : !roles.data || roles.isFetching ? <Spin /> : <>
               <Typography.Paragraph>{t("selectedRoles", { count: selectedRoleIds.length })}</Typography.Paragraph>
-              <Typography.Paragraph type="secondary">{t("roleAssignmentHint")}</Typography.Paragraph>
-              <AssignmentSearch request={rolesRequest} onChange={setRolesRequest} codeLabel={t("roleCode")} nameLabel={t("name")} statusLabel={t("status")} />
-              <ResourceTable<LinkedRole> result={rolesList.data} loading={rolesList.isFetching} error={rolesList.error} request={rolesRequest} onChange={setRolesRequest} onRetry={() => void rolesList.refetch()} searchable={false}
-                rowSelection={{ selectedRowKeys: selectedRoleIds, preserveSelectedRowKeys: true, onChange: keys => setRoleSelection(keys.map(String)), getCheckboxProps: () => ({ disabled: pending || committed }) }}
-                columns={[{ title: t("roleCode"), dataIndex: "code", search: true }, { title: t("name"), dataIndex: "name", search: true },
-                  { title: t("roleFileStorageLimit"), dataIndex: "fileQuotaBytesLimit", search: false, render: (_, role) => role.fileQuotaBytesLimit === null ? <Typography.Text type="secondary">—</Typography.Text> : formatQuotaBytes(role.fileQuotaBytesLimit, locale) },
-                  { title: t("roleFileCountLimit"), dataIndex: "fileQuotaFilesLimit", search: false, render: (_, role) => role.fileQuotaFilesLimit === null ? <Typography.Text type="secondary">—</Typography.Text> : formatCount(role.fileQuotaFilesLimit, locale) },
-                  { title: t("status"), dataIndex: "enabled", search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, role) => <Tag color={role.enabled ? "success" : "default"}>{t(role.enabled ? "enabled" : "disabled")}</Tag> }]}
+              {canAssignRoles && <Typography.Paragraph type="secondary">{t("roleAssignmentHint")}</Typography.Paragraph>}
+              <RoleAssignmentSearch userId={user.id} request={rolesRequest} onChange={setRolesRequest} codeLabel={t("roleCode")} nameLabel={t("name")} statusLabel={t("status")} />
+              <ResourceTable<LinkedRole> result={rolesList.data} loading={rolesList.isFetching} error={rolesList.error} request={rolesRequest} onChange={setRolesRequest} onRetry={() => void rolesList.refetch()} searchable={false} embedded scroll={{ x: 640 }} tableAlertOptionRender={canAssignRoles ? undefined : false}
+                rowSelection={{ columnWidth: 40, selectedRowKeys: selectedRoleIds, preserveSelectedRowKeys: true, onChange: keys => setRoleSelection(keys.map(String)), getCheckboxProps: role => ({ disabled: pending || committed || !canAssignRoles || !role.assignable }) }}
+                columns={[{ title: t("roleCode"), dataIndex: "code", width: 104, ellipsis: { showTitle: true }, search: true }, { title: t("name"), dataIndex: "name", width: 120, ellipsis: { showTitle: true }, search: true },
+                  { title: t("roleFileStorageLimit"), dataIndex: "fileQuotaBytesLimit", width: 152, search: false, render: (_, role) => formatQuotaLimitBytes(role.fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) },
+                  { title: t("roleFileCountLimit"), dataIndex: "fileQuotaFilesLimit", width: 152, search: false, render: (_, role) => role.fileQuotaFilesLimit === null ? t("roleQuotaInherit") : formatCount(role.fileQuotaFilesLimit, locale) },
+                  { title: t("status"), dataIndex: "enabled", width: 72, search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, role) => <Tag color={role.enabled ? "success" : "default"}>{t(role.enabled ? "enabled" : "disabled")}</Tag> }]}
               />
               {quotaPreview.error ? <QueryFailure title={t("unavailable")} pending={quotaPreview.isFetching} onRetry={() => void quotaPreview.refetch()} /> : !quotaPreview.data || quotaPreview.isFetching ? <Spin /> : <div className="mt-4 flex flex-col gap-4">
-                <Typography.Text strong>{t("userEffectiveQuotaPreview", { storage: formatQuotaBytes(quotaPreview.data.proposedMaximumBytes, locale), files: formatCount(quotaPreview.data.proposedMaximumFiles, locale) })}</Typography.Text>
-                <Typography.Text type="secondary">{t("roleFileStorageLimit")}: {formatQuotaBytes(quotaPreview.data.currentMaximumBytes, locale)} → {formatQuotaBytes(quotaPreview.data.proposedMaximumBytes, locale)} · {t("roleFileCountLimit")}: {formatCount(quotaPreview.data.currentMaximumFiles, locale)} → {formatCount(quotaPreview.data.proposedMaximumFiles, locale)}</Typography.Text>
+                <Typography.Text strong>{t("userEffectiveQuotaPreview", { storage: formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}), files: formatCount(quotaPreview.data.proposedMaximumFiles, locale) })}</Typography.Text>
+                <Typography.Text type="secondary">{t("roleFileStorageLimit")}: {formatQuotaLimitBytes(quotaPreview.data.currentMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → {formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} · {t("roleFileCountLimit")}: {formatCount(quotaPreview.data.currentMaximumFiles, locale)} → {formatCount(quotaPreview.data.proposedMaximumFiles, locale)}</Typography.Text>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <CapacityMeter label={t("fileStorageUsage")} used={quotaPreview.data.chargedBytes} limit={quotaPreview.data.proposedMaximumBytes} format={value => formatQuotaBytes(value, locale)} />
+                  <CapacityMeter label={t("fileStorageUsage")} used={quotaPreview.data.chargedBytes} limit={quotaPreview.data.proposedMaximumBytes} format={value => formatQuotaBytes(value, locale)} unlimitedWhenZero unlimitedLabel={t("roleQuotaUnlimited")} />
                   <CapacityMeter label={t("fileCountUsage")} used={quotaPreview.data.fileCount} limit={quotaPreview.data.proposedMaximumFiles} format={value => formatCount(value, locale)} />
                 </div>
                 <Typography.Paragraph type="secondary" className="mb-0">{t("roleQuotaImpactHint")}</Typography.Paragraph>
@@ -377,9 +387,9 @@ export function UserEditor({ user, canWrite, canAssignRoles, canAssignOrganizati
               <Typography.Paragraph>{t("selectedOrganizations", { count: selectedOrganizationIds.length })}</Typography.Paragraph>
               <Typography.Paragraph type="secondary">{t("organizationAssignmentHint")}</Typography.Paragraph>
               <AssignmentSearch request={organizationsRequest} onChange={setOrganizationsRequest} codeLabel={t("organizationCode")} nameLabel={t("name")} statusLabel={t("status")} />
-              <ResourceTable<LinkedOrganization> result={organizationsList.data} loading={organizationsList.isFetching} error={organizationsList.error} request={organizationsRequest} onChange={setOrganizationsRequest} onRetry={() => void organizationsList.refetch()} searchable={false}
-                rowSelection={{ selectedRowKeys: selectedOrganizationIds, preserveSelectedRowKeys: true, onChange: keys => setOrganizationSelection(keys.map(String)), getCheckboxProps: () => ({ disabled: pending || committed }) }}
-                columns={[{ title: t("organizationCode"), dataIndex: "code", search: true }, { title: t("name"), dataIndex: "name", search: true }, { title: t("status"), dataIndex: "enabled", search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, organization) => <Tag color={organization.enabled ? "success" : "default"}>{t(organization.enabled ? "enabled" : "disabled")}</Tag> }]}
+              <ResourceTable<LinkedOrganization> result={organizationsList.data} loading={organizationsList.isFetching} error={organizationsList.error} request={organizationsRequest} onChange={setOrganizationsRequest} onRetry={() => void organizationsList.refetch()} searchable={false} embedded scroll={{ x: 480 }}
+                rowSelection={{ columnWidth: 40, selectedRowKeys: selectedOrganizationIds, preserveSelectedRowKeys: true, onChange: keys => setOrganizationSelection(keys.map(String)), getCheckboxProps: () => ({ disabled: pending || committed }) }}
+                columns={[{ title: t("organizationCode"), dataIndex: "code", width: 160, ellipsis: { showTitle: true }, search: true }, { title: t("name"), dataIndex: "name", ellipsis: { showTitle: true }, search: true }, { title: t("status"), dataIndex: "enabled", width: 88, search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, organization) => <Tag color={organization.enabled ? "success" : "default"}>{t(organization.enabled ? "enabled" : "disabled")}</Tag> }]}
               />
             </> }] : []),
         ]} />

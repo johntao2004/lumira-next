@@ -1,0 +1,207 @@
+.account-settings-form-surface {
+  width: 100%;
+  color: var(--ant-color-text);
+}
+
+.account-settings-form-surface #account-password {
+  width: 100%;
+  max-width: 448px;
+}
+
+.account-settings-form-surface #account-profile {
+  max-width: none;
+}
+
+.account-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+}
+
+.account-settings-section {
+  min-width: 0;
+}
+
+.account-settings-section-title {
+  margin: 0 0 8px;
+  color: var(--ant-color-text);
+  font-size: var(--ant-font-size-lg);
+  font-weight: 600;
+  line-height: var(--ant-line-height);
+}
+
+.account-settings-row {
+  display: grid;
+  grid-template-columns: minmax(176px, 0.9fr) minmax(0, 1.5fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 12px 0;
+  border-block-end: 1px solid var(--ant-color-border-secondary);
+}
+
+.account-settings-row-action-only {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.account-settings-row:first-of-type {
+  border-block-start: 1px solid var(--ant-color-border-secondary);
+}
+
+.account-settings-row-label {
+  color: var(--ant-color-text);
+  font-size: var(--ant-font-size);
+}
+
+.account-settings-row-value {
+  min-width: 0;
+  color: var(--ant-color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.account-profile-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.account-profile-main {
+  flex: 1 1 448px;
+  min-width: 0;
+  max-width: 448px;
+}
+
+.account-profile-avatar {
+  flex: 0 0 176px;
+  min-width: 0;
+  padding-block-start: 8px;
+}
+
+.account-profile-avatar-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.account-profile-avatar-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 152px;
+  height: 152px;
+  border-radius: var(--ant-border-radius-lg);
+  background: var(--ant-color-fill-quaternary);
+}
+
+.account-profile-avatar-preview .ant-avatar {
+  width: 144px !important;
+  height: 144px !important;
+  line-height: 144px !important;
+  font-size: 72px !important;
+}
+
+.account-profile-avatar-preview .ant-avatar .ant-avatar-icon {
+  font-size: inherit;
+}
+
+.account-settings-form-footer {
+  display: flex;
+  justify-content: flex-start;
+  padding-block-start: 8px;
+}
+
+.account-settings-mfa .ant-card {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.account-settings-mfa .ant-card-head {
+  min-height: auto;
+  padding-inline: 0;
+  border-block-end: 0;
+}
+
+.account-settings-mfa .ant-card-head-title {
+  padding-block: 0 8px;
+}
+
+.account-settings-mfa .ant-card-body {
+  padding: 0;
+}
+
+@media (max-width: 991px) {
+  .account-profile-layout {
+    flex-direction: column-reverse;
+    gap: 16px;
+  }
+
+  .account-profile-main {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .account-profile-avatar {
+    flex-basis: auto;
+    width: 100%;
+    padding-block-start: 0;
+  }
+
+  .account-profile-avatar-editor {
+    display: grid;
+    grid-template-columns: 80px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 8px;
+    width: 100%;
+  }
+
+  .account-profile-avatar-editor > p:first-child {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  .account-profile-avatar-preview {
+    width: 80px;
+    height: 80px;
+    grid-column: 1;
+    grid-row: 2 / span 2;
+  }
+
+  .account-profile-avatar-editor > .ant-space {
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .account-profile-avatar-editor > p:not(:first-child) {
+    grid-column: 2;
+    margin: 0;
+  }
+
+  .account-profile-avatar-editor > :not(p):not(.account-profile-avatar-preview):not(.ant-space) {
+    grid-column: 1 / -1;
+  }
+
+  .account-profile-avatar-preview .ant-avatar {
+    width: 80px !important;
+    height: 80px !important;
+    line-height: 80px !important;
+    font-size: 40px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .account-settings-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    align-items: start;
+  }
+
+  .account-settings-row-action {
+    justify-self: start;
+  }
+}

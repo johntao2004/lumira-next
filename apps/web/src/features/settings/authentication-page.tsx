@@ -36,9 +36,15 @@ function MethodSwitchGroup({ value, onChange, id, disabled, availableMethods }: 
   const { t } = usePreferences();
   const enabledMethods = new Set(value ?? []);
 
-  return <div id={id} role="group" aria-label={t("globalLoginMethods")} className="flex flex-col gap-3">
+  return <div id={id} role="group" aria-label={t("globalLoginMethods")} className="auth-method-list">
     {methodOrder.map(method => (
-      <Space key={method} wrap size={8} align="center">
+      <div key={method} className="auth-method-row">
+        <span>{t(methodLabel[method])}</span>
+        {!availableMethods
+          ? <Tag>{t("loginMethodAvailabilityUnknown")}</Tag>
+          : availableMethods.includes(method)
+            ? <Tag color="success">{t("loginMethodProviderReady")}</Tag>
+            : <Tag>{t("loginMethodProviderPending")}</Tag>}
         <Switch
           checked={enabledMethods.has(method)}
           disabled={disabled}
@@ -50,13 +56,7 @@ function MethodSwitchGroup({ value, onChange, id, disabled, availableMethods }: 
             onChange?.(methodOrder.filter(candidate => next.has(candidate)));
           }}
         />
-        <span>{t(methodLabel[method])}</span>
-        {!availableMethods
-          ? <Tag>{t("loginMethodAvailabilityUnknown")}</Tag>
-          : availableMethods.includes(method)
-            ? <Tag color="success">{t("loginMethodProviderReady")}</Tag>
-            : <Tag>{t("loginMethodProviderPending")}</Tag>}
-      </Space>
+      </div>
     ))}
   </div>;
 }
@@ -96,7 +96,7 @@ function AuthenticationEditor({ initial, canWrite }: {
     });
   }, [form, initial]);
 
-  return <Form form={form} layout="vertical" disabled={!canWrite || action.pending} onFinish={(values) => void action.run(async () => {
+  return <Form form={form} className="settings-form" layout="vertical" disabled={!canWrite || action.pending} onFinish={(values) => void action.run(async () => {
     const result = await mutate<AuthenticationSettings>("/platform/settings/authentication", "PUT", {
       version: initial.version,
       enabledMethods: values.enabledMethods,
@@ -108,17 +108,23 @@ function AuthenticationEditor({ initial, canWrite }: {
       client.invalidateQueries({ queryKey: ["session"] }),
     ]);
   })}>
-    <Typography.Title level={5}>{t("globalLoginMethods")}</Typography.Title>
-    <Typography.Paragraph type="secondary">{t("globalLoginMethodsHint")}</Typography.Paragraph>
-    <Form.Item name="enabledMethods" rules={[{ type: "array", min: 1, required: true, message: t("authenticationMethodRequired") }]}>
-      <MethodSwitchGroup availableMethods={initial.availableMethods} />
-    </Form.Item>
-    <Form.Item name="mfaRequired" label={t("globalMfaRequired")} valuePropName="checked" extra={t("globalMfaRequiredHint")}>
-      <Switch />
-    </Form.Item>
-    {mfaRequired === true && Number.isSafeInteger(initial.affectedAccountCount) && <Alert className="mb-4" type="warning" showIcon title={t("globalMfaAffectedAccounts", { count: initial.affectedAccountCount })} />}
+    <section className="auth-settings-section">
+      <Typography.Title level={5}>{t("globalLoginMethods")}</Typography.Title>
+      <Typography.Paragraph type="secondary">{t("globalLoginMethodsHint")}</Typography.Paragraph>
+      <Form.Item name="enabledMethods" rules={[{ type: "array", min: 1, required: true, message: t("authenticationMethodRequired") }]}>
+        <MethodSwitchGroup availableMethods={initial.availableMethods} />
+      </Form.Item>
+    </section>
+    <section className="auth-settings-section">
+      <Typography.Title level={5}>{t("globalMfaRequired")}</Typography.Title>
+      <Typography.Paragraph type="secondary">{t("globalMfaRequiredHint")}</Typography.Paragraph>
+      <Form.Item name="mfaRequired" label={t("globalMfaRequired")} valuePropName="checked" className="auth-settings-switch-row">
+        <Switch />
+      </Form.Item>
+      {mfaRequired === true && Number.isSafeInteger(initial.affectedAccountCount) && <Alert type="warning" showIcon title={t("globalMfaAffectedAccounts", { count: initial.affectedAccountCount })} />}
+    </section>
     <FeedbackBubble id="authentication-settings-error" content={action.errorMessage} />
-    <Space className="form-actions" wrap>
+    <Space className="form-actions auth-settings-actions" wrap>
       <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />
     </Space>
   </Form>;

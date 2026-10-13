@@ -7,6 +7,7 @@ import re
 import stat
 import subprocess
 import sys
+import time
 import uuid
 import urllib.error
 import urllib.parse
@@ -243,11 +244,18 @@ def probe():
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("total response deadline")
-            connection.settimeout(min(socket_timeout, remaining))
+            # HTTPResponse may close the underlying socket as soon as a
+            # Content-Length or chunked body is fully consumed. Avoid setting
+            # a timeout on that closed socket (EBADF on Python 3.12); the
+            # response.length check below handles complete fixed-size bodies.
+            if connection.fileno() >= 0:
+                connection.settimeout(min(socket_timeout, remaining))
             chunk = response.read1(min(chunk_bytes, max_bytes + 1 - len(body)))
             if not chunk:
                 break
             body.extend(chunk)
+            if response.length == 0:
+                break
         if len(body) > max_bytes or time.monotonic() > deadline:
             raise ValueError("response budget exceeded")
         cookies = []
@@ -558,6 +566,41 @@ def login(connection, username, password):
 def write(connection, path, method, payload):
     headers = {**token(connection), "Content-Type": "application/json"}
     return call(connection, path, method, json.dumps(payload).encode(), headers)
+
+
+def wait_for_readiness(timeout_seconds=20, poll_interval_seconds=0.1):
+    """Wait on the QA backend; configure LUMIRA_BACKEND_BASE_URL when BASE_URL fronts the web app."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(
+        (BACKEND_BASE_URL or BASE_URL) + "/actuator/health/readiness",
+        headers={"Accept": "application/json"},
+    )
+    deadline = time.monotonic() + timeout_seconds
+    last_status = None
+    last_body = b""
+    while time.monotonic() < deadline:
+        try:
+            with opener.open(request, timeout=5) as response:
+                last_status, last_body = response.status, response.read()
+        except urllib.error.HTTPError as error:
+            last_status, last_body = error.code, error.read()
+        except OSError as error:
+            last_status, last_body = None, str(error).encode()
+        if last_status == 200:
+            try:
+                health = json.loads(last_body)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                health = {}
+            if health.get("status") == "UP":
+                return
+        time.sleep(poll_interval_seconds)
+    raise AssertionError(
+        (
+            f"readiness did not recover within {timeout_seconds} seconds",
+            last_status,
+            last_body.decode(errors="replace"),
+        )
+    )
 
 
 # Smoke modules frequently perform fixture setup immediately after importing

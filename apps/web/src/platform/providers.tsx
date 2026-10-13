@@ -244,6 +244,11 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
                 verticalLabelPadding: "0 0 4px",
                 verticalLabelMargin: 0,
               },
+              Table: {
+                headerColor: "var(--ant-color-text-heading)",
+                borderColor: "var(--ant-color-border-secondary)",
+                headerSplitColor: "var(--ant-color-border-secondary)",
+              },
             },
             token: {
               colorPrimary: "#1677ff",

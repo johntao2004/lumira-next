@@ -11,6 +11,8 @@ import { useSessionScope } from "@/platform/auth/use-session-scope";
 
 type BatchActionOptions = {
   endpoint?: FileBatchEndpoint;
+  canDelete?: boolean;
+  canRestore?: boolean;
   onCleanupStarted?: (id: string) => void;
   onAccepted?: (file: BatchFile, operation: FileBatchOperation) => Promise<void>;
 };
@@ -21,7 +23,7 @@ const labels = {
 } as const satisfies Record<FileBatchOperation, { action: MessageKey; confirmation: MessageKey }>;
 
 /** Each selected file keeps the same ownership and version checks as its row action. */
-export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined, scope: FileBatchScope, refresh: () => Promise<void>, { endpoint = "/account/files", onCleanupStarted, onAccepted }: BatchActionOptions = {}) {
+export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined, scope: FileBatchScope, refresh: () => Promise<void>, { endpoint = "/account/files", canDelete = true, canRestore = true, onCleanupStarted, onAccepted }: BatchActionOptions = {}) {
   const { t } = usePreferences();
   const { message } = App.useApp();
   const confirm = useCenteredModalConfirm();
@@ -32,7 +34,7 @@ export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined,
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const eligibleState = scope === "files" ? "READY" : "TRASHED";
   const selected = selectBatchFiles(items, selectedIds, scope);
-  const operations = fileBatchOperations(scope, selected.length);
+  const operations = fileBatchOperations(scope, selected.length).filter(operation => operation === "restore" ? canRestore : canDelete);
 
   useEffect(() => {
     const available = new Set((items ?? []).filter(file => file.state === eligibleState && !(scope === "files" && file.protectedByReference)).map(file => file.id));
@@ -97,7 +99,7 @@ export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined,
     selectedRowKeys: selected.map(file => file.id),
     preserveSelectedRowKeys: false,
     onChange: keys => { if (!busy.current) setSelectedIds(keys.map(String)); },
-    getCheckboxProps: file => ({ disabled: pending || file.state !== eligibleState || (scope === "files" && file.protectedByReference === true) }),
+    getCheckboxProps: file => ({ disabled: pending || operations.length === 0 || file.state !== eligibleState || (scope === "files" && file.protectedByReference === true) }),
   };
 
   const actions = operations.length > 0 ? <Space wrap className="file-batch-actions">

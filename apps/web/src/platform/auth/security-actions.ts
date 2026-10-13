@@ -6,6 +6,7 @@ export const accountSecurityActions:Record<string,MessageKey>={
  "account.loginRateLimited":"loginRateLimited",
  "account.loginRejected":"loginRejected",
  "account.passwordChanged":"passwordChanged",
+ "account.forcedPasswordChanged":"passwordChanged",
  "account.passwordRecoveryRequested":"requestRecoveryCode",
  "account.passwordRecovered":"passwordRecovered",
  "account.passwordRecoveryFailed":"invalidRecoveryToken",

@@ -41,7 +41,7 @@ public class PlatformEventOutboxQuery {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<Entry> list(String actor, PageRequest page, String status) {
-        guard.requireGlobal(actor, "platform:audit:read");
+        guard.requirePageGlobal(actor, PlatformPageId.EVENT_OUTBOX);
         if (status == null || (!status.isEmpty() && !STATUSES.contains(status)))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidEventStatus");
         String filter =

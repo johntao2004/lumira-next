@@ -16,3 +16,7 @@ docs/audits/
 
 plugins/**/dist/
 plugins/**/frontend/node_modules/
+
+# Python bytecode and cache directories.
+__pycache__/
+*.py[cod]

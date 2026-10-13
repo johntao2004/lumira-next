@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { FrontendModule, FrontendModuleManifest, FrontendPageContext } from "./types";
+import type { FrontendModule, FrontendModuleManifest, FrontendPageContext, FrontendRoute } from "./types";
 
 const moduleIdPattern = /^[a-z][a-z0-9-]{0,99}$/u;
 const routeIdPattern = /^[a-z][a-z0-9-]{0,63}$/u;
@@ -57,6 +57,32 @@ export type FrontendPageRegistry = {
   registerPlugin: (module: FrontendModule) => () => void;
 };
 
+type PluginRegistration = {
+  readonly routeIds: readonly string[];
+};
+
+type DynamicPageRegistration = {
+  readonly moduleId: string;
+  readonly owner: PluginRegistration;
+  readonly route: FrontendRoute;
+};
+
+function hasPageAccess(route: FrontendRoute, context: FrontendPageContext): boolean {
+  const scope = route.accessScope ?? (route.global ? "global" : "scoped");
+  return route.permission === null || (scope === "global"
+    ? context.hasGlobal(route.permission)
+    : context.authorities.includes(route.permission));
+}
+
+function hasPageOperation(route: FrontendRoute, actionId: string, context: FrontendPageContext): boolean {
+  if (!hasPageAccess(route, context)) return false;
+  const operation = route.operations?.[actionId];
+  if (!operation) return false;
+  return route.scopedOperations?.includes(actionId)
+    ? context.authorities.includes(operation)
+    : context.hasGlobal(operation);
+}
+
 /** Owns renderer registration and prevents stale or duplicate plugin teardown. */
 export function createFrontendPageRegistry(modules: readonly FrontendModule[]): FrontendPageRegistry {
   const pageRenderers = new Map<string, FrontendModule["pages"][string]>();
@@ -74,10 +100,44 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
     }
   }
 
-  const dynamicOwners = new Map<string, readonly string[]>();
+  const dynamicOwners = new Map<string, PluginRegistration>();
+  const dynamicPages = new Map<string, DynamicPageRegistration>();
   return {
     render(section, context) {
-      return pageRenderers.get(section)?.(context) ?? null;
+      const renderer = pageRenderers.get(section);
+      if (!renderer) return null;
+      const dynamicPage = dynamicPages.get(section);
+      if (!dynamicPage) return renderer(context);
+
+      const isActive = (page: DynamicPageRegistration) => (
+        dynamicOwners.get(page.moduleId) === page.owner
+        && dynamicPages.get(page.route.id) === page
+      );
+      const hasDynamicAccess = (routeId: string) => {
+        const target = dynamicPages.get(routeId);
+        if (!target) return dynamicPage.owner.routeIds.includes(routeId) ? false : null;
+        if (!isActive(dynamicPage) || !isActive(target)) return false;
+        return hasPageAccess(target.route, context);
+      };
+      const hasDynamicOperation = (routeId: string, actionId: string) => {
+        const target = dynamicPages.get(routeId);
+        if (!target) return dynamicPage.owner.routeIds.includes(routeId) ? false : null;
+        if (!isActive(dynamicPage) || !isActive(target)) return false;
+        return hasPageOperation(target.route, actionId, context);
+      };
+
+      return renderer({
+        ...context,
+        hasRouteAccess(routeId) {
+          return hasDynamicAccess(routeId) ?? context.hasRouteAccess(routeId);
+        },
+        hasRouteOperation(routeId, actionId) {
+          return hasDynamicOperation(routeId, actionId) ?? context.hasRouteOperation(routeId, actionId);
+        },
+        hasOperation(actionId) {
+          return hasDynamicOperation(dynamicPage.route.id, actionId) ?? false;
+        },
+      });
     },
     owner(section) {
       return pageOwners.get(section) ?? null;
@@ -92,9 +152,11 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
         if (pageOwners.has(routeId)) throw new Error(`Duplicate plugin route: ${routeId}`);
       }
 
-      const ownedIds = Object.freeze(routeIds.slice());
-      dynamicOwners.set(module.id, ownedIds);
-      for (const routeId of ownedIds) {
+      const registration: PluginRegistration = { routeIds: Object.freeze(routeIds.slice()) };
+      dynamicOwners.set(module.id, registration);
+      for (const route of module.routes) {
+        const routeId = route.id;
+        dynamicPages.set(routeId, { moduleId: module.id, owner: registration, route });
         pageOwners.set(routeId, module.id);
         pageRenderers.set(routeId, module.pages[routeId]);
       }
@@ -103,9 +165,11 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
       return () => {
         if (!registered) return;
         registered = false;
-        if (dynamicOwners.get(module.id) !== ownedIds) return;
+        if (dynamicOwners.get(module.id) !== registration) return;
         dynamicOwners.delete(module.id);
-        for (const routeId of ownedIds) {
+        for (const routeId of registration.routeIds) {
+          const dynamicPage = dynamicPages.get(routeId);
+          if (dynamicPage?.owner === registration) dynamicPages.delete(routeId);
           if (pageOwners.get(routeId) !== module.id) continue;
           pageOwners.delete(routeId);
           pageRenderers.delete(routeId);

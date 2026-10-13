@@ -17,6 +17,7 @@ import com.lumira.platform.mfa.MfaModuleConfiguration;
 import com.lumira.platform.moduleadmin.PlatformModuleDescriptorConfiguration;
 import com.lumira.platform.monitoring.MonitoringModuleConfiguration;
 import com.lumira.platform.navigation.NavigationModuleConfiguration;
+import com.lumira.platform.notifications.NotificationDescriptorTestConfiguration;
 import com.lumira.platform.notifications.NotificationsModuleConfiguration;
 import com.lumira.platform.sensitive.SensitiveWordsModuleConfiguration;
 import com.lumira.platform.settings.SettingsModuleConfiguration;
@@ -40,6 +41,7 @@ class ModuleDescriptorConfigurationTest {
                         EventsModuleConfiguration.class,
                         NavigationModuleConfiguration.class,
                         NotificationsModuleConfiguration.class,
+                        NotificationDescriptorTestConfiguration.class,
                         MonitoringModuleConfiguration.class,
                         AuditModuleConfiguration.class,
                         FeedbackModuleConfiguration.class,

@@ -10,11 +10,20 @@ try:
     assert login(admin, "admin", password) == 200
     status, body = call(admin, "/platform/monitoring/summary")
     assert status == 200, (status, body)
-    summary = json.loads(body)
-    expected = {"totalUsers", "activeUsers", "activeSessions", "enabledModules", "totalModules", "pendingOutbox", "failedOutbox", "deadLetterOutbox", "pendingMail", "failedMail", "unreadNotifications", "auditEvents24h", "measuredAt"}
+    snapshot = json.loads(body)
+    assert set(snapshot) == {"summary", "machine", "database", "flow"}
+    summary = snapshot["summary"]
+    expected = {"totalUsers", "activeUsers", "activeSessions", "enabledModules", "totalModules", "pendingOutbox", "processingOutbox", "failedOutbox", "deadLetterOutbox", "eventsCreatedLast5m", "eventsDeliveredLast5m", "retryPendingOutbox", "overdueOutbox", "pendingMail", "failedMail", "pendingSms", "failedSms", "unreadNotifications", "auditEvents24h", "measuredAt"}
     assert set(summary) == expected
     assert summary["totalUsers"] >= 1 and summary["activeUsers"] >= 1 and summary["activeSessions"] >= 1
     assert all(isinstance(summary[key], int) and summary[key] >= 0 for key in expected - {"measuredAt"})
+    flow = snapshot["flow"]
+    assert set(flow) == {"status", "producerTypes", "consumerTypes", "connectedTypes", "unmatchedConsumerTypes", "missingConsumers", "createdLast5m", "deliveredLast5m", "retryPending", "overdue", "recentEvents"}
+    assert flow["status"] in {"UNCONNECTED", "IDLE", "HEALTHY", "PROCESSING", "ATTENTION"}
+    assert flow["producerTypes"] == 2 and flow["consumerTypes"] == 2 and flow["connectedTypes"] == 2
+    assert flow["unmatchedConsumerTypes"] == 0 and flow["missingConsumers"] == []
+    assert flow["createdLast5m"] == summary["eventsCreatedLast5m"]
+    assert flow["deliveredLast5m"] == summary["eventsDeliveredLast5m"]
 
     status, body = write(admin, "/platform/users", "POST", {"username": username, "displayName": "Monitoring QA", "password": password})
     assert status == 201, (status, body)

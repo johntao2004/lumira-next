@@ -1,9 +1,9 @@
 "use client";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Button, Input, Select, Space, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Input, Select, Space, Tag, Typography } from "antd";
 import { TableActions } from "@/platform/components/table-actions";
 import { api, ApiError, getAuthorizationContext, mutate } from "@/platform/api/client";
 import { messageKeyFor } from "@/platform/api/errors";
@@ -17,13 +17,10 @@ import {
 import { PlatformDrawer } from "@/platform/components/platform-drawer";
 import { ResourceTable } from "@/platform/components/resource-table";
 import type { PageResult } from "@/platform/api/pagination";
-import { DraftActions } from "@/platform/drafts/draft-actions";
-import { useAccountDraft } from "@/platform/drafts/use-account-draft";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { formatDateTime } from "@/platform/i18n/format";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
-import { decodeFeedbackDraft, encodeFeedbackDraft } from "./feedback-draft";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { listRequestParams } from "@/platform/api/pagination";
 
@@ -52,6 +49,8 @@ type FeedbackDetail = FeedbackSummary & {
   adminReply: string | null;
   handledBy: string | null;
   handledAt: string | null;
+  canUpdateStatus: boolean;
+  canReply: boolean;
 };
 
 const statusColors: Record<string, string> = {
@@ -81,41 +80,25 @@ function dateTime(value: string, locale: string) {
   return formatDateTime(value, locale, { dateStyle: "medium", timeStyle: "short" });
 }
 
-export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; canManage: boolean }) {
+export function FeedbackPage({ canRead, canCreate, canUpdateStatus, canReply }: { canRead: boolean; canCreate: boolean; canUpdateStatus: boolean; canReply: boolean }) {
   const { t, locale } = usePreferences();
   const { message } = App.useApp();
   const client = useQueryClient();
-  const [scope, setScope] = useState<"mine" | "admin">(() => canManage ? "admin" : "mine");
-  const activeScope = canManage ? scope : "mine";
   const [request, setRequest] = useListRequest();
-  const previousScope = useRef(activeScope);
   const [createOpen, setCreateOpen] = useState(false);
   const [detailRow, setDetailRow] = useState<FeedbackSummary | null>(null);
   const [handleOpen, setHandleOpen] = useState(false);
   const [detailHtml, setDetailHtml] = useState("");
   const [formError, setFormError] = useState<MessageKey | null>(null);
-  const [invalidDraft, setInvalidDraft] = useState(false);
-  const [draftWasRestored, setDraftWasRestored] = useState(false);
-  const [restoredDraftCategory, setRestoredDraftCategory] = useState(false);
+  const [handleError, setHandleError] = useState<MessageKey | null>(null);
   const [createPending, setCreatePending] = useState(false);
   const [handlePending, setHandlePending] = useState(false);
   const [createForm] = Form.useForm<{ title: string; priority: string; category: string }>();
   const [handleForm] = Form.useForm<{ status: string; adminReply?: string }>();
-  const createDraft = useAccountDraft(canCreate ? "feedback.create" : undefined);
-
-  useEffect(() => {
-    setScope(canManage ? "admin" : "mine");
-  }, [canManage]);
-
-  useEffect(() => {
-    if (previousScope.current !== activeScope) {
-      setRequest(current => current.page === 1 ? current : { ...current, page: 1 });
-      previousScope.current = activeScope;
-    }
-  }, [activeScope, setRequest]);
 
   const options = useQuery({
     queryKey: ["feedback-options"],
+    enabled: canRead || canCreate,
     queryFn: ({ signal }) => api<FeedbackCatalog>("/feedback/options", { signal }),
   });
   const choices = options.data;
@@ -125,7 +108,8 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
   const defaultPriority = choices?.policy?.defaultPriority ?? "NORMAL";
   const categoryPolicyUnavailable = options.isError || Boolean(choices && categories.length === 0);
   const listQuery = useQuery({
-    queryKey: ["feedback", activeScope, request],
+    queryKey: ["feedback", request],
+    enabled: canRead,
     queryFn: ({ signal }) => {
       const params = listRequestParams(request, {
         status: request.filters?.status ?? "",
@@ -133,57 +117,41 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
         category: request.filters?.category ?? "",
       });
       return api<PageResult<FeedbackSummary>>(
-        `${activeScope === "admin" ? "/feedback/manage" : "/feedback"}?${params.toString()}`,
+        `/feedback/manage?${params.toString()}`,
         { signal },
       );
     },
   });
   const detailQuery = useQuery({
-    queryKey: ["feedback-detail", activeScope, detailRow?.id],
-    enabled: Boolean(detailRow),
+    queryKey: ["feedback-detail", detailRow?.id],
+    enabled: Boolean(detailRow) && canRead,
     queryFn: ({ signal }) => {
       const row = detailRow;
       if (!row) throw new Error("feedbackNotFound");
       return api<FeedbackDetail>(
-        `${activeScope === "admin" ? "/feedback/manage" : "/feedback"}/${row.id}`,
+        `/feedback/manage/${row.id}`,
         { signal },
       );
     },
   });
 
   useEffect(() => {
-    if (createOpen && !draftWasRestored && !createDraft.draft && choices?.policy?.defaultPriority) {
+    if (createOpen && choices?.policy?.defaultPriority) {
       createForm.setFieldValue("priority", choices.policy.defaultPriority);
       if (!createForm.getFieldValue("category")) createForm.setFieldValue("category", categories[0]?.value);
     }
-  }, [categories, choices?.policy?.defaultPriority, createDraft.draft, createForm, createOpen, draftWasRestored]);
-
-  useEffect(() => {
-    if (!createOpen || !restoredDraftCategory || !choices || options.isFetching || options.isError) return;
-    const category = createForm.getFieldValue("category");
-    if (!categories.some((choice) => choice.value === category)) {
-      createForm.setFieldValue("category", "");
-      void createForm.validateFields(["category"]).catch(() => undefined);
-    }
-    setRestoredDraftCategory(false);
-  }, [categories, choices, createForm, createOpen, options.isError, options.isFetching, restoredDraftCategory]);
+  }, [categories, choices?.policy?.defaultPriority, createForm, createOpen]);
 
   const label = (items: Choice[] | undefined, value: string) =>
     items?.find((item) => item.value === value)?.label ?? value;
   const resetCreate = () => {
     setCreateOpen(false);
-    setDraftWasRestored(false);
-    setRestoredDraftCategory(false);
     setDetailHtml("");
     setFormError(null);
-    setInvalidDraft(false);
     createForm.resetFields();
   };
   const openCreate = () => {
     setFormError(null);
-    setDraftWasRestored(false);
-    setRestoredDraftCategory(false);
-    setInvalidDraft(false);
     createForm.resetFields();
     createForm.setFieldsValue({ priority: defaultPriority, category: categories[0]?.value ?? "" });
     setDetailHtml("");
@@ -201,11 +169,6 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
     setFormError(null);
     try {
       await mutate("/feedback", "POST", { ...values, detailHtml });
-      try {
-        await createDraft.clearConsumed();
-      } catch {
-        void message.warning(t("draftCleanupFailed"));
-      }
       void message.success(t("feedbackSubmitted"));
       resetCreate();
       await refresh();
@@ -216,28 +179,39 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
     }
   };
 
+  const canUpdateCurrent = canRead && canUpdateStatus && detailQuery.data?.canUpdateStatus === true;
+  const canReplyCurrent = canRead && canReply && detailQuery.data?.canReply === true;
+  const canHandleCurrent = canUpdateCurrent || canReplyCurrent;
+
   const openHandle = () => {
-    if (!detailQuery.data || !canManage) return;
+    if (!detailQuery.data || !canHandleCurrent) return;
     handleForm.setFieldsValue({ status: detailQuery.data.status, adminReply: detailQuery.data.adminReply ?? "" });
     setFormError(null);
+    setHandleError(null);
     setHandleOpen(true);
   };
   const saveHandle = async (values: { status: string; adminReply?: string }) => {
-    if (!detailQuery.data || handlePending || !canManage) return;
+    if (!detailQuery.data || handlePending || !canHandleCurrent) return;
+    const statusChanged = canUpdateCurrent && values.status !== detailQuery.data.status;
+    const replyChanged = canReplyCurrent && (values.adminReply ?? "") !== (detailQuery.data.adminReply ?? "");
+    if (!statusChanged && !replyChanged) {
+      setHandleOpen(false);
+      return;
+    }
     setHandlePending(true);
-    setFormError(null);
+    setHandleError(null);
     try {
       const result = await mutate<FeedbackDetail>(`/feedback/manage/${detailQuery.data.id}`, "PUT", {
-        ...values,
         version: detailQuery.data.version,
-        adminReply: values.adminReply ?? "",
+        ...(statusChanged ? { status: values.status } : {}),
+        ...(replyChanged ? { adminReply: values.adminReply ?? "" } : {}),
       });
-      client.setQueryData(["feedback-detail", activeScope, detailQuery.data.id], result);
+      client.setQueryData(["feedback-detail", detailQuery.data.id], result);
       setHandleOpen(false);
-      void message.success(t("feedbackStatusUpdated"));
+      void message.success(t("feedbackUpdated"));
       await refresh();
     } catch (error) {
-      setFormError(messageKeyFor(error, feedbackErrorKeys));
+      setHandleError(messageKeyFor(error, feedbackErrorKeys));
       if (error instanceof ApiError && error.status === 409) await detailQuery.refetch();
     } finally {
       setHandlePending(false);
@@ -247,20 +221,10 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
   return (
     <>
       <FeedbackBubble id="feedback-form-error" content={formError ? t(formError) : undefined}/>
-      <FeedbackBubble kind="warning" id="feedback-invalid-draft" content={invalidDraft ? t("invalidDraft") : undefined}/>
+      <Typography.Paragraph type="secondary" className="mb-4">{t("feedbackHint")}</Typography.Paragraph>
       {categoryPolicyUnavailable && <Alert type="warning" showIcon message={t("feedbackCategoriesUnavailable")} className="mb-4" />}
-      {canManage && <Tabs
-        activeKey={activeScope === "admin" ? "all" : "mine"}
-        onChange={key => {
-          setScope(key === "all" ? "admin" : "mine");
-          setRequest(current => current.page === 1 ? current : { ...current, page: 1 });
-        }}
-        items={[
-          { key: "all", label: t("allFeedback") },
-          { key: "mine", label: t("myFeedback") },
-        ]}
-      />}
-      <ResourceTable<FeedbackSummary>
+      {!canRead && canCreate && <div className="mb-4 flex justify-end"><Button type="primary" onClick={openCreate}>{t("createFeedback")}</Button></div>}
+      {canRead && <ResourceTable<FeedbackSummary>
         result={listQuery.data}
         loading={listQuery.isFetching}
         error={listQuery.error}
@@ -269,7 +233,7 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
         onRetry={() => void listQuery.refetch()}
         searchInitialValues={{
           title: request.filters?.title,
-          ...(activeScope === "admin" ? { ownerName: request.filters?.ownerName } : {}),
+          ownerName: request.filters?.ownerName,
           status: request.filters?.status,
           priority: request.filters?.priority,
           category: request.filters?.category,
@@ -289,32 +253,16 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
         columns={[
           { title: t("feedbackTitle"), dataIndex: "title", search: true },
           { title: t("feedbackCategory"), dataIndex: "category", search: true, valueEnum: Object.fromEntries(categories.map((item) => [item.value, { text: item.label }])), render: (_: unknown, row: FeedbackSummary) => <Tag>{row.category ? label(categories, row.category) : t("uncategorized")}</Tag> },
-          ...(activeScope === "admin" ? [{ title: t("feedbackOwner"), dataIndex: "ownerName", search: true, render: (_: unknown, row: FeedbackSummary) => row.ownerName ?? row.ownerId }] : []),
+          { title: t("feedbackOwner"), dataIndex: "ownerName", search: true, render: (_: unknown, row: FeedbackSummary) => row.ownerName ?? row.ownerId },
           { title: t("feedbackStatus"), dataIndex: "status", search: true, valueEnum: Object.fromEntries(statuses.map((item) => [item.value, { text: item.label }])), render: (_: unknown, row: FeedbackSummary) => <Tag color={statusColors[row.status]}>{label(statuses, row.status)}</Tag> },
           { title: t("feedbackPriority"), dataIndex: "priority", search: true, valueEnum: Object.fromEntries(priorities.map((item) => [item.value, { text: item.label }])), render: (_: unknown, row: FeedbackSummary) => <Tag color={priorityColors[row.priority] ?? "default"}>{label(priorities, row.priority)}</Tag> },
           { title: t("feedbackUpdatedAt"), dataIndex: "updatedAt", valueType: "dateTimeRange", render: (_: unknown, row: FeedbackSummary) => dateTime(row.updatedAt, locale) },
           { title: t("actions"), key: "actions", search: false, render: (_: unknown, row: FeedbackSummary) => <TableActions><Button type="link" onClick={() => { setDetailRow(row); setFormError(null); }}>{t("details")}</Button></TableActions> },
         ]}
-      />
+      />}
 
-      <FormDrawer open={createOpen} title={t("createFeedback")} pending={createPending || createDraft.busy} submitDisabled={!canCreate || options.isPending || options.isError || restoredDraftCategory || !categories.length || createDraft.busy || createDraft.conflict} formId="feedback-create" size={620} onClose={resetCreate}>
+      <FormDrawer open={createOpen} title={t("createFeedback")} pending={createPending} submitDisabled={!canCreate || options.isPending || options.isError || !categories.length} formId="feedback-create" size={620} onClose={resetCreate}>
         <Form id="feedback-create" name="feedback-create" form={createForm} layout="vertical" onFinish={saveCreate}>
-          {canCreate && <DraftActions
-            draftState={createDraft}
-            disabled={createPending || options.isPending}
-            onSave={() => encodeFeedbackDraft({ ...createForm.getFieldsValue(), detailHtml })}
-            onRestore={(payload) => {
-              const values = decodeFeedbackDraft(payload);
-              setInvalidDraft(!values);
-              if (!values) return false;
-              createForm.resetFields();
-              createForm.setFieldsValue({ title: values.title, priority: values.priority, category: values.category });
-              setDraftWasRestored(true);
-              setRestoredDraftCategory(true);
-              setDetailHtml(values.detailHtml);
-              return true;
-            }}
-          />}
           <Form.Item name="title" label={t("feedbackTitle")} rules={[{ required: true, whitespace: true, message: t("feedbackTitleRequired") }, { max: 160, message: t("feedbackTitleTooLong") }]}>
             <Input maxLength={160} showCount />
           </Form.Item>
@@ -339,7 +287,7 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
         </Form>
       </FormDrawer>
 
-      <PlatformDrawer open={Boolean(detailRow)} title={t("feedbackDetails")} size={720} destroyOnHidden onClose={() => setDetailRow(null)} footer={<Space><Button onClick={() => setDetailRow(null)}>{t("close")}</Button>{activeScope === "admin" && canManage && <Button type="primary" onClick={openHandle}>{t("processFeedback")}</Button>}</Space>}>
+      <PlatformDrawer open={Boolean(detailRow)} title={t("feedbackDetails")} size={720} destroyOnHidden onClose={() => setDetailRow(null)} footer={<Space><Button onClick={() => setDetailRow(null)}>{t("close")}</Button>{canHandleCurrent && <Button type="primary" onClick={openHandle}>{t("processFeedback")}</Button>}</Space>}>
         {detailQuery.isPending && <Typography.Text type="secondary">{t("loading")}</Typography.Text>}
         <FeedbackBubble id="feedback-detail-error" content={detailQuery.error ? t(messageKeyFor(detailQuery.error, feedbackErrorKeys)) : undefined}/>
         {detailQuery.data && <Space orientation="vertical" size="middle" className="w-full">
@@ -355,10 +303,11 @@ export function FeedbackPage({ canCreate, canManage }: { canCreate: boolean; can
         </Space>}
       </PlatformDrawer>
 
-      <FormDrawer open={handleOpen} title={t("processFeedback")} pending={handlePending} formId="feedback-handle" submitDisabled={!canManage || !detailQuery.data} onClose={() => { if (!handlePending) setHandleOpen(false); }}>
+      <FormDrawer open={handleOpen} title={t("processFeedback")} pending={handlePending} formId="feedback-handle" submitDisabled={!canHandleCurrent || !detailQuery.data} onClose={() => { if (!handlePending) setHandleOpen(false); }}>
+        <FeedbackBubble id="feedback-handle-error" content={handleError ? t(handleError) : undefined}/>
         <Form id="feedback-handle" name="feedback-handle" form={handleForm} layout="vertical" onFinish={saveHandle}>
-            <Form.Item name="status" label={t("feedbackStatus")} rules={[{ required: true }]}><Select options={statuses.map((item) => ({ value: item.value, label: item.label }))} /></Form.Item>
-          <Form.Item name="adminReply" label={t("feedbackReply")}><Input.TextArea rows={6} maxLength={4000} showCount /></Form.Item>
+          <Form.Item name="status" label={t("feedbackStatus")} rules={[{ required: true }]}><Select disabled={!canUpdateCurrent || handlePending} options={statuses.map((item) => ({ value: item.value, label: item.label }))} /></Form.Item>
+          <Form.Item name="adminReply" label={t("feedbackReply")}><Input.TextArea disabled={!canReplyCurrent || handlePending} rows={6} maxLength={4000} showCount /></Form.Item>
         </Form>
       </FormDrawer>
     </>
@@ -370,9 +319,24 @@ function FeedbackRichTextPreview({ html }: { html: string | null | undefined }) 
   const revision = authorization?.revision ?? null;
   const previewActive = authorization?.preview?.state === "ACTIVE";
   const [previewHtml, setPreviewHtml] = useState("");
+  const managedHtml = useMemo(() => {
+    if (typeof DOMParser === "undefined") {
+      return sanitizeRichText(html ?? "").replace(
+        /(src=["'])\/api\/feedback\/images\/([0-9a-f-]{36})(["'])/gi,
+        "$1/api/feedback/manage/images/$2$3",
+      );
+    }
+    const document = new DOMParser().parseFromString(sanitizeRichText(html ?? ""), "text/html");
+    document.body.querySelectorAll("img[src]").forEach(image => {
+      const src = image.getAttribute("src") ?? "";
+      if (/^\/api\/feedback\/images\/[0-9a-f-]{36}$/i.test(src)) {
+        image.setAttribute("src", src.replace("/api/feedback/images/", "/api/feedback/manage/images/"));
+      }
+    });
+    return document.body.innerHTML;
+  }, [html]);
 
   useEffect(() => {
-    const safeHtml = sanitizeRichText(html ?? "");
     if (!previewActive || !revision) {
       setPreviewHtml("");
       return;
@@ -382,11 +346,11 @@ function FeedbackRichTextPreview({ html }: { html: string | null | undefined }) 
     const objectUrls: string[] = [];
     setPreviewHtml("");
     void (async () => {
-      const document = new DOMParser().parseFromString(safeHtml, "text/html");
+      const document = new DOMParser().parseFromString(managedHtml, "text/html");
       const images = Array.from(document.body.querySelectorAll("img[src]"));
       await Promise.all(images.slice(0, 20).map(async image => {
         const src = image.getAttribute("src") ?? "";
-        if (!/^\/api\/feedback\/images\/[0-9a-f-]{36}$/i.test(src)) {
+        if (!/^\/api\/feedback\/manage\/images\/[0-9a-f-]{36}$/i.test(src)) {
           image.remove();
           return;
         }
@@ -416,8 +380,8 @@ function FeedbackRichTextPreview({ html }: { html: string | null | undefined }) 
       controller.abort();
       objectUrls.forEach(url => URL.revokeObjectURL(url));
     };
-  }, [html, previewActive, revision]);
+  }, [managedHtml, previewActive, revision]);
 
-  if (!previewActive) return <RichTextPreview html={html} />;
+  if (!previewActive) return <RichTextPreview html={managedHtml} />;
   return <div className="rich-text-preview" dangerouslySetInnerHTML={{ __html: previewHtml }} />;
 }

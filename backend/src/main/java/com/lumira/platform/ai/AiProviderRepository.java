@@ -10,6 +10,18 @@ import tools.jackson.databind.ObjectMapper;
 
 @Repository
 public class AiProviderRepository {
+    public record ConsoleProfile(
+            UUID id,
+            String name,
+            AiProviderProfile.ProviderKind providerKind,
+            String modelName,
+            List<String> capabilityCodes,
+            boolean enabled) {
+        public ConsoleProfile {
+            capabilityCodes = List.copyOf(capabilityCodes);
+        }
+    }
+
     private static final TypeReference<List<String>> STRINGS = new TypeReference<>() {};
     private final JdbcClient jdbc;
     private final ObjectMapper mapper;
@@ -37,6 +49,46 @@ public class AiProviderRepository {
                                         rs.getBoolean("enabled"),
                                         rs.getLong("version")))
                 .list();
+    }
+
+    /** Minimal provider metadata for the AI console; network settings and secrets stay private. */
+    public List<ConsoleProfile> findEnabledForConsole() {
+        return jdbc.sql(
+                        """
+            SELECT id,name,provider_kind,model_name,capability_codes::text AS capability_codes,enabled
+            FROM platform_ai_provider WHERE enabled ORDER BY created_at DESC,id
+            """)
+                .query(
+                        (rs, row) ->
+                                new ConsoleProfile(
+                                        rs.getObject("id", UUID.class),
+                                        rs.getString("name"),
+                                        AiProviderProfile.ProviderKind.valueOf(
+                                                rs.getString("provider_kind")),
+                                        rs.getString("model_name"),
+                                        readCapabilities(rs.getString("capability_codes")),
+                                        rs.getBoolean("enabled")))
+                .list();
+    }
+
+    public Optional<ConsoleProfile> findForConsole(UUID id) {
+        return jdbc.sql(
+                        """
+            SELECT id,name,provider_kind,model_name,capability_codes::text AS capability_codes,enabled
+            FROM platform_ai_provider WHERE id=:id
+            """)
+                .param("id", id)
+                .query(
+                        (rs, row) ->
+                                new ConsoleProfile(
+                                        rs.getObject("id", UUID.class),
+                                        rs.getString("name"),
+                                        AiProviderProfile.ProviderKind.valueOf(
+                                                rs.getString("provider_kind")),
+                                        rs.getString("model_name"),
+                                        readCapabilities(rs.getString("capability_codes")),
+                                        rs.getBoolean("enabled")))
+                .optional();
     }
 
     public Optional<AiProviderProfile> find(UUID id) {
@@ -125,6 +177,15 @@ public class AiProviderRepository {
         } catch (RuntimeException exception) {
             throw new IllegalStateException(
                     "Stored AI provider configuration is invalid", exception);
+        }
+    }
+
+    private List<String> readCapabilities(String capabilitiesJson) {
+        try {
+            return mapper.readValue(capabilitiesJson, STRINGS);
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException(
+                    "Stored AI provider capabilities are invalid", exception);
         }
     }
 }

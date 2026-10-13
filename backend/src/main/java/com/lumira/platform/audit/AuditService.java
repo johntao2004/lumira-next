@@ -18,7 +18,7 @@ public class AuditService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<AuditRepository.Event> list(PageRequest p, String actor) {
         // Platform audit is a global administrative resource, not business data.
-        guard.requireGlobal(actor, "platform:audit:read");
+        guard.requirePageGlobal(actor, PlatformPageId.AUDIT);
         return new PageResult<>(repository.list(p), repository.count(p), p.page(), p.pageSize());
     }
 }

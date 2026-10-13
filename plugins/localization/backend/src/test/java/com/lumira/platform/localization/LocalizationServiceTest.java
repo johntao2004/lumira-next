@@ -167,8 +167,8 @@ class LocalizationServiceTest {
                 .removeTranslation(any(UUID.class), anyLong(), anyString(), anyString());
         verify(fixture.repository()).publish("zh-CN", "admin");
         verify(fixture.audit()).append("admin", "localization.translation.restored", row.id());
-        verify(fixture.guard()).require("admin", LocalizationService.WRITE);
-        verify(fixture.guard()).requireGlobal("admin", LocalizationService.WRITE);
+        verify(fixture.guard()).require("admin", LocalizationService.UPDATE);
+        verify(fixture.guard()).requireGlobal("admin", LocalizationService.UPDATE);
     }
 
     @Test

@@ -114,3 +114,45 @@ test('same-epoch /auth/me callers identify their source and the workspace can re
   assert.deepEqual(await retry, identityB);
   assert.equal(currentSessionUserId(), 'account-b');
 });
+
+test('public auth-method policy reads survive logout/session invalidation and remain anonymous', async t => {
+  clearAuthorizationContext();
+  invalidateSession();
+  acceptSessionIdentity('account-a');
+  setAuthorizationContext({ revision: 'revision-a', rolePreviewSupported: true, preview: null });
+
+  let releaseResponse;
+  let requestSignal;
+  let requestCredentials;
+  let requestHeaders;
+  t.mock.method(globalThis, 'fetch', (_url, init) => {
+    requestSignal = init.signal;
+    requestCredentials = init.credentials;
+    requestHeaders = new Headers(init.headers);
+    return new Promise(resolve => { releaseResponse = resolve; });
+  });
+
+  const methodsRequest = api('/auth/methods');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(requestSignal instanceof AbortSignal);
+  assert.equal(requestSignal.aborted, false);
+  assert.equal(requestCredentials, 'omit', 'the public policy request must not send a session cookie');
+  assert.equal(requestHeaders.has('X-Lumira-Authorization-Context-Revision'), false,
+    'a stale role-preview revision must not make the public policy endpoint return 409');
+
+  // logout() retires the session-bound controller. The public policy read must
+  // still be able to finish so LoginPage can safely rebuild its CAPTCHA gate.
+  invalidateSession(false);
+  assert.equal(requestSignal.aborted, false, 'session invalidation must not cancel the public policy fetch');
+  releaseResponse(Response.json({
+    methods: ['PASSWORD'],
+    capabilities: { loginCode: false, wechat: false, captcha: true, rolePreview: false },
+    captcha: { required: true, type: 'IMAGE_TEXT', actions: ['PASSWORD_LOGIN'], alwaysActions: ['PASSWORD_LOGIN'] },
+  }));
+
+  const result = await methodsRequest;
+  assert.equal(result.capabilities.captcha, true);
+  assert.deepEqual(result.captcha.alwaysActions, ['PASSWORD_LOGIN']);
+  clearAuthorizationContext();
+  invalidateSession(false);
+});

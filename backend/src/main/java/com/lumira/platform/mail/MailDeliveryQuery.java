@@ -38,7 +38,7 @@ public class MailDeliveryQuery {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<Entry> list(String actor, PageRequest page, String state) {
-        guard.requireGlobal(actor, "platform:audit:read");
+        guard.requirePageGlobal(actor, PlatformPageId.MAIL_DELIVERIES);
         if (state == null || (!state.isEmpty() && !STATES.contains(state)))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidMailState");
         var queryParameters = DeliveryPageQuerySupport.parameters(page, state);

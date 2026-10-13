@@ -1,9 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { routes, navigationGroups, availableNavigation, collapseTabbedNavigation, navigationPageIdForRoute, isSection, isDashboardSection, mergeRuntimeNavigation, runtimeBreadcrumbLabels, runtimeNavigationPageNode, runtimeNavigationTrail } from '../apps/web/src/platform/shell/routes.ts';
+import { routes, navigationGroups, availableNavigation, canAccessSection, canOperateSection, collapseTabbedNavigation, navigationPageIdForRoute, isSection, isDashboardSection, mergeRuntimeNavigation, runtimeBreadcrumbLabels, runtimeNavigationPageNode, runtimeNavigationTrail } from '../apps/web/src/platform/shell/routes.ts';
 import { frontendModuleManifests, frontendRoutes, frontendTabGroups } from '../apps/web/src/platform/modules/catalog.ts';
+import { createFrontendPageRegistry } from '../apps/web/src/platform/modules/contracts.ts';
 import { routeTabsForGroup } from '../apps/web/src/platform/modules/route-tabs.ts';
 import { safeReturnPath } from '../apps/web/src/platform/auth/return-path.ts';
+import { languages, loadLocaleMessages } from '../apps/web/src/platform/i18n/messages.ts';
+import { mfaManifest } from '../plugins/mfa/frontend/manifest.ts';
+import { paymentCoreManifest } from '../plugins/payment-core/frontend/manifest.ts';
+import { wechatPayManifest } from '../plugins/wechat-pay/frontend/manifest.ts';
+import { alipayPayManifest } from '../plugins/alipay-pay/frontend/manifest.ts';
 
 test('every registered route has exactly one navigation location and a safe return path', () => {
   const sections = navigationGroups.flatMap(group => group.sections);
@@ -23,8 +29,206 @@ test('every registered route has exactly one navigation location and a safe retu
   assert.equal(isDashboardSection('constructor'), true);
 });
 
+test('retired account-draft page is not routable or present in navigation', () => {
+  assert.equal(isSection('account-drafts'), false);
+  assert.equal(Object.hasOwn(routes, 'account-drafts'), false);
+  assert.equal(frontendRoutes().some(route => route.id === 'account-drafts'), false);
+});
+
+test('navigation groups own the intended routes while hidden account pages stay out of menus', () => {
+  assert.deepEqual(navigationGroups.map(group => group.id), [
+    'overview', 'ai-management', 'user-management', 'content-management',
+    'communication', 'payments', 'operations', 'administration',
+  ]);
+  assert.deepEqual(navigationGroups.map(group => [group.id, group.label]), [
+    ['overview', 'overview'],
+    ['ai-management', 'aiManagement'],
+    ['user-management', 'userManagement'],
+    ['content-management', 'contentManagement'],
+    ['communication', 'communicationCenter'],
+    ['payments', 'paymentManagement'],
+    ['operations', 'operationsCenter'],
+    ['administration', 'administration'],
+  ]);
+  const routesById = new Map(frontendRoutes().map(route => [route.id, route]));
+  const expectedOwners = {
+    home: 'overview',
+    files: 'overview',
+    'ai-console': 'ai-management',
+    'ai-models': 'ai-management',
+    users: 'user-management',
+    'online-users': 'user-management',
+    roles: 'user-management',
+    organizations: 'user-management',
+    'profile-fields': 'user-management',
+    security: 'user-management',
+    authentication: 'user-management',
+    passkey: 'user-management',
+    wechat: 'user-management',
+    captcha: 'user-management',
+    registration: 'user-management',
+    'mfa-management': 'user-management',
+    'files-all': 'content-management',
+    dictionaries: 'content-management',
+    'sensitive-words': 'content-management',
+    localization: 'content-management',
+    notifications: 'communication',
+    smtp: 'communication',
+    sms: 'communication',
+    'mail-deliveries': 'communication',
+    'sms-deliveries': 'communication',
+    feedback: 'communication',
+    monitoring: 'operations',
+    'api-docs': 'operations',
+    audit: 'operations',
+    'event-outbox': 'operations',
+    modules: 'administration',
+    branding: 'administration',
+    watermark: 'administration',
+    agreements: 'administration',
+    maintenance: 'administration',
+    navigation: 'administration',
+  };
+  for (const [routeId, group] of Object.entries(expectedOwners)) {
+    assert.equal(routesById.get(routeId)?.group, group, `${routeId} belongs to ${group}`);
+  }
+  for (const routeId of ['account-profile', 'account-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions', 'file-retention', 'mfa-authenticator']) {
+    const route = routesById.get(routeId);
+    assert.equal(route?.hidden, true, `${routeId} stays hidden`);
+    assert.ok(!navigationGroups.some(group => group.sections.includes(routeId)), `${routeId} is not a menu item`);
+  }
+  for (const routeId of ['account-profile', 'account-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions']) {
+    assert.equal(routesById.get(routeId)?.group, 'user-management');
+  }
+  assert.deepEqual(availableNavigation([]).find(group => group.id === 'overview').pages.map(page => page.id), ['home', 'files']);
+});
+
+test('static manifest ordering matches the built-in V47 navigation order', () => {
+  const expectedStaticSections = {
+    overview: ['home', 'files'],
+    'ai-management': ['ai-console', 'ai-models'],
+    'user-management': [
+      'users', 'online-users', 'roles', 'organizations', 'profile-fields', 'security',
+      'authentication', 'passkey', 'wechat', 'captcha', 'registration', 'mfa-management',
+    ],
+    'content-management': ['files-all', 'dictionaries', 'sensitive-words', 'localization'],
+    communication: ['notifications', 'smtp', 'sms', 'mail-deliveries', 'sms-deliveries', 'feedback'],
+    payments: [],
+    operations: ['monitoring', 'api-docs', 'audit', 'event-outbox'],
+    administration: ['modules', 'branding', 'watermark', 'agreements', 'maintenance', 'navigation'],
+  };
+  for (const [groupId, expected] of Object.entries(expectedStaticSections)) {
+    assert.deepEqual(navigationGroups.find(group => group.id === groupId).sections, expected, `${groupId} follows V47 order`);
+  }
+  assert.deepEqual(paymentCoreManifest.routes.map(route => route.order), [10]);
+  assert.deepEqual(wechatPayManifest.routes.map(route => route.order), [20, 40]);
+  assert.deepEqual(alipayPayManifest.routes.map(route => route.order), [30, 50]);
+});
+
+test('plugin routes stay within their feature ownership and tab groups share one navigation group', () => {
+  for (const manifest of frontendModuleManifests) {
+    for (const group of manifest.tabGroups ?? []) {
+      const routeGroups = new Set(group.routes.map(routeId => manifest.routes.find(route => route.id === routeId)?.group));
+      assert.equal(routeGroups.size, 1, `${manifest.id}:${group.id} tabs share a navigation group`);
+    }
+  }
+  assert.equal(mfaManifest.id, 'mfa');
+  assert.equal(mfaManifest.routes[0].hidden, true);
+  assert.equal(isSection('mfa-authenticator'), true);
+  assert.equal(canAccessSection('mfa-authenticator', [], []), false);
+  assert.equal(canAccessSection('mfa-authenticator', [], ['mfa']), true);
+  const mfaAccess = 'platform:mfa:management-access';
+  const mfaRead = 'platform:mfa:management-read';
+  const mfaReset = 'platform:mfa:management-reset';
+  assert.equal(canAccessSection('mfa-management', [mfaAccess], ['mfa']), true);
+  assert.equal(canAccessSection('mfa-management', [mfaRead], ['mfa']), false);
+  assert.equal(canOperateSection('mfa-management', 'read', [mfaAccess], ['mfa'], [mfaAccess]), false);
+  assert.equal(canOperateSection('mfa-management', 'read', [mfaAccess, mfaRead], ['mfa'], [mfaAccess, mfaRead]), true);
+  assert.equal(canOperateSection('mfa-management', 'reset', [mfaAccess], ['mfa'], [mfaAccess]), false);
+  assert.equal(canOperateSection('mfa-management', 'reset', [mfaAccess, mfaReset], ['mfa'], [mfaAccess]), true);
+  assert.ok(!availableNavigation([mfaRead], ['mfa']).flatMap(group => group.pages).some(page => page.id.startsWith('mfa-')));
+  assert.deepEqual(availableNavigation([mfaAccess], ['mfa'], [mfaAccess])
+    .find(group => group.id === 'user-management').pages.filter(page => page.id.startsWith('mfa-')).map(page => page.id), ['mfa-management']);
+  assert.deepEqual(mfaManifest.routes.map(route => [route.id, route.group]), [
+    ['mfa-authenticator', 'user-management'],
+    ['mfa-management', 'user-management'],
+  ]);
+  assert.equal(paymentCoreManifest.id, 'payment-core');
+  assert.equal(paymentCoreManifest.routes[0].group, 'payments');
+  assert.equal(paymentCoreManifest.routes[0].permission, 'platform:payment-core:orders-access');
+  assert.equal(paymentCoreManifest.routes[0].global, true);
+  for (const route of wechatPayManifest.routes) {
+    assert.equal(route.group, 'payments');
+    assert.ok(route.permission.startsWith('platform:wechat-pay:'));
+    assert.ok(Object.values(route.operations ?? {}).every(code => code.startsWith('platform:wechat-pay:')));
+    assert.equal(route.global, true);
+  }
+  for (const route of alipayPayManifest.routes) {
+    assert.equal(route.group, 'payments');
+    assert.ok(route.permission.startsWith('platform:alipay-pay:'));
+    assert.ok(Object.values(route.operations ?? {}).every(code => code.startsWith('platform:alipay-pay:')));
+    assert.equal(route.global, true);
+  }
+});
+
+test('hidden MFA runtime page stays out of navigation while its plugin renderer remains registered', () => {
+  const authorities = ['platform:mfa:management-access'];
+  const enabledModules = ['mfa'];
+  const groups = availableNavigation(authorities, enabledModules, authorities);
+  const merged = mergeRuntimeNavigation(groups, [
+    { id: 'users', menuCode: 'user-management', menuType: 'CATALOG', sectionKey: null, children: [
+      { id: 'mfa-authenticator', menuCode: 'mfa-authenticator', menuType: 'PAGE', sectionKey: 'mfa-authenticator', path: '/dashboard/mfa-authenticator', routable: true, children: [] },
+      { id: 'mfa-management', menuCode: 'mfa-management', menuType: 'PAGE', sectionKey: 'mfa-management', path: '/dashboard/mfa-management', routable: true, children: [] },
+    ] },
+  ]);
+  const userManagement = merged.find(group => group.id === 'user-management');
+  assert.ok(userManagement.pages.some(page => page.id === 'mfa-management'));
+  assert.ok(!userManagement.pages.some(page => page.id === 'mfa-authenticator'));
+
+  const registry = createFrontendPageRegistry([]);
+  const unregister = registry.registerPlugin({
+    ...mfaManifest,
+    pages: {
+      'mfa-authenticator': () => 'authenticator renderer',
+      'mfa-management': () => 'management renderer',
+    },
+  });
+  const context = { authorities, hasGlobal: permission => authorities.includes(permission) };
+  assert.equal(registry.owner('mfa-authenticator'), 'mfa');
+  assert.equal(registry.render('mfa-authenticator', context), 'authenticator renderer');
+  unregister();
+  assert.equal(registry.owner('mfa-authenticator'), null);
+});
+
+test('navigation group and anchor labels are translated across all supported locales', async () => {
+  const keys = [
+    'overview', 'aiManagement', 'userManagement', 'contentManagement',
+    'communicationCenter', 'paymentManagement', 'operationsCenter', 'administration',
+    'siteSettings', 'messageChannels', 'deliveryRecords', 'authenticationSecurity',
+  ];
+  for (const { value: locale } of languages) {
+    const messages = await loadLocaleMessages(locale);
+    for (const key of keys) {
+      assert.ok(messages[key].trim(), `${locale}:${key} has a translation`);
+      assert.notEqual(messages[key], key, `${locale}:${key} does not fall back to the key`);
+    }
+  }
+  const simplifiedChinese = await loadLocaleMessages('zh-CN');
+  assert.equal(simplifiedChinese.overview, '工作空间');
+  assert.equal(simplifiedChinese.userManagement, '用户与权限');
+  assert.equal(simplifiedChinese.contentManagement, '内容与资源');
+  assert.equal(simplifiedChinese.communicationCenter, '消息与反馈');
+  assert.equal(simplifiedChinese.paymentManagement, '支付管理');
+  assert.equal(simplifiedChinese.operationsCenter, '系统运维');
+  assert.equal(simplifiedChinese.administration, '平台配置');
+  assert.equal(simplifiedChinese.siteSettings, '站点设置');
+  assert.equal(simplifiedChinese.messageChannels, '消息渠道');
+  assert.equal(simplifiedChinese.deliveryRecords, '投递记录');
+  assert.equal(simplifiedChinese.authenticationSecurity, '认证与安全');
+});
+
 test('server-owned custom pages join the matching navigation group safely', () => {
-  const groups = availableNavigation(['platform:users:read'], [], []);
+  const groups = availableNavigation(['platform:users:access'], [], []);
   const merged = mergeRuntimeNavigation(groups, [
     { id: 'root', menuCode: 'administration', menuType: 'CATALOG', sectionKey: null, children: [
       { id: 'custom', menuCode: 'qa-page', menuType: 'PAGE', sectionKey: 'custom-page', path: '/dashboard/custom-page', componentKey: 'platform:info', labelKey: 'qaPage', labelDefault: 'QA 页面', routable: true, children: [] },
@@ -38,7 +242,7 @@ test('server-owned custom pages join the matching navigation group safely', () =
 });
 
 test('server-owned custom root catalogs become top-level navigation groups', () => {
-  const groups = availableNavigation(['platform:users:read'], [], []);
+  const groups = availableNavigation(['platform:users:access'], [], []);
   const merged = mergeRuntimeNavigation(groups, [
     { id: 'catalog', menuCode: 'qa-catalog', menuType: 'CATALOG', sectionKey: null, labelKey: 'qaCatalog', labelDefault: 'QA 分组', children: [
       { id: 'page', menuCode: 'qa-page', menuType: 'PAGE', sectionKey: 'qa-page', path: '/dashboard/qa-page', labelKey: 'qaPage', labelDefault: 'QA 页面', routable: true, children: [] },
@@ -51,11 +255,11 @@ test('server-owned custom root catalogs become top-level navigation groups', () 
 
 test('navigation removes empty groups and only exposes independently granted pages', () => {
   assert.deepEqual(availableNavigation([]).map(group => group.id), ['overview']);
-  const groups = availableNavigation(['platform:users:read', 'platform:roles:write'], [], []);
+  const groups = availableNavigation(['platform:users:access', 'platform:roles:update'], [], []);
   const userManagement = groups.find(group => group.id === 'user-management');
   assert.deepEqual(userManagement.pages.map(page => page.id), ['users']);
   assert.equal(groups.some(group => group.id === 'administration'), false);
-  assert.deepEqual(availableNavigation(['platform:users:read'], [], ['platform:users:read'])
+  assert.deepEqual(availableNavigation(['platform:users:access'], [], ['platform:online-users:access'])
     .find(group => group.id === 'user-management').pages.map(page => page.id), ['users', 'online-users']);
 });
 
@@ -121,7 +325,7 @@ test('runtime labels override static sidebar metadata without granting static ac
   const tree = [{ id: 'user-management', menuCode: 'user-management', menuType: 'CATALOG', sectionKey: null, labelKey: 'userManagement', labelDefault: '运行时用户管理', children: [
     { id: 'users', menuCode: 'users', menuType: 'PAGE', sectionKey: 'users', path: '/dashboard/users', labelKey: 'runtimeUsers', labelDefault: '运行时用户页', routable: true, children: [] },
   ] }];
-  const merged = mergeRuntimeNavigation(availableNavigation(['platform:users:read'], [], []), tree);
+  const merged = mergeRuntimeNavigation(availableNavigation(['platform:users:access'], [], []), tree);
   const group = merged.find(item => item.id === 'user-management');
 
   assert.equal(group.labelDefault, '运行时用户管理');
@@ -130,37 +334,49 @@ test('runtime labels override static sidebar metadata without granting static ac
   assert.equal(withoutPermission.flatMap(item => item.pages).some(page => page.id === 'users'), false);
 });
 
-test('security and registration settings share one sidebar entry with direct tab routes', () => {
-  const groups = collapseTabbedNavigation(availableNavigation(['platform:settings:read']));
-  const administration = groups.find(group => group.id === 'administration');
-  const settingRoutes = administration.pages.map(page => page.id);
+test('security and registration settings share one user-management sidebar entry with direct tab routes', () => {
+  const settingsAccess = [
+    'platform:security:access',
+    'platform:profile-fields:access',
+    'platform:authentication:access',
+    'platform:passkey:access',
+    'platform:wechat:access',
+    'platform:captcha:access',
+    'platform:registration:access',
+  ];
+  const groups = collapseTabbedNavigation(availableNavigation(settingsAccess));
+  const userManagement = groups.find(group => group.id === 'user-management');
+  const settingRoutes = userManagement.pages.map(page => page.id);
 
   assert.ok(settingRoutes.includes('security'));
+  assert.ok(settingRoutes.includes('profile-fields'));
   for (const tab of ['authentication', 'passkey', 'wechat', 'captcha', 'registration']) {
     assert.ok(!settingRoutes.includes(tab), `${tab} should be a tab, not a sidebar entry`);
     assert.equal(navigationPageIdForRoute(tab, groups), 'security');
     assert.ok(isSection(tab), `${tab} deep link remains a registered route`);
   }
 
-  const serverOwnedSubset = mergeRuntimeNavigation(availableNavigation(['platform:settings:read']), [
-    { id: 'security', menuCode: 'security', menuType: 'PAGE', sectionKey: 'security', path: '/dashboard/security', children: [] },
-    { id: 'passkey', menuCode: 'passkey', menuType: 'PAGE', sectionKey: 'passkey', path: '/dashboard/passkey', children: [] },
+  const serverOwnedSubset = mergeRuntimeNavigation(availableNavigation(settingsAccess), [
+    { id: 'user-management', menuCode: 'user-management', menuType: 'CATALOG', sectionKey: null, children: [
+      { id: 'security', menuCode: 'security', menuType: 'PAGE', sectionKey: 'security', path: '/dashboard/security', children: [] },
+      { id: 'passkey', menuCode: 'passkey', menuType: 'PAGE', sectionKey: 'passkey', path: '/dashboard/passkey', children: [] },
+    ] },
   ]);
   const subsetNavigation = collapseTabbedNavigation(serverOwnedSubset);
-  assert.deepEqual(subsetNavigation.find(group => group.id === 'administration').pages.map(page => page.id), ['security']);
+  assert.deepEqual(subsetNavigation.find(group => group.id === 'user-management').pages.map(page => page.id), ['security']);
   for (const tab of ['authentication', 'passkey', 'wechat', 'captcha', 'registration']) {
     assert.equal(navigationPageIdForRoute(tab, subsetNavigation), 'security');
   }
 
   const settingLabels = {
-    security: '安全策略',
+    security: '认证与安全',
     authentication: '认证方式',
     passkey: '通行密钥设置',
     wechat: '微信登录设置',
     captcha: '人机验证设置',
     registration: '公开注册设置',
   };
-  const settingsTree = [{ id: 'administration', menuCode: 'administration', menuType: 'CATALOG', sectionKey: null, labelDefault: '平台管理', children: Object.entries(settingLabels).map(([id, label]) => ({
+  const settingsTree = [{ id: 'user-management', menuCode: 'user-management', menuType: 'CATALOG', sectionKey: null, labelDefault: '用户与权限', children: Object.entries(settingLabels).map(([id, label]) => ({
     id,
     menuCode: id,
     menuType: 'PAGE',
@@ -172,7 +388,7 @@ test('security and registration settings share one sidebar entry with direct tab
   })) }];
   for (const [routeId, title] of Object.entries(settingLabels)) {
     const trail = runtimeNavigationTrail(settingsTree, routeId, `/dashboard/${routeId}`);
-    assert.deepEqual(runtimeBreadcrumbLabels(trail, '备用标题', node => node.labelDefault), ['平台管理', title]);
+    assert.deepEqual(runtimeBreadcrumbLabels(trail, '备用标题', node => node.labelDefault), ['用户与权限', title]);
   }
 });
 
@@ -199,34 +415,44 @@ test('five tab groups derive labels, aliases, and sidebar anchors from module ma
   assert.deepEqual(partial.map(tab => tab.key), ['branding', 'watermark']);
 });
 
-test('non-security sidebar aliases collapse only when every declared route is present', () => {
-  const complete = [{ id: 'administration', label: 'administration', subgroup: null, sections: [], pages: [
-    'branding', 'watermark', 'agreements', 'maintenance', 'smtp', 'sms', 'security', 'authentication', 'passkey', 'wechat', 'captcha', 'registration',
-  ].map(id => ({ id, label: id, permission: null })) }];
-  const collapsed = collapseTabbedNavigation(complete)[0].pages.map(page => page.id);
-  assert.deepEqual(collapsed, ['branding', 'smtp', 'security']);
-  assert.equal(navigationPageIdForRoute('watermark', collapseTabbedNavigation(complete)), 'branding');
+test('sidebar aliases collapse within their assigned groups when every declared route is present', () => {
+  const makeGroup = (id, pages) => ({ id, label: id, subgroup: null, sections: [], pages: pages.map(pageId => ({ id: pageId, label: pageId, permission: null })) });
+  const complete = [
+    makeGroup('administration', ['branding', 'watermark', 'agreements', 'maintenance']),
+    makeGroup('communication', ['smtp', 'sms']),
+    makeGroup('user-management', ['security', 'authentication', 'passkey', 'wechat', 'captcha', 'registration']),
+  ];
+  const collapsed = collapseTabbedNavigation(complete);
+  assert.deepEqual(collapsed.map(group => [group.id, group.pages.map(page => page.id)]), [
+    ['administration', ['branding']],
+    ['communication', ['smtp']],
+    ['user-management', ['security']],
+  ]);
+  assert.equal(navigationPageIdForRoute('watermark', collapsed), 'branding');
 
-  const partial = [{ ...complete[0], pages: complete[0].pages.filter(page => ['branding', 'watermark', 'maintenance', 'security', 'passkey'].includes(page.id)) }];
-  const visible = collapseTabbedNavigation(partial)[0].pages.map(page => page.id);
-  assert.ok(visible.includes('branding'));
-  assert.ok(visible.includes('watermark'));
-  assert.ok(visible.includes('maintenance'));
-  assert.deepEqual(visible.filter(id => ['security', 'passkey'].includes(id)), ['security']);
+  const partial = [
+    makeGroup('administration', ['branding', 'watermark', 'maintenance']),
+    makeGroup('communication', ['smtp']),
+    makeGroup('user-management', ['security', 'passkey']),
+  ];
+  const visible = collapseTabbedNavigation(partial);
+  assert.deepEqual(visible[0].pages.map(page => page.id), ['branding', 'watermark', 'maintenance']);
+  assert.deepEqual(visible[1].pages.map(page => page.id), ['smtp']);
+  assert.deepEqual(visible[2].pages.map(page => page.id), ['security']);
 });
 
-test('audit navigation requires both module capability and permission',()=>{
+test('audit navigation requires both module capability and permission', () => {
  const pages=(grants,modules)=>availableNavigation(grants,modules).flatMap(g=>g.pages.map(p=>p.id));
- assert.equal(pages(['platform:audit:read'],[]).includes('audit'),false);
+ assert.equal(pages(['platform:audit:access'],[]).includes('audit'),false);
  assert.equal(pages([],['audit-console']).includes('audit'),false);
- assert.equal(pages(['platform:audit:read'],['audit-console']).includes('audit'),true);
+ assert.equal(pages(['platform:audit:access'],['audit-console']).includes('audit'),true);
 });
 
 test('retired standalone AI pages are absent while model connections remain routable', () => {
   assert.equal(isSection('ai-capabilities'), false);
   assert.equal(isSection('ai-judgment'), false);
   assert.equal(isSection('ai-models'), true);
-  const pages = availableNavigation(['platform:settings:read'])
+  const pages = availableNavigation(['platform:ai-models:access'])
     .flatMap(group => group.pages.map(page => page.id));
   assert.ok(pages.includes('ai-models'));
   assert.ok(!pages.includes('ai-capabilities'));

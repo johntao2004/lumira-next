@@ -9,9 +9,12 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AiUserDirectoryPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
+import com.lumira.platform.common.PlatformOperation;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -46,8 +49,29 @@ class AiAssistantToolCallingTest {
                     true,
                     1);
 
+    @BeforeEach
+    void allowOnlyUserSearchByDefault() {
+        when(guard.requireOperation(anyString(), any(PlatformOperation.class)))
+                .thenAnswer(
+                        invocation -> {
+                            if (invocation.getArgument(1, PlatformOperation.class)
+                                    == PlatformOperation.AI_CONSOLE_READ_USERS) return Set.of();
+                            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+                        });
+    }
+
+    private void allowOperation(PlatformOperation operation) {
+        doReturn(Set.of(operation.permission())).when(guard).requireOperation("actor", operation);
+    }
+
+    private void denyOperation(PlatformOperation operation) {
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
+                .when(guard)
+                .requireOperation("actor", operation);
+    }
+
     private AiAssistantService.ChatRequest request(String model) {
-        when(providers.requireEnabled(provider.id(), "actor")).thenReturn(provider);
+        when(providers.requireEnabledForConsole(provider.id(), "actor")).thenReturn(provider);
         return new AiAssistantService.ChatRequest(
                 provider.id(), model, List.of(new AiAssistantService.ChatMessage("user", "测试")));
     }
@@ -91,7 +115,7 @@ class AiAssistantToolCallingTest {
 
     @Test
     void createOnlyProposesAndWaitsForExplicitConfirmation() {
-        when(guard.hasGlobal("actor", "platform:users:write")).thenReturn(true);
+        allowOperation(PlatformOperation.AI_CONSOLE_CREATE_USER);
         reply("users_propose_create", "{\"username\":\"fixture\",\"displayName\":\"Fixture\"}");
         var proposal =
                 new PendingAiActionStore.Proposal(
@@ -125,18 +149,65 @@ class AiAssistantToolCallingTest {
                         eq(provider),
                         eq("deepseek-v4-pro"),
                         anyList(),
-                        argThat(tools -> tools.size() == 4));
+                        argThat(tools -> tools.size() == 2));
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void createPermissionCanUseChatWithoutExposingUserSearch() {
+        denyOperation(PlatformOperation.AI_CONSOLE_READ_USERS);
+        allowOperation(PlatformOperation.AI_CONSOLE_CREATE_USER);
+        reply("users_propose_create", "{\"username\":\"fixture\",\"displayName\":\"Fixture\"}");
+        var proposal =
+                new PendingAiActionStore.Proposal(
+                        UUID.randomUUID(),
+                        PendingAiActionStore.Kind.CREATE_USER,
+                        "fixture",
+                        "Fixture",
+                        null,
+                        Instant.now().plusSeconds(180));
+        when(actions.create(
+                        "actor",
+                        PendingAiActionStore.Kind.CREATE_USER,
+                        null,
+                        0,
+                        "fixture",
+                        "Fixture",
+                        null))
+                .thenReturn(proposal);
+
+        var result = service.chat(request("deepseek-v4-pro"), "actor");
+
+        assertEquals(proposal, result.proposal());
+        verify(connections)
+                .chat(
+                        eq(provider),
+                        eq("deepseek-v4-pro"),
+                        anyList(),
+                        argThat(
+                                tools ->
+                                        tools.size() == 1
+                                                && tools.stream()
+                                                        .noneMatch(
+                                                                tool ->
+                                                                        tool.toString()
+                                                                                .contains(
+                                                                                        "users_search"))));
         verifyNoInteractions(users);
     }
 
     @Test
     void updateAndDeleteProposalsCarryOnlyTheirUserManagementOperationCodes() {
-        when(guard.hasGlobal("actor", "platform:users:write")).thenReturn(true);
+        allowOperation(PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        allowOperation(PlatformOperation.AI_CONSOLE_DELETE_USER);
         UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000001");
         var targetUser =
                 new AiUserDirectoryPort.UserView(
                         userId, "fixture-b", "Actual target B", true, 1, null, null);
-        when(users.find(userId, "actor")).thenReturn(targetUser);
+        when(users.findForOperation(userId, "actor", PlatformOperation.AI_CONSOLE_UPDATE_USER))
+                .thenReturn(targetUser);
+        when(users.findForOperation(userId, "actor", PlatformOperation.AI_CONSOLE_DELETE_USER))
+                .thenReturn(targetUser);
         when(connections.chat(eq(provider), anyString(), anyList(), anyList()))
                 .thenReturn(
                         new ModelConnectionService.ChatReply(
@@ -185,7 +256,8 @@ class AiAssistantToolCallingTest {
         assertEquals(
                 new PendingAiActionStore.Target(userId, "fixture-b", "Actual target B", true, 1),
                 update.proposal().target());
-        assertEquals(targetUser, users.find(userId, "actor"));
+        verify(users).findForOperation(userId, "actor", PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        verify(users).findForOperation(userId, "actor", PlatformOperation.AI_CONSOLE_DELETE_USER);
     }
 
     @Test
@@ -314,7 +386,7 @@ class AiAssistantToolCallingTest {
 
     @Test
     void mixedReadAndWriteBatchNeverQueriesOrCreatesAPendingAction() {
-        when(guard.hasGlobal("actor", "platform:users:write")).thenReturn(true);
+        allowOperation(PlatformOperation.AI_CONSOLE_CREATE_USER);
         batch(
                 search("first", "{}"),
                 new ModelConnectionService.ToolCall(
@@ -332,7 +404,7 @@ class AiAssistantToolCallingTest {
 
     @Test
     void multipleWriteProposalsStillRequireSeparateRequests() {
-        when(guard.hasGlobal("actor", "platform:users:write")).thenReturn(true);
+        allowOperation(PlatformOperation.AI_CONSOLE_CREATE_USER);
         batch(
                 new ModelConnectionService.ToolCall(
                         "first",
@@ -471,18 +543,16 @@ class AiAssistantToolCallingTest {
     @Test
     void deniedReadPermissionStopsBeforeModelRequest() {
         var input = request("deepseek-flash");
-        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
-                .when(guard)
-                .require("actor", "platform:users:read");
+        denyOperation(PlatformOperation.AI_CONSOLE_READ_USERS);
         assertThrows(ResponseStatusException.class, () -> service.chat(input, "actor"));
         verifyNoInteractions(connections, actions, users);
     }
 
     @Test
-    void confirmationRechecksGlobalWriteAndPreservesActorAndVersion() {
+    void confirmationRechecksOperationGrantAndPreservesActorAndVersion() {
         var id = UUID.randomUUID();
         var userId = UUID.randomUUID();
-        when(actions.take(id, "actor"))
+        when(actions.findPending(id, "actor"))
                 .thenReturn(
                         new PendingAiActionStore.PendingAction(
                                 id,
@@ -496,14 +566,24 @@ class AiAssistantToolCallingTest {
                                 new PendingAiActionStore.Target(
                                         userId, "fixture", "Fixture", true, 7),
                                 Instant.now().plusSeconds(180)));
-        when(users.find(userId, "actor"))
+        when(users.findForOperation(userId, "actor", PlatformOperation.AI_CONSOLE_UPDATE_USER))
                 .thenReturn(
                         new AiUserDirectoryPort.UserView(
                                 userId, "fixture", "Fixture", true, 7, null, null));
         service.confirm(id, new AiAssistantService.ConfirmAction(null), "actor");
-        verify(guard).require("actor", "platform:users:write");
-        verify(guard).requireGlobal("actor", "platform:users:write");
+        verify(guard)
+                .requireOperationUser("actor", userId, PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        verify(actions).consume(id, "actor");
         verify(users)
+                .update(userId, new AiUserDirectoryPort.UpdateUser("Updated", false, 7L), "actor");
+        var order = inOrder(guard, users, actions);
+        order.verify(actions).findPending(id, "actor");
+        order.verify(guard)
+                .requireOperationUser("actor", userId, PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        order.verify(users)
+                .findForOperation(userId, "actor", PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        order.verify(actions).consume(id, "actor");
+        order.verify(users)
                 .update(userId, new AiUserDirectoryPort.UpdateUser("Updated", false, 7L), "actor");
     }
 
@@ -512,7 +592,7 @@ class AiAssistantToolCallingTest {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         var snapshot = new PendingAiActionStore.Target(userId, "fixture", "Fixture", true, 7);
-        when(actions.take(id, "actor"))
+        when(actions.findPending(id, "actor"))
                 .thenReturn(
                         new PendingAiActionStore.PendingAction(
                                 id,
@@ -525,7 +605,7 @@ class AiAssistantToolCallingTest {
                                 false,
                                 snapshot,
                                 Instant.now().plusSeconds(180)));
-        when(users.find(userId, "actor"))
+        when(users.findForOperation(userId, "actor", PlatformOperation.AI_CONSOLE_UPDATE_USER))
                 .thenReturn(
                         new AiUserDirectoryPort.UserView(
                                 userId, "fixture", "Renamed", true, 8, null, null));
@@ -539,6 +619,7 @@ class AiAssistantToolCallingTest {
 
         assertEquals(HttpStatus.CONFLICT, failure.getStatusCode());
         assertEquals("staleRecord", failure.getReason());
+        verify(actions, never()).consume(id, "actor");
         verify(users, never()).update(any(), any(), anyString());
     }
 
@@ -546,7 +627,7 @@ class AiAssistantToolCallingTest {
     void confirmationRejectsLegacyMutationWithoutATargetSnapshot() {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        when(actions.take(id, "actor"))
+        when(actions.findPending(id, "actor"))
                 .thenReturn(
                         new PendingAiActionStore.PendingAction(
                                 id,
@@ -574,20 +655,50 @@ class AiAssistantToolCallingTest {
 
     @Test
     void deniedConfirmationCannotConsumePendingAction() {
+        UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(actions.findPending(id, "actor"))
+                .thenReturn(
+                        new PendingAiActionStore.PendingAction(
+                                id,
+                                "actor",
+                                PendingAiActionStore.Kind.UPDATE_USER,
+                                userId,
+                                7,
+                                null,
+                                "Updated",
+                                false,
+                                new PendingAiActionStore.Target(
+                                        userId, "fixture", "Fixture", true, 7),
+                                Instant.now().plusSeconds(180)));
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
                 .when(guard)
-                .requireGlobal("actor", "platform:users:write");
-        assertThrows(
-                ResponseStatusException.class,
-                () -> service.confirm(UUID.randomUUID(), null, "actor"));
-        verifyNoInteractions(actions, users);
+                .requireOperationUser("actor", userId, PlatformOperation.AI_CONSOLE_UPDATE_USER);
+        assertThrows(ResponseStatusException.class, () -> service.confirm(id, null, "actor"));
+        verify(actions, never()).consume(id, "actor");
+        verifyNoInteractions(users);
     }
 
     @Test
     void cancellationIsActorBoundAndCannotRunAUserMutation() {
         UUID id = UUID.randomUUID();
+        when(actions.findPending(id, "actor"))
+                .thenReturn(
+                        new PendingAiActionStore.PendingAction(
+                                id,
+                                "actor",
+                                PendingAiActionStore.Kind.CREATE_USER,
+                                null,
+                                0,
+                                "fixture",
+                                "Fixture",
+                                null,
+                                null,
+                                Instant.now().plusSeconds(180)));
         service.cancel(id, "actor");
-        verify(guard).require("actor", "platform:users:read");
+        verify(guard)
+                .requireOperationActionGlobal("actor", PlatformOperation.AI_CONSOLE_CREATE_USER);
+        verify(actions).findPending(id, "actor");
         verify(actions).cancel(id, "actor");
         verifyNoInteractions(users, connections);
     }

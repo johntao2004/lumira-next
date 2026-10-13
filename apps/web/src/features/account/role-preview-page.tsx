@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Card, Pagination, Space, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Pagination, Space, Spin, Tag, Typography } from "antd";
 import { ApiError, api, mutate } from "@/platform/api/client";
 import type { AuthorizationContext, CurrentUser, RolePreviewPage } from "@/platform/auth/api-types";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
@@ -10,6 +10,7 @@ import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import { formatDateTime } from "@/platform/i18n/format";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
+import { AccountSettingsRow, AccountSettingsSection } from "./account-form-surface";
 
 const rolePreviewErrors = ["authorizationContextChanged", "rolePreviewBlocked", "staleRecord", "forbidden", "unavailable"] as const satisfies readonly MessageKey[];
 
@@ -77,8 +78,8 @@ export function AccountRolePreviewPage() {
 
   const displayState = state.data ?? authorizationContext;
   const activePreview = displayState?.preview ?? null;
-  return <Space direction="vertical" size="large" className="w-full">
-    <Card title={t("rolePreview")}>
+  return <div className="account-settings-page">
+    <AccountSettingsSection>
       {state.isPending ? <Spin /> : state.error ? <Alert type="error" showIcon message={t("unavailable")} action={<Button type="link" onClick={() => void state.refetch()}>{t("retry")}</Button>} /> : activePreview ? <Space direction="vertical" className="w-full">
         <Alert
           showIcon
@@ -96,25 +97,28 @@ export function AccountRolePreviewPage() {
         </Space>
       </Space> : <Typography.Paragraph type="secondary">{t("rolePreviewChooseHint")}</Typography.Paragraph>}
       <FeedbackBubble id="role-preview-error" content={submit.error ? t(submit.error) : undefined} />
-    </Card>
+    </AccountSettingsSection>
 
-    <Card title={t("rolePreviewChoose")}>
+    <AccountSettingsSection title={t("rolePreviewChoose")}>
       {candidates.isPending ? <Spin /> : candidates.error ? <Alert type="error" showIcon message={candidateError(candidates.error, t)} action={<Button type="link" onClick={() => void candidates.refetch()}>{t("retry")}</Button>} /> : candidates.data?.items.length ? <>
-        <Space direction="vertical" className="w-full" size="middle">
-          {candidates.data.items.map(role => <Card key={role.id} size="small" title={role.name} extra={<Tag>{role.code}</Tag>}>
-            <Space direction="vertical" className="w-full" size="small">
-              <Typography.Text type="secondary">{t("dataScope")}: {role.dataScope}</Typography.Text>
-              {role.limitedByActor && <Typography.Text type="secondary">{t("rolePreviewLimitedByActor")}</Typography.Text>}
-              <Button type="primary" disabled={Boolean(selectedRole) || (activePreview?.state === "ACTIVE" && activePreview.roleId === role.id)} loading={selectedRole === role.id} onClick={() => void selectRole(role)}>
-                {t(activePreview?.roleId === role.id ? "rolePreviewActive" : "rolePreviewStart", { role: role.name })}
-              </Button>
-            </Space>
-          </Card>)}
-        </Space>
+        {candidates.data.items.map(role => <AccountSettingsRow
+          key={role.id}
+          label={<Space wrap><Typography.Text strong>{role.name}</Typography.Text><Tag>{role.code}</Tag></Space>}
+          value={<Space direction="vertical" size={2}>
+            <Typography.Text type="secondary">{t("dataScope")}: {role.dataScope}</Typography.Text>
+            {role.limitedByActor && <Typography.Text type="secondary">{t("rolePreviewLimitedByActor")}</Typography.Text>}
+          </Space>}
+          action={<Button
+            type="primary"
+            disabled={Boolean(selectedRole) || (activePreview?.state === "ACTIVE" && activePreview.roleId === role.id)}
+            loading={selectedRole === role.id}
+            onClick={() => void selectRole(role)}
+          >{t(activePreview?.roleId === role.id ? "rolePreviewActive" : "rolePreviewStart", { role: role.name })}</Button>}
+        />)}
         <Pagination className="mt-4" current={candidates.data.page} pageSize={candidates.data.pageSize} total={candidates.data.total} showSizeChanger={false} onChange={setPage} />
       </> : <Typography.Text type="secondary">{t("rolePreviewNoRoles")}</Typography.Text>}
-    </Card>
-  </Space>;
+    </AccountSettingsSection>
+  </div>;
 }
 
 function candidateError(error: unknown, t: ReturnType<typeof usePreferences>["t"]) {

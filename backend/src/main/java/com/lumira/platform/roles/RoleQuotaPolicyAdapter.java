@@ -9,7 +9,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Resolves each quota dimension from enabled roles, using system settings only as a fallback. */
+/**
+ * Resolves each quota dimension from enabled roles, using system settings only as a fallback.
+ * Positive byte limits combine by minimum; a zero byte limit is unlimited.
+ */
 @Service
 public class RoleQuotaPolicyAdapter implements FileQuotaPolicyPort {
     private final RoleRepository roles;
@@ -42,13 +45,20 @@ public class RoleQuotaPolicyAdapter implements FileQuotaPolicyPort {
 
     private Limits merge(Collection<RoleRepository.QuotaLimit> rows) {
         Long roleMaximumBytes = null;
+        boolean hasUnlimitedByteRole = false;
         Long roleMaximumFiles = null;
         for (var row : rows) {
             if (!row.enabled()) continue;
-            if (row.bytes() != null) roleMaximumBytes = minimum(roleMaximumBytes, row.bytes());
+            if (row.bytes() != null) {
+                if (row.bytes() == 0) hasUnlimitedByteRole = true;
+                else roleMaximumBytes = minimum(roleMaximumBytes, row.bytes());
+            }
             if (row.files() != null) roleMaximumFiles = minimum(roleMaximumFiles, row.files());
         }
-        long maximumBytes = roleMaximumBytes == null ? fallback.maximumBytes() : roleMaximumBytes;
+        long maximumBytes =
+                roleMaximumBytes != null
+                        ? roleMaximumBytes
+                        : hasUnlimitedByteRole ? 0 : fallback.maximumBytes();
         long maximumFiles = roleMaximumFiles == null ? fallback.maximumFiles() : roleMaximumFiles;
         return new Limits(maximumBytes, maximumFiles);
     }

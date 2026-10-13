@@ -62,6 +62,11 @@ public class FeedbackController {
         return service.options(auth.getName());
     }
 
+    @GetMapping("/manage/options")
+    public FeedbackCatalog.Catalog managementOptions(Authentication auth) {
+        return service.managementOptions(auth.getName());
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public FeedbackStore.Detail create(
@@ -96,7 +101,21 @@ public class FeedbackController {
     @GetMapping("/images/{id}")
     public ResponseEntity<InputStreamResource> image(@PathVariable UUID id, Authentication auth)
             throws IOException {
-        var entry = service.image(auth.getName(), id);
+        return imageResponse(id, auth, false);
+    }
+
+    @GetMapping("/manage/images/{id}")
+    public ResponseEntity<InputStreamResource> managementImage(
+            @PathVariable UUID id, Authentication auth) throws IOException {
+        return imageResponse(id, auth, true);
+    }
+
+    private ResponseEntity<InputStreamResource> imageResponse(
+            UUID id, Authentication auth, boolean managed) throws IOException {
+        var entry =
+                managed
+                        ? service.managementImage(auth.getName(), id)
+                        : service.image(auth.getName(), id);
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
                 .contentLength(entry.sizeBytes())

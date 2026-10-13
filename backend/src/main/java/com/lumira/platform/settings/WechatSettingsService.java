@@ -3,6 +3,7 @@ package com.lumira.platform.settings;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
+import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.common.SecretKeys;
 import com.lumira.platform.common.SecretStorePort;
@@ -231,8 +232,7 @@ public class WechatSettingsService implements WechatConfigurationPort {
         // Keep the authentication-policy exclusive lock ahead of AdministrationGuard's
         // per-session revision boundary, matching all other authentication-policy writers.
         policyLock.lockForUpdate();
-        guard.require(actor, "platform:settings:write");
-        guard.requireGlobal(actor, "platform:settings:write");
+        guard.requireOperationGlobal(actor, PlatformOperation.WECHAT_UPDATE);
         var current = settings.find(SECTION);
         if (current.map(SettingStore.Snapshot::version).orElse(0L) != input.version())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "staleRecord");

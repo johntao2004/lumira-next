@@ -146,7 +146,6 @@ package_owners = {
     "sms": "communication",
     "communication": "communication",
     "dictionaries": "dictionaries",
-    "drafts": "identity",
     "events": "events",
     "files": "files",
     "moduleadmin": "platform",

@@ -7,8 +7,15 @@ const SensitiveWordsPage = lazy(() => import("./sensitive-policies-page").then((
 export const sensitiveWordsFrontendModule = {
   ...sensitiveWordsManifest,
   pages: {
-    "sensitive-words": ({ hasGlobal }) => (
-      <SensitiveWordsPage canWrite={hasGlobal("platform:sensitive-words:write")} canImport={hasGlobal("platform:sensitive-words:import")} />
+    "sensitive-words": ({ hasOperation }) => (
+      <SensitiveWordsPage
+        canRead={hasOperation("read")}
+        canCreate={hasOperation("create")}
+        canUpdate={hasOperation("update")}
+        canDelete={hasOperation("delete")}
+        canImport={hasOperation("import")}
+        canPolicyUpdate={hasOperation("policy-update")}
+      />
     ),
   },
 } satisfies FrontendModule;

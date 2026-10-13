@@ -1,11 +1,12 @@
 "use client";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 
-import { Button, Card, DatePicker, Input, Modal, Select, Typography, App, type DatePickerProps } from "antd";
+import { Button, Card, DatePicker, Input, Select, Typography, App, type DatePickerProps } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { FormDrawer } from "@/platform/components/form-drawer";
+import { PlatformDrawer } from "@/platform/components/platform-drawer";
 import { QueryFailure } from "@/platform/components/query-failure";
 import { ResourceTable } from "@/platform/components/resource-table";
 import type { PageResult } from "@/platform/api/pagination";
@@ -37,7 +38,7 @@ type Draft = { scope: "ALL" | "USERS" | "ROLES"; userIds?: string[]; roleIds?: s
 type NotificationRole = { id: string; code: string; name: string };
 const notificationErrorKeys = ["notificationInvalid", "notificationNoRecipients", "notificationTooManyRecipients", "notificationRecipientNotFound", "notificationRoleNotFound", "notificationInvalidExpiry"] as const satisfies readonly MessageKey[];
 
-export function AdminNotificationsPage({ canWrite }: { canWrite: boolean }) {
+export function AdminNotificationsPage({ canCreate }: { canCreate: boolean }) {
   const { t, locale } = usePreferences();
   const { message } = App.useApp();
   const client = useQueryClient();
@@ -54,6 +55,8 @@ export function AdminNotificationsPage({ canWrite }: { canWrite: boolean }) {
   const list = useQuery({
     queryKey: ["admin-notifications", request],
     queryFn: ({ signal }) => api<PageResult<AdminNotification>>(`/platform/notifications?${listRequestParams(request)}`, { signal }),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
   const roles = useQuery({
     queryKey: ["notification-recipient-roles"],
@@ -62,7 +65,7 @@ export function AdminNotificationsPage({ canWrite }: { canWrite: boolean }) {
   });
 
   const publish = (values: Draft) => run(async () => {
-      if(!canWrite)return false;
+      if(!canCreate)return false;
       await mutate("/platform/notifications", "POST", {
         ...values,
         userIds: values.scope === "USERS" ? values.userIds ?? [] : [],
@@ -70,7 +73,7 @@ export function AdminNotificationsPage({ canWrite }: { canWrite: boolean }) {
         href: values.href?.trim() || null,
         expiresAt: values.expiresAt?.toISOString() ?? null,
       });
-      message.success(t("notificationPublished"));
+      message.success(t("notificationQueued"));
       setOpen(false);
       form.resetFields();
       await Promise.all([
@@ -87,7 +90,7 @@ export function AdminNotificationsPage({ canWrite }: { canWrite: boolean }) {
       request={request}
       onChange={setRequest}
       onRetry={() => void list.refetch()}
-      actions={canWrite ? <Button type="primary" onClick={() => { form.resetFields(); form.setFieldsValue({ scope: "ALL" }); setOpen(true); }}>{t("publishNotification")}</Button> : undefined}
+      actions={canCreate ? <Button type="primary" onClick={() => { form.resetFields(); form.setFieldsValue({ scope: "ALL" }); setOpen(true); }}>{t("publishNotification")}</Button> : undefined}
       columns={[
         { title: t("notificationRecipients"), dataIndex: "ownerUsername", search: true, render: (_: unknown, item: AdminNotification) => `${item.ownerDisplayName || item.ownerUsername} (${item.ownerUsername})` },
         { title: t("notificationTitle"), dataIndex: "title", search: true, render: (_: unknown, item: AdminNotification) => <Typography.Text strong>{String(notificationParams(item.params).title ?? item.titleKey)}</Typography.Text> },
@@ -98,7 +101,7 @@ export function AdminNotificationsPage({ canWrite }: { canWrite: boolean }) {
       ]}
     />
     <FormDrawer open={open} title={t("publishNotification")} pending={pending} formId="notification-editor" size={560} onClose={() => setOpen(false)}>
-      <Form id="notification-editor" name="notification-editor" form={form} layout="vertical" dateFormatter={false} initialValues={{ scope: "ALL" }} onFinish={(values) => void publish(values)} disabled={pending || !canWrite}>
+      <Form id="notification-editor" name="notification-editor" form={form} layout="vertical" dateFormatter={false} initialValues={{ scope: "ALL" }} onFinish={(values) => void publish(values)} disabled={pending || !canCreate}>
         <Form.Item name="scope" label={t("notificationTarget")} rules={[{ required: true }]}>
           <Select onChange={() => form.setFieldsValue({ userIds: [], roleIds: [] })} options={[{ value: "ALL", label: t("notificationAllUsers") }, { value: "USERS", label: t("notificationSelectedUsers") }, { value: "ROLES", label: t("notificationSelectedRoles") }]} />
         </Form.Item>
@@ -127,8 +130,8 @@ export function AdminNotificationsPage({ canWrite }: { canWrite: boolean }) {
         </Card>
       </Form>
     </FormDrawer>
-    <Modal open={!!preview} title={t("notificationPreview")} footer={null} onCancel={() => setPreview(null)}>
+    <PlatformDrawer open={!!preview} placement="right" size={520} title={t("notificationPreview")} onClose={() => setPreview(null)} destroyOnHidden>
       {preview && <NotificationEntryContent entry={{ ...preview, href: safeNotificationHref(preview.href) }} onNavigate={() => setPreview(null)} />}
-    </Modal>
+    </PlatformDrawer>
   </>;
 }
