@@ -19,7 +19,7 @@ export function FileUsage({refreshInterval=5_000,pendingDeletionRefreshInterval=
     {query.error&&<QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={()=>void query.refetch()}/>}
     {query.data?<div className="file-usage-meters">
      <CapacityMeter label={t("fileStorageUsage")} used={query.data.chargedBytes} limit={query.data.maximumBytes} format={bytes} unlimitedWhenZero unlimitedLabel={t("roleQuotaUnlimited")}/>
-     <CapacityMeter label={t("fileCountUsage")} used={query.data.fileCount} limit={query.data.maximumFiles} format={count}/>
+     <CapacityMeter label={t("fileCountUsage")} used={query.data.fileCount} limit={query.data.maximumFiles} format={count} unlimitedWhenZero unlimitedLabel={t("roleQuotaUnlimited")}/>
     </div>:!query.error&&<Spin/>}
     {query.data&&(query.data.pendingDeletingCount??0)>0&&<Typography.Paragraph className="file-usage-pending" type="secondary">{t("fileUsagePendingDeletion",{count:count(query.data.pendingDeletingCount??0),size:bytes(query.data.pendingDeletingBytes??0)})}</Typography.Paragraph>}
     <Typography.Paragraph className="file-usage-hint" type="secondary">{t("fileUsageHint")}</Typography.Paragraph>

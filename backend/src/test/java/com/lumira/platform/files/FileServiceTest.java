@@ -7,12 +7,14 @@ import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.ProfileRepository;
-import java.io.*;
-import java.util.*;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.*;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.io.*;
+import java.util.*;
 
 class FileServiceTest {
     private FileRepository.Entry entry(UUID id, UUID owner, String state, long version) {
@@ -94,6 +96,82 @@ class FileServiceTest {
                                 FileService.MAXIMUM_BYTES + 1));
 
         verify(store, never()).stage(any(UUID.class), any(), anyLong());
+        verify(repo, never()).reserve(any(), any(), anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void zeroFileLimitAllowsUploadEvenWhenTheOwnerAlreadyHasFiles() throws Exception {
+        var repo = mock(FileRepository.class);
+        var accounts = mock(com.lumira.platform.identity.api.AccountOwnerPort.class);
+        var store = mock(BlobStore.class);
+        var stage = mock(BlobStore.Staged.class);
+        var manager = mock(PlatformTransactionManager.class);
+        var owner = UUID.randomUUID();
+        var digest = "a".repeat(64);
+        when(manager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
+        when(accounts.id("actor", true)).thenReturn(owner);
+        when(repo.quotaOwner(owner, true))
+                .thenReturn(new FileRepository.QuotaOwner(owner, "actor", "Actor", 0));
+        when(repo.usage(owner)).thenReturn(new FileRepository.Usage(512, 100));
+        when(store.stage(any(UUID.class), any(), eq(1L))).thenReturn(stage);
+        when(stage.metadata()).thenReturn(new BlobStore.Stored(UUID.randomUUID(), 1, digest));
+        when(repo.lockUpload(any(UUID.class), eq(owner))).thenReturn(true);
+        when(repo.complete(any(UUID.class), eq(owner), eq(0L), eq(1L), eq(digest)))
+                .thenReturn(true);
+        when(repo.findOwned(any(UUID.class), eq(owner)))
+                .thenAnswer(
+                        invocation ->
+                                Optional.of(entry(invocation.getArgument(0), owner, "READY", 1)));
+
+        var service =
+                new FileService(
+                        repo,
+                        accounts,
+                        store,
+                        manager,
+                        mock(com.lumira.platform.common.AuditPort.class),
+                        new FileQuota(0, 0));
+
+        var uploaded =
+                service.upload(
+                        "actor", "unlimited.txt", new ByteArrayInputStream(new byte[] {1}), 1);
+
+        assertEquals(owner, uploaded.ownerId());
+        assertEquals("READY", uploaded.state());
+        verify(repo)
+                .reserve(any(UUID.class), eq(owner), eq("postgres"), eq("unlimited.txt"), eq(1L));
+        verify(stage).publish();
+    }
+
+    @Test
+    void positiveFileLimitStillRejectsUploadAtTheBoundary() throws Exception {
+        var repo = mock(FileRepository.class);
+        var accounts = mock(com.lumira.platform.identity.api.AccountOwnerPort.class);
+        var manager = mock(PlatformTransactionManager.class);
+        var owner = UUID.randomUUID();
+        when(manager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
+        when(accounts.id("actor", true)).thenReturn(owner);
+        when(repo.quotaOwner(owner, true))
+                .thenReturn(new FileRepository.QuotaOwner(owner, "actor", "Actor", 0));
+        when(repo.usage(owner)).thenReturn(new FileRepository.Usage(0, 2));
+
+        var service =
+                new FileService(
+                        repo,
+                        accounts,
+                        mock(BlobStore.class),
+                        manager,
+                        mock(com.lumira.platform.common.AuditPort.class),
+                        new FileQuota(0, 2));
+
+        assertThrows(
+                ResponseStatusException.class,
+                () ->
+                        service.upload(
+                                "actor",
+                                "at-limit.txt",
+                                new ByteArrayInputStream(new byte[] {1}),
+                                1));
         verify(repo, never()).reserve(any(), any(), anyString(), anyString(), anyLong());
     }
 

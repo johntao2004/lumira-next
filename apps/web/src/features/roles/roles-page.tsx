@@ -24,7 +24,7 @@ import { useCenteredModalConfirm } from "@/platform/components/use-centered-moda
 import { RoleAuthenticationEditor } from "./role-authentication-editor";
 import { RolePermissionPicker } from "./role-permission-picker";
 import type { PermissionCatalogGroup } from "./role-permission-model";
-import { formatQuotaBytes, formatQuotaLimitBytes } from "@/platform/i18n/format";
+import { formatQuotaLimitBytes, formatQuotaLimitCount } from "@/platform/i18n/format";
 
 import type { Role } from "./types";
 
@@ -58,7 +58,7 @@ export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissi
   return <>
     <ResourceTable<Role> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={()=>void query.refetch()}
       actions={effectiveCanCreate && <Button type="primary" onClick={()=>setSelected(null)}>{t("createRole")}</Button>}
-      columns={[{title:t("roleCode"),dataIndex:"code",search:true},{title:t("name"),dataIndex:"name", search: true,render:(_,role)=><Space wrap><Typography.Text>{role.name}</Typography.Text>{role.defaultRegistrationRole && <Tag color="processing">{t("registrationDefaultRole")}</Tag>}{role.defaultRegistrationRole && effectiveCanReadRegistrationSettings && <Button type="link" size="small" href="/dashboard/registration">{t("registrationSettingsTitle")}</Button>}</Space>},{title:t("roleMemberStorageLimit"),dataIndex:"fileQuotaBytesLimit",search:false,render:(_,r)=>formatQuotaLimitBytes(r.fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})},{title:t("roleMemberFileCountLimit"),dataIndex:"fileQuotaFilesLimit",search:false,render:(_,r)=>r.fileQuotaFilesLimit===null?t("roleQuotaInherit"):new Intl.NumberFormat(locale).format(r.fileQuotaFilesLimit)},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,r)=><Tag color={r.enabled?"success":"default"}>{t(r.enabled?"enabled":"disabled")}</Tag>},
+      columns={[{title:t("roleCode"),dataIndex:"code",search:true},{title:t("name"),dataIndex:"name", search: true,render:(_,role)=><Space wrap><Typography.Text>{role.name}</Typography.Text>{role.defaultRegistrationRole && <Tag color="processing">{t("registrationDefaultRole")}</Tag>}{role.defaultRegistrationRole && effectiveCanReadRegistrationSettings && <Button type="link" size="small" href="/dashboard/registration">{t("registrationSettingsTitle")}</Button>}</Space>},{title:t("roleMemberStorageLimit"),dataIndex:"fileQuotaBytesLimit",search:false,render:(_,r)=>formatQuotaLimitBytes(r.fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})},{title:t("roleMemberFileCountLimit"),dataIndex:"fileQuotaFilesLimit",search:false,render:(_,r)=>formatQuotaLimitCount(r.fileQuotaFilesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,r)=><Tag color={r.enabled?"success":"default"}>{t(r.enabled?"enabled":"disabled")}</Tag>},
         {title:t("actions"), key: "actions",search:false,render:(_,r)=><TableActions><Button type="link" onClick={()=>setSelected(r.id)}>{t(effectiveCanUpdate?"edit":"roleDetails")}</Button>{effectiveCanDelete && <DeleteAction name={r.name} onDelete={async()=>{
           await mutate(`/platform/roles/${r.id}?version=${r.version}`,"DELETE",{});
           setRequest(pageAfterRemoval(request,query.data?.items.length));
@@ -80,7 +80,7 @@ export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissi
           if(quotaPolicyChanged&&currentRole){
             const changes=[
               currentRole.fileQuotaBytesLimit!==fileQuotaBytesLimit&&`${t("roleMemberStorageLimit")}: ${formatQuotaLimitBytes(currentRole.fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → ${formatQuotaLimitBytes(fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}`,
-              currentRole.fileQuotaFilesLimit!==(fileQuotaFilesLimit??null)&&`${t("roleMemberFileCountLimit")}: ${currentRole.fileQuotaFilesLimit===null?t("roleQuotaInherit"):new Intl.NumberFormat(locale).format(currentRole.fileQuotaFilesLimit)} → ${fileQuotaFilesLimit==null?t("roleQuotaInherit"):new Intl.NumberFormat(locale).format(fileQuotaFilesLimit)}`,
+              currentRole.fileQuotaFilesLimit!==(fileQuotaFilesLimit??null)&&`${t("roleMemberFileCountLimit")}: ${formatQuotaLimitCount(currentRole.fileQuotaFilesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → ${formatQuotaLimitCount(fileQuotaFilesLimit??null,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}`,
               currentRole.enabled!==roleValues.enabled&&`${t("enabled")}: ${t(currentRole.enabled?"enabled":"disabled")} → ${t(roleValues.enabled?"enabled":"disabled")}`,
             ].filter(Boolean);
             const confirmed=await new Promise<boolean>(resolve=>confirm({

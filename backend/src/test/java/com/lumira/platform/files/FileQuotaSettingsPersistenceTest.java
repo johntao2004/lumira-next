@@ -1,5 +1,6 @@
 package com.lumira.platform.files;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -18,8 +19,7 @@ import com.lumira.platform.roles.RoleQuotaPolicyAdapter;
 import com.lumira.platform.roles.RoleRepository;
 import com.lumira.platform.settings.SettingDocuments;
 import com.lumira.platform.settings.SettingStore;
-import java.util.List;
-import java.util.UUID;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.server.ResponseStatusException;
+
 import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
+import java.util.UUID;
 
 /** PostgreSQL persistence coverage isolated to a temporary schema. */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
@@ -109,6 +113,7 @@ class FileQuotaSettingsPersistenceTest {
         var unlimited = service.save(1, new FileQuotaSettings(0, 0), actor);
         assertEquals(new FileQuotaSettingsService.View(2, new FileQuotaSettings(0, 0)), unlimited);
         assertEquals(new FileQuotaPolicyPort.Limits(0, 0), policy.forUser(userId));
+        assertDoesNotThrow(() -> new FileQuota(0, 0).requireCapacity(0, 100, 1));
         assertEquals(unlimited, reloaded.read(actor));
         assertEquals(2, store.history("file-quota", new PageRequest(1, 20, "")).total());
 

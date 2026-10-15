@@ -7,11 +7,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
+
 import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
 
 class FileQuotaSettingsControllerTest {
     private final ObjectMapper mapper = new ObjectMapper();
@@ -34,6 +36,26 @@ class FileQuotaSettingsControllerTest {
 
         assertEquals(saved, result);
         verify(settings).save(3, data, "quota-admin");
+    }
+
+    @Test
+    void acceptsZeroAsUnlimitedForBothDimensions() throws Exception {
+        var settings = mock(FileQuotaSettingsService.class);
+        var actor = mock(Authentication.class);
+        when(actor.getName()).thenReturn("quota-admin");
+        var data = new FileQuotaSettings(0, 0);
+        var saved = new FileQuotaSettingsService.View(5, data);
+        when(settings.save(4, data, "quota-admin")).thenReturn(saved);
+        var controller = new FileQuotaSettingsController(settings);
+
+        var result =
+                controller.save(
+                        mapper.readTree(
+                                "{\"version\":4,\"data\":{\"maximumBytes\":0,\"maximumFiles\":0}}"),
+                        actor);
+
+        assertEquals(saved, result);
+        verify(settings).save(4, data, "quota-admin");
     }
 
     @Test

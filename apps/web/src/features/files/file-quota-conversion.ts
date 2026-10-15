@@ -1,12 +1,15 @@
 export type FileQuotaSettings = { maximumBytes: number; maximumFiles: number };
-export type CapacityUnit = "bytes" | "gib";
+export type CapacityUnit = "mb" | "gb";
 
-export const DEFAULT_CAPACITY_UNIT: CapacityUnit = "bytes";
+export const DEFAULT_CAPACITY_UNIT: CapacityUnit = "gb";
+export const DEFAULT_FINITE_CAPACITY_BYTES = 1_000_000_000;
+export const DEFAULT_FINITE_FILE_COUNT = 1_000;
 
-const GIB = 1_073_741_824n;
+const CAPACITY_BYTES: Record<CapacityUnit, bigint> = {
+  mb: 1_000_000n,
+  gb: 1_000_000_000n,
+};
 const MAX_SAFE_QUOTA = BigInt(Number.MAX_SAFE_INTEGER);
-const DECIMAL_SCALE = 10n ** 30n;
-const GIB_DECIMAL_FACTOR = 5n ** 30n;
 
 export function nonNegativeInteger(value: unknown): number | null {
   if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -16,41 +19,44 @@ export function nonNegativeInteger(value: unknown): number | null {
 }
 
 export function capacityBytes(value: unknown, unit: CapacityUnit): number | null {
-  if (unit === "bytes") return nonNegativeInteger(value);
   if (typeof value === "number") {
-    if (!Number.isSafeInteger(value) || value < 0) return null;
+    if (!Number.isFinite(value) || value < 0) return null;
     value = String(value);
   }
   if (typeof value !== "string") return null;
-  const match = /^(\d+)(?:\.(\d+))?$/.exec(value);
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(value);
   if (!match) return null;
-  const fraction = match[2] ?? "";
-  if (fraction.length > 30) return null;
-  const denominator = 10n ** BigInt(fraction.length);
-  const numerator = BigInt(match[1]) * denominator + BigInt(fraction || "0");
-  const scaledBytes = numerator * GIB;
-  if (scaledBytes % denominator !== 0n) return null;
-  const bytes = scaledBytes / denominator;
+
+  const fraction = (match[2] ?? "").padEnd(2, "0");
+  const hundredths = BigInt(match[1]) * 100n + BigInt(fraction || "0");
+  const bytes = (hundredths * CAPACITY_BYTES[unit]) / 100n;
   return bytes <= MAX_SAFE_QUOTA ? Number(bytes) : null;
 }
 
-export function bytesToGib(bytes: number): string {
-  if (!Number.isSafeInteger(bytes) || bytes < 0) throw new RangeError("invalidFileQuota");
-  const scaled = BigInt(bytes) * GIB_DECIMAL_FACTOR;
-  const whole = scaled / DECIMAL_SCALE;
-  const fraction = (scaled % DECIMAL_SCALE).toString().padStart(30, "0").replace(/0+$/, "");
-  return fraction ? `${whole}.${fraction}` : whole.toString();
+export function formatCapacity(bytes: unknown, unit: CapacityUnit): string {
+  const safeBytes = nonNegativeInteger(bytes);
+  if (safeBytes === null) return "";
+
+  const factor = CAPACITY_BYTES[unit];
+  const roundedHundredths = (BigInt(safeBytes) * 100n + factor / 2n) / factor;
+  const whole = roundedHundredths / 100n;
+  const fraction = (roundedHundredths % 100n).toString().padStart(2, "0");
+  return `${whole}.${fraction}`;
 }
 
-export function convertCapacityValue(value: unknown, fromUnit: CapacityUnit, toUnit: CapacityUnit): string | null {
-  const bytes = capacityBytes(value, fromUnit);
-  if (bytes === null) return null;
-  return toUnit === "bytes" ? String(bytes) : bytesToGib(bytes);
+export function selectCapacityUnit(bytes: unknown): CapacityUnit {
+  const safeBytes = nonNegativeInteger(bytes);
+  return safeBytes !== null && safeBytes > 0 && safeBytes < Number(CAPACITY_BYTES.gb) ? "mb" : "gb";
 }
 
 export function normalizeFileQuotaSettings(values: Record<string, unknown>): FileQuotaSettings | null {
-  const unit: CapacityUnit = values.maximumBytesUnit === "gib" ? "gib" : "bytes";
-  const maximumBytes = capacityBytes(values.maximumBytes, unit);
+  const maximumBytes = nonNegativeInteger(values.maximumBytes);
   const maximumFiles = nonNegativeInteger(values.maximumFiles);
   return maximumBytes === null || maximumFiles === null ? null : { maximumBytes, maximumFiles };
+}
+
+export function maximumSafeCapacity(unit: CapacityUnit): string {
+  const factor = CAPACITY_BYTES[unit];
+  const hundredths = (MAX_SAFE_QUOTA * 100n) / factor;
+  return `${hundredths / 100n}.${(hundredths % 100n).toString().padStart(2, "0")}`;
 }

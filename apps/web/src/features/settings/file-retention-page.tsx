@@ -36,7 +36,7 @@ export function FileRetentionPage({ canWrite }: { canWrite: boolean }) {
     <Form.Item noStyle shouldUpdate={(previous, current) => previous.data?.mode !== current.data?.mode}>
       {({ getFieldValue }) => <>
         <Form.Item name={["data", "retentionDays"]} label={t("fileRetentionDays")} rules={[{ required: true, type: "integer", min: 1, max: 365 }]}>
-          <InputNumber min={1} max={365} precision={0} disabled={getFieldValue(["data", "mode"]) === "MANUAL"} />
+          <InputNumber min={1} max={365} precision={0} disabled={getFieldValue(["data", "mode"]) === "MANUAL"} style={{ width: "100%" }} />
         </Form.Item>
       </>}
     </Form.Item>

@@ -4,7 +4,7 @@ import { messageKeyFor } from "@/platform/api/errors";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Actions, Bubble, Conversations, Prompts, Think, ThoughtChain, type PromptsProps } from "@ant-design/x";
-import { BulbOutlined, CopyOutlined, DeleteOutlined, DownOutlined, EditOutlined, EllipsisOutlined, HistoryOutlined, InboxOutlined, PlusOutlined, ReloadOutlined, RobotOutlined, RollbackOutlined, SearchOutlined, ShareAltOutlined } from "@ant-design/icons";
+import { BulbOutlined, CopyOutlined, DeleteOutlined, DownOutlined, EditOutlined, EllipsisOutlined, HistoryOutlined, InboxOutlined, PlusOutlined, ReloadOutlined, RollbackOutlined, SearchOutlined, ShareAltOutlined } from "@ant-design/icons";
 import { Alert, App, Avatar, Button, Descriptions, Input, Modal, Popover, Space, Spin, Table, Tag, Tooltip, Typography, type MenuProps } from "antd";
 import { api, isRolePreviewReadOnly, mutate } from "@/platform/api/client";
 import { usePreferences } from "@/platform/providers";
@@ -613,7 +613,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
               autoScroll
               role={{
                 user: { placement: "end", avatar: <AccountAvatar /> },
-                assistant: { placement: "start", avatar: <Avatar className="ai-chat-assistant-avatar" icon={<RobotOutlined />} />, footerPlacement: "outer-end" },
+                assistant: { placement: "start", avatar: <Avatar className="ai-chat-assistant-avatar" icon={<svg className="ai-chat-assistant-mark" viewBox="0 0 24 24" role="img" aria-label="AI" focusable="false"><path d="M12 2.5 14.55 9.45 21.5 12 14.55 14.55 12 21.5 9.45 14.55 2.5 12 9.45 9.45 12 2.5Z" fill="currentColor" /></svg>} />, footerPlacement: "outer-end" },
               }}
             />}
           {busy && <Think className="ai-chat-loading" title={t("aiThinking")} loading blink aria-live="polite" />}

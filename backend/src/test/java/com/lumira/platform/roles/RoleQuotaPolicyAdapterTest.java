@@ -7,13 +7,15 @@ import static org.mockito.Mockito.when;
 
 import com.lumira.platform.common.FileQuotaPolicyPort;
 import com.lumira.platform.files.FileQuota;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
 
 class RoleQuotaPolicyAdapterTest {
     private static final long GIB = 1024L * 1024 * 1024;
@@ -109,17 +111,40 @@ class RoleQuotaPolicyAdapterTest {
     }
 
     @Test
-    void zeroFileCountRemainsARejectingLimit() {
+    void positiveFileCountLimitWinsOverUnlimitedRoleAndFallback() {
         var roles = mock(RoleRepository.class);
-        var roleId = UUID.randomUUID();
-        when(roles.quotaLimits(Set.of(roleId)))
-                .thenReturn(List.of(new RoleRepository.QuotaLimit(roleId, true, 0L, 0L)));
+        var unlimitedRole = UUID.randomUUID();
+        var finiteRole = UUID.randomUUID();
+        when(roles.quotaLimits(Set.of(unlimitedRole, finiteRole)))
+                .thenReturn(
+                        List.of(
+                                new RoleRepository.QuotaLimit(unlimitedRole, true, null, 0L),
+                                new RoleRepository.QuotaLimit(finiteRole, true, null, 12L)));
 
         var resolved =
                 new RoleQuotaPolicyAdapter(roles, new FileQuota(GIB, 1_000))
-                        .forRoles(Set.of(roleId));
+                        .forRoles(Set.of(unlimitedRole, finiteRole));
 
-        assertEquals(0, resolved.maximumBytes());
+        assertEquals(GIB, resolved.maximumBytes());
+        assertEquals(12, resolved.maximumFiles());
+    }
+
+    @Test
+    void allZeroFileCountRolesExplicitlyRemoveTheFallbackLimit() {
+        var roles = mock(RoleRepository.class);
+        var firstRole = UUID.randomUUID();
+        var secondRole = UUID.randomUUID();
+        when(roles.quotaLimits(Set.of(firstRole, secondRole)))
+                .thenReturn(
+                        List.of(
+                                new RoleRepository.QuotaLimit(firstRole, true, null, 0L),
+                                new RoleRepository.QuotaLimit(secondRole, true, null, 0L)));
+
+        var resolved =
+                new RoleQuotaPolicyAdapter(roles, new FileQuota(GIB, 1_000))
+                        .forRoles(Set.of(firstRole, secondRole));
+
+        assertEquals(GIB, resolved.maximumBytes());
         assertEquals(0, resolved.maximumFiles());
     }
 

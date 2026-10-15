@@ -5,8 +5,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Byte reservations and file slots include pending uploads and pending physical deletions. A byte
- * limit of zero means there is no aggregate byte ceiling; a file limit of zero still denies every
- * new file slot.
+ * limit of zero means there is no aggregate byte ceiling, and a file limit of zero means there is
+ * no file-count ceiling.
  */
 public record FileQuota(long maximumBytes, long maximumFiles) {
     public FileQuota {
@@ -18,7 +18,7 @@ public record FileQuota(long maximumBytes, long maximumFiles) {
         if (chargedBytes < 0 || fileCount < 0 || reservation < 0)
             throw new IllegalArgumentException("Negative file usage");
         if (reservation > Long.MAX_VALUE - chargedBytes
-                || fileCount >= maximumFiles
+                || (maximumFiles > 0 && fileCount >= maximumFiles)
                 || (maximumBytes > 0
                         && (chargedBytes > maximumBytes
                                 || reservation > maximumBytes - chargedBytes)))

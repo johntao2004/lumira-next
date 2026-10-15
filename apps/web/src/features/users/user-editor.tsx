@@ -22,7 +22,7 @@ import { MAX_PASSWORD_BYTES, defaultPasswordLengthValid } from "@/platform/auth/
 import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 import { ProfileFieldRenderer } from "@/platform/profile-fields/profile-field-renderer";
 import type { DictionarySelection, ProfileFieldDefinition } from "@/platform/profile-fields/types";
-import { formatQuotaBytes, formatQuotaLimitBytes } from "@/platform/i18n/format";
+import { formatQuotaBytes, formatQuotaLimitBytes, formatQuotaLimitCount } from "@/platform/i18n/format";
 import { RoleAssignmentSearch } from "./role-assignment-search";
 import { buildUserEditorSavePlan } from "./user-editor-save-plan";
 
@@ -262,18 +262,20 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
     if (!storageChanged && !countChanged) return true;
     const currentStorageRank = preview.currentMaximumBytes === 0 ? Number.POSITIVE_INFINITY : preview.currentMaximumBytes;
     const proposedStorageRank = preview.proposedMaximumBytes === 0 ? Number.POSITIVE_INFINITY : preview.proposedMaximumBytes;
+    const currentFileCountRank = preview.currentMaximumFiles === 0 ? Number.POSITIVE_INFINITY : preview.currentMaximumFiles;
+    const proposedFileCountRank = preview.proposedMaximumFiles === 0 ? Number.POSITIVE_INFINITY : preview.proposedMaximumFiles;
     const decrease = proposedStorageRank < currentStorageRank
-      || preview.proposedMaximumFiles < preview.currentMaximumFiles;
+      || proposedFileCountRank < currentFileCountRank;
     const increase = proposedStorageRank > currentStorageRank
-      || preview.proposedMaximumFiles > preview.currentMaximumFiles;
+      || proposedFileCountRank > currentFileCountRank;
     const rows = [
       storageChanged && `${t("roleFileStorageLimit")}: ${formatQuotaLimitBytes(preview.currentMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → ${formatQuotaLimitBytes(preview.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}`,
-      countChanged && `${t("roleFileCountLimit")}: ${formatCount(preview.currentMaximumFiles, locale)} → ${formatCount(preview.proposedMaximumFiles, locale)}`,
+      countChanged && `${t("roleFileCountLimit")}: ${formatQuotaLimitCount(preview.currentMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → ${formatQuotaLimitCount(preview.proposedMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}`,
       decrease && t("userQuotaDecreaseConfirm"),
       increase && t("userQuotaIncreaseConfirm"),
     ].filter(Boolean);
     return new Promise<boolean>(resolve => confirm({
-      title: t("userEffectiveQuotaPreview", { storage: formatQuotaLimitBytes(preview.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}), files: formatCount(preview.proposedMaximumFiles, locale) }),
+      title: t("userEffectiveQuotaPreview", { storage: formatQuotaLimitBytes(preview.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}), files: formatQuotaLimitCount(preview.proposedMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) }),
       content: <div className="flex flex-col gap-2">{rows.map((row, index) => <Typography.Paragraph key={index} className="mb-0">{row}</Typography.Paragraph>)}</div>,
       okText: t("confirm"),
       cancelText: t("cancel"),
@@ -341,7 +343,7 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
     </Form> : detail.error ? <QueryFailure title={t("unavailable")} pending={detail.isFetching} onRetry={() => void detail.refetch()} /> : !detail.data || detail.isFetching ? <Spin /> : <>
       {versionMismatch && <Alert className="mb-4" type="warning" showIcon message={t("staleRecord")} action={<Button size="small" loading={refreshingSnapshots} disabled={pending} onClick={() => void retrySnapshots()}>{t("refreshPage")}</Button>} />}
       {(detail.data.fileQuotaBytesOverride !== null || detail.data.fileQuotaFilesOverride !== null)
-        && <Alert className="mb-4" type="warning" showIcon message={t("userLegacyQuotaWarning")} description={`${t("legacyQuotaRoleLabel")}: ${detail.data.fileQuotaBytesOverride === null ? t("roleQuotaInherit") : formatQuotaBytes(detail.data.fileQuotaBytesOverride, locale)} · ${detail.data.fileQuotaFilesOverride === null ? t("roleQuotaInherit") : formatCount(detail.data.fileQuotaFilesOverride, locale)}`} />}
+        && <Alert className="mb-4" type="warning" showIcon message={t("userLegacyQuotaWarning")} description={`${t("legacyQuotaRoleLabel")}: ${formatQuotaLimitBytes(detail.data.fileQuotaBytesOverride,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} · ${formatQuotaLimitCount(detail.data.fileQuotaFilesOverride,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}`} />}
       <Form key={detail.data.id} name="user-editor" id="user-editor" form={form} layout="vertical" initialValues={{ username: detail.data.username, displayName: detail.data.displayName, enabled: detail.data.enabled }} onValuesChange={() => setFormRevision(value => value + 1)} onFinish={onFinish}>
         <Tabs anchor="user-editor" items={[
           ...(canUpdate ? [{ key: "profile", label: t("userBasicInformation"), children: <>
@@ -367,15 +369,15 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
                 rowSelection={{ columnWidth: 40, selectedRowKeys: selectedRoleIds, preserveSelectedRowKeys: true, onChange: keys => setRoleSelection(keys.map(String)), getCheckboxProps: role => ({ disabled: pending || committed || !canAssignRoles || !role.assignable }) }}
                 columns={[{ title: t("roleCode"), dataIndex: "code", width: 104, ellipsis: { showTitle: true }, search: true }, { title: t("name"), dataIndex: "name", width: 120, ellipsis: { showTitle: true }, search: true },
                   { title: t("roleFileStorageLimit"), dataIndex: "fileQuotaBytesLimit", width: 152, search: false, render: (_, role) => formatQuotaLimitBytes(role.fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) },
-                  { title: t("roleFileCountLimit"), dataIndex: "fileQuotaFilesLimit", width: 152, search: false, render: (_, role) => role.fileQuotaFilesLimit === null ? t("roleQuotaInherit") : formatCount(role.fileQuotaFilesLimit, locale) },
+                  { title: t("roleFileCountLimit"), dataIndex: "fileQuotaFilesLimit", width: 152, search: false, render: (_, role) => formatQuotaLimitCount(role.fileQuotaFilesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) },
                   { title: t("status"), dataIndex: "enabled", width: 72, search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, role) => <Tag color={role.enabled ? "success" : "default"}>{t(role.enabled ? "enabled" : "disabled")}</Tag> }]}
               />
               {quotaPreview.error ? <QueryFailure title={t("unavailable")} pending={quotaPreview.isFetching} onRetry={() => void quotaPreview.refetch()} /> : !quotaPreview.data || quotaPreview.isFetching ? <Spin /> : <div className="mt-4 flex flex-col gap-4">
-                <Typography.Text strong>{t("userEffectiveQuotaPreview", { storage: formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}), files: formatCount(quotaPreview.data.proposedMaximumFiles, locale) })}</Typography.Text>
-                <Typography.Text type="secondary">{t("roleFileStorageLimit")}: {formatQuotaLimitBytes(quotaPreview.data.currentMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → {formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} · {t("roleFileCountLimit")}: {formatCount(quotaPreview.data.currentMaximumFiles, locale)} → {formatCount(quotaPreview.data.proposedMaximumFiles, locale)}</Typography.Text>
+                <Typography.Text strong>{t("userEffectiveQuotaPreview", { storage: formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}), files: formatQuotaLimitCount(quotaPreview.data.proposedMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) })}</Typography.Text>
+                <Typography.Text type="secondary">{t("roleFileStorageLimit")}: {formatQuotaLimitBytes(quotaPreview.data.currentMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → {formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} · {t("roleFileCountLimit")}: {formatQuotaLimitCount(quotaPreview.data.currentMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → {formatQuotaLimitCount(quotaPreview.data.proposedMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}</Typography.Text>
                 <div className="grid gap-4 md:grid-cols-2">
                   <CapacityMeter label={t("fileStorageUsage")} used={quotaPreview.data.chargedBytes} limit={quotaPreview.data.proposedMaximumBytes} format={value => formatQuotaBytes(value, locale)} unlimitedWhenZero unlimitedLabel={t("roleQuotaUnlimited")} />
-                  <CapacityMeter label={t("fileCountUsage")} used={quotaPreview.data.fileCount} limit={quotaPreview.data.proposedMaximumFiles} format={value => formatCount(value, locale)} />
+                  <CapacityMeter label={t("fileCountUsage")} used={quotaPreview.data.fileCount} limit={quotaPreview.data.proposedMaximumFiles} format={value => formatCount(value, locale)} unlimitedWhenZero unlimitedLabel={t("roleQuotaUnlimited")} />
                 </div>
                 <Typography.Paragraph type="secondary" className="mb-0">{t("roleQuotaImpactHint")}</Typography.Paragraph>
               </div>}

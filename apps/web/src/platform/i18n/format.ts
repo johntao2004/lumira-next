@@ -46,3 +46,14 @@ export function formatQuotaLimitBytes(
   if (bytes === 0) return labels.unlimited;
   return formatQuotaBytes(bytes, locale);
 }
+
+/** Format role/effective file-count limits, where 0 is unlimited and null inherits. */
+export function formatQuotaLimitCount(
+  files: number | null,
+  locale: string,
+  labels: { unlimited: string; inherited: string },
+): string {
+  if (files === null) return labels.inherited;
+  if (files === 0) return labels.unlimited;
+  return new Intl.NumberFormat(locale).format(files);
+}

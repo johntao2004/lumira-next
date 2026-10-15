@@ -7,7 +7,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 class FileQuotaTest {
     @Test
-    void exactByteBoundaryAndCountSlots() {
+    void exactByteBoundaryAndFiniteFileSlots() {
         var quota = new FileQuota(100, 2);
         assertDoesNotThrow(() -> quota.requireCapacity(90, 1, 10));
         assertThrows(ResponseStatusException.class, () -> quota.requireCapacity(90, 1, 11));
@@ -23,20 +23,17 @@ class FileQuotaTest {
         assertThrows(
                 ResponseStatusException.class,
                 () -> new FileQuota(Long.MAX_VALUE, 2).requireCapacity(Long.MAX_VALUE - 1, 0, 2));
-        assertThrows(
-                ResponseStatusException.class,
-                () -> new FileQuota(100, 0).requireCapacity(0, 0, 0));
     }
 
     @Test
-    void zeroByteLimitIsUnlimitedWithoutChangingFileCountLimit() {
+    void zeroByteAndFileLimitsAreUnlimitedWhileOverflowStillFails() {
         var unlimited = new FileQuota(0, 2);
         assertDoesNotThrow(() -> unlimited.requireCapacity(Long.MAX_VALUE, 1, 0));
         assertThrows(
                 ResponseStatusException.class,
                 () -> unlimited.requireCapacity(Long.MAX_VALUE - 10, 1, 11));
-        assertThrows(
-                ResponseStatusException.class, () -> new FileQuota(0, 0).requireCapacity(0, 0, 0));
+        assertDoesNotThrow(
+                () -> new FileQuota(0, 0).requireCapacity(Long.MAX_VALUE, Long.MAX_VALUE, 0));
     }
 
     @Test

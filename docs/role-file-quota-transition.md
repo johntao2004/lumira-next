@@ -45,13 +45,12 @@ role. Role reads and writes continue to enforce role permissions and user data s
 
 ## Effective quota rules
 
-Enabled assigned role limits combine independently for bytes and file count. For bytes,
-positive values combine by minimum. A `0` role limit means unlimited; it does not weaken a
-positive limit on another active role. If no active role sets a positive byte limit but at
-least one sets `0`, the effective byte limit is unlimited. A null value adds no role policy;
-the system default applies only when every active role leaves that dimension null. File-count
-limits combine by minimum, and `0` rejects new files. Role limits may exceed the system
-default.
+Enabled assigned role limits combine independently for bytes and file count. For either
+dimension, positive values combine by minimum. A `0` role limit means unlimited; it does not
+weaken a positive limit on another active role. If no active role sets a positive limit but at
+least one sets `0`, that effective dimension is unlimited. A null value adds no role policy;
+the system default applies only when every active role leaves that dimension null. Role limits
+may exceed the system default.
 
 The system fallback uses `LUMIRA_FILES_DEFAULT_BYTES` and
 `LUMIRA_FILES_DEFAULT_COUNT`; the existing `LUMIRA_FILES_MAXIMUM_BYTES` and
@@ -91,9 +90,9 @@ does not replace page access. Each successful update is recorded in setting hist
 
 Quota resolution reads the saved system defaults for dimensions that no enabled assigned role
 limits. A system byte value of `0` removes the aggregate byte ceiling; a system file-count value
-of `0` blocks new file slots. Usage reads and upload reservations use the updated defaults
-immediately. Lowering a limit does not remove existing files; uploads remain blocked while
-current usage exceeds either finite limit.
+of `0` removes the aggregate file-count ceiling. Usage reads and upload reservations use the
+updated defaults immediately. Lowering a limit does not remove existing files; uploads remain
+blocked while current usage exceeds a finite limit.
 
 ## Operational checks
 

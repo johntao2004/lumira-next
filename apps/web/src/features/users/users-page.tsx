@@ -19,7 +19,7 @@ import { listRequestParams } from "@/platform/api/pagination";
 import { useFragmentParams } from "@/platform/routing/use-tab-anchor";
 import { QueryFailure } from "@/platform/components/query-failure";
 import { PlatformDrawer } from "@/platform/components/platform-drawer";
-import { formatQuotaBytes, formatQuotaLimitBytes } from "@/platform/i18n/format";
+import { formatQuotaLimitBytes, formatQuotaLimitCount } from "@/platform/i18n/format";
 
 import { UserEditor } from "./user-editor";
 import { UserDetails } from "./user-details";
@@ -118,7 +118,7 @@ export function UsersPage({ canCreate, canUpdate, canDelete, canResetPassword, c
     { title: t("name"), dataIndex: "displayName", search: true },
     { title: t("status"), dataIndex: "enabled", search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
     { title: t("legacyQuotaRoleLabel"), search: false, render: (_, row) => row.fileQuotaBytesOverride !== null || row.fileQuotaFilesOverride !== null
-      ? <Tooltip title={`${row.fileQuotaBytesOverride === null ? t("roleQuotaInherit") : formatQuotaBytes(row.fileQuotaBytesOverride, locale)} · ${row.fileQuotaFilesOverride === null ? t("roleQuotaInherit") : new Intl.NumberFormat(locale).format(row.fileQuotaFilesOverride)}`}><Tag color="warning">{t("legacyQuotaRoleLabel")}</Tag></Tooltip>
+      ? <Tooltip title={`${formatQuotaLimitBytes(row.fileQuotaBytesOverride,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} · ${formatQuotaLimitCount(row.fileQuotaFilesOverride,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}`}><Tag color="warning">{t("legacyQuotaRoleLabel")}</Tag></Tooltip>
       : <Typography.Text type="secondary">—</Typography.Text> },
     { title: t("actions"), key: "actions", search: false, render: (_: unknown, row: UserSummary) => <TableActions wrap><Button type="link" onClick={() => setDetailUser(row)}>{t("details")}</Button>{canEdit && <Button type="link" onClick={() => setEditing(row)}>{t(canViewRolesOnly ? "permissionReadRoles" : "edit")}</Button>}{effectiveCanResetPassword && row.username !== currentUser?.username && <ResetPasswordAction user={row} onStale={async () => { await query.refetch(); }} onReset={async () => { await Promise.all([query.refetch(), client.invalidateQueries({ queryKey: ["online-users"] })]); }} />}{effectiveCanDelete && row.username !== currentUser?.username && <DeleteAction name={row.displayName} actionLabel={t("deleteRecord")} confirmation={t("deleteUserConfirm", { name: row.displayName })} onDelete={async () => { await mutate(`/platform/users/${row.id}?version=${row.version}`, "DELETE", {}); setDetailUser(current => current?.id === row.id ? null : current); await Promise.all([client.invalidateQueries({ queryKey: ["users"] }), client.invalidateQueries({ queryKey: ["online-users"] })]); }} />}</TableActions> },
   ]} />

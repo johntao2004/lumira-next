@@ -3,17 +3,19 @@ package com.lumira.platform.roles;
 import com.lumira.platform.common.FileQuotaDefaultsPort;
 import com.lumira.platform.common.FileQuotaPolicyPort;
 import com.lumira.platform.files.FileQuota;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.UUID;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.UUID;
+
 /**
  * Resolves each quota dimension from enabled roles, using system settings only as a fallback.
- * Positive byte limits combine by minimum; a zero byte limit is unlimited.
+ * Positive limits combine by minimum; a zero limit is unlimited.
  */
 @Service
 public class RoleQuotaPolicyAdapter implements FileQuotaPolicyPort {
@@ -55,19 +57,26 @@ public class RoleQuotaPolicyAdapter implements FileQuotaPolicyPort {
         Long roleMaximumBytes = null;
         boolean hasUnlimitedByteRole = false;
         Long roleMaximumFiles = null;
+        boolean hasUnlimitedFileRole = false;
         for (var row : rows) {
             if (!row.enabled()) continue;
             if (row.bytes() != null) {
                 if (row.bytes() == 0) hasUnlimitedByteRole = true;
                 else roleMaximumBytes = minimum(roleMaximumBytes, row.bytes());
             }
-            if (row.files() != null) roleMaximumFiles = minimum(roleMaximumFiles, row.files());
+            if (row.files() != null) {
+                if (row.files() == 0) hasUnlimitedFileRole = true;
+                else roleMaximumFiles = minimum(roleMaximumFiles, row.files());
+            }
         }
         long maximumBytes =
                 roleMaximumBytes != null
                         ? roleMaximumBytes
                         : hasUnlimitedByteRole ? 0 : fallback.maximumBytes();
-        long maximumFiles = roleMaximumFiles == null ? fallback.maximumFiles() : roleMaximumFiles;
+        long maximumFiles =
+                roleMaximumFiles != null
+                        ? roleMaximumFiles
+                        : hasUnlimitedFileRole ? 0 : fallback.maximumFiles();
         return new Limits(maximumBytes, maximumFiles);
     }
 

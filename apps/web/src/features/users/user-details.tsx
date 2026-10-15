@@ -6,7 +6,7 @@ import { api } from "@/platform/api/client";
 import type { UserSummary } from "@/platform/directory/api-types";
 import { usePreferences } from "@/platform/providers";
 import { profileFieldRuns, type ProfileFieldDefinition } from "@/platform/profile-fields/types";
-import { formatQuotaBytes } from "@/platform/i18n/format";
+import { formatQuotaLimitBytes, formatQuotaLimitCount } from "@/platform/i18n/format";
 
 import type { ProfileValuesSnapshot } from "./user-editor";
 
@@ -68,8 +68,8 @@ export function UserDetails({ user }: { user: UserSummary }) {
 
     {visibleDetail && <section className="min-w-0">
       <Descriptions size="small" title={t("legacyQuotaRoleLabel")} bordered column={1} items={[
-        { key: "fileQuotaBytesOverride", label: t("fileQuotaStorageLimit"), children: <DisplayValue value={visibleDetail?.fileQuotaBytesOverride === null || visibleDetail?.fileQuotaBytesOverride === undefined ? t("roleQuotaInherit") : formatQuotaBytes(visibleDetail.fileQuotaBytesOverride, locale)} /> },
-        { key: "fileQuotaFilesOverride", label: t("fileQuotaFileCountLimit"), children: <DisplayValue value={visibleDetail?.fileQuotaFilesOverride === null || visibleDetail?.fileQuotaFilesOverride === undefined ? t("roleQuotaInherit") : new Intl.NumberFormat(locale).format(visibleDetail.fileQuotaFilesOverride)} /> },
+        { key: "fileQuotaBytesOverride", label: t("fileQuotaStorageLimit"), children: <DisplayValue value={formatQuotaLimitBytes(visibleDetail.fileQuotaBytesOverride ?? null,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} /> },
+        { key: "fileQuotaFilesOverride", label: t("fileQuotaFileCountLimit"), children: <DisplayValue value={formatQuotaLimitCount(visibleDetail.fileQuotaFilesOverride ?? null,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} /> },
       ]} />
     </section>}
 
