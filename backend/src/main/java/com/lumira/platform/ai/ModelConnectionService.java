@@ -152,7 +152,8 @@ public class ModelConnectionService {
             }
         }
         return new ConnectionResult(
-                models, models.stream().anyMatch(model -> model.id().equals(provider.modelName())));
+                models,
+                models.stream().anyMatch(model -> provider.modelNames().contains(model.id())));
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

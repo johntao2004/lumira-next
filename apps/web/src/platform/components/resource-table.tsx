@@ -124,7 +124,7 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
     ));
     searchFormRef.current?.setFieldsValue(clearedValues);
   };
-  return <div className="resource-table" ref={tableRef} data-search-span={searchSpan}>
+  return <div className={embedded ? "resource-table resource-table--embedded" : "resource-table"} ref={tableRef} data-search-span={searchSpan}>
     <FeedbackBubble content={error ? t(error instanceof ApiError && error.status === 403 ? "forbidden" : "unavailable") : undefined}/>
     <ProTable<T>
       className="resource-data"

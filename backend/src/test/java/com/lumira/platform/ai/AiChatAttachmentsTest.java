@@ -67,6 +67,27 @@ class AiChatAttachmentsTest {
     }
 
     @Test
+    void unconfiguredModelIsRejectedBeforeReadingAttachmentsOrCallingProvider() {
+        var attachmentId = UUID.randomUUID();
+        var messages =
+                List.of(
+                        new AiAssistantService.ChatMessage(
+                                "user", "Summarize this file", List.of(attachmentId)));
+        input(messages);
+        var unconfigured =
+                new AiAssistantService.ChatRequest(provider.id(), "unconfigured-model", messages);
+
+        ResponseStatusException failure =
+                assertThrows(
+                        ResponseStatusException.class, () -> service.chat(unconfigured, "actor"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, failure.getStatusCode());
+        assertEquals("invalidAiChat", failure.getReason());
+        verifyNoInteractions(attachments);
+        verify(connections, never()).chat(any(), anyString(), anyList(), anyList());
+    }
+
+    @Test
     void textAttachmentIsExtractedServerSideAndScannedBeforeModelCall() {
         var id = UUID.randomUUID();
         when(attachments.read("actor", id))

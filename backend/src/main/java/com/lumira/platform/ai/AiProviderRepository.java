@@ -20,6 +20,14 @@ public class AiProviderRepository {
         public ConsoleProfile {
             capabilityCodes = List.copyOf(capabilityCodes);
         }
+
+        public List<String> modelNames() {
+            return AiProviderProfile.decodeModelNames(modelName);
+        }
+
+        public String modelName() {
+            return modelNames().stream().findFirst().orElse("");
+        }
     }
 
     private static final TypeReference<List<String>> STRINGS = new TypeReference<>() {};
@@ -122,7 +130,7 @@ public class AiProviderRepository {
                 .param("name", profile.name())
                 .param("kind", profile.providerKind().name())
                 .param("baseUrl", profile.baseUrl())
-                .param("model", profile.modelName())
+                .param("model", profile.encodedModelNames())
                 .param("capabilities", capabilitiesJson)
                 .param("enabled", profile.enabled())
                 .param("actor", actor)
@@ -140,7 +148,7 @@ public class AiProviderRepository {
                 .param("name", profile.name())
                 .param("kind", profile.providerKind().name())
                 .param("baseUrl", profile.baseUrl())
-                .param("model", profile.modelName())
+                .param("model", profile.encodedModelNames())
                 .param("capabilities", capabilitiesJson)
                 .param("enabled", profile.enabled())
                 .param("actor", actor)

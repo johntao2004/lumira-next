@@ -11,7 +11,7 @@ import { usePreferences } from "../providers";
 import type { MessageKey } from "../i18n/messages";
 import { FeedbackBubble } from "./feedback-bubble";
 import { QueryFailure } from "./query-failure";
-import { tableActionColumn } from "./table-actions";
+import { TableActions, tableActionColumn } from "./table-actions";
 import { DEFAULT_TABLE_PAGE_SIZE, listRequestParams, TABLE_PAGE_SIZE_OPTIONS, type PageResult } from "../api/pagination";
 import { formatDateTime } from "../i18n/format";
 import { useSubmitAction } from "../forms/use-submit-action";
@@ -233,7 +233,7 @@ function SettingsSecondaryActions<T extends object>({ section, snapshot, canWrit
       return date && !Number.isNaN(date.valueOf()) ? <time dateTime={date.toISOString()}>{formatDateTime(date, locale)}</time> : "—";
     } },
     { title: t("settingSourceVersion"), dataIndex: "sourceVersion", width: 120, render: value => value ?? "—" },
-    { title: t("actions"), key: "actions", ...tableActionColumn, render: (_value, row) => <Button type="link" disabled={pending} onClick={() => openRevision(row)}>{t("details")}</Button> },
+    { title: t("actions"), key: "actions", ...tableActionColumn, render: (_value, row) => <TableActions><Button type="link" disabled={pending} onClick={() => openRevision(row)}>{t("details")}</Button></TableActions> },
   ];
 
   return <>

@@ -7,14 +7,12 @@ import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.ProfileRepository;
-
+import java.io.*;
+import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.*;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.io.*;
-import java.util.*;
 
 class FileServiceTest {
     private FileRepository.Entry entry(UUID id, UUID owner, String state, long version) {

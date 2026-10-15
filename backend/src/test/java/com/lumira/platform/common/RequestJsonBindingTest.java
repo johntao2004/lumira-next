@@ -124,6 +124,27 @@ class RequestJsonBindingTest {
     }
 
     @Test
+    void bindsOrderedModelNamesAndKeepsLegacySingleModelRequestsCompatible() throws Exception {
+        mvc.perform(
+                        post("/binding/provider")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"name\":\"Provider\",\"providerKind\":\"OPENAI\",\"modelName\":\"gpt-default\",\"modelNames\":[\"gpt-default\",\"gpt-fallback\"],\"enabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("modelName").value("gpt-default"))
+                .andExpect(jsonPath("modelNames[0]").value("gpt-default"))
+                .andExpect(jsonPath("modelNames[1]").value("gpt-fallback"));
+        mvc.perform(
+                        post("/binding/provider")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"name\":\"Legacy provider\",\"providerKind\":\"OPENAI\",\"modelName\":\"legacy-model\",\"enabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("modelName").value("legacy-model"));
+        assertEquals(2, controller.writes.get());
+    }
+
+    @Test
     void preservesSharedMapperCompatibilityAndOriginalResponseConverter() {
         assertEquals(
                 Map.of("value", "123"),

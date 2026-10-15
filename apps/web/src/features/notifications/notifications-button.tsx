@@ -40,9 +40,9 @@ export function NotificationsButton() {
   const inbox = <>
     <div className="notification-inbox">
     {list.isPending ? <Flex align="center" justify="center" style={{ padding: 24 }}><Spin /></Flex> : list.error ? <Typography.Text type="secondary">{t(list.error instanceof ApiError && list.error.status === 403 ? "forbidden" : "unavailable")}</Typography.Text> : !list.data?.items.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noNotifications")} /> : <Listy items={list.data.items} rowKey="id" virtual={false} itemRender={(entry) => {
-      return <Flex align="center" justify="space-between" gap="middle">
+      return <Flex align="flex-start" justify="space-between" gap="middle">
         <Flex flex={1} align="flex-start" gap="small" style={{ minWidth: 0 }}>
-          <Badge dot={!entry.read} style={{ flexShrink: 0 }}><BellOutlined /></Badge>
+          <Badge className="notification-leading-icon" dot={!entry.read}><BellOutlined /></Badge>
           <NotificationEntryContent entry={{ ...entry, href: safeNotificationHref(entry.href) }} onNavigate={() => { if (!entry.read) markReadIfAllowed(entry.id); setOpen(false); }} />
         </Flex>
         {!previewReadOnly && !entry.read && <Button type="link" size="small" style={{ flexShrink: 0 }} disabled={markRead.isPending} onClick={() => markReadIfAllowed(entry.id)}>{t("notificationMarkRead")}</Button>}

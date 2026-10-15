@@ -44,7 +44,7 @@ class AiAssistantToolCallingTest {
                     "DeepSeek",
                     ProviderKind.DEEPSEEK,
                     "https://api.deepseek.com",
-                    "deepseek-flash",
+                    "deepseek-flash,deepseek-v4-pro,deepseek-chat",
                     List.of("VISION"),
                     true,
                     1);
@@ -272,13 +272,14 @@ class AiAssistantToolCallingTest {
     }
 
     @Test
-    void unknownSelectedModelCannotInheritToolsOrExecuteInventedCall() {
-        reply("users_search", "{\"search\":\"fixture\"}");
-        var result = service.chat(request("unknown-model"), "actor");
-        assertNull(result.users());
-        assertEquals("TOOL_VALIDATION", result.steps().getLast().code());
-        verify(connections).chat(eq(provider), eq("unknown-model"), anyList(), eq(List.of()));
-        verifyNoInteractions(users, actions);
+    void unconfiguredSelectedModelIsRejectedBeforeAnyProviderCall() {
+        var failure =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> service.chat(request("unknown-model"), "actor"));
+        assertEquals(HttpStatus.BAD_REQUEST, failure.getStatusCode());
+        assertEquals("invalidAiChat", failure.getReason());
+        verifyNoInteractions(connections, users, actions);
         var unknown =
                 new AiProviderProfile(
                         provider.id(),
@@ -448,7 +449,7 @@ class AiAssistantToolCallingTest {
     @Test
     void selectedModelWithoutToolContractCannotExecuteABatch() {
         batch(search("first", "{}"), search("second", "{}"));
-        var result = service.chat(request("unknown-model"), "actor");
+        var result = service.chat(request("deepseek-chat"), "actor");
         assertEquals("error", result.steps().getLast().status());
         verifyNoInteractions(users, actions);
     }

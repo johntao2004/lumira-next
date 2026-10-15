@@ -109,6 +109,75 @@ class AiProviderCredentialBindingTest {
     }
 
     @Test
+    void updatePersistsOrderedModelIdsWithinTheLegacyColumnAndReturnsBothFields() {
+        var fixture = fixture(provider(ProviderKind.OPENAI, OPENAI_ORIGIN), true, 7);
+        var input =
+                new AiProviderService.ProviderWrite(
+                        "Updated name",
+                        ProviderKind.OPENAI,
+                        OPENAI_ORIGIN,
+                        "gpt-default",
+                        List.of("gpt-default", "gpt-fallback"),
+                        List.of("CHAT"),
+                        true,
+                        3L,
+                        null);
+        var updated =
+                new AiProviderProfile(
+                        PROVIDER_ID,
+                        "Updated name",
+                        ProviderKind.OPENAI,
+                        OPENAI_ORIGIN,
+                        "gpt-default,gpt-fallback",
+                        List.of("CHAT"),
+                        true,
+                        4);
+        when(fixture.repository().update(any(), anyString(), eq(ACTOR))).thenReturn(1);
+        when(fixture.repository().find(PROVIDER_ID))
+                .thenReturn(Optional.of(provider(ProviderKind.OPENAI, OPENAI_ORIGIN)))
+                .thenReturn(Optional.of(updated));
+
+        var result = fixture.service().update(PROVIDER_ID, input, ACTOR);
+
+        var saved = ArgumentCaptor.forClass(AiProviderProfile.class);
+        verify(fixture.repository()).update(saved.capture(), anyString(), eq(ACTOR));
+        assertEquals("gpt-default,gpt-fallback", saved.getValue().encodedModelNames());
+        assertEquals(List.of("gpt-default", "gpt-fallback"), saved.getValue().modelNames());
+        assertEquals("gpt-default", result.modelName());
+        assertEquals(List.of("gpt-default", "gpt-fallback"), result.modelNames());
+    }
+
+    @Test
+    void updateRejectsDuplicateOrOverlongEncodedModelSelectionsBeforePersistence() {
+        for (List<String> models :
+                List.of(
+                        List.of("gpt-default", "gpt-default"),
+                        List.of("a".repeat(128), "b".repeat(127), "c"))) {
+            var fixture = fixture(provider(ProviderKind.OPENAI, OPENAI_ORIGIN), true, 7);
+            var input =
+                    new AiProviderService.ProviderWrite(
+                            "Updated name",
+                            ProviderKind.OPENAI,
+                            OPENAI_ORIGIN,
+                            models.getFirst(),
+                            models,
+                            List.of("CHAT"),
+                            true,
+                            3L,
+                            null);
+
+            ResponseStatusException failure =
+                    assertThrows(
+                            ResponseStatusException.class,
+                            () -> fixture.service().update(PROVIDER_ID, input, ACTOR));
+
+            assertEquals(HttpStatus.BAD_REQUEST, failure.getStatusCode());
+            assertEquals("invalidAiProvider", failure.getReason());
+            verify(fixture.repository(), never()).update(any(), anyString(), anyString());
+        }
+    }
+
+    @Test
     void updateRejectsClearingCredentialForCredentialRequiredProviderBeforePersistence() {
         var fixture = fixture(provider(ProviderKind.OPENAI, OPENAI_ORIGIN), true, 7);
         var input =

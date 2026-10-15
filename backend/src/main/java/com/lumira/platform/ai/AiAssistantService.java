@@ -146,7 +146,8 @@ public class AiAssistantService {
                 input.modelName() == null ? provider.modelName() : input.modelName().strip();
         if (modelName.isEmpty()
                 || modelName.length() > 256
-                || !modelName.matches("[A-Za-z0-9_.:/-]{1,256}")) invalidChat();
+                || !modelName.matches("[A-Za-z0-9_.:/-]{1,256}")
+                || !provider.modelNames().contains(modelName)) invalidChat();
         List<ChatMessage> history = input.messages() == null ? List.of() : input.messages();
         if (history.isEmpty() || history.size() > 20) invalidChat();
         var modelMessages = new ArrayList<Map<String, Object>>();

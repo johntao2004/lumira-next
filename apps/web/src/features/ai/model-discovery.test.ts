@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { discoveryErrorKey, modelSelectionIsValid, selectDiscoveredModel } from "./model-discovery.ts";
+import { discoveryErrorKey, modelNamesAfterManualEdit, modelNamesForSave, modelSelectionIsValid, selectDiscoveredModel, selectDiscoveredModels } from "./model-discovery.ts";
 import type { ModelOption } from "./types.ts";
 
 const option = (id: string): ModelOption => ({ id, name: id, inputModalities: [], outputModalities: [] });
@@ -14,6 +14,28 @@ test("does not invent a model ID for empty or ambiguous results", () => {
   assert.equal(selectDiscoveredModel([]), undefined);
   assert.equal(selectDiscoveredModel([option("a"), option("b")]), undefined);
   assert.equal(selectDiscoveredModel([option("a")], "stale"), "a");
+});
+
+test("preserves ordered selections and falls back to the first discovery result", () => {
+  const models = [option("a"), option("b"), option("c")];
+  assert.deepEqual(selectDiscoveredModels(models, ["c", "a", "missing", "c"]), ["c", "a"]);
+  assert.deepEqual(selectDiscoveredModels(models, ["missing"]), ["a"]);
+  assert.deepEqual(selectDiscoveredModels([], ["saved"]), []);
+});
+
+test("manual editors keep configured fallbacks when changing the default model", () => {
+  assert.deepEqual(modelNamesAfterManualEdit(["default", "fallback"], "default"), ["default", "fallback"]);
+  assert.deepEqual(modelNamesAfterManualEdit(["default", "fallback"], "  replacement  "), ["replacement", "fallback"]);
+  assert.deepEqual(modelNamesAfterManualEdit(["default", "fallback"], "fallback"), ["fallback", "default"]);
+  assert.deepEqual(modelNamesAfterManualEdit(["default", "fallback", "fallback"], "default"), ["default", "fallback"]);
+  assert.deepEqual(modelNamesAfterManualEdit([], "new-model"), ["new-model"]);
+  assert.deepEqual(modelNamesAfterManualEdit(["default", "fallback"], " "), []);
+});
+
+test("save uses the visible manual default when discovery controls are unavailable", () => {
+  assert.deepEqual(modelNamesForSave(false, ["default", "fallback"], [], "replacement"), ["replacement", "fallback"]);
+  assert.deepEqual(modelNamesForSave(false, ["default", "fallback"], ["stale"], "fallback"), ["fallback", "default"]);
+  assert.deepEqual(modelNamesForSave(true, ["saved"], ["discovered", "fallback"], "ignored"), ["discovered", "fallback"]);
 });
 
 test("allows an unchanged saved model after reopening, but requires fresh discovery after connection changes", () => {

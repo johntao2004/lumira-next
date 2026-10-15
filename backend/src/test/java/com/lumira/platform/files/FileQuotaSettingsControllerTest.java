@@ -7,13 +7,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
-
 import tools.jackson.databind.ObjectMapper;
-
-import java.util.List;
 
 class FileQuotaSettingsControllerTest {
     private final ObjectMapper mapper = new ObjectMapper();

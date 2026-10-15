@@ -2,6 +2,8 @@
 
 与旧系统并行开发的独立底座。前端 8010，后端 8090，数据库 lumira_next；旧前端 8000 与旧后端不受影响。
 
+新克隆仍由 `scripts/init-local.mjs` 生成默认 `.runtime/local.json` 并使用 `lumira_next`；历史本地配置不会被自动发现或合并。接管已运行服务后，使用 canonical 配置和运行时 pin，并按[本地启动与插件清单换库护栏](docs/database-initialization.md#本地启动与换库插件清单护栏)检查启动和数据库切换。启动、状态和停止入口分别是 `node scripts/start.mjs`、`node scripts/status.mjs`、`node scripts/stop.mjs`。
+
 换电脑后的分支构建、本地配置和重复验收步骤见[跨机器测试说明](docs/cross-machine-testing.md)。
 
 ## 技术基线

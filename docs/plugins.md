@@ -77,6 +77,18 @@ MFA `1.0.9` 的 `V7` 可处理插件自身已有的旧 `mfa:read`/`mfa:manage` �
 
 首次部署插件运行时前按项目备份流程保存数据库。先运行 `pnpm plugins:build`，确保需启用的插件包已构建，再启动平台。生产应保存持久的 `.runtime/plugins/` 制品、数据库与对应宿主 SDK；不能只复制插件源码替代运行制品。
 
+### 本地启动与换库插件清单
+
+本地服务只读取 `.runtime/local.json` 这一份 canonical 配置；历史配置文件不会被自动发现或合并。`LUMIRA_DB_URL` 必须明确指向 loopback 上的 `lumira_*` 数据库，`LUMIRA_PLUGINS_PATH` 指向该服务自己的插件运行目录。数据库地址、角色和密码保存在本机运行时配置中，不硬编码进仓库；密码只通过 `PGPASSWORD` 环境传给 PostgreSQL 客户端，不放入命令行参数。
+
+首次接管由 `node scripts/local-runtime.mjs adopt --pid <PID>` 捕获固定清单 `.runtime/local-plugin-inventory.json`；有意完成插件安装、版本升级或启停后，先检查预期状态，再显式运行 `pnpm plugin-inventory:capture`。捕获会只读查询 B52 数据库，记录数据库身份和每个制品的 ID、版本、归档摘要、manifest 摘要、安装状态、显式安装状态和模块启用状态；同时校验运行目录中的制品目录、数据库与磁盘 manifest、JAR 及 manifest 中登记的每个文件摘要。清单缺失、表缺失、空制品清单、数据库不可达或任何制品校验失败都会拒绝捕获。若现有清单发生变化，捕获还需要明确理由，例如 `node scripts/local-runtime.mjs capture --accept-changes "批准升级头像插件"`，并会先备份旧清单；数据库 endpoint、名称、OID 或角色变化不能用 capture 重新认领，必须切库。
+
+本地启动在启动 Java 前和服务 readiness 后都会调用同一固定清单的校验。普通校验不会写库或自动补装插件；数据库身份、插件版本/摘要、installed、explicitInstall 或 enabled 与清单不一致时都会失败关闭。确认某项变化确为预期后，带非空原因重新执行显式 capture，不能靠删除清单绕过检查。
+
+换库前先停止服务并确保源、目标数据库没有其他客户端连接。执行清单查询的数据库角色需要 `pg_read_all_stats` 可见性；无法确认所有角色的连接状态时会拒绝切换。用 `node scripts/local-runtime.mjs switch --target-config <目标配置>` 验证当前源库仍符合 pin、目标是不同数据库、源与目标插件清单逐项相同且两侧运行制品完整；流程会串行化启动、配置接管和其他本地 runtime 更新，然后逐个原子写入 canonical 配置、pin 和固定清单，写后复核。发生异常时会逐个尝试恢复所有原文件并报告恢复失败项。多文件更新不具备断电原子性；中断遗留的 `.runtime/local-runtime.lock` 会阻止后续受锁操作，须先检查配置、pin、清单与备份并确认没有进程仍在更新，再移除锁。目标清单缺少插件（包括 `diffuse-avatar`）、版本、摘要、安装状态或启停状态不一致时会列出差异并拒绝切换；换库护栏只读验证，不导入、安装或修改插件数据。
+
+找不到原生 `psql` 时，可在 canonical 本机配置中提供 `PSQL_BIN` 或 `LUMIRA_PSQL_DOCKER_CONTAINER` 指定客户端；仓库不固定本机容器名。不得将 BookKin 或其他业务库作为目标。
+
 升级流程为预检卸载旧版本、导入新版本、预检安装。修改已发布插件时提高 patch 版本，不要用相同版本号导入不同摘要；当前运行时通过卸载、导入、安装新包升级，没有原位替换已安装制品的路径。默认 `PRESERVE` 会保留业务表和已保存角色权限，插件权限目录则在卸载时撤下、安装新包后按新 manifest 重建。向前迁移为新细粒度 authority 添加授权；已发布迁移不可改写。旧权限若要求多个来源共同成立，迁移应把每个旧授权来源分别保存为唯一的 `platform:__v50:<slug>` 隐藏 authority，并在 `platform_permission_projection_component` 注册逻辑权限所需的组合及全局/目标范围；不能将旧组合直接复制成宽泛的新操作。逻辑权限之后的显式新授权保持独立，只有废弃的旧代码才进入退役列表。MFA 升级前要确认可承受短暂卸载期间服务不可用，并按插件说明保留恢复状态；不要为了升级手工删除 MFA 状态或数据库权限记录。移除任何被安装消费者依赖的插件会被阻止，即使消费者已停用。失败任务显示具体阶段，迁移与业务数据保留。
 
 ### 固定发布图部署

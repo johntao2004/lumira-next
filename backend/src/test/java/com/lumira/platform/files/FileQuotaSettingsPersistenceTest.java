@@ -19,7 +19,8 @@ import com.lumira.platform.roles.RoleQuotaPolicyAdapter;
 import com.lumira.platform.roles.RoleRepository;
 import com.lumira.platform.settings.SettingDocuments;
 import com.lumira.platform.settings.SettingStore;
-
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,11 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.server.ResponseStatusException;
-
 import tools.jackson.databind.ObjectMapper;
-
-import java.util.List;
-import java.util.UUID;
 
 /** PostgreSQL persistence coverage isolated to a temporary schema. */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")

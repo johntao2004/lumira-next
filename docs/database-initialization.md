@@ -79,6 +79,16 @@ pnpm db:schema-smoke
 
 `db:reinitialize` 没有显式重置开关时会拒绝执行；执行前生成 `.runtime/backups/<database>-<timestamp>.dump`，只操作配置中的 `lumira_next`。旧系统数据库不会被访问。远程环境应通过 `LUMIRA_DB_ADMIN_*` 提供单独的数据库管理员连接，不能把管理员密码写进仓库。
 
+## 本地启动与换库插件清单护栏
+
+新克隆仍使用 `scripts/init-local.mjs` 生成的 canonical `.runtime/local.json` 和默认 `lumira_next`；不会扫描或合并历史 `.runtime` 配置。接管已有服务时，在 WSL 仓库根目录运行 `node scripts/local-runtime.mjs adopt --pid <PID>`。如果数据库客户端只能通过 Docker 调用，可加 `--psql-docker-container <容器名>`。命令会从已验证的本工作区 Java 后端进程读取配置，保留 canonical 中的其他字段，把旧 canonical 备份到仅当前用户可读的 `.runtime/backups/`，并将本机运行配置和当前后端 JAR 绑定到 `.runtime/local-runtime.json`；密码和密钥不会打印。历史 `.runtime` 配置文件保持原样且不会自动发现。接管后，启动、状态和插件清单校验都使用 canonical 配置及 pin；状态检查遇到配置、进程环境或插件清单漂移时会失败，且不会把后端报告为可信健康。启动、状态和停止命令分别为 `node scripts/start.mjs`、`node scripts/status.mjs`、`node scripts/stop.mjs`；本项目没有 `pnpm start` 入口。
+
+pin、canonical 中的本机路径和 `.runtime/local-plugin-inventory.json` 仅供当前机器使用；不要加入 Git 或复制到另一台机器。新克隆应独立运行 `pnpm db:prepare` 生成自己的配置与数据库。已存在自定义数据库配置时，`init-local.mjs` 不会执行默认库的建库 SQL；应先 adopt 运行中的服务，或使用下述受护栏保护的切换流程。
+
+首次接管后及有意安装、升级或启停插件后，先核对数据库与包目录，再运行 `node scripts/local-runtime.mjs capture`。已有清单发生插件变化时，更新必须带非空原因，例如 `node scripts/local-runtime.mjs capture --accept-changes "批准升级头像插件"`；旧清单会先备份。数据库 endpoint、名称、OID 或角色变化不能用 capture 重新认领，必须走换库流程。若只更新后端 JAR，使用 `node scripts/local-runtime.mjs refresh-artifact --jar <JAR路径> --sha256 <SHA256>` 显式刷新 artifact pin。
+
+换库前停止当前服务并确保源、目标数据库没有其他客户端连接。先恢复目标库，再用一个 JSON 配置文件描述目标连接与当前工作区的 files/plugins 路径；该文件仅作为命令输入，不会替代 canonical。运行 `node scripts/local-runtime.mjs switch --target-config <目标配置>`。流程会确认源插件快照仍与 pin 精确匹配、目标数据库身份不同、目标插件 ID/版本/摘要/installed/explicitInstall/enabled 与源完全一致且双方制品完整；随后先备份，再逐个原子写入 canonical 配置、运行时 pin 和插件快照，最后重新验证。异常时会逐个尝试恢复所有原文件，并报告无法恢复的文件。该锁会串行化 `adopt`、`capture`、`switch`、`refresh-artifact`、启动及 `db:prepare`，阻止这些命令在更新期间交错；它不能让多个文件的更新具备断电原子性。进程在更新中断后，保留的 `.runtime/local-runtime.lock` 会让受锁命令失败关闭；先确认没有操作仍在运行并检查配置、pin、清单和备份，再移除该锁。启动和清单校验遇到不一致时会拒绝信任当前运行时。连接检查要求用于本地清单查询的数据库角色拥有 `pg_read_all_stats` 可见性，以便确认没有其他角色的连接；缺少权限时流程会拒绝切换。护栏只读检查数据库，不会写插件状态或自动安装插件。若无法使用原生 `psql`，可在 canonical 本机配置中设置 `PSQL_BIN` 或 `LUMIRA_PSQL_DOCKER_CONTAINER`；这些工具选择不会固定在源码中。
+
 ## 后期维护规则
 
 - 领域表按 `platform_*` 前缀归属平台模块；新增表要同时提供主键、必要的 `CHECK` 约束、明确的删除策略和与查询形态匹配的索引。

@@ -7,15 +7,13 @@ import static org.mockito.Mockito.when;
 
 import com.lumira.platform.common.FileQuotaPolicyPort;
 import com.lumira.platform.files.FileQuota;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
 
 class RoleQuotaPolicyAdapterTest {
     private static final long GIB = 1024L * 1024 * 1024;

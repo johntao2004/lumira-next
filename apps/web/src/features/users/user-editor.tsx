@@ -1,9 +1,9 @@
 "use client";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
-import { Alert, Button, Flex, Form as AntForm, Input, Select, Spin, Switch, Tag, Typography } from "antd";
+import { Alert, Button, Form as AntForm, Input, Select, Spin, Switch, Tag, Typography } from "antd";
 import { AnchorTabs as Tabs } from "@/platform/components/anchor-tabs";
 import { useIntl } from "@ant-design/pro-components";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, mutate } from "@/platform/api/client";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
@@ -23,6 +23,7 @@ import { useCenteredModalConfirm } from "@/platform/components/use-centered-moda
 import { ProfileFieldRenderer } from "@/platform/profile-fields/profile-field-renderer";
 import type { DictionarySelection, ProfileFieldDefinition } from "@/platform/profile-fields/types";
 import { formatQuotaBytes, formatQuotaLimitBytes, formatQuotaLimitCount } from "@/platform/i18n/format";
+import { AssignmentSearchField, AssignmentSearchLayout } from "./assignment-search-layout";
 import { RoleAssignmentSearch } from "./role-assignment-search";
 import { buildUserEditorSavePlan } from "./user-editor-save-plan";
 
@@ -413,6 +414,9 @@ function AssignmentSearch({ request, onChange, codeLabel, nameLabel, statusLabel
   const { t } = usePreferences();
   const [form] = AntForm.useForm<AssignmentSearchValues>();
   const intl = useIntl();
+  const codeInputId = useId();
+  const nameInputId = useId();
+  const statusInputId = useId();
 
   useEffect(() => {
     form.setFieldsValue({
@@ -452,28 +456,25 @@ function AssignmentSearch({ request, onChange, codeLabel, nameLabel, statusLabel
     search();
   };
 
-  return <div className="mb-4 grid gap-2" role="search">
-    <AntForm form={form} component={false} layout="vertical">
-      <div className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
-        <AntForm.Item name="code" label={codeLabel}>
-          <Input allowClear onPressEnter={searchOnEnter} />
-        </AntForm.Item>
-        <AntForm.Item name="name" label={nameLabel}>
-          <Input allowClear onPressEnter={searchOnEnter} />
-        </AntForm.Item>
-        <AntForm.Item name="enabled" label={statusLabel}>
-          <Select allowClear options={[
-            { value: "true", label: t("enabled") },
-            { value: "false", label: t("disabled") },
-          ]} />
-        </AntForm.Item>
-      </div>
-    </AntForm>
-    <Flex wrap justify="flex-end" gap="small">
-      <Button type="primary" htmlType="button" onClick={search}>{intl.getMessage("tableForm.search", "搜索")}</Button>
+  return <AntForm form={form} component={false} layout="vertical">
+    <AssignmentSearchLayout actions={<>
       <Button htmlType="button" onClick={reset}>{intl.getMessage("tableForm.reset", "重置")}</Button>
-    </Flex>
-  </div>;
+      <Button type="primary" htmlType="button" onClick={search}>{intl.getMessage("tableForm.search", "搜索")}</Button>
+    </>}>
+      <AssignmentSearchField label={codeLabel} inputId={codeInputId}>
+        <AntForm.Item name="code" noStyle><Input id={codeInputId} allowClear onPressEnter={searchOnEnter} /></AntForm.Item>
+      </AssignmentSearchField>
+      <AssignmentSearchField label={nameLabel} inputId={nameInputId}>
+        <AntForm.Item name="name" noStyle><Input id={nameInputId} allowClear onPressEnter={searchOnEnter} /></AntForm.Item>
+      </AssignmentSearchField>
+      <AssignmentSearchField label={statusLabel} inputId={statusInputId}>
+        <AntForm.Item name="enabled" noStyle><Select id={statusInputId} aria-labelledby={`${statusInputId}-label`} allowClear options={[
+          { value: "true", label: t("enabled") },
+          { value: "false", label: t("disabled") },
+        ]} /></AntForm.Item>
+      </AssignmentSearchField>
+    </AssignmentSearchLayout>
+  </AntForm>;
 }
 
 function sameIds(left: string[], right: string[]) {

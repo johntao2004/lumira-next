@@ -23,7 +23,7 @@ Windows 开发机建议在 WSL 的 Linux 文件系统中克隆仓库，并从 WS
 - pnpm 10.33.0；版本也固定在根 `package.json` 的 `packageManager`。
 - Python 3，仓库的 module-boundary、数据库 smoke 与相关工具脚本通过 `python3` 运行。
 - JDK 25，并在当前 shell 中设置 `JAVA_HOME`。
-- PostgreSQL 18，且本机 `psql` 客户端可从 `PATH` 调用。`scripts/init-local.mjs` 支持用 `PSQL_BIN` 指定客户端命令。
+- PostgreSQL 18，且本机 `psql` 客户端可从 `PATH` 调用。`scripts/init-local.mjs` 支持用 `PSQL_BIN` 指定客户端命令；若清单检查使用 Docker 中的 psql，可在本机 canonical 配置中指定 `LUMIRA_PSQL_DOCKER_CONTAINER`。
 - 已启动的 Docker Engine 与 Docker Compose v2。Office 预览和 `pnpm test:java` 管理的测试 worker 都需要可用的 Docker daemon。
 - Playwright 可启动的 Chromium 和所需系统运行库；浏览器 smoke 脚本也接受 `BROWSER_EXECUTABLE` 指向机器已有的兼容浏览器。
 - `zip` 命令行工具；插件构建脚本用它生成插件 ZIP。
@@ -58,6 +58,7 @@ node scripts/build-plugins.mjs --no-host sdk/examples/hotplug-probe
 node scripts/build-plugins.mjs --no-host sdk/examples/runtime-observer sdk/examples/verification-debugger
 pnpm test
 pnpm test:java
+node --test tests/local-runtime-config.test.mjs tests/local-plugin-inventory.test.mjs tests/local-runtime-cli.test.mjs
 ```
 
 `pnpm plugins:build` 默认只构建 `plugins/` 下一层含 `plugin.json` 的正式插件；它不会递归纳入 `plugins/sdk/examples/`。`hotplug-probe` 是插件生命周期 smoke 使用的 fixture，需按上面的定向命令单独构建；最后一条定向命令为验收额外生成另外两个示例包。插件 `dist/`、JAR 和 ZIP 是构建输出，不作为源码提交。
@@ -96,7 +97,7 @@ node scripts/status.mjs
 
 `pnpm test:module-packages`、`pnpm test:plugin-data`、`pnpm test:browser` 及直接使用 `scripts/smoke_support.py` 的 API/fixture smoke，必须运行在专用的隔离 QA 数据库中。共享辅助模块会拒绝默认 `.runtime/local.json`，要求数据库名使用 `lumira_security_*`、`lumira_qa_*`、`lumira_test_*` 或 `lumira_smoke_*`，并要求显式 owner-only 私有配置（POSIX mode `0600` 或更严格）、配置中的 UUID `LUMIRA_QA_RUN_TOKEN` 与该数据库唯一的 `public.lumira_qa_fixture_guard` 标记行匹配。标记用途必须是 `isolated-security-qa`。浏览器 guard 还会从 `BASE_URL`（以及配置时的 `LUMIRA_BACKEND_BASE_URL`）获取匿名 session，并核对它属于同一标记数据库；两者必须是 loopback origin。
 
-目前仓库提供 guard 和 marker 契约说明，但没有可移植的一键 QA 数据库/config provision helper。使用本机批准的 PostgreSQL 流程创建符合命名空间的专用空数据库和账号，再准备 owner-only 私有服务配置与 smoke 配置；配置至少要让服务与 smoke helper 使用相同的 JDBC URL、数据库账号和密码，并为需要登录管理员的 smoke 提供同一份新库引导密码。不要把 QA 凭据或 token 写入 Git。`scripts/init-local.mjs` 只初始化固定的 `lumira_next` 角色和数据库，不能选择 QA 库；`scripts/start.mjs` 固定从 `.runtime/local.json` 读取服务配置，因此用该启动脚本时必须先让此本机私有配置指向专用 QA 数据库。仓库没有命令自动生成这种非默认服务配置。
+目前仓库提供 guard 和 marker 契约说明，但没有可移植的一键 QA 数据库/config provision helper。使用本机批准的 PostgreSQL 流程创建符合命名空间的专用空数据库和账号，再准备 owner-only 私有服务配置与 smoke 配置；配置至少要让服务与 smoke helper 使用相同的 JDBC URL、数据库账号和密码，并为需要登录管理员的 smoke 提供同一份新库引导密码。不要把 QA 凭据或 token 写入 Git。`scripts/init-local.mjs` 只初始化固定的 `lumira_next` 角色和数据库，不能选择 QA 库。已 pin 的本地服务应通过 `node scripts/local-runtime.mjs switch --target-config <目标配置>` 切换 canonical；该流程要求源快照已 pin、服务已停止、目标库已准备好，且源/目标插件清单和制品完全一致。它不会创建数据库或补装插件。新克隆尚无 pin 时，不要手工改写 canonical 绕过护栏；先用本机批准的流程准备并接管已运行的本地服务，再使用受验证的切换流程。若无法满足这些条件，就跳过 guarded smoke，而不是改用开发库。
 
 QA 库第一次启动时必须保持 `public` schema 为空：先用指向该库的服务配置启动应用，等待 Flyway 完成基线迁移和应用 readiness 成功，然后才创建 `public.lumira_qa_fixture_guard` 表并插入唯一 marker 行。Marker 是运行验收用的数据库状态，不是应用迁移；若在首次 Flyway 启动前创建该表，Flyway 会把非空且没有迁移历史的 schema 拒绝为错误状态。marker 的 `run_token` 必须与私有 smoke 配置中的 `LUMIRA_QA_RUN_TOKEN` UUID 一致。`docs/qa-fixture-guard.md` 列出 marker DDL 与 Node guard 覆盖的浏览器脚本。随后用 `LUMIRA_SMOKE_CONFIG` 指向该私有 smoke 配置，并按测试要求设置 `BASE_URL` 与可选的 `LUMIRA_BACKEND_BASE_URL`；guard 会获取匿名 CSRF session 并确认 session 属于同一个已标记数据库。守卫未通过时先修正隔离 QA 配置，不要移除或改弱检查。
 
@@ -104,7 +105,7 @@ QA 库第一次启动时必须保持 `public` schema 为空：先用指向该库
 
 `pnpm test:browser` 包含历史脚本和共享 guard 脚本，整组运行时必须确保服务配置与 smoke 配置指向同一个专用 QA 数据库；不要只设置 smoke 配置而让正在运行的服务继续连接 `lumira_next`。新机器尚未准备这种 QA 环境时，可完成核心构建、`pnpm test`、Java worker 测试、`db:schema-smoke` 和手动 UI 流程，但应跳过这些 guarded smoke，而不是改用开发库。
 
-`scripts/start.mjs` 使用当前 Node 24 与 `JAVA_HOME`，要求 `backend/target/` 中恰有一个后端 JAR；它启动 8090 后端、8010 前端和隔离的 Office worker。启动成功后，`node scripts/status.mjs` 应显示后端 readiness 与前端页面均为 HTTP 200。开发预览完成首轮编译后，再确认 `http://127.0.0.1:8010/__umi/api/bundle-status` 报告 `done: true`。最后通过浏览器登录并执行下面的手动流程；构建、HTTP 健康和浏览器验收是不同检查，不以其中一项代替其他项。
+`scripts/start.mjs` 使用当前 Node 24 与 `JAVA_HOME`，要求 `backend/target/` 中恰有一个后端 JAR；它启动默认的 8090 后端、8010 前端和隔离的 Office worker。已有 pin 时，它按 canonical 固定端口和制品运行，并在启动前后校验数据库/插件清单；开发预览要等 `/umi.js` 与 `/umi.css` 返回 HTTP 200。启动成功后，必须在 WSL 中运行 `node scripts/status.mjs`，确认 pin、运行环境、插件清单和 HTTP readiness 均通过。开发预览完成首轮编译后，再确认 `http://127.0.0.1:8010/__umi/api/bundle-status` 报告 `done: true`。最后通过浏览器登录并执行下面的手动流程；构建、HTTP 健康和浏览器验收是不同检查，不以其中一项代替其他项。
 
 保存临时测试结果到 `.runtime/github-handoff/source-review/`，不要把截图、日志或机器配置放到 `docs/` 或源码根目录。停止本地服务使用：
 

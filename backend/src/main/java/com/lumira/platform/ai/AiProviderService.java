@@ -36,10 +36,32 @@ public class AiProviderService {
             ProviderKind providerKind,
             String baseUrl,
             String modelName,
+            List<String> modelNames,
             List<String> capabilityCodes,
             boolean enabled,
             Long version,
-            CredentialChange credential) {}
+            CredentialChange credential) {
+        public ProviderWrite(
+                String name,
+                ProviderKind providerKind,
+                String baseUrl,
+                String modelName,
+                List<String> capabilityCodes,
+                boolean enabled,
+                Long version,
+                CredentialChange credential) {
+            this(
+                    name,
+                    providerKind,
+                    baseUrl,
+                    modelName,
+                    null,
+                    capabilityCodes,
+                    enabled,
+                    version,
+                    credential);
+        }
+    }
 
     public record ModelDiscoveryRequest(
             ProviderKind providerKind,
@@ -60,10 +82,34 @@ public class AiProviderService {
             ProviderKind providerKind,
             String baseUrl,
             String modelName,
+            List<String> modelNames,
             List<String> capabilityCodes,
             boolean enabled,
             long version,
-            boolean credentialConfigured) {}
+            boolean credentialConfigured) {
+        public ProviderView(
+                UUID id,
+                String name,
+                ProviderKind providerKind,
+                String baseUrl,
+                String modelName,
+                List<String> capabilityCodes,
+                boolean enabled,
+                long version,
+                boolean credentialConfigured) {
+            this(
+                    id,
+                    name,
+                    providerKind,
+                    baseUrl,
+                    modelName,
+                    modelName == null ? List.of() : List.of(modelName),
+                    capabilityCodes,
+                    enabled,
+                    version,
+                    credentialConfigured);
+        }
+    }
 
     /** Deliberately excludes base URL, credential state and persistence version. */
     public record ConsoleProviderView(
@@ -71,10 +117,29 @@ public class AiProviderService {
             String name,
             ProviderKind providerKind,
             String modelName,
+            List<String> modelNames,
             List<String> capabilityCodes,
             boolean enabled) {
         public ConsoleProviderView {
+            modelNames = List.copyOf(modelNames);
             capabilityCodes = List.copyOf(capabilityCodes);
+        }
+
+        public ConsoleProviderView(
+                UUID id,
+                String name,
+                ProviderKind providerKind,
+                String modelName,
+                List<String> capabilityCodes,
+                boolean enabled) {
+            this(
+                    id,
+                    name,
+                    providerKind,
+                    modelName,
+                    modelName == null ? List.of() : List.of(modelName),
+                    capabilityCodes,
+                    enabled);
         }
     }
 
@@ -117,6 +182,7 @@ public class AiProviderService {
                                         profile.name(),
                                         profile.providerKind(),
                                         profile.modelName(),
+                                        profile.modelNames(),
                                         consoleCapabilities(profile),
                                         profile.enabled()))
                 .toList();
@@ -136,19 +202,30 @@ public class AiProviderService {
                 || !profile.capabilityCodes().contains("CHAT")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aiChatUnsupported");
         }
-        String model = profile.modelName() == null ? "" : profile.modelName().strip();
-        if (model.isEmpty()) return new ModelConnectionService.ConnectionResult(List.of(), false);
-        List<String> capabilities = consoleCapabilities(profile);
+        List<String> models = profile.modelNames();
+        if (models.isEmpty()) return new ModelConnectionService.ConnectionResult(List.of(), false);
         return new ModelConnectionService.ConnectionResult(
-                List.of(
-                        new ModelConnectionService.ModelOption(
-                                model, model, List.of(), List.of(), capabilities)),
+                models.stream()
+                        .map(
+                                model ->
+                                        new ModelConnectionService.ModelOption(
+                                                model,
+                                                model,
+                                                List.of(),
+                                                List.of(),
+                                                consoleCapabilities(profile, model)))
+                        .toList(),
                 true);
     }
 
     private static List<String> consoleCapabilities(AiProviderRepository.ConsoleProfile profile) {
+        return consoleCapabilities(profile, profile.modelName());
+    }
+
+    private static List<String> consoleCapabilities(
+            AiProviderRepository.ConsoleProfile profile, String modelName) {
         var capabilities = new LinkedHashSet<>(profile.capabilityCodes());
-        if (AiProviderProfile.supportsUserTools(profile.providerKind(), profile.modelName()))
+        if (AiProviderProfile.supportsUserTools(profile.providerKind(), modelName))
             capabilities.add("TOOL_CALLING");
         return capabilities.stream().sorted().toList();
     }
@@ -165,7 +242,7 @@ public class AiProviderService {
                         normalized.name(),
                         normalized.kind(),
                         normalized.baseUrl(),
-                        normalized.modelName(),
+                        normalized.encodedModelNames(),
                         normalized.capabilities(),
                         normalized.enabled(),
                         1);
@@ -207,7 +284,7 @@ public class AiProviderService {
                         normalized.name(),
                         normalized.kind(),
                         normalized.baseUrl(),
-                        normalized.modelName(),
+                        normalized.encodedModelNames(),
                         normalized.capabilities(),
                         normalized.enabled(),
                         input.version());
@@ -253,7 +330,7 @@ public class AiProviderService {
                             .equals(baseUrl)) invalid();
             id = existing.id();
             version = existing.version();
-            modelName = existing.modelName();
+            modelName = existing.encodedModelNames();
         }
         var transientProfile =
                 new AiProviderProfile(
@@ -351,22 +428,36 @@ public class AiProviderService {
     private Normalized normalize(ProviderWrite input, boolean creating) {
         if (input == null || input.providerKind() == null) invalid();
         String name = input.name() == null ? "" : input.name().strip();
-        String model =
-                input.modelName() == null || input.modelName().isBlank()
-                        ? (input.providerKind() == ProviderKind.TYPESAFE_JEV ? "jev-latest" : "")
-                        : input.modelName().strip();
+        List<String> requestedModels = input.modelNames();
+        if (requestedModels == null || requestedModels.isEmpty()) {
+            String fallback = input.modelName();
+            if ((fallback == null || fallback.isBlank())
+                    && input.providerKind() == ProviderKind.TYPESAFE_JEV) {
+                fallback = "jev-latest";
+            }
+            requestedModels =
+                    fallback == null || fallback.isBlank() ? List.of() : List.of(fallback);
+        }
+        var models = new LinkedHashSet<String>();
+        for (String requested : requestedModels) {
+            String model = requested == null ? "" : requested.strip();
+            if (model.isEmpty()
+                    || model.length() > 256
+                    || !model.matches("[A-Za-z0-9_.:/-]{1,256}")
+                    || !models.add(model)) invalid();
+        }
+        List<String> modelNames = List.copyOf(models);
+        String encodedModels = String.join(",", modelNames);
         if (name.isEmpty()
                 || name.length() > 120
-                || model.isEmpty()
-                || model.length() > 256
-                || !model.matches("[A-Za-z0-9_.:/-]{1,256}")) invalid();
+                || encodedModels.isEmpty()
+                || encodedModels.length() > 256) invalid();
         if (!creating && (input.version() == null || input.version() < 1)) invalid();
 
         ProviderKind kind = input.providerKind();
         String baseUrl = normalizeBaseUrl(kind, input.baseUrl());
         List<String> capabilities = normalizeCapabilities(kind, input.capabilityCodes());
-        if (kind == ProviderKind.TYPESAFE_JEV && model.isBlank()) model = "jev-latest";
-        return new Normalized(name, kind, baseUrl, model, capabilities, input.enabled());
+        return new Normalized(name, kind, baseUrl, modelNames, capabilities, input.enabled());
     }
 
     private static String normalizeBaseUrl(ProviderKind kind, String raw) {
@@ -454,6 +545,7 @@ public class AiProviderService {
                 profile.providerKind(),
                 profile.baseUrl(),
                 profile.modelName(),
+                profile.modelNames(),
                 profile.providerCapabilityCodes(),
                 profile.enabled(),
                 profile.version(),
@@ -476,7 +568,11 @@ public class AiProviderService {
             String name,
             ProviderKind kind,
             String baseUrl,
-            String modelName,
+            List<String> modelNames,
             List<String> capabilities,
-            boolean enabled) {}
+            boolean enabled) {
+        private String encodedModelNames() {
+            return String.join(",", modelNames);
+        }
+    }
 }

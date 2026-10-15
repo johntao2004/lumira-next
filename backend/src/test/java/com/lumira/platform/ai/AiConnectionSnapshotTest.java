@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.lumira.platform.ai.AiProviderProfile.ProviderKind;
+import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.SecretStorePort;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -49,13 +51,70 @@ class AiConnectionSnapshotTest {
         jdbc = new JdbcTemplate(dataSource);
         manager = new DataSourceTransactionManager(dataSource);
         jdbc.execute(
-                "CREATE TABLE platform_ai_provider(id uuid PRIMARY KEY,name text,provider_kind text,base_url text,model_name text,capability_codes jsonb,enabled boolean,version bigint)");
+                "CREATE TABLE platform_ai_provider(id uuid PRIMARY KEY,name text,provider_kind text,base_url text,model_name text,capability_codes jsonb,enabled boolean,version bigint,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),created_by text,updated_by text)");
         jdbc.execute("CREATE TABLE fixture_secret(value text)");
         jdbc.update(
-                "INSERT INTO platform_ai_provider VALUES(?,'Fixture','OPENAI','https://api.openai.com/v1','fixture','[\"CHAT\"]',true,1)",
+                "INSERT INTO platform_ai_provider(id,name,provider_kind,base_url,model_name,capability_codes,enabled,version) VALUES(?,'Fixture','OPENAI','https://api.openai.com/v1','fixture','[\"CHAT\"]',true,1)",
                 id);
         jdbc.update("INSERT INTO fixture_secret VALUES('synthetic-old-key')");
         repository = new AiProviderRepository(JdbcClient.create(dataSource), new ObjectMapper());
+    }
+
+    @Test
+    void providerWritePersistsOrderedModelsAndConsoleReadsTheSameChoices() {
+        var secrets = mock(SecretStorePort.class);
+        when(secrets.state(anyString())).thenReturn(new SecretStorePort.State(0, false));
+        var connections = mock(ModelConnectionService.class);
+        var service =
+                new AiProviderService(
+                        repository,
+                        connections,
+                        secrets,
+                        mock(AdministrationPort.class),
+                        mock(AuditPort.class),
+                        new ObjectMapper());
+        var input =
+                new AiProviderService.ProviderWrite(
+                        "Local fixture",
+                        ProviderKind.OLLAMA,
+                        "http://127.0.0.1:11434/v1",
+                        "llama-default",
+                        List.of("llama-default", "llama-fallback"),
+                        List.of("CHAT"),
+                        true,
+                        null,
+                        null);
+
+        var created = service.create(input, "qa-operator");
+        var provider =
+                service.list("qa-operator").stream()
+                        .filter(value -> value.id().equals(created.id()))
+                        .findFirst()
+                        .orElseThrow();
+        var console =
+                service.listForConsole("qa-operator").stream()
+                        .filter(value -> value.id().equals(created.id()))
+                        .findFirst()
+                        .orElseThrow();
+        var configuredModels = service.configuredModelsForConsole(created.id(), "qa-operator");
+
+        assertEquals(
+                "llama-default,llama-fallback",
+                jdbc.queryForObject(
+                        "SELECT model_name FROM platform_ai_provider WHERE id=?",
+                        String.class,
+                        created.id()));
+        assertEquals("llama-default", provider.modelName());
+        assertEquals(List.of("llama-default", "llama-fallback"), provider.modelNames());
+        assertEquals("llama-default", console.modelName());
+        assertEquals(List.of("llama-default", "llama-fallback"), console.modelNames());
+        assertEquals(
+                List.of("llama-default", "llama-fallback"),
+                configuredModels.models().stream()
+                        .map(ModelConnectionService.ModelOption::id)
+                        .toList());
+        assertTrue(configuredModels.configuredModelAvailable());
+        verifyNoInteractions(connections);
     }
 
     @AfterEach

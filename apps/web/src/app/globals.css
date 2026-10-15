@@ -684,6 +684,62 @@ input {
   overflow-wrap: anywhere;
 }
 
+.assignment-search {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+  margin-block-end: 16px;
+  container-type: inline-size;
+}
+
+.assignment-search-fields {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.assignment-search-field {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  align-items: start;
+  column-gap: 4px;
+  row-gap: 4px;
+}
+
+.assignment-search-field-label {
+  min-width: 0;
+  color: var(--ant-color-text);
+  line-height: var(--ant-line-height, 1.5714);
+  padding-block-start: max(0px, calc((var(--ant-control-height, 32px) - var(--ant-font-size, 14px) * var(--ant-line-height, 1.5714)) / 2));
+}
+
+.assignment-search-field-control {
+  min-width: 0;
+}
+
+.assignment-search-field-control .ant-input,
+.assignment-search-field-control .ant-input-affix-wrapper,
+.assignment-search-field-control .ant-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.assignment-search-actions {
+  min-width: 0;
+}
+
+@container (max-width: 439px) {
+  .assignment-search-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assignment-search-field-label {
+    padding-block-start: 0;
+  }
+}
+
 .resource-table {
   display: grid;
   min-width: 0;
@@ -743,6 +799,19 @@ input {
 
 .resource-table .resource-data .ant-table-wrapper {
   width: 100%;
+}
+
+.resource-table--embedded .resource-data .ant-pro-card,
+.resource-table--embedded .resource-data .ant-pro-card-body,
+.resource-table--embedded .resource-data .ant-table-wrapper,
+.resource-table--embedded .resource-data .ant-table,
+.resource-table--embedded .resource-data .ant-table-container {
+  background-color: transparent;
+}
+
+.resource-table--embedded .resource-data .ant-table-tbody > tr.ant-table-placeholder:hover > th,
+.resource-table--embedded .resource-data .ant-table-tbody > tr.ant-table-placeholder:hover > td {
+  background-color: transparent;
 }
 
 .resource-table .ant-pro-table-list-toolbar,
@@ -1309,6 +1378,15 @@ textarea.editor-surface-editable {
   overflow-wrap: anywhere;
 }
 
+.notification-leading-icon {
+  display: inline-flex;
+  flex: 0 0 20px;
+  inline-size: 20px;
+  block-size: 22px;
+  align-items: center;
+  justify-content: center;
+}
+
 .notification-body {
   white-space: pre-wrap;
 }
@@ -1651,7 +1729,7 @@ textarea.editor-surface-editable {
   flex: 0 0 auto;
   align-items: center;
   gap: 4px;
-  padding: 0 4px 4px;
+  padding: 0 8px 4px;
 }
 
 .ai-chat-history-filter {
@@ -2088,7 +2166,7 @@ textarea.editor-surface-editable {
 }
 
 .ai-models-table .ant-table-cell {
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .ai-model-value {
@@ -2102,6 +2180,7 @@ textarea.editor-surface-editable {
 .ai-models-table .ant-tag {
   max-width: 100%;
   height: auto;
+  margin-inline-end: 0;
   white-space: normal;
   overflow-wrap: anywhere;
 }

@@ -5,6 +5,9 @@ export type Provider = {
   name: string;
   providerKind: ProviderKind;
   baseUrl: string;
+  /** Ordered model identifiers; the first item is the default model. */
+  modelNames: string[];
+  /** Default model, retained for older clients and APIs. */
   modelName: string;
   capabilityCodes: CapabilityCode[];
   enabled: boolean;
@@ -37,6 +40,13 @@ export type ModelOption = {
   capabilityCodes?: CapabilityCode[];
 };
 export type ConnectionResult = { models: ModelOption[]; configuredModelAvailable: boolean };
+
+/** Older API responses may omit modelNames, in which case modelName is the only saved choice. */
+export function providerModelNames(provider: Pick<Provider, "modelName"> & Partial<Pick<Provider, "modelNames">>): string[] {
+  const modelNames = provider.modelNames?.filter((model): model is string => typeof model === "string" && model.length > 0);
+  if (modelNames?.length) return [...modelNames];
+  return provider.modelName ? [provider.modelName] : [];
+}
 
 export const providerKindLabel: Record<ProviderKind, string> = {
   OLLAMA: "aiKindOllama",

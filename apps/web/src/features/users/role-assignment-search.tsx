@@ -2,13 +2,14 @@
 
 import { useEffect, useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Col, Flex, Input, Row, Select, Spin, Tag, Typography, theme } from "antd";
+import { Button, Flex, Input, Select, Spin, Tag, Typography, theme } from "antd";
 import { useIntl } from "@ant-design/pro-components";
 import { api } from "@/platform/api/client";
 import type { PageResult } from "@/platform/api/pagination";
 import { listRequestParams, type ListRequest } from "@/platform/api/pagination";
 import { QueryFailure } from "@/platform/components/query-failure";
 import { usePreferences } from "@/platform/providers";
+import { AssignmentSearchField, AssignmentSearchLayout } from "./assignment-search-layout";
 
 type RoleSuggestion = { id: string; code: string; name: string };
 type SelectedRole = RoleSuggestion;
@@ -122,12 +123,14 @@ export function RoleAssignmentSearch({ userId, request, onChange, codeLabel, nam
   const activeOptionVisible = shouldLookup && !suggestions.isFetching && !suggestions.error
     && activeSuggestion >= 0 && activeSuggestion < (suggestions.data?.items.length ?? 0);
 
-  return <Flex vertical gap={16} style={{ marginBottom: 24 }} role="search">
-    <Typography.Paragraph type="secondary" style={{ margin: 0 }}>{t("roleNameLookupHint")}</Typography.Paragraph>
-    <Row gutter={[16, 16]}>
-      <Col xs={24} md={8}>
-        <div>
-        <label htmlFor={nameInputId} style={{ display: "block", marginBottom: 8, color: token.colorText }}>{nameLabel}</label>
+  return <AssignmentSearchLayout
+    hint={<Typography.Paragraph type="secondary" style={{ margin: 0 }}>{t("roleNameLookupHint")}</Typography.Paragraph>}
+    actions={<>
+      <Button htmlType="button" onClick={reset}>{intl.getMessage("tableForm.reset", "重置")}</Button>
+      <Button type="primary" htmlType="button" onClick={search}>{intl.getMessage("tableForm.search", "搜索")}</Button>
+    </>}
+  >
+      <AssignmentSearchField label={nameLabel} inputId={nameInputId}>
         <Input
           id={nameInputId}
           value={name}
@@ -176,14 +179,11 @@ export function RoleAssignmentSearch({ userId, request, onChange, codeLabel, nam
                 </Button>)
                 : <Typography.Text type="secondary" style={{ display: "block", padding: 12 }}>{t("roleNameNoMatches")}</Typography.Text>}
         </div>}
-        </div>
-      </Col>
-      <Col xs={24} md={8}>
-        <label htmlFor={codeInputId} style={{ display: "block", marginBottom: 8, color: token.colorText }}>{codeLabel}</label>
+      </AssignmentSearchField>
+      <AssignmentSearchField label={codeLabel} inputId={codeInputId}>
         <Input id={codeInputId} value={code} readOnly />
-      </Col>
-      <Col xs={24} md={8}>
-        <label id={`${statusInputId}-label`} htmlFor={statusInputId} style={{ display: "block", marginBottom: 8, color: token.colorText }}>{statusLabel}</label>
+      </AssignmentSearchField>
+      <AssignmentSearchField label={statusLabel} inputId={statusInputId}>
         <Select
           id={statusInputId}
           aria-labelledby={`${statusInputId}-label`}
@@ -196,11 +196,6 @@ export function RoleAssignmentSearch({ userId, request, onChange, codeLabel, nam
             { value: "false", label: t("disabled") },
           ]}
         />
-      </Col>
-    </Row>
-    <Flex wrap justify="flex-end" gap={8}>
-      <Button type="primary" htmlType="button" onClick={search}>{intl.getMessage("tableForm.search", "搜索")}</Button>
-      <Button htmlType="button" onClick={reset}>{intl.getMessage("tableForm.reset", "重置")}</Button>
-    </Flex>
-  </Flex>;
+      </AssignmentSearchField>
+  </AssignmentSearchLayout>;
 }

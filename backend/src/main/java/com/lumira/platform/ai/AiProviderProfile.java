@@ -71,6 +71,32 @@ public record AiProviderProfile(
     }
 
     /**
+     * The existing database column stores selected IDs as a comma-delimited value. Model IDs cannot
+     * contain commas, so this remains compatible with rows written before multi-select.
+     */
+    public List<String> modelNames() {
+        return decodeModelNames(modelName);
+    }
+
+    /** The first configured model remains the default for existing callers and API clients. */
+    public String modelName() {
+        return modelNames().stream().findFirst().orElse("");
+    }
+
+    public String encodedModelNames() {
+        return String.join(",", modelNames());
+    }
+
+    public static List<String> decodeModelNames(String encoded) {
+        if (encoded == null || encoded.isBlank()) return List.of();
+        List<String> values = List.of(encoded.split(",", -1));
+        if (values.stream().anyMatch(String::isBlank)) {
+            throw new IllegalStateException("Stored AI provider model configuration is invalid");
+        }
+        return values;
+    }
+
+    /**
      * Capabilities declared by the provider adapter contract. These are provider-level endpoint
      * capabilities, not claims about every model returned by /models. Model-specific modalities
      * must come from provider metadata or an explicit model test.
@@ -85,7 +111,7 @@ public record AiProviderProfile(
      * flags.
      */
     public List<String> capabilityCodes() {
-        return supportsUserTools(modelName)
+        return supportsUserTools(modelName())
                 ? List.of("CHAT", "TOOL_CALLING")
                 : providerKind.providerCapabilityCodes();
     }

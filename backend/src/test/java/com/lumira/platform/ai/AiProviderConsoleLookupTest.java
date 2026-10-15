@@ -85,6 +85,37 @@ class AiProviderConsoleLookupTest {
         verifyNoInteractions(connections);
     }
 
+    @Test
+    void modelLookupExposesEveryConfiguredChoiceAndKeepsTheFirstAsDefault() {
+        var repository = mock(AiProviderRepository.class);
+        var connections = mock(ModelConnectionService.class);
+        var guard = mock(AdministrationPort.class);
+        var id = UUID.randomUUID();
+        when(repository.findForConsole(id))
+                .thenReturn(
+                        Optional.of(
+                                new AiProviderRepository.ConsoleProfile(
+                                        id,
+                                        "Chat provider",
+                                        ProviderKind.DEEPSEEK,
+                                        "deepseek-flash,deepseek-v4-pro",
+                                        List.of("CHAT"),
+                                        true)));
+        var service = service(repository, connections, guard);
+
+        var result = service.configuredModelsForConsole(id, "actor");
+
+        assertTrue(result.configuredModelAvailable());
+        assertEquals(
+                List.of("deepseek-flash", "deepseek-v4-pro"),
+                result.models().stream().map(ModelConnectionService.ModelOption::id).toList());
+        assertEquals("deepseek-flash", result.models().getFirst().id());
+        assertEquals(List.of("CHAT", "TOOL_CALLING"), result.models().getFirst().capabilityCodes());
+        assertEquals(List.of("CHAT", "TOOL_CALLING"), result.models().get(1).capabilityCodes());
+        verify(guard).requirePage("actor", PlatformPageId.AI_CONSOLE);
+        verifyNoInteractions(connections);
+    }
+
     private static AiProviderService service(
             AiProviderRepository repository,
             ModelConnectionService connections,

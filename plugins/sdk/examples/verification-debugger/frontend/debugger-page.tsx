@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Col, Descriptions, Input, Modal, Row, Select, Space, Spin, Table, Tag, Typography } from "antd";
 import { api, mutate } from "@/platform/api/client";
 import { AsyncButton } from "@/platform/components/async-button";
+import { TableActions } from "@/platform/components/table-actions";
 import { useSessionScope } from "@/platform/auth/use-session-scope";
 import { isProviderSendSuccessful } from "./provider-response";
 import {
@@ -645,7 +646,7 @@ export function VerificationDebuggerPage({
                       title: "操作",
                       key: "actions",
                       width: 130,
-                      render: (_value, row) => row.code ? <Button type="link" onClick={() => setActiveCode(row)}>查看验证码</Button> : null,
+                      render: (_value, row) => row.code ? <TableActions><Button type="link" onClick={() => setActiveCode(row)}>查看验证码</Button></TableActions> : null,
                     },
                   ]}
                 />
