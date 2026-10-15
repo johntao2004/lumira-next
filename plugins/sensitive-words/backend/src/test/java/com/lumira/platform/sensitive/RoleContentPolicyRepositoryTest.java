@@ -2,17 +2,15 @@ package com.lumira.platform.sensitive;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.nio.charset.StandardCharsets;
+import com.lumira.platform.TestSchema;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-/** Real published schema guards against policy queries drifting from user and role storage. */
+/** Current baseline schema guards against policy queries drifting from user and role storage. */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class RoleContentPolicyRepositoryTest {
     JdbcTemplate admin, jdbc;
@@ -21,7 +19,7 @@ class RoleContentPolicyRepositoryTest {
     UUID user = UUID.randomUUID(), role = UUID.randomUUID();
 
     @BeforeEach
-    void setup() throws Exception {
+    void setup() {
         String url = System.getenv("LUMIRA_TEST_DB_URL"),
                 login = System.getenv("LUMIRA_TEST_DB_USER"),
                 password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
@@ -34,26 +32,15 @@ class RoleContentPolicyRepositoryTest {
                         login,
                         password);
         jdbc = new JdbcTemplate(ds);
-        String baseline =
-                new ClassPathResource("db/migration/V1__platform_initialization.sql")
-                        .getContentAsString(StandardCharsets.UTF_8);
         for (String table :
-                java.util.List.of("platform_user", "platform_role", "platform_user_role")) {
-            var definition =
-                    Pattern.compile(
-                                    "CREATE TABLE public\\." + table + " \\(.*?\\n\\);",
-                                    Pattern.DOTALL)
-                            .matcher(baseline);
-            assertTrue(definition.find(), "Published table definition missing: " + table);
-            jdbc.execute(definition.group().replace("public.", ""));
+                java.util.List.of(
+                        "platform_user",
+                        "platform_role",
+                        "platform_user_role",
+                        "platform_sensitive_role_policy")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
         }
-        jdbc.execute("ALTER TABLE platform_role ADD PRIMARY KEY(id)");
-        jdbc.execute(
-                new ClassPathResource("db/migration/V4__user_soft_delete.sql")
-                        .getContentAsString(StandardCharsets.UTF_8));
-        jdbc.execute(
-                new ClassPathResource("db/migration/V19__role_content_policy.sql")
-                        .getContentAsString(StandardCharsets.UTF_8));
         policies = new RoleContentPolicyRepository(JdbcClient.create(ds));
         jdbc.update(
                 "INSERT INTO platform_user(id,username,display_name,password_hash,enabled) VALUES(?,?,?,?,true)",

@@ -1,6 +1,7 @@
 package com.lumira.platform.events;
 
 import com.lumira.platform.common.*;
+
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -9,11 +10,15 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/platform/event-outbox")
 public class PlatformEventOutboxController {
     private final PlatformEventOutboxQuery query;
+    private final PlatformEventTraceQuery traceQuery;
     private final PlatformEventOutboxAdminService admin;
 
     public PlatformEventOutboxController(
-            PlatformEventOutboxQuery query, PlatformEventOutboxAdminService admin) {
+            PlatformEventOutboxQuery query,
+            PlatformEventTraceQuery traceQuery,
+            PlatformEventOutboxAdminService admin) {
         this.query = query;
+        this.traceQuery = traceQuery;
         this.admin = admin;
     }
 
@@ -28,6 +33,24 @@ public class PlatformEventOutboxController {
         PageRequest request = PageRequest.fromQueryParameters(page, pageSize, search, parameters);
         return query.list(
                 actor.getName(), request, request.filters().getOrDefault("status", status));
+    }
+
+    @GetMapping("/{eventId}/trace")
+    public PlatformEventTraceQuery.EventTrace traceEvent(
+            @PathVariable java.util.UUID eventId,
+            Authentication actor,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return traceQuery.event(actor.getName(), eventId, page, pageSize);
+    }
+
+    @GetMapping("/operations/{auditId}/trace")
+    public PlatformEventTraceQuery.OperationTrace traceOperation(
+            @PathVariable java.util.UUID auditId,
+            Authentication actor,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return traceQuery.operation(actor.getName(), auditId, page, pageSize);
     }
 
     public record ReplayRequest(String reason) {}

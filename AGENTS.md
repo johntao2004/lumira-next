@@ -2,7 +2,12 @@
 
 Read README.md and the applicable directory instructions before editing. Frontend
 instructions are in apps/web/AGENTS.md. Use Node 24, pnpm 10.33.0, JDK 25 and
-PostgreSQL 18. Append Flyway migrations; never rewrite published migrations.
+PostgreSQL 18. The global database uses only
+`backend/src/main/resources/db/migration/B52__platform_initialization.sql`.
+Do not restore historical global migrations, upgrade directories, or SQL test
+archives. Derive current-schema test fixtures from the initialization SQL.
+Plugin migrations remain independently managed; never rewrite published plugin
+migrations.
 
 ## Cloud development
 

@@ -42,15 +42,15 @@ node scripts/stop.mjs
 数据库管理员也可以直接导入同一份 SQL；导入后首次启动需要让 Flyway 建立基线记录：
 
 ```sh
-psql -d lumira_next -f backend/src/main/resources/db/migration/V1__platform_initialization.sql
-SPRING_FLYWAY_BASELINE_ON_MIGRATE=true SPRING_FLYWAY_BASELINE_VERSION=1 node scripts/start.mjs
+psql -v ON_ERROR_STOP=1 -1 -d lumira_next -f backend/src/main/resources/db/migration/B52__platform_initialization.sql
+SPRING_FLYWAY_BASELINE_ON_MIGRATE=true SPRING_FLYWAY_BASELINE_VERSION=52 node scripts/start.mjs
 ```
 
-初始化账号 admin；随机密码保存在 .runtime/local.json 的 LUMIRA_BOOTSTRAP_PASSWORD。文件权限 0600，请在本机查看，不提交或发布。重启不会重设已有账号密码。
+空库初始化会在 B52 中创建“管理员”和“普通用户”两个角色，但不会预置普通账号、业务记录或直授权限。服务首次启动只创建 `admin` 引导账号，并通过“管理员”角色获得管理权限；“普通用户”角色为 SELF 数据范围，仅含工单反馈的访问、读取和创建权限，作为注册缺省角色（注册仍默认关闭）。随机引导密码保存在本机 `.runtime/local.json` 的 `LUMIRA_BOOTSTRAP_PASSWORD`。文件权限 0600，仅在本机查看，不提交或发布。初始管理员首次登录必须先设置新密码；改密成功后登录流程会继续，按需完成 CAPTCHA 或 MFA，不必重新输入新密码。刷新可继续改密，返回登录页不会解除要求。重启不会重设已有账号密码。完整流程见[数据库初始化说明](docs/database-initialization.md)。
 
-生产运行时扫描 `backend/src/main/resources/db/migration/`：`V1__platform_initialization.sql` 是由原 V1–V48 最终结构合并而成的不可变基线；`V2__identity_argon2_password_hash.sql` 扩大密码摘要字段以容纳版本化 Argon2id；`V3__group_platform_navigation.sql` 按用户、内容、运营和平台设置整理内置导航；`V4`–`V17` 为基线之后追加的增量迁移（用户软删除、AI 供应商与数据库化文件/AI 状态、导航整理、按用户/角色文件配额、业务字典扩充、本地化语言注册、敏感词分类、云端 AI 供应商类型、文件回收站）。新变更只追加更高版本，不改写已发布迁移，具体清单以迁移目录为准。迁移不写入管理员密码、短信/邮件密钥或其他秘密；原历史增量脚本仅保存在 `backend/src/test/resources/legacy-migrations.archive`，供升级行为回归测试使用，不会被 Flyway 加载。
+全局数据库只保留 `backend/src/main/resources/db/migration/B52__platform_initialization.sql` 一份初始化脚本，包含完整结构、约束、索引、函数、视图和稳定种子。Flyway 只扫描 `classpath:db/migration`，空库首次启动执行这份基线，重复启动只校验已有 B52 记录。旧增量脚本、兼容升级目录和历史 SQL 测试归档已删除，不提供旧版本数据库升级。已有 B52 本地库的保数据切换方案与限制见[数据库初始化说明](docs/database-initialization.md)；不能通过关闭校验或 repair 伪装兼容。插件仍独立管理各自安装迁移。初始化不包含账号、业务记录、密码或其他秘密。
 
-需要重建本地数据库时先停止服务，再执行 `LUMIRA_ALLOW_LOCAL_DB_RESET=1 pnpm db:reinitialize`。命令必须带显式的本地重置开关，会先生成 `.runtime/backups/*.dump` 备份，并且只重建配置中的 `lumira_next`，不会触碰旧系统数据库。重建后启动服务即可按顺序执行 V1、V2、V3；`pnpm db:schema-smoke` 会检查活动迁移、表/约束/索引和种子完整性。数据库结构与维护约定见 [数据库初始化说明](docs/database-initialization.md)。
+需要重建本地数据库时先停止服务，再执行 `LUMIRA_ALLOW_LOCAL_DB_RESET=1 pnpm db:reinitialize`。命令必须带显式的本地重置开关，会先生成 `.runtime/backups/*.dump` 备份，并且只重建配置中的 `lumira_next`，不会触碰旧系统数据库。重建后启动服务会执行 B52 单文件初始化；`pnpm db:schema-smoke` 会检查唯一初始化脚本、表/约束/索引和种子完整性。数据库结构与维护约定见 [数据库初始化说明](docs/database-initialization.md)。
 
 后端只连接独立 PostgreSQL 数据库；不会导入或删除旧库数据。默认数据库会话 30 分钟，不持久化浏览器凭据。当前登录不支持旧系统账号。
 
@@ -91,7 +91,7 @@ Outbox 提供按事件类型显式注册的消费器边界、虚拟线程并发�
 
 运行时本地化插件（`/dashboard/localization`）接管平台基线数据，提供文案键的版本化 CRUD、JSON 批量导入、启停、发布版本和公开语言包读取。后台文案保存后由短 TTL 缓存原子刷新，发布记录可追踪版本；前端 Provider 在静态八语言词典之上加载覆盖，接口不可用时自动回退静态文案。
 
-账号手机与短信（平台基线能力）由 `/dashboard/sms`、`/dashboard/sms-deliveries` 和账号菜单入口提供。短信供应商配置只保存非敏感字段，凭据进入加密 SecretStore；验证码先写入加密的 PostgreSQL 投递队列，再由带租约令牌的虚拟线程 worker 按腾讯云、阿里云中国站/国际站、华为云、Twilio 的官方协议发送，后台兼容历史 JSON webhook。表单按供应商和国内/国际范围展示字段，自动填入服务地址、模板参数及签名所需数据；账号密钥、签名和审核模板由管理员提供。手机号绑定要求当前密码、E.164 格式、冷却/日上限/失败次数和一次性验证码；未配置短信服务时明确返回不可用，不生成半成品验证码。运维人员可按状态和任务 ID查看脱敏队列元数据，运行监控同步展示待发送与失败数量，凭据和验证码不会进入日志或接口响应。
+账号手机与短信（平台基线能力）由 `/dashboard/sms`、`/dashboard/sms-deliveries` 和账号设置的“账号安全”分类提供。短信供应商配置只保存非敏感字段，凭据进入加密 SecretStore；验证码先写入加密的 PostgreSQL 投递队列，再由带租约令牌的虚拟线程 worker 按腾讯云、阿里云中国站/国际站、华为云、Twilio 的官方协议发送，后台兼容历史 JSON webhook。表单按供应商和国内/国际范围展示字段，自动填入服务地址、模板参数及签名所需数据；账号密钥、签名和审核模板由管理员提供。手机号绑定要求当前密码、E.164 格式、冷却/日上限/失败次数和一次性验证码；未配置短信服务时明确返回不可用，不生成半成品验证码。运维人员可按状态和任务 ID查看脱敏队列元数据，运行监控同步展示待发送与失败数量，凭据和验证码不会进入日志或接口响应。
 
 短信队列与手机号验证的接口、状态机和验收边界见 [短信投递说明](docs/sms-delivery.md) 与 [账号手机号说明](docs/account-phone.md)。
 
@@ -105,7 +105,7 @@ Outbox 提供按事件类型显式注册的消费器边界、虚拟线程并发�
 
 后台壳层使用 ProLayout 树形菜单呈现工作空间、AI 中心、用户与权限、内容与资源、消息与反馈、支付管理、运维和平台配置。菜单顺序、权限、模块状态和运行时动态页面由服务端导航树决定；前端 feature/plugin manifest 声明静态路由所属分组及权限。宽屏使用标准侧栏，767px 及以下使用 ProLayout 官方抽屉。分组归属、动态页面和权限行为见 [导航组织说明](docs/navigation-organization.md)。
 
-主题、语言、通知和账户操作统一放在内容区顶栏，侧栏底部只保留展开/收起控制。新业务页面应在所属 `features/<module>/manifest.ts` 声明路由、权限和依赖，并在同模块 `module.tsx` 提供懒加载页面；不再修改中央导航分组表。账户菜单提供个人资料、会话、修改密码和退出；修改密码验证原密码并注销该用户的已有会话。
+主题、语言、通知和账户操作统一放在内容区顶栏，侧栏底部只保留展开/收起控制。新业务页面应在所属 `features/<module>/manifest.ts` 声明路由、权限和依赖，并在同模块 `module.tsx` 提供懒加载页面；不再修改中央导航分组表。头像菜单仅提供个人资料和退出；个人资料页内部导航包含账号安全、角色预览、条件显示的微信绑定、修改密码和我的会话。个人资料位于 `/dashboard/account-security`，认证安全页位于 `/dashboard/account-authentication-security`；旧个人资料地址 `/dashboard/account-profile` 会跳转到新地址。修改密码验证原密码并注销该用户的已有会话。
 
 账户修改密码回归：`python3 scripts/password-smoke.py` 使用自动清理的临时账号验证，不修改管理员密码。
 

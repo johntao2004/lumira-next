@@ -3,9 +3,7 @@ package com.lumira.platform.identity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
+import com.lumira.platform.TestSchema;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -52,9 +50,11 @@ class PublicRegistrationIdempotencyConcurrencyTest {
         jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("CREATE TABLE platform_user(id uuid PRIMARY KEY)");
         jdbc.execute("CREATE TABLE platform_role(id uuid PRIMARY KEY)");
-        jdbc.execute(
-                readMigration(
-                        "/db/migration/V31__public_registration_and_authentication_challenges.sql"));
+        for (String table :
+                List.of("platform_public_auth_challenge", "platform_registration_completion")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
         challenges = new PublicAuthChallengeStore(JdbcClient.create(dataSource));
         transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         challengeId = UUID.randomUUID();
@@ -191,17 +191,6 @@ class PublicRegistrationIdempotencyConcurrencyTest {
             Future<String> a = executor.submit(first::get);
             Future<String> b = executor.submit(second::get);
             return List.of(a.get(20, TimeUnit.SECONDS), b.get(20, TimeUnit.SECONDS));
-        }
-    }
-
-    private static String readMigration(String resource) {
-        try (var stream =
-                PublicRegistrationIdempotencyConcurrencyTest.class.getResourceAsStream(resource)) {
-            if (stream == null)
-                throw new IllegalStateException("Missing migration fixture " + resource);
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException error) {
-            throw new UncheckedIOException(error);
         }
     }
 

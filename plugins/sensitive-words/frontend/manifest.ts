@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const sensitiveWordsManifest = {
   id: "sensitive-words",
-  version: "1.0.8",
+  version: "1.0.9",
   required: false,
   dependencies: ["platform", "dictionaries"],
   routes: [

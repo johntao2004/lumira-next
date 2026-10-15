@@ -2,10 +2,9 @@ package com.lumira.platform.feedback;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.audit.AuditRepository;
 import com.lumira.platform.common.PageRequest;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
@@ -32,7 +31,7 @@ class FeedbackStoreTest {
                     "NORMAL");
 
     @BeforeEach
-    void setup() throws Exception {
+    void setup() {
         String url = System.getenv("LUMIRA_TEST_DB_URL"),
                 user = System.getenv("LUMIRA_TEST_DB_USER"),
                 password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
@@ -48,17 +47,20 @@ class FeedbackStoreTest {
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         var client = JdbcClient.create(ds);
         store = new FeedbackStore(client, new AuditRepository(client));
-        jdbc.execute(
-                "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,display_name TEXT,enabled BOOLEAN)");
-        jdbc.execute(
-                "CREATE TABLE platform_audit(id UUID PRIMARY KEY,actor TEXT,action TEXT,target_id UUID)");
-        jdbc.execute(
-                "CREATE TABLE platform_file(id UUID PRIMARY KEY,owner_id UUID,state TEXT,media_type TEXT)");
-        jdbc.execute(TestMigration.read("V34__feedback_storage.sql"));
-        jdbc.execute("ALTER TABLE platform_feedback ADD COLUMN category VARCHAR(100)");
-        jdbc.execute(TestMigration.read("V38__feedback_file_references.sql"));
+        for (String table :
+                List.of(
+                        "platform_user",
+                        "platform_audit",
+                        "platform_file",
+                        "platform_feedback",
+                        "platform_feedback_file")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
+        TestSchema.foreignKeys("platform_feedback").forEach(jdbc::execute);
         jdbc.update(
-                "INSERT INTO platform_user(id,username,display_name,enabled) VALUES(?,'alice','Alice',true),(?,'bob','Bob',true)",
+                "INSERT INTO platform_user(id,username,display_name,password_hash) "
+                        + "VALUES(?,'alice','Alice','unused'),(?,'bob','Bob','unused')",
                 alice,
                 bob);
     }
@@ -103,7 +105,8 @@ class FeedbackStoreTest {
         jdbc.update("DELETE FROM platform_user WHERE id=?", alice);
         var recreated = UUID.randomUUID();
         jdbc.update(
-                "INSERT INTO platform_user(id,username,display_name,enabled) VALUES(?,'alice','Alice',true)",
+                "INSERT INTO platform_user(id,username,display_name,password_hash,enabled) "
+                        + "VALUES(?,'alice','Alice','unused',true)",
                 recreated);
         rejected("feedbackNotFound", () -> store.findOwned(recreated, row.id()));
         assertNull(store.findForManagement(row.id()).ownerId());
@@ -169,10 +172,10 @@ class FeedbackStoreTest {
     void bindsOnlyReadyNormalizedImagesOwnedByAuthor() {
         UUID file = UUID.randomUUID();
         jdbc.update(
-                "INSERT INTO platform_file(id,owner_id,state,media_type) VALUES(?,?,?,?)",
+                "INSERT INTO platform_file(id,owner_id,storage_backend,original_name,state,size_bytes,sha256,media_type) "
+                        + "VALUES(?,?,'local','image.png','READY',1,repeat('a',64),?)",
                 file,
                 alice,
-                "READY",
                 "image/png");
         var row =
                 tx.execute(
@@ -196,10 +199,10 @@ class FeedbackStoreTest {
                         file));
         UUID other = UUID.randomUUID();
         jdbc.update(
-                "INSERT INTO platform_file(id,owner_id,state,media_type) VALUES(?,?,?,?)",
+                "INSERT INTO platform_file(id,owner_id,storage_backend,original_name,state,size_bytes,sha256,media_type) "
+                        + "VALUES(?,?,'local','other.bin','READY',1,repeat('b',64),?)",
                 other,
                 bob,
-                "READY",
                 "application/octet-stream");
         rejected(
                 "invalidFeedback",

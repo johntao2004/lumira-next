@@ -12,7 +12,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-/** Applies the complete migration chain to an explicitly provisioned disposable database. */
+/** Applies the fresh-install baseline to an explicitly provisioned disposable database. */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_MIGRATION_TEST_DB_URL", matches = ".+")
 class ApiDocsNavigationMigrationTest {
     private static JdbcTemplate jdbc;
@@ -49,10 +49,12 @@ class ApiDocsNavigationMigrationTest {
     }
 
     @Test
-    void fullMigrationChainKeepsExistingSeedsAndAddsGlobalMonitoringEntry() {
+    void freshInitializationBaselineKeepsExistingSeedsAndAddsGlobalMonitoringEntry() {
         assertTrue(
-                flyway.info().applied().length >= 27,
-                "The full versioned migration chain, including V27, should be applied.");
+                flyway.info().applied().length == 1,
+                "A fresh database should apply the single B52 initialization baseline.");
+        assertEquals("52", flyway.info().current().getVersion().getVersion());
+        assertEquals("B52__platform_initialization.sql", flyway.info().current().getScript());
 
         assertEquals(
                 1,

@@ -7,6 +7,10 @@ const AdminNotificationsPage = lazy(() => import("./admin-notifications-page").t
 export const notificationsFrontendModule = {
   ...notificationsManifest,
   pages: {
-    notifications: ({ hasOperation }) => <AdminNotificationsPage canCreate={hasOperation("create")} />,
+    notifications: ({ hasOperation, hasGlobal }) => <AdminNotificationsPage
+      canCreate={hasOperation("create")}
+      canTraceEvents={hasGlobal("platform:event-outbox:access")}
+      canTraceOperations={hasGlobal("platform:audit:access")}
+    />,
   },
 } satisfies FrontendModule;

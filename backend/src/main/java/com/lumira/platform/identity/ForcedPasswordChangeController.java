@@ -2,15 +2,14 @@ package com.lumira.platform.identity;
 
 import com.lumira.platform.common.BoundedBody;
 import com.lumira.platform.common.ContentPolicyExempt;
+import com.lumira.platform.identity.api.LoginResponse;
 import com.lumira.platform.modules.ModuleEndpoint;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Completes the unauthenticated, session-bound forced password-change stage. */
@@ -29,14 +28,16 @@ public class ForcedPasswordChangeController {
     }
 
     private final TemporaryPasswordResetService resets;
+    private final SecondFactorLoginService login;
 
-    public ForcedPasswordChangeController(TemporaryPasswordResetService resets) {
+    public ForcedPasswordChangeController(
+            TemporaryPasswordResetService resets, SecondFactorLoginService login) {
         this.resets = resets;
+        this.login = login;
     }
 
     @PostMapping("/password-change")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void change(
+    public LoginResponse change(
             @RequestBody @BoundedBody(maxBytes = 4096, errorCode = "passwordPolicy")
                     ChangeRequest body,
             HttpServletRequest request,
@@ -44,9 +45,13 @@ public class ForcedPasswordChangeController {
         noStore(response);
         if (body == null)
             throw new org.springframework.web.server.ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "secondFactorExpired");
-        resets.changePassword(
-                body.challengeId(), body.newPassword(), body.confirmPassword(), request);
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "secondFactorExpired");
+        return resets.changePasswordAndContinue(
+                body.challengeId(),
+                body.newPassword(),
+                body.confirmPassword(),
+                request,
+                continuation -> login.continueAfterPasswordChange(continuation, request, response));
     }
 
     private static void noStore(HttpServletResponse response) {

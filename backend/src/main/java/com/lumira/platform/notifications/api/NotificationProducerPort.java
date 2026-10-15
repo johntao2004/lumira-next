@@ -14,4 +14,20 @@ public interface NotificationProducerPort {
             String title,
             String status,
             boolean handled);
+
+    /**
+     * Versioned overload that carries the originating audit/business operation through to the event
+     * outbox. The default preserves binary compatibility with already installed plugins.
+     */
+    default void publishFeedback(
+            UUID operationId,
+            UUID auditOperationId,
+            UUID recipientId,
+            UUID feedbackId,
+            long version,
+            String title,
+            String status,
+            boolean handled) {
+        publishFeedback(recipientId, feedbackId, version, title, status, handled);
+    }
 }

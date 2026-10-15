@@ -54,7 +54,7 @@ export function SecondFactorForm({
     <>
       <Typography.Paragraph>{t("mfaLoginHint")}</Typography.Paragraph>
       <FeedbackBubble id="second-factor-error" content={action.error ? t(action.error) : undefined} />
-      <Form layout="vertical" requiredMark={false} onFinish={verify}>
+      <Form layout="vertical" requiredMark={false} size="large" onFinish={verify}>
         <Form.Item label={t("mfaCode")} required>
           <Input
             aria-label={t("mfaCode")}

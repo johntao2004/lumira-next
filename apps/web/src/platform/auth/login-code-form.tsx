@@ -118,8 +118,8 @@ export function LoginCodeForm({
     <Typography.Paragraph>{t("loginCodeContactHint")}</Typography.Paragraph>
     {captchaProof.action && <CaptchaPanel action={captchaProof.action} onVerified={proof => { captchaProof.finish(proof); }} onCancel={() => { captchaProof.finish(null); }} />}
     <FeedbackBubble id="login-code-error" content={action.error ? t(action.error) : undefined} />
-    {captchaAlwaysActions.some(name => ["LOGIN_CODE_SEND", "LOGIN_CODE_VERIFY"].includes(name)) && !captchaSupported && <Alert className="mb-3" type="warning" showIcon title={t("captchaRequiredUnavailable")} />}
-    <Form layout="vertical" requiredMark={false}>
+    {captchaAlwaysActions.some(name => ["LOGIN_CODE_SEND", "LOGIN_CODE_VERIFY"].includes(name)) && !captchaSupported && <Alert style={{ marginBlockEnd: 12 }} type="warning" showIcon title={t("captchaRequiredUnavailable")} />}
+    <Form layout="vertical" requiredMark={false} size="large">
       {channels.length > 1 && <Form.Item label={t("registrationChannel")}>
         <Radio.Group
           value={channel}
@@ -139,8 +139,9 @@ export function LoginCodeForm({
           placeholder={channel === "SMS" ? "+8613800138000" : undefined}
         />
       </Form.Item>
-      <Space wrap>
+      <Space direction="vertical" size="small" style={{ width: "100%", alignItems: "stretch" }}>
         <AsyncButton
+          block
           pending={action.pending}
           disabled={secondsUntilResend > 0 || (captchaAlwaysActions.includes("LOGIN_CODE_SEND") && !captchaSupported)}
           label={secondsUntilResend > 0 ? t("loginCodeResendCountdown", { seconds: secondsUntilResend }) : t(challenge ? "loginCodeResend" : "loginCodeSend")}
@@ -149,7 +150,7 @@ export function LoginCodeForm({
         {challenge && <Typography.Text type="secondary">{t("registrationCodeExpiry", { seconds: Math.max(0, Math.ceil((Date.parse(challenge.expiresAt) - Date.now()) / 1000)) })}</Typography.Text>}
       </Space>
       {challenge && <>
-        <Alert className="mt-3" type="info" showIcon title={t("loginCodeSent")} />
+        <Alert style={{ marginBlockStart: 12 }} type="info" showIcon title={t("loginCodeSent")} />
         <Form.Item className="mt-4" label={t(channel === "SMS" ? "phoneCode" : "emailCode")}>
           <Input value={code} disabled={action.pending} onChange={event => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
         </Form.Item>
@@ -163,7 +164,7 @@ export function LoginCodeForm({
         />
       </>}
     </Form>
-    <Space orientation="vertical" style={{ width: "100%" }} className="mt-3">
+    <Space orientation="vertical" style={{ width: "100%", marginBlockStart: 12 }}>
       <Button block disabled={action.pending} onClick={onCancel}>{t("loginCodeBack")}</Button>
     </Space>
   </>;

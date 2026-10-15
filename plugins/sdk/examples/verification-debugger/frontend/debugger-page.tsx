@@ -624,7 +624,7 @@ export function VerificationDebuggerPage({
                   <Alert showIcon type="warning" style={{ marginBottom: 12 }} message="收件箱包含非固定测试号码的消息，已隐藏这些消息和验证码。" />
                 )}
                 <Table<DebuggerMessage>
-                  size="small"
+                  size="medium"
                   rowKey="id"
                   loading={messages.isFetching}
                   dataSource={safeMessages}

@@ -24,6 +24,7 @@ import {
   sensitiveCsvFileSizeIssue,
   validateSensitiveImportPayload,
   validateSensitivePaste,
+  sensitiveWordValidationIssue,
   SENSITIVE_IMPORT_LIMITS,
   type SensitiveCsvParseResult,
   type SensitiveImportIssue,
@@ -291,8 +292,12 @@ export function SensitiveWordLibrary({ canRead, canCreate, canUpdate, canDelete,
       {selected && detail.isFetching && <Spin size="small" />}
       {ready && <Form id="sensitive-word-editor" name="sensitive-word-editor" form={editorForm} layout="vertical" disabled={pending || (selected ? !canUpdate : !canCreate)} onFinish={(values) => void save(values)}>
         <Typography.Paragraph type="secondary">{t("sensitiveDailyFieldsHint")}</Typography.Paragraph>
-        <Form.Item name="word" label={t("sensitiveWord")} rules={[{ required: true, whitespace: true, max: 128, message: t("invalidSensitiveWord") }]}><Input maxLength={128} /></Form.Item>
-        <Form.Item name="category" label={t("sensitiveWordCategory")} rules={[{ required: true, max: 64, message: t("invalidSensitiveWord") }]}><Select options={editorCategoryOptions(selected ? editingCategory : null)} showSearch optionFilterProp="label" /></Form.Item>
+        <Form.Item name="word" label={t("sensitiveWord")} rules={[
+          { required: true, whitespace: true, max: 128, message: t("invalidSensitiveWord") },
+          { validator: (_rule, value: string | undefined) => !value || !sensitiveWordValidationIssue(value)
+            ? Promise.resolve() : Promise.reject(new Error(t("invalidSensitiveWord"))) },
+        ]}><Input maxLength={128} /></Form.Item>
+        <Form.Item name="category" label={t("sensitiveWordCategory")} rules={[{ required: true, message: t("invalidSensitiveWord") }]}><Select options={editorCategoryOptions(selected ? editingCategory : null)} showSearch optionFilterProp="label" /></Form.Item>
         <Collapse ghost items={[{ key: "advanced", label: t("sensitiveAdvancedSettings"), forceRender: true, children: <>
           <Form.Item name="severity" label={t("sensitiveWordSeverity")}><Select options={severities.map((value) => ({ value, label: t(severityLabels[value]) }))} /></Form.Item>
           <Form.Item name="action" label={t("sensitiveWordAction")} extra={t("sensitivePolicyHint")}><Select options={[{ value: "BLOCK", label: t("sensitiveActionBlock") }, { value: "LOG_ONLY", label: t("sensitiveActionLog") }]} /></Form.Item>
@@ -328,7 +333,7 @@ export function SensitiveWordLibrary({ canRead, canCreate, canUpdate, canDelete,
           {csvPreview && <>
             <Typography.Paragraph type="secondary">{t("sensitiveImportCsvPreviewCount", { count: csvPreview.words.length, chars: csvPreview.textChars })}</Typography.Paragraph>
             {csvPreview.words.length > 0 && <Table<SensitiveCsvParseResult["words"][number]>
-              size="small"
+              size="medium"
               rowKey={(row) => `${row.line}-${row.word}`}
               pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
               dataSource={csvPreview.words}
@@ -340,7 +345,7 @@ export function SensitiveWordLibrary({ canRead, canCreate, canUpdate, canDelete,
           </>}
         </>}
         {importSource === "paste" && importIssues.length > 0 && <Table<SensitiveImportIssue & { rowKey: string }>
-          size="small"
+          size="medium"
           rowKey="rowKey"
           pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
           dataSource={importIssues.map((item, index) => ({ ...item, rowKey: `${item.line ?? "input"}-${item.key}-${index}` }))}
@@ -353,7 +358,7 @@ export function SensitiveWordLibrary({ canRead, canCreate, canUpdate, canDelete,
         {importSource === "csv" && importIssues.length > 0 && <>
           <Typography.Title level={5}>{t("sensitiveImportCsvErrorRows")}</Typography.Title>
           <Table<SensitiveImportIssue & { rowKey: string }>
-            size="small"
+            size="medium"
             rowKey="rowKey"
             pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
             dataSource={importIssues.map((item, index) => ({ ...item, rowKey: `${item.line ?? "file"}-${item.key}-${index}` }))}
@@ -364,7 +369,7 @@ export function SensitiveWordLibrary({ canRead, canCreate, canUpdate, canDelete,
             ]}
           />
         </>}
-        <Form.Item name="category" label={t("sensitiveWordCategory")} rules={[{ required: true, max: 64, message: t("invalidSensitiveWord") }]}><Select options={editorCategoryOptions()} showSearch optionFilterProp="label" /></Form.Item>
+        <Form.Item name="category" label={t("sensitiveWordCategory")} rules={[{ required: true, message: t("invalidSensitiveWord") }]}><Select options={editorCategoryOptions()} showSearch optionFilterProp="label" /></Form.Item>
         <Collapse ghost items={[{ key: "advanced", label: t("sensitiveAdvancedSettings"), forceRender: true, children: <>
           <Form.Item name="severity" label={t("sensitiveWordSeverity")}><Select options={severities.map((value) => ({ value, label: t(severityLabels[value]) }))} /></Form.Item>
           <Form.Item name="action" label={t("sensitiveWordAction")} extra={t("sensitivePolicyHint")}><Select options={[{ value: "BLOCK", label: t("sensitiveActionBlock") }, { value: "LOG_ONLY", label: t("sensitiveActionLog") }]} /></Form.Item>

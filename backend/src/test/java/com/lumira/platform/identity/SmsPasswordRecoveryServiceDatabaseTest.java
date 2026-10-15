@@ -13,6 +13,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.CaptchaProofPort;
@@ -23,9 +24,6 @@ import com.lumira.platform.common.SmsSender;
 import com.lumira.platform.identity.api.AccountSecurityPort;
 import com.lumira.platform.identity.api.SecurityPolicyPort;
 import jakarta.servlet.http.HttpServletRequest;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -75,18 +73,17 @@ class SmsPasswordRecoveryServiceDatabaseTest {
         jdbc.execute(
                 "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text UNIQUE,password_hash text,enabled boolean NOT NULL,deleted_at timestamptz,primary_credential_revision uuid NOT NULL)");
         jdbc.execute("CREATE TABLE platform_password_change_requirement(user_id uuid PRIMARY KEY)");
+        jdbc.execute(
+                "CREATE TABLE platform_bootstrap_password_change_requirement(user_id uuid PRIMARY KEY,primary_credential_revision uuid NOT NULL,created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,completed_at timestamptz)");
         jdbc.execute("CREATE TABLE platform_role(id uuid PRIMARY KEY)");
-        jdbc.execute(
-                readMigration(
-                        "/db/migration/V31__public_registration_and_authentication_challenges.sql"));
-        jdbc.execute(
-                """
-                CREATE TABLE platform_account_phone(
-                    user_id uuid PRIMARY KEY REFERENCES platform_user(id) ON DELETE CASCADE,
-                    phone text,verified_at timestamptz,pending_phone text,token_hash text,expires_at timestamptz,
-                    requested_at timestamptz,request_count integer NOT NULL DEFAULT 0,request_day date,
-                    failures integer NOT NULL DEFAULT 0,version bigint NOT NULL DEFAULT 1)
-                """);
+        for (String table :
+                List.of(
+                        "platform_public_auth_challenge",
+                        "platform_public_auth_rate",
+                        "platform_account_phone")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
         jdbc.execute(
                 "CREATE TABLE platform_rate_bucket(bucket_key text PRIMARY KEY,window_start timestamptz NOT NULL,attempts integer NOT NULL)");
         jdbc.execute(
@@ -395,16 +392,5 @@ class SmsPasswordRecoveryServiceDatabaseTest {
         request.setSession(new MockHttpSession(null, sessionId));
         request.setRemoteAddr("127.0.0.1");
         return request;
-    }
-
-    private static String readMigration(String resource) {
-        try (var stream =
-                SmsPasswordRecoveryServiceDatabaseTest.class.getResourceAsStream(resource)) {
-            if (stream == null)
-                throw new IllegalStateException("Missing migration fixture " + resource);
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException error) {
-            throw new UncheckedIOException(error);
-        }
     }
 }

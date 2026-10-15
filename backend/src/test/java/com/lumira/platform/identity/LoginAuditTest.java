@@ -2,7 +2,7 @@ package com.lumira.platform.identity;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -32,8 +32,7 @@ class LoginAuditTest {
         jdbc = new JdbcTemplate(ds);
         audit = new LoginAudit(JdbcClient.create(ds));
         jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE)");
-        jdbc.execute("CREATE TABLE platform_audit(id UUID,actor TEXT,action TEXT,target_id UUID)");
-        jdbc.execute(TestMigration.read("V29__audit_client_context.sql"));
+        jdbc.execute(TestSchema.table("platform_audit"));
     }
 
     @AfterEach

@@ -6,7 +6,6 @@ import { TableActions } from "@/platform/components/table-actions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, mutate } from "@/platform/api/client";
 import { ResourceTable } from "@/platform/components/resource-table";
-import type { ProColumns } from "@/platform/components/resource-table";
 import type { PageResult } from "@/platform/api/pagination";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
@@ -14,6 +13,8 @@ import { formatDateTime } from "@/platform/i18n/format";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { messageKeyFor } from "@/platform/api/errors";
 import { listRequestParams } from "@/platform/api/pagination";
+import { EventTraceDrawer } from "./event-trace-drawer";
+import type { EventTraceTarget } from "./event-trace-drawer";
 
 type Entry = {
   id: string; sourceType: string; eventType: string; eventKey: string; status: keyof typeof statuses;
@@ -32,6 +33,7 @@ export function OutboxPage({ canReplay = false }: { canReplay?: boolean }) {
   const client = useQueryClient();
   const [request, setRequest] = useListRequest();
   const [replayTarget, setReplayTarget] = useState<Entry | null>(null);
+  const [traceTarget, setTraceTarget] = useState<EventTraceTarget | null>(null);
   const [replayReason, setReplayReason] = useState("");
   const [replayPending, setReplayPending] = useState(false);
   const query = useQuery({
@@ -70,12 +72,16 @@ export function OutboxPage({ canReplay = false }: { canReplay?: boolean }) {
       { title: t("eventLastError"), dataIndex: "lastError", render: (_, entry) => entry.lastError ?? "—" },
       { title: t("eventCreatedAt"), dataIndex: "createdAt", valueType: "dateTimeRange", render: (_, entry) => formatTime(entry.createdAt) },
       { title: t("eventDeliveredAt"), dataIndex: "deliveredAt", valueType: "dateTimeRange", render: (_, entry) => formatTime(entry.deliveredAt) },
-      ...(canReplay ? [{ title: t("actions"), key: "actions", search: false, render: (_: unknown, entry: Entry) => entry.status === "DEAD_LETTER" ? <TableActions><Button type="link" onClick={() => { setReplayTarget(entry); setReplayReason(""); }}>{t("eventReplay")}</Button></TableActions> : null } as ProColumns<Entry>] : []),
+      { title: t("actions"), key: "actions", search: false, render: (_: unknown, entry: Entry) => <TableActions>
+        <Button type="link" data-testid={`event-trace-event-${entry.id}`} onClick={() => setTraceTarget({ kind: "event", eventId: entry.id })}>{t("eventTraceOpen")}</Button>
+        {canReplay && entry.status === "DEAD_LETTER" && <Button type="link" onClick={() => { setReplayTarget(entry); setReplayReason(""); }}>{t("eventReplay")}</Button>}
+      </TableActions> },
       ]}
     />
     <Modal open={!!replayTarget} title={t("eventReplay")} onCancel={closeReplay} onOk={() => void submitReplay()} okText={t("eventReplay")} cancelText={t("cancel")} okButtonProps={{ loading: replayPending, disabled: !replayReason.trim() }} cancelButtonProps={{ disabled: replayPending }} destroyOnHidden>
       <p>{t("eventReplayConfirm")}</p>
       <Input.TextArea aria-label={t("eventReplayReason")} value={replayReason} onChange={event => setReplayReason(event.target.value)} maxLength={1000} rows={4} disabled={replayPending} />
     </Modal>
+    {traceTarget && <EventTraceDrawer target={traceTarget} onClose={() => setTraceTarget(null)} />}
   </>;
 }

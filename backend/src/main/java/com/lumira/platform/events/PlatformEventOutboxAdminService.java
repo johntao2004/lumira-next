@@ -2,11 +2,13 @@ package com.lumira.platform.events;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.PlatformOperation;
-import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.util.UUID;
 
 /** Administrative adapter for durable event recovery; payloads never enter this API. */
 @Service
@@ -36,9 +38,10 @@ public class PlatformEventOutboxAdminService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidEventReplay");
         }
         try {
-            var replay = store.replay(id);
-            approvals.append(id, actor, reason);
-            audit.append(actor, "event.replay.approved", id);
+            UUID auditOperationId = UUID.randomUUID();
+            var replay = store.replay(id, actor, reason, auditOperationId);
+            approvals.append(auditOperationId, id, actor, reason);
+            audit.append(auditOperationId, actor, "event.replay.approved", id);
             return replay;
         } catch (ResponseStatusException failure) {
             throw failure;

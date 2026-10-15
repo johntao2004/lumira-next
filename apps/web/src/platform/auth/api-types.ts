@@ -27,6 +27,8 @@ export type LoginState =
   | "CANCELLED"
   | "NONE";
 
+export type PasswordChangeReason = "BOOTSTRAP" | "TEMPORARY_RESET";
+
 export interface AuthenticationEvidence {
   primaryMethod: PrimaryMethod | null;
   verifiedFactors: string[];
@@ -297,6 +299,7 @@ export type LoginResponse = {
   challengeId: string | null;
   expiresAt: string | null;
   state?: LoginState;
+  passwordChangeReason?: PasswordChangeReason;
   policyRevision?: string | null;
   factors?: string[];
   nextPath?: string | null;

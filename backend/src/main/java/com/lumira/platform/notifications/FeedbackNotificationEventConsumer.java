@@ -1,11 +1,13 @@
 package com.lumira.platform.notifications;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
-import java.util.List;
-import java.util.UUID;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
+
+import java.util.List;
+import java.util.UUID;
 
 /** Writes the notification requested by a committed feedback create or handling operation. */
 public final class FeedbackNotificationEventConsumer implements DurableEventConsumerPort {
@@ -34,6 +36,11 @@ public final class FeedbackNotificationEventConsumer implements DurableEventCons
 
     @Override
     public void consume(Event event) {
+        consumeWithResult(event);
+    }
+
+    @Override
+    public ConsumptionResult consumeWithResult(Event event) {
         JsonNode payload = parse(event);
         UUID recipientId = uuid(payload, "recipientId");
         UUID feedbackId = uuid(payload, "feedbackId");
@@ -51,28 +58,39 @@ public final class FeedbackNotificationEventConsumer implements DurableEventCons
             throw new IllegalArgumentException("Invalid feedback notification key");
 
         // A recipient who has since become a feedback manager should not receive a personal copy.
-        if (feedbackAudience.isGlobalManager(recipientId)) return;
+        if (feedbackAudience.isGlobalManager(recipientId))
+            return ConsumptionResult.of(
+                    1,
+                    0,
+                    java.util.Map.of("GLOBAL_FEEDBACK_MANAGER", 1),
+                    "SUPPRESSED_GLOBAL_MANAGER");
 
         ObjectNode params = mapper.createObjectNode();
         params.put("title", requiredText(payload.path("title")));
         if (handled) params.put("status", requiredText(payload.path("status")));
         String key = "feedback:" + feedbackId + ":" + (handled ? "handled:" + version : "created");
-        store.createBatch(
-                List.of(
-                        new NotificationStore.CreateRequest(
-                                recipientId,
-                                event.id(),
-                                key,
-                                "feedback",
-                                handled
-                                        ? "notificationFeedbackUpdated"
-                                        : "notificationFeedbackSubmitted",
-                                handled
-                                        ? "notificationFeedbackUpdatedBody"
-                                        : "notificationFeedbackCreatedBody",
-                                mapper.writeValueAsString(params),
-                                "/dashboard/feedback",
-                                null)));
+        NotificationStore.BatchResult result =
+                store.createBatchWithResult(
+                        List.of(
+                                new NotificationStore.CreateRequest(
+                                        recipientId,
+                                        event.id(),
+                                        key,
+                                        "feedback",
+                                        handled
+                                                ? "notificationFeedbackUpdated"
+                                                : "notificationFeedbackSubmitted",
+                                        handled
+                                                ? "notificationFeedbackUpdatedBody"
+                                                : "notificationFeedbackCreatedBody",
+                                        mapper.writeValueAsString(params),
+                                        "/dashboard/feedback",
+                                        null)));
+        return ConsumptionResult.of(
+                result.expectedCount(),
+                result.inboxCreated(),
+                result.skippedByReason(),
+                result.resultCode());
     }
 
     private JsonNode parse(Event event) {

@@ -36,16 +36,16 @@ type RunSettingsAction = (kind: SettingsAction, operation: () => Promise<void | 
 const SYSTEM_SAVE_REASON = "System-generated record: platform settings saved.";
 const SYSTEM_RESTORE_REASON_PREFIX = "System-generated record: platform settings restored from revision ";
 
-export function SettingsSection<T extends object>({ section, canWrite, className, formName, showSecondaryActions = true, saveBlocked = false, confirmBeforeSave, prepareSubmission, onFinishFailed, children, ...extras }: { section: string; canWrite: boolean; className?: string; formName?: string; showSecondaryActions?: boolean; saveBlocked?: boolean; confirmBeforeSave?: (values: Record<string, unknown>) => Promise<boolean>; prepareSubmission?: SubmissionTransform<T>; onFinishFailed?: FormProps["onFinishFailed"]; children: React.ReactNode } & Extras<T>) {
+export function SettingsSection<T extends object>({ section, canWrite, className, formName, showSecondaryActions = true, saveBlocked = false, confirmBeforeSave, prepareSubmission, onFinishFailed, onSaved, children, ...extras }: { section: string; canWrite: boolean; className?: string; formName?: string; showSecondaryActions?: boolean; saveBlocked?: boolean; confirmBeforeSave?: (values: Record<string, unknown>) => Promise<boolean>; prepareSubmission?: SubmissionTransform<T>; onFinishFailed?: FormProps["onFinishFailed"]; onSaved?: () => void | Promise<void>; children: React.ReactNode } & Extras<T>) {
   const { t } = usePreferences();
   const query = useQuery({ queryKey: ["settings", section], queryFn: ({ signal }) => api<Snapshot<T>>(`/platform/settings/${section}`, { signal }) });
   return <ProCard className={["platform-settings-card", className].filter(Boolean).join(" ")}>
     {!query.data && (query.error ? <QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} /> : <Spin />)}
-    {query.data && <SectionEditor<T> key={section} section={section} initial={query.data} canWrite={canWrite} formName={formName} showSecondaryActions={showSecondaryActions} saveBlocked={saveBlocked} confirmBeforeSave={confirmBeforeSave} prepareSubmission={prepareSubmission} onFinishFailed={onFinishFailed} {...extras}>{children}</SectionEditor>}
+    {query.data && <SectionEditor<T> key={section} section={section} initial={query.data} canWrite={canWrite} formName={formName} showSecondaryActions={showSecondaryActions} saveBlocked={saveBlocked} confirmBeforeSave={confirmBeforeSave} prepareSubmission={prepareSubmission} onFinishFailed={onFinishFailed} onSaved={onSaved} {...extras}>{children}</SectionEditor>}
   </ProCard>;
 }
 
-function SectionEditor<T extends object>({ section, initial, canWrite, formName, showSecondaryActions, saveBlocked, confirmBeforeSave, prepareSubmission, onFinishFailed, children, initialExtras, renderExtras }: { section: string; initial: Snapshot<T>; canWrite: boolean; formName?: string; showSecondaryActions: boolean; saveBlocked: boolean; confirmBeforeSave?: (values: Record<string, unknown>) => Promise<boolean>; prepareSubmission?: SubmissionTransform<T>; onFinishFailed?: FormProps["onFinishFailed"]; children: React.ReactNode } & Extras<T>) {
+function SectionEditor<T extends object>({ section, initial, canWrite, formName, showSecondaryActions, saveBlocked, confirmBeforeSave, prepareSubmission, onFinishFailed, onSaved, children, initialExtras, renderExtras }: { section: string; initial: Snapshot<T>; canWrite: boolean; formName?: string; showSecondaryActions: boolean; saveBlocked: boolean; confirmBeforeSave?: (values: Record<string, unknown>) => Promise<boolean>; prepareSubmission?: SubmissionTransform<T>; onFinishFailed?: FormProps["onFinishFailed"]; onSaved?: () => void | Promise<void>; children: React.ReactNode } & Extras<T>) {
   const { t } = usePreferences();
   const client = useQueryClient();
   const operationSignal = useSessionScope();
@@ -126,6 +126,7 @@ function SectionEditor<T extends object>({ section, initial, canWrite, formName,
       }, signal);
       signal.throwIfAborted();
       await applySnapshot(result, true, signal);
+      await onSaved?.();
     }, signal);
   }
 
@@ -248,7 +249,7 @@ function SettingsSecondaryActions<T extends object>({ section, snapshot, canWrit
         ? <QueryFailure title={t("unavailable")} pending={historyQuery.isFetching} onRetry={() => void historyQuery.refetch()} />
         : <Table<SettingRevision>
           rowKey="version"
-          size="small"
+          size="medium"
           loading={historyQuery.isFetching}
           dataSource={historyQuery.data?.items ?? []}
           columns={historyColumns}

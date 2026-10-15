@@ -2,9 +2,8 @@ package com.lumira.platform.sms;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.SecretKeys;
-import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -37,15 +36,8 @@ class SmsDeliveryStoreTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(ds);
-        String ddl = TestMigration.read("V47__sms_delivery_and_account_phone.sql");
-        jdbc.execute(
-                ddl.substring(
-                        ddl.indexOf("CREATE TABLE platform_sms_delivery"),
-                        ddl.indexOf("CREATE TABLE platform_account_phone")));
-        jdbc.execute(
-                Files.readString(
-                        Path.of(
-                                "src/main/resources/db/migration/V21__sms_provider_rejection_result.sql")));
+        jdbc.execute(TestSchema.table("platform_sms_delivery"));
+        TestSchema.indexes("platform_sms_delivery").forEach(jdbc::execute);
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         store =
                 new SmsDeliveryStore(

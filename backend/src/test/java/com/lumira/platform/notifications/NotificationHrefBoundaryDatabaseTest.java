@@ -3,7 +3,7 @@ package com.lumira.platform.notifications;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.DurableEventConsumerPort;
@@ -54,9 +54,9 @@ class NotificationHrefBoundaryDatabaseTest {
         jdbc.execute(
                 "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text UNIQUE,enabled"
                         + " boolean,display_name text DEFAULT 'Recipient',deleted_at timestamptz)");
-        jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
-        jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
-        jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
+        jdbc.execute(TestSchema.table("platform_event_outbox"));
+        jdbc.execute(TestSchema.table("platform_notification"));
+        TestSchema.indexes("platform_notification").forEach(jdbc::execute);
         jdbc.update(
                 "INSERT INTO platform_user(id,username,enabled) VALUES(?,'recipient',true)",
                 recipient);

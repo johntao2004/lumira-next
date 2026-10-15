@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Checkbox, Input, Modal, Radio, Skeleton, Space, Typography } from "antd";
-import { MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { history } from "@umijs/max";
+import { history, useLocation } from "@umijs/max";
 import { ApiError, api, mutate } from "@/platform/api/client";
 import { AsyncButton } from "@/platform/components/async-button";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
@@ -13,13 +12,12 @@ import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { ProfileFieldRenderer } from "@/platform/profile-fields/profile-field-renderer";
 import type { ProfileFieldDefinition } from "@/platform/profile-fields/types";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
-import { LanguageSwitcher } from "@/platform/i18n/language-switcher";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { messageKeyFor } from "@/platform/api/errors";
 import { usePreferences } from "@/platform/providers";
-import { useBranding } from "@/platform/branding/provider";
-import { BrandFooter } from "@/platform/branding/footer";
 import { NewPasswordFields } from "@/platform/components/new-password-fields";
+import { AuthPageLayout } from "./auth-page-layout";
+import { authRouteWithReturnTo } from "./return-path";
 import type { PasswordRules } from "./password-contract";
 import type { LoginMethodAvailability, WechatAttempt, WechatResult } from "./api-types";
 import { isTrustedWechatAuthorizationUrl } from "./wechat-url";
@@ -108,8 +106,9 @@ function mapPublicFields(value: PublicProfileSchema | undefined): ProfileFieldDe
 }
 
 export function RegistrationPage() {
-  const branding = useBranding();
-  const { dark, locale, toggleDark, t } = usePreferences();
+  const { search } = useLocation();
+  const loginPath = authRouteWithReturnTo("/user/login", search);
+  const { locale, t } = usePreferences();
   const client = useQueryClient();
   const [contactForm] = Form.useForm<{ contact: string }>();
   const [accountForm] = Form.useForm<Record<string, unknown>>();
@@ -220,7 +219,6 @@ export function RegistrationPage() {
   const wechatRegistrationProofId = wechatResult.data?.purpose === "REGISTRATION" && wechatResult.data.status === "READY"
     ? wechatResult.data.wechatRegistrationProofId
     : null;
-  const brandingBackground = branding.loginBackgroundUrl.trim();
   const registrationCaptchaRequired = Boolean(
     authMethods.data?.captcha.alwaysActions.some(actionName => ["REGISTRATION_SEND", "REGISTRATION_VERIFY", "REGISTRATION_COMPLETE"].includes(actionName)),
   );
@@ -370,32 +368,20 @@ export function RegistrationPage() {
   const channels = config.data?.channels ?? [];
   const completedReceipt = receipt;
 
-  return <main className="login-page" data-has-background={Boolean(brandingBackground)} style={{ height: "auto", minHeight: "100dvh", overflowY: "auto" }}>
-    {brandingBackground && <div className="login-hero" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(brandingBackground)})` }} />}
-    <section className="login-shell" style={{ alignSelf: "start", paddingBlock: 72 }}>
-      <Space className="login-utilities">
-        <Button
-          aria-label={t(dark ? "lightMode" : "darkMode")}
-          icon={dark ? <SunOutlined /> : <MoonOutlined />}
-          onClick={toggleDark}
-        />
-        <LanguageSwitcher />
-      </Space>
-      <div className="login-content" style={{ maxWidth: 620 }}>
-        <Typography.Title level={1}>{branding.websiteName}</Typography.Title>
-        <div className="login-tab">{t(completedReceipt ? "registrationComplete" : "publicRegistrationTitle")}</div>
+  return <AuthPageLayout>
+        <div className="login-tab" role="heading" aria-level={2}>{t(completedReceipt ? "registrationComplete" : "publicRegistrationTitle")}</div>
         <FeedbackBubble id="registration-error" content={action.errorMessage} />
         {captchaProof.action && <CaptchaPanel action={captchaProof.action} onVerified={proof => { captchaProof.finish(proof); }} onCancel={() => { captchaProof.finish(null); }} />}
-        {config.error ? <Alert type="error" showIcon title={t("registrationUnavailable")} action={<Button type="link" onClick={() => history.replace("/user/login")}>{t("mfaBack")}</Button>} /> : completedReceipt ? <>
+        {config.error ? <Alert type="error" showIcon title={t("registrationUnavailable")} action={<Button type="link" onClick={() => history.replace(loginPath)}>{t("mfaBack")}</Button>} /> : completedReceipt ? <>
           <Alert type="success" showIcon title={t("registrationCompleteHint", { username: completedReceipt.username })} />
           {completedReceipt.wechatBinding.status === "FAILED" && <Alert className="mt-4" type="warning" showIcon title={t("registrationWechatBindingFailed")} />}
-          <Button className="mt-4" type="primary" block onClick={() => history.replace("/user/login", { registrationUsername: completedReceipt.username })}>{t("registrationGoToLogin")}</Button>
+          <Button className="mt-4" type="primary" block onClick={() => history.replace(loginPath, { registrationUsername: completedReceipt.username })}>{t("registrationGoToLogin")}</Button>
         </> : !registrationOpen ? <>
           <Alert type="info" showIcon title={registrationClosedMessage(config.data?.reason, t)} />
-          <Button className="mt-4" block onClick={() => history.replace("/user/login")}>{t("mfaBack")}</Button>
+          <Button className="mt-4" block onClick={() => history.replace(loginPath)}>{t("mfaBack")}</Button>
         </> : captchaBlocksRegistration ? <>
           <Alert type="warning" showIcon title={t("captchaRequiredUnavailable")} />
-          <Button className="mt-4" block onClick={() => history.replace("/user/login")}>{t("mfaBack")}</Button>
+          <Button className="mt-4" block onClick={() => history.replace(loginPath)}>{t("mfaBack")}</Button>
         </> : proofId ? <>
           <Typography.Paragraph>{t("registrationVerifiedContact", { contact: restored?.maskedContact ?? "" })}</Typography.Paragraph>
           <Typography.Paragraph type="secondary">{t("registrationAccountDetailsHint")}</Typography.Paragraph>
@@ -414,7 +400,7 @@ export function RegistrationPage() {
                 label={t("wechatRegistrationAttach")}
               />}
           </section>}
-          <Form form={accountForm} layout="vertical" requiredMark={false} onValuesChange={() => setRequestId(null)} onFinish={completeRegistration}>
+          <Form form={accountForm} layout="vertical" requiredMark={false} size="large" onValuesChange={() => setRequestId(null)} onFinish={completeRegistration}>
             <fieldset disabled={action.pending} style={{ border: 0, margin: 0, padding: 0 }}>
             <Form.Item name="username" label={t("username")} rules={[{ required: true, whitespace: true, min: 3, max: 100, pattern: /^[A-Za-z0-9][A-Za-z0-9_.-]{2,99}$/, message: t("invalidRegistrationUsername") }]}>
               <Input autoComplete="username" maxLength={100} />
@@ -441,10 +427,10 @@ export function RegistrationPage() {
           <Modal open={agreementOpen !== null} title={t(agreementOpen === "privacy" ? "registrationPrivacyAgreement" : "registrationUserAgreement")} onCancel={() => setAgreementOpen(null)} footer={<Button onClick={() => setAgreementOpen(null)}>{t("close")}</Button>}>
             <div style={{ maxHeight: "65dvh", overflowY: "auto" }}><MarkdownContent>{agreementOpen === "privacy" ? config.data.agreements.privacyAgreementMarkdown : config.data.agreements.userAgreementMarkdown}</MarkdownContent></div>
           </Modal>
-          <Button type="link" className="mt-3" onClick={() => history.replace("/user/login")}>{t("mfaBack")}</Button>
+          <Button type="link" className="mt-3" onClick={() => history.replace(loginPath)}>{t("mfaBack")}</Button>
         </> : <>
           <Typography.Paragraph>{t("registrationContactHint")}</Typography.Paragraph>
-          <Form form={contactForm} layout="vertical" requiredMark={false}>
+          <Form form={contactForm} layout="vertical" requiredMark={false} size="large">
             <Form.Item label={t("registrationChannel")}>
               <Radio.Group value={channel} disabled={action.pending} onChange={event => { setChannel(event.target.value); setContact(""); setLocalChallenge(null); setCode(""); action.setError(null); }} options={channels.map(value => ({ value, label: t(value === "SMS" ? "registrationChannelSms" : "registrationChannelEmail") }))} />
             </Form.Item>
@@ -462,13 +448,10 @@ export function RegistrationPage() {
               <AsyncButton type="primary" block pending={action.pending} disabled={!/^\d{6}$/.test(code)} label={t("registrationVerifyCode")} onClick={() => void verifyChallenge()} />
             </>}
           </Form>
-          <Button type="link" className="mt-3" onClick={() => history.replace("/user/login")}>{t("mfaBack")}</Button>
+          <Button type="link" className="mt-3" onClick={() => history.replace(loginPath)}>{t("mfaBack")}</Button>
         </>}
         {restored?.maskedContact && !proofId && !completedReceipt && <Typography.Paragraph type="secondary" className="mt-3">{t("registrationChallengeRestored", { contact: restored.maskedContact })}</Typography.Paragraph>}
-      </div>
-      <footer><BrandFooter /></footer>
-    </section>
-  </main>;
+  </AuthPageLayout>;
 }
 
 function registrationClosedMessage(reason: RegistrationConfig["reason"] | undefined, t: (key: MessageKey) => string) {

@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const feedbackManifest = {
   id: "feedback",
-  version: "1.0.13",
+  version: "1.0.14",
   required: false,
   dependencies: ["platform", "identity", "files", "dictionaries", "notifications"],
   routes: [

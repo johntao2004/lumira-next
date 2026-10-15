@@ -4,10 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.*;
 import com.lumira.platform.identity.api.*;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -321,67 +320,17 @@ class ReauthenticationServiceDatabaseTest {
                     primary_credential_revision uuid NOT NULL, factor_credential_revision uuid NOT NULL
                 )
                 """);
-        jdbc.execute(
-                "CREATE TABLE platform_authentication_policy_lock(id smallint PRIMARY KEY CHECK(id=1))");
+        jdbc.execute(TestSchema.table("platform_authentication_policy_lock"));
         jdbc.update("INSERT INTO platform_authentication_policy_lock VALUES (1)");
-        jdbc.execute(
-                """
-                CREATE TABLE platform_account_email (
-                    user_id uuid PRIMARY KEY REFERENCES platform_user(id), email text,
-                    verified_at timestamptz, version bigint NOT NULL
-                )
-                """);
-        jdbc.execute(
-                "CREATE TABLE platform_rate_bucket(bucket_key text PRIMARY KEY, window_start timestamptz NOT NULL, attempts integer NOT NULL)");
-        jdbc.execute(
-                """
-                CREATE TABLE platform_reauthentication_challenge (
-                    id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES platform_user(id),
-                    session_hash char(64) NOT NULL, action varchar(48) NOT NULL,
-                    authentication_revision uuid NOT NULL, expires_at timestamptz NOT NULL,
-                    attempts integer NOT NULL DEFAULT 0, completed_at timestamptz, ticket_id uuid,
-                    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    state varchar(16) NOT NULL DEFAULT 'PENDING'
-                )
-                """);
-        jdbc.execute(
-                "CREATE UNIQUE INDEX reauth_pending_per_session ON platform_reauthentication_challenge(user_id,session_hash) WHERE state='PENDING'");
-        jdbc.execute(
-                """
-                CREATE TABLE platform_reauthentication_code_challenge (
-                    id uuid PRIMARY KEY,
-                    reauthentication_challenge_id uuid NOT NULL REFERENCES platform_reauthentication_challenge(id) ON DELETE CASCADE,
-                    user_id uuid NOT NULL REFERENCES platform_user(id), session_hash char(64) NOT NULL,
-                    method varchar(16) NOT NULL CHECK (method IN ('EMAIL_OTP','SMS_OTP')),
-                    contact_digest char(64) NOT NULL,
-                    contact_version bigint NOT NULL CHECK (contact_version > 0),
-                    primary_credential_revision uuid NOT NULL, factor_credential_revision uuid NOT NULL,
-                    code_digest char(64), state varchar(16) NOT NULL, attempts smallint NOT NULL DEFAULT 0,
-                    expires_at timestamptz NOT NULL, consumed_at timestamptz,
-                    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    CHECK ((state='CONSUMED') = (consumed_at IS NOT NULL))
-                )
-                """);
-        jdbc.execute(readMigration("V39__reauthentication_contact_version_zero.sql"));
-        jdbc.execute(
-                """
-                CREATE TABLE platform_reauthentication_ticket (
-                    id uuid PRIMARY KEY, challenge_id uuid NOT NULL UNIQUE REFERENCES platform_reauthentication_challenge(id) ON DELETE CASCADE,
-                    user_id uuid NOT NULL REFERENCES platform_user(id), session_hash char(64) NOT NULL,
-                    action varchar(48) NOT NULL, authentication_revision uuid NOT NULL,
-                    expires_at timestamptz NOT NULL, consumed_at timestamptz,
-                    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """);
-    }
-
-    private String readMigration(String fileName) {
-        try (var stream = getClass().getResourceAsStream("/db/migration/" + fileName)) {
-            if (stream == null)
-                throw new IllegalStateException("Missing migration resource: " + fileName);
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException error) {
-            throw new IllegalStateException("Cannot read migration resource: " + fileName, error);
+        for (String table :
+                List.of(
+                        "platform_account_email",
+                        "platform_rate_bucket",
+                        "platform_reauthentication_challenge",
+                        "platform_reauthentication_code_challenge",
+                        "platform_reauthentication_ticket")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
         }
     }
 

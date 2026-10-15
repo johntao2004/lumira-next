@@ -93,16 +93,20 @@ try:
 except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
     fail(f"database module ownership manifest is invalid: {error}")
 migration_dir = ROOT / "backend/src/main/resources/db/migration"
+upgrade_dir = ROOT / "backend/src/main/resources/db/upgrade"
 baseline_name = ownership.get("baseline")
 active_migrations = {path.name for path in migration_dir.glob("*.sql")}
-if baseline_name not in active_migrations:
-    fail(f"database baseline is missing: {baseline_name}")
-if set(migration_owners) != active_migrations - {baseline_name}:
-    fail(
-        "database migration ownership is incomplete: "
-        f"missing={sorted(active_migrations - {baseline_name} - set(migration_owners))} "
-        f"unknown={sorted(set(migration_owners) - active_migrations)}"
-    )
+if baseline_name != "B52__platform_initialization.sql":
+    fail(f"database baseline must be B52__platform_initialization.sql: {baseline_name}")
+baseline_files = {name for name in active_migrations if name.startswith("B")}
+if baseline_name not in active_migrations or baseline_files != {baseline_name}:
+    fail(f"database baseline is missing or not unique: {baseline_name}")
+if active_migrations != {baseline_name}:
+    fail(f"global migration directory must contain only its initialization baseline: {sorted(active_migrations)}")
+if upgrade_dir.exists():
+    fail("legacy global upgrade directory is not allowed")
+if migration_owners != {}:
+    fail(f"historical global migration ownership is not allowed: {sorted(migration_owners)}")
 sql_migrations = "\n".join(path.read_text() for path in migration_dir.glob("*.sql"))
 migration_tables = set(re.findall(
     r"CREATE TABLE(?:\s+IF NOT EXISTS)?\s+(?:public\.)?(platform_[a-z0-9_]+)", sql_migrations, re.IGNORECASE

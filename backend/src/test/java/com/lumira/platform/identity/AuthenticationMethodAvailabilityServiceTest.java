@@ -1,6 +1,7 @@
 package com.lumira.platform.identity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -30,7 +31,7 @@ class AuthenticationMethodAvailabilityServiceTest {
                                 true,
                                 "example.test",
                                 "Lumira",
-                                java.util.List.of(),
+                                java.util.List.of("https://example.test"),
                                 300));
         var wechat = mock(WechatAvailabilityPort.class);
         when(wechat.ready()).thenReturn(true);
@@ -69,6 +70,66 @@ class AuthenticationMethodAvailabilityServiceTest {
                 new AuthenticationMethodAvailabilityService(mail, sms, passkeys, wechatProviders);
 
         assertEquals(Set.of(PrimaryMethod.PASSWORD), availability.availableMethods());
+    }
+
+    @Test
+    void passkeyRequiresACompleteAndValidPasswordlessPolicy() {
+        var invalidPolicies =
+                java.util.List.of(
+                        new PasskeyPolicyPort.Policy(
+                                true,
+                                true,
+                                true,
+                                "",
+                                "Lumira",
+                                java.util.List.of("https://example.test"),
+                                300),
+                        new PasskeyPolicyPort.Policy(
+                                true,
+                                true,
+                                true,
+                                "example.test",
+                                " ",
+                                java.util.List.of("https://example.test"),
+                                300),
+                        new PasskeyPolicyPort.Policy(
+                                true,
+                                true,
+                                true,
+                                "example.test",
+                                "Lumira",
+                                java.util.List.of(),
+                                300),
+                        new PasskeyPolicyPort.Policy(
+                                true,
+                                true,
+                                true,
+                                "example.test",
+                                "Lumira",
+                                java.util.List.of("https://user:secret@example.test"),
+                                300),
+                        new PasskeyPolicyPort.Policy(
+                                true,
+                                true,
+                                true,
+                                "example.test",
+                                "Lumira",
+                                java.util.List.of("https://example.test"),
+                                29));
+        var mail = mock(MailSender.class);
+        var sms = mock(SmsSender.class);
+        var passkeys = mock(PasskeyPolicyPort.class);
+        var wechatProviders = mock(ObjectProvider.class);
+        when(wechatProviders.getIfAvailable()).thenReturn(null);
+
+        for (var policy : invalidPolicies) {
+            when(passkeys.currentPolicy()).thenReturn(policy);
+            var availability =
+                    new AuthenticationMethodAvailabilityService(
+                            mail, sms, passkeys, wechatProviders);
+
+            assertFalse(availability.availableMethods().contains(PrimaryMethod.PASSKEY));
+        }
     }
 
     @Test

@@ -40,10 +40,25 @@ def problems():
             public = re.search(r"^public\s+(?:(?:abstract|final|sealed|non-sealed)\s+)*(?:class|interface|enum|record|@interface)\s+(\w+)", source, re.M)
             if public and public[1] != path.stem:
                 errors.append(f"Java public type/file mismatch: {path.relative_to(ROOT)}")
-    for root in [ROOT / "backend/src/main/resources/db/migration", *[p / "migrations" for p in (ROOT / "plugins").iterdir() if (p / "migrations").exists()]]:
+    host_migration_root = ROOT / "backend/src/main/resources/db/migration"
+    legacy_upgrade_root = ROOT / "backend/src/main/resources/db/upgrade"
+    if legacy_upgrade_root.exists():
+        errors.append("legacy global upgrade directory is not allowed")
+    migration_roots = [
+        host_migration_root,
+        *[p / "migrations" for p in (ROOT / "plugins").iterdir() if (p / "migrations").exists()],
+    ]
+    host_migrations = list(host_migration_root.glob("*.sql"))
+    baseline_files = [path for path in host_migrations if path.name.startswith("B")]
+    expected_baseline = "B52__platform_initialization.sql"
+    if len(baseline_files) != 1 or baseline_files[0].name != expected_baseline:
+        errors.append(f"global migration directory requires only {expected_baseline}")
+    if {path.name for path in host_migrations} != {expected_baseline}:
+        errors.append("global migration directory must contain only its initialization baseline")
+    for root in migration_roots:
         for path in root.glob("*.sql"):
             files.append(path)
-            if not re.fullmatch(r"V[0-9]+(?:[._][0-9]+)*__[a-z0-9]+(?:_[a-z0-9]+)*\.sql", path.name):
+            if not re.fullmatch(r"[VB][0-9]+(?:[._][0-9]+)*__[a-z0-9]+(?:_[a-z0-9]+)*\.sql", path.name):
                 errors.append(f"Flyway file name: {path.relative_to(ROOT)}")
     for root in [ROOT / "scripts", ROOT / "tests"]:
         for path in owned(root):

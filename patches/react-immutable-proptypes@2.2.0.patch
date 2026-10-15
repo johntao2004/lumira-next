@@ -1,0 +1,18 @@
+diff --git a/dist/ImmutablePropTypes.js b/dist/ImmutablePropTypes.js
+index f64f738dce4d5b729798740423ff2a4a3e84bdc3..1d4de89f3330063ad1ef2fcc3daea506980b2761 100644
+--- a/dist/ImmutablePropTypes.js
++++ b/dist/ImmutablePropTypes.js
+@@ -299,3 +299,4 @@ function createOrderedMapContainsChecker(shapeTypes) {
+ }
+ 
+ module.exports = ImmutablePropTypes;
++module.exports.default = ImmutablePropTypes;
+diff --git a/src/ImmutablePropTypes.js b/src/ImmutablePropTypes.js
+index 816bc250a71b454d29a181277c946e2981c425a8..aec827be25e2010fda6c0517d7faff1fb3bd6f22 100644
+--- a/src/ImmutablePropTypes.js
++++ b/src/ImmutablePropTypes.js
+@@ -291,3 +291,4 @@ function createOrderedMapContainsChecker(shapeTypes) {
+ }
+ 
+ module.exports = ImmutablePropTypes;
++module.exports.default = ImmutablePropTypes;

@@ -2,7 +2,7 @@ package com.lumira.platform.modules;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.audit.AuditRepository;
 import java.nio.file.*;
 import java.util.*;
@@ -54,7 +54,10 @@ class ModuleStateStoreTest {
         store = new ModuleStateStore(client, registry, new AuditRepository(client));
         jdbc.execute(
                 "CREATE TABLE platform_audit(id UUID PRIMARY KEY,actor TEXT,action TEXT,target_id UUID)");
-        jdbc.execute(TestMigration.read("V30__module_state.sql"));
+        jdbc.execute(TestSchema.table("platform_module_state"));
+        jdbc.execute(TestSchema.table("platform_module_revision"));
+        TestSchema.indexes("platform_module_revision").forEach(jdbc::execute);
+        TestSchema.foreignKeys("platform_module_revision").forEach(jdbc::execute);
     }
 
     @AfterEach

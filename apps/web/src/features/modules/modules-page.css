@@ -59,10 +59,6 @@
   cursor: pointer;
 }
 
-.modules-card__details-trigger:hover .modules-card__name {
-  color: var(--ant-color-primary);
-}
-
 .modules-card__details-trigger:focus-visible {
   outline: 2px solid var(--ant-color-primary);
   outline-offset: 4px;
@@ -101,12 +97,6 @@
   gap: 4px;
   color: var(--ant-color-text-secondary);
   font-size: 12px;
-}
-
-.modules-card__dependency {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .modules-card__operations {

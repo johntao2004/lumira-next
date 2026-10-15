@@ -5,7 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.CaptchaProofPort;
 import com.lumira.platform.common.MailConfigurationPort;
 import com.lumira.platform.identity.CaptchaProofAccess;
@@ -350,10 +350,8 @@ class SmtpTlsTest {
                             password);
             var jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
             var client = org.springframework.jdbc.core.simple.JdbcClient.create(ds);
-            jdbc.execute(TestMigration.read("V24__mail_delivery_queue.sql"));
-            String migration = TestMigration.read("V2__user_management.sql");
-            int start = migration.indexOf("CREATE TABLE platform_audit");
-            jdbc.execute(migration.substring(start, migration.indexOf(';', start) + 1));
+            jdbc.execute(TestSchema.table("platform_mail_delivery"));
+            jdbc.execute(TestSchema.table("platform_audit"));
             var manager = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
             var tx = new org.springframework.transaction.support.TransactionTemplate(manager);
             var keys =
@@ -468,20 +466,17 @@ class SmtpTlsTest {
             jdbc.execute(
                     "CREATE TABLE platform_password_change_requirement(user_id UUID PRIMARY KEY)");
             jdbc.execute(
+                    "CREATE TABLE platform_bootstrap_password_change_requirement(user_id UUID PRIMARY KEY,primary_credential_revision UUID NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,completed_at TIMESTAMPTZ,CHECK(completed_at IS NULL OR completed_at>=created_at))");
+            jdbc.execute(
                     "CREATE TABLE platform_authority(user_id UUID,authority TEXT,PRIMARY KEY(user_id,authority))");
             jdbc.execute("CREATE TABLE spring_session(principal_name TEXT)");
-            for (String file :
-                    List.of(
-                            "V12__versioned_settings.sql",
-                            "V23__encrypted_secrets.sql",
-                            "V24__mail_delivery_queue.sql",
-                            "V25__account_email_verification.sql",
-                            "V26__password_reset_challenges.sql")) {
-                jdbc.execute(TestMigration.read(file));
-            }
-            String migration = TestMigration.read("V2__user_management.sql");
-            int start = migration.indexOf("CREATE TABLE platform_audit");
-            jdbc.execute(migration.substring(start, migration.indexOf(';', start) + 1));
+            jdbc.execute(TestSchema.table("platform_setting"));
+            jdbc.execute(TestSchema.table("platform_setting_revision"));
+            jdbc.execute(TestSchema.table("platform_secret"));
+            jdbc.execute(TestSchema.table("platform_mail_delivery"));
+            jdbc.execute(TestSchema.table("platform_account_email"));
+            jdbc.execute(TestSchema.table("platform_password_reset"));
+            jdbc.execute(TestSchema.table("platform_audit"));
             var encoder = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
             UUID owner = UUID.randomUUID(), setting = UUID.randomUUID();
             jdbc.update(

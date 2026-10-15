@@ -2,17 +2,20 @@ package com.lumira.platform.events;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
+import com.lumira.platform.TestSchema;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
+
 import tools.jackson.databind.json.JsonMapper;
+
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class PlatformEventOutboxStoreTest {
@@ -37,20 +40,23 @@ class PlatformEventOutboxStoreTest {
         jdbc = new JdbcTemplate(ds);
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         store = new PlatformEventOutboxStore(JdbcClient.create(ds), new JsonMapper());
-        jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
-        jdbc.execute(
-                """
-                CREATE TABLE platform_event_replay_approval(
-                    id uuid PRIMARY KEY,
-                    event_id uuid NOT NULL REFERENCES platform_event_outbox(id) ON DELETE RESTRICT,
-                    approved_by varchar(100) NOT NULL CHECK (length(trim(approved_by)) > 0),
-                    reason varchar(1000) NOT NULL CHECK (length(trim(reason)) > 0),
-                    created_at timestamptz NOT NULL DEFAULT now()
-                )
-                """);
-        jdbc.execute(
-                "CREATE INDEX platform_event_replay_approval_event ON"
-                        + " platform_event_replay_approval(event_id,created_at DESC,id DESC)");
+        for (String table :
+                List.of(
+                        "platform_audit",
+                        "platform_event_operation",
+                        "platform_event_outbox",
+                        "platform_event_trace",
+                        "platform_event_replay_approval")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
+        for (String table :
+                List.of(
+                        "platform_event_outbox",
+                        "platform_event_trace",
+                        "platform_event_replay_approval")) {
+            TestSchema.foreignKeys(table).forEach(jdbc::execute);
+        }
     }
 
     @AfterEach
@@ -156,7 +162,7 @@ class PlatformEventOutboxStoreTest {
                 "DEAD_LETTER",
                 jdbc.queryForObject(
                         "SELECT status FROM platform_event_outbox WHERE id=?", String.class, id));
-        assertEquals(new PlatformEventOutboxStore.Replay(id, "PENDING", 0), store.replay(id));
+        assertEquals(new PlatformEventOutboxStore.Replay(id, "PENDING", 0, 1), store.replay(id));
         assertEquals(
                 0,
                 jdbc.queryForObject(
@@ -207,11 +213,11 @@ class PlatformEventOutboxStoreTest {
         store.append(id, "source", "event", "replay", "{\"ok\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                        + " status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED',delivered_at=NULL"
-                        + " WHERE id=?",
+                    + " status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED',delivered_at=NULL"
+                    + " WHERE id=?",
                 id);
         var replay = store.replay(id);
-        assertEquals(new PlatformEventOutboxStore.Replay(id, "PENDING", 0), replay);
+        assertEquals(new PlatformEventOutboxStore.Replay(id, "PENDING", 0, 1), replay);
         assertEquals(
                 "PENDING",
                 jdbc.queryForObject(
@@ -277,8 +283,8 @@ class PlatformEventOutboxStoreTest {
         store.append(deadLetter, "source", "event", "dead", "{\"ok\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                        + " status='DEAD_LETTER',attempts=8,updated_at=now()-interval '31 days' WHERE"
-                        + " id=?",
+                    + " status='DEAD_LETTER',attempts=8,updated_at=now()-interval '31 days' WHERE"
+                    + " id=?",
                 deadLetter);
 
         assertEquals(1, store.purgeDelivered(Duration.ofDays(30), 1));
@@ -309,8 +315,8 @@ class PlatformEventOutboxStoreTest {
         store.append(referenced, "source", "event", "approved", "{\"proof\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                        + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
-                        + " WHERE id=?",
+                    + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
+                    + " WHERE id=?",
                 referenced);
         jdbc.update(
                 "INSERT INTO platform_event_replay_approval(id,event_id,approved_by,reason)"
@@ -324,8 +330,8 @@ class PlatformEventOutboxStoreTest {
         store.append(ordinary, "source", "event", "ordinary", "{\"ok\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                        + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
-                        + " WHERE id=?",
+                    + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
+                    + " WHERE id=?",
                 ordinary);
 
         assertEquals(1, store.purgeDelivered(Duration.ofDays(30), 10));

@@ -1,13 +1,15 @@
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.*;
-import java.time.OffsetDateTime;
-import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Service
 public class AccountSecurityEvents {
@@ -28,17 +30,18 @@ public class AccountSecurityEvents {
 
     private static final String FILTER =
             """
-  WHERE ((target_id=:owner AND action IN ('account.loginSucceeded','account.loginFailed','account.loginRateLimited','account.loginRejected','account.passwordChanged','account.passwordRecoveryRequested','account.passwordRecovered',
-   'account.passwordRecoveryFailed','account.emailVerificationRequested','account.emailVerified','account.emailVerificationFailed',
-   'mfa.enabled','mfa.disabled','mfa.renamed','mfa.recoveryRegenerated','mfa.adminReset'))
-   OR (actor=:actor AND action='session.revoke' AND created_at>=:created))
-  """;
+            WHERE ((target_id=:owner AND action IN ('account.loginSucceeded','account.loginFailed','account.loginRateLimited','account.loginRejected','account.passwordChanged','account.passwordRecoveryRequested','account.passwordRecovered',
+             'account.passwordRecoveryFailed','account.emailVerificationRequested','account.emailVerified','account.emailVerificationFailed',
+             'mfa.enabled','mfa.disabled','mfa.renamed','mfa.recoveryRegenerated','mfa.adminReset'))
+             OR (actor=:actor AND action='session.revoke' AND created_at>=:created))
+            """;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<Event> list(String actor, PageRequest page) {
         var owner =
                 jdbc.sql(
-                                "SELECT id,created_at FROM platform_user WHERE username=:actor AND enabled=true")
+                                "SELECT id,created_at FROM platform_user WHERE username=:actor AND"
+                                        + " enabled=true")
                         .param("actor", actor)
                         .query(Owner.class)
                         .optional()
@@ -54,7 +57,8 @@ public class AccountSecurityEvents {
                                 "clientAddress",
                                 "client_address",
                                 "userAgent",
-                                "user_agent"));
+                                "user_agent"),
+                        java.util.Set.of("createdAt"));
         var parameters = new java.util.HashMap<String, Object>();
         parameters.put("owner", owner.id());
         parameters.put("actor", actor);
@@ -70,10 +74,12 @@ public class AccountSecurityEvents {
         rowsParameters.put("offset", page.offset());
         var rows =
                 jdbc.sql(
-                                "SELECT id,action,created_at,client_address,user_agent FROM platform_audit "
+                                "SELECT id,action,created_at,client_address,user_agent FROM"
+                                        + " platform_audit "
                                         + FILTER
                                         + filter.sql()
-                                        + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset")
+                                        + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET"
+                                        + " :offset")
                         .params(rowsParameters)
                         .query(Event.class)
                         .list();

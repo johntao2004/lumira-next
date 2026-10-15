@@ -51,6 +51,18 @@
   font-size: 14px;
 }
 
+.api-docs-page .swagger-ui select {
+  color: var(--ant-color-text);
+  background-color: var(--ant-color-bg-container);
+  border-color: var(--ant-color-border-secondary);
+  color-scheme: inherit;
+}
+
+.api-docs-page .swagger-ui select option {
+  color: var(--ant-color-text);
+  background-color: var(--ant-color-bg-container);
+}
+
 .api-docs-page .swagger-ui .wrapper {
   max-width: none;
   padding: 0;
@@ -100,6 +112,11 @@
 
 .api-docs-page .swagger-ui .opblock-control-arrow svg path,
 .api-docs-page .swagger-ui section.models .models-control svg path {
+  fill: var(--ant-color-text);
+}
+
+.api-docs-page .swagger-ui .opblock-tag .expand-operation svg,
+.api-docs-page .swagger-ui .opblock-tag .expand-operation svg path {
   fill: var(--ant-color-text);
 }
 

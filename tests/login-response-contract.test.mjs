@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLoginResponse, loginResponseDisposition } from '../apps/web/src/platform/auth/login-response-contract.mjs';
+import { isLoginResponse, loginResponseDisposition, passwordChangeReason } from '../apps/web/src/platform/auth/login-response-contract.mjs';
 
 test('mandatory password-change response is a recognized unauthenticated continuation', () => {
   const response = {
@@ -22,6 +22,32 @@ test('server password-change state takes precedence over an inconsistent authent
     challengeId: 'challenge-1',
     state: 'PASSWORD_CHANGE_REQUIRED',
   }), 'password-change');
+});
+
+test('bootstrap first-login password changes retain their reason through the public response contract', () => {
+  const response = {
+    authenticated: false,
+    secondFactorRequired: false,
+    challengeId: 'bootstrap-password-change',
+    state: 'PASSWORD_CHANGE_REQUIRED',
+    passwordChangeReason: 'BOOTSTRAP',
+  };
+
+  assert.equal(isLoginResponse(response), true);
+  assert.equal(loginResponseDisposition(response), 'password-change');
+  assert.equal(passwordChangeReason(response), 'BOOTSTRAP');
+});
+
+test('legacy password-change responses retain temporary-reset copy and reject unknown reasons', () => {
+  const legacyResponse = {
+    authenticated: false,
+    secondFactorRequired: false,
+    challengeId: 'legacy-password-change',
+    state: 'PASSWORD_CHANGE_REQUIRED',
+  };
+  assert.equal(isLoginResponse(legacyResponse), true);
+  assert.equal(passwordChangeReason(legacyResponse), 'TEMPORARY_RESET');
+  assert.equal(isLoginResponse({ ...legacyResponse, passwordChangeReason: 'UNRECOGNIZED' }), false);
 });
 
 test('an unauthenticated completed or unknown state never enters the workspace', () => {

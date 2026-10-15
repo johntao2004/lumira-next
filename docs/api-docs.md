@@ -4,7 +4,7 @@
 
 ## 安全与认证
 
-读取规范本身要求登录账号具有全局 `platform:audit:read`。Spring Security 先处理认证和 authority，再由 `ApiDocsAccessPolicy` 查询当前全局权限；匿名请求返回 401，缺权限或仅有组织/个人范围权限时返回 403。每次读取都重新校验权限，响应沿用安全头配置的 `Cache-Control: no-store`，不会被浏览器或共享代理复用。
+读取规范本身要求登录账号具有全局 `platform:api-docs:access`。Spring Security 先处理认证和 authority，再由 `ApiDocsAccessPolicy` 查询当前全局权限；匿名请求返回 401，缺权限或仅有组织/个人范围权限时返回 403。每次读取都重新校验权限，响应沿用安全头配置的 `Cache-Control: no-store`，不会被浏览器或共享代理复用。
 
 受保护的业务接口通过 HttpOnly `LUMIRA_NEXT_SESSION` 会话 Cookie 认证。状态变更请求还要提交 CSRF token。客户端应先调用 `GET /api/auth/csrf`，使用响应中的 `headerName` 与 `token`；当前 header 名为 `X-CSRF-TOKEN`。公开的找回密码等写接口也需要 CSRF token。
 
@@ -24,9 +24,9 @@ Springdoc 的额外 controller 白名单是进程级静态集合且没有移除 
 
 ## 路由与配置
 
-- `GET /api/platform/api-docs`：全局审计读取权限保护的 JSON 规范。
+- `GET /api/platform/api-docs`：由全局 `platform:api-docs:access` 权限保护的 JSON 规范。
 - Springdoc 默认 `/v3/api-docs*` 和 `/swagger-ui*` 路径显式拒绝访问；生成入口只保留上述 JSON endpoint。
 - 规范端点以外的 HTTP 方法及其 YAML 路径拒绝访问。
-- Flyway `V27__api_docs_navigation.sql` 将“后台 API 文档”加入运营中心，权限复用 `platform:audit:read` 并要求全局范围，页面路由归属 `monitoring` 模块。
+- 宿主初始化基线 `B52__platform_initialization.sql` 提供带 `platform:api-docs:access` 权限的“后台 API 文档”导航项；页面和 JSON endpoint 均要求该权限及全局范围，页面路由归属 `monitoring` 模块。
 
 关键配置位于 `backend/src/main/resources/application.yml`：`springdoc.api-docs.path`、`springdoc.paths-to-match`、`springdoc.paths-to-exclude` 和 `springdoc.cache.disabled`。更换 endpoint 时，必须同步更新安全匹配与排除路径，并保留默认入口拒绝规则。

@@ -5,6 +5,15 @@ import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PluginExtensionsPort;
 import com.lumira.plugin.sdk.common.PaymentCoreAdminPort;
 import com.lumira.plugin.sdk.common.PaymentGatewayPort;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -12,12 +21,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class PaymentCoreService implements PaymentCoreAdminPort {
@@ -434,6 +437,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
                 || input.amountFen() > 2_147_483_647L
                 || input.subject() == null
                 || input.subject().isBlank()
+                || input.subject().indexOf(0) >= 0
                 || input.subject().getBytes(StandardCharsets.UTF_8).length > 127)
             throw badRequest("paymentOrderInvalid");
         provider(input.providerId());
@@ -546,10 +550,13 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     private OrderView refundOrderInternal(
             String actor, PaymentCoreStore.Order existingOrder, RefundRequest request) {
         UUID orderId = existingOrder.orderId();
-        if (request == null || request.idempotencyKey() == null)
+        if (request == null
+                || request.idempotencyKey() == null
+                || request.reason() != null && request.reason().indexOf(0) >= 0)
             throw badRequest("paymentRefundInvalid");
         String reason = request.reason() == null ? "" : request.reason().trim();
-        if (reason.isBlank() || reason.length() > 80) throw badRequest("paymentRefundInvalid");
+        if (reason.isBlank() || reason.getBytes(StandardCharsets.UTF_8).length > 80)
+            throw badRequest("paymentRefundInvalid");
         var reservation = store.reserveRefund(orderId, request.idempotencyKey(), reason);
         if ("REFUNDED".equals(reservation.order().status()))
             return OrderView.from(reservation.order());

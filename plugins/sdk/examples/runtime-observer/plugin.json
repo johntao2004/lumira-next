@@ -2,7 +2,7 @@
   "formatVersion": 2,
   "id": "runtime-observer",
   "name": "运行展示屏",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "sdkVersion": "1",
   "entryClass": "com.lumira.plugins.runtimeobserver.RuntimeObserverPlugin",
   "backend": "backend/plugin.jar",

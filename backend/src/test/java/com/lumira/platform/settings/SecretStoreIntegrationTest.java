@@ -2,7 +2,7 @@ package com.lumira.platform.settings;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.SecretKeys;
 import com.lumira.platform.common.SecretStorePort;
 import java.util.Base64;
@@ -46,7 +46,7 @@ class SecretStoreIntegrationTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute(TestMigration.read("V23__encrypted_secrets.sql"));
+        jdbc.execute(TestSchema.table("platform_secret"));
         store = new SecretStore(JdbcClient.create(dataSource), keys());
         transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     }

@@ -495,7 +495,7 @@ function EventTable({
       <Typography.Text type="secondary">{sourceLabel} · 最多展示 8 条元数据</Typography.Text>
       <div className="runtime-observer-table-scroll">
         <Table<EventRecord>
-          size="small"
+          size="medium"
           pagination={false}
           rowKey={(record, index) => record.id || [record.sourceType, record.eventType, record.createdAt, index].join(":")}
           columns={eventColumns}
@@ -516,7 +516,6 @@ function ModuleCard({ record, onOpen }: { record: MergedModuleRecord; onOpen: ()
   return (
     <Card
       size="small"
-      hoverable
       role="button"
       tabIndex={0}
       aria-label={"查看模块 " + (record.name ?? record.id)}

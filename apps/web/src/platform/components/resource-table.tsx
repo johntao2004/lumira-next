@@ -142,7 +142,7 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
       columns={tableColumns}
       cardBordered={false}
       cardProps={embedded ? { styles: { body: { padding: 0 } } } : undefined}
-      defaultSize="small"
+      defaultSize="middle"
       options={{ reload: onRetry, density: true, setting: true }}
       toolBarRender={() => Children.toArray(actions)}
       scroll={scroll}

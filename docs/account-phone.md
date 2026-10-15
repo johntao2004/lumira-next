@@ -1,6 +1,6 @@
 # 账号手机号验证
 
-V47 提供手机号绑定，不改变登录方式。手机号绑定入口位于账号设置的“账号安全”页，通过独立弹层操作。后端入口为 `GET /api/account/phone`、`POST /api/account/phone/request` 和 `POST /api/account/phone/confirm`，均要求已登录、CSRF 和当前账号权限。
+宿主初始化基线 `B52__platform_initialization.sql` 提供手机号绑定的最终表结构和唯一索引；绑定本身不改变登录方式。入口位于账号设置的“账号安全”页，通过独立弹层操作。后端入口为 `GET /api/account/phone`、`POST /api/account/phone/request` 和 `POST /api/account/phone/confirm`，均要求已登录、CSRF 和当前账号权限。
 
 ## 请求流程
 

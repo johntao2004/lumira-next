@@ -3,7 +3,7 @@ package com.lumira.platform.settings;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.SecretKeys;
@@ -65,10 +65,12 @@ class SmsSettingsPersistenceTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(ds);
-        String ddl = TestMigration.read("V12__versioned_settings.sql");
-        jdbc.execute(ddl.substring(0, ddl.indexOf("INSERT INTO platform_authority")));
-        jdbc.execute(TestMigration.read("V13__setting_rollback_source.sql"));
-        jdbc.execute(TestMigration.read("V23__encrypted_secrets.sql"));
+        jdbc.execute(TestSchema.table("platform_setting"));
+        TestSchema.indexes("platform_setting").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_setting_revision"));
+        TestSchema.indexes("platform_setting_revision").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_secret"));
+        TestSchema.indexes("platform_secret").forEach(jdbc::execute);
         var client = JdbcClient.create(ds);
         keys =
                 new SecretKeys(

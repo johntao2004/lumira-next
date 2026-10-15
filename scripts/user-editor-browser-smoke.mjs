@@ -55,12 +55,11 @@ try {
   assert.equal((await profile).status(), 200);
   await expect(own.locator("#account-profile")).toBeVisible();
   await expect(own.locator("#account-profile_displayName")).toHaveValue(`${username}_profile`);
-  await own.waitForURL("**/dashboard/account-profile");
+  await own.waitForURL("**/dashboard/account-security");
   await own.reload();
   await expect(own.locator(".pro-account-trigger")).toContainText(`${username}_profile`);
 
-  await own.locator(".pro-account-trigger").click();
-  await own.getByRole("menuitem", { name: "修改密码", exact: true }).click();
+  await own.locator(".account-settings-menu").getByRole("menuitem", { name: "修改密码", exact: true }).click();
   await own.waitForURL("**/dashboard/account-password");
   const secretForm = own.locator("#account-password");
   await secretForm.locator('#account-password_currentPassword').fill("WrongCurrentPassword!9");

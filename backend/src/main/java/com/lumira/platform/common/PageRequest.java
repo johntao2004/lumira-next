@@ -1,10 +1,11 @@
 package com.lumira.platform.common;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 public record PageRequest(
         int page,
@@ -23,28 +24,34 @@ public record PageRequest(
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid pagination");
         }
         search = search == null ? "" : search.strip();
-        if (search.length() > 100) {
+        if (search.length() > 100 || search.indexOf('\0') >= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search is too long");
         }
-        filters = filters == null ? Map.of() : Map.copyOf(filters);
-        filterModes = filterModes == null ? Map.of() : Map.copyOf(filterModes);
+        filters = filters == null ? Map.of() : new LinkedHashMap<>(filters);
+        filterModes = filterModes == null ? Map.of() : new LinkedHashMap<>(filterModes);
         if (filters.size() > 40 || filterModes.size() > 40) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Too many list filters");
         }
         for (var entry : filters.entrySet()) {
-            if (!FILTER_NAME.matcher(entry.getKey()).matches()
+            if (entry.getKey() == null
+                    || !FILTER_NAME.matcher(entry.getKey()).matches()
                     || entry.getValue() == null
+                    || entry.getValue().indexOf('\0') >= 0
                     || entry.getValue().length() > 512) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid list filter");
             }
         }
         for (var entry : filterModes.entrySet()) {
-            if (!FILTER_NAME.matcher(entry.getKey()).matches()
+            if (entry.getKey() == null
+                    || !FILTER_NAME.matcher(entry.getKey()).matches()
+                    || entry.getValue() == null
                     || !SetHolder.MODES.contains(entry.getValue())) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "Invalid list filter mode");
             }
         }
+        filters = Map.copyOf(filters);
+        filterModes = Map.copyOf(filterModes);
     }
 
     /** Parse the `filter.*` and `filterMode.*` query parameters shared by resource tables. */

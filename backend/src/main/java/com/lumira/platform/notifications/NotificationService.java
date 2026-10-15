@@ -2,14 +2,17 @@ package com.lumira.platform.notifications;
 
 import com.lumira.platform.common.*;
 import com.lumira.platform.notifications.api.NotificationProducerPort;
-import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
+
+import java.util.UUID;
 
 @Service
 public class NotificationService implements NotificationProducerPort {
@@ -85,13 +88,80 @@ public class NotificationService implements NotificationProducerPort {
             String title,
             String status,
             boolean handled) {
-        if (recipientId == null) return;
-        // A manager processing their own fixture/content does not need an inbox copy.
-        // This also prevents operational self-actions from polluting the personal inbox.
-        if (feedbackAudience.isGlobalManager(recipientId)) return;
+        publishFeedbackTracked(
+                UUID.randomUUID(), null, recipientId, feedbackId, version, title, status, handled);
+    }
+
+    @Override
+    @Transactional
+    public void publishFeedback(
+            UUID operationId,
+            UUID auditOperationId,
+            UUID recipientId,
+            UUID feedbackId,
+            long version,
+            String title,
+            String status,
+            boolean handled) {
+        publishFeedbackTracked(
+                operationId,
+                auditOperationId,
+                recipientId,
+                feedbackId,
+                version,
+                title,
+                status,
+                handled);
+    }
+
+    private void publishFeedbackTracked(
+            UUID operationId,
+            UUID auditOperationId,
+            UUID recipientId,
+            UUID feedbackId,
+            long version,
+            String title,
+            String status,
+            boolean handled) {
+        if (operationId == null || feedbackId == null || version < 1)
+            throw new IllegalArgumentException("Invalid feedback notification operation");
         if (eventPublisher == null)
             throw new IllegalStateException(
                     "Durable feedback notification publisher is unavailable");
+        boolean globalManager =
+                recipientId != null && feedbackAudience.isGlobalManager(recipientId);
+        String operationType = handled ? "feedback.handle" : "feedback.create";
+        String outcome =
+                recipientId == null
+                        ? "NO_RECIPIENT"
+                        : globalManager ? "SUPPRESSED_GLOBAL_MANAGER" : "EVENTS_PENDING";
+        eventPublisher.recordOperation(
+                new DurableEventPublisherPort.Operation(
+                        operationId,
+                        operationType,
+                        "FEEDBACK",
+                        feedbackId,
+                        version,
+                        auditOperationId,
+                        recipientId == null || globalManager ? 0 : 1,
+                        recipientId == null ? 0 : 1,
+                        outcome));
+        if (recipientId == null) {
+            eventPublisher.completeOperationWithoutEvents(
+                    operationId, 0, 0, java.util.Map.of(), "NO_RECIPIENT");
+            return;
+        }
+        // A manager processing their own fixture/content does not need an inbox copy. Keep an
+        // explicit operation result so an empty event list is not mistaken for lost correlation.
+        if (globalManager) {
+            eventPublisher.completeOperationWithoutEvents(
+                    operationId,
+                    0,
+                    1,
+                    java.util.Map.of("GLOBAL_FEEDBACK_MANAGER", 1),
+                    "SUPPRESSED_GLOBAL_MANAGER");
+            return;
+        }
         ObjectNode payload = mapper.createObjectNode();
         payload.put("recipientId", recipientId.toString());
         payload.put("feedbackId", feedbackId.toString());
@@ -109,6 +179,7 @@ public class NotificationService implements NotificationProducerPort {
                 FEEDBACK_SOURCE,
                 FEEDBACK_EVENT,
                 key,
-                mapper.writeValueAsString(payload));
+                mapper.writeValueAsString(payload),
+                operationId);
     }
 }

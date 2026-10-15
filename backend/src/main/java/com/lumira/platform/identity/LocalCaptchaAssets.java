@@ -39,6 +39,9 @@ public class LocalCaptchaAssets {
     public static final int PIECE_SIZE = 52;
     public static final int SLIDER_TOLERANCE = 8;
     private static final int AUDIO_SAMPLE_RATE = 22_050;
+    private static final int AUDIO_LEADING_SILENCE_MILLIS = 150;
+    private static final int AUDIO_DIGIT_GAP_MILLIS = 350;
+    private static final int AUDIO_TRAILING_SILENCE_MILLIS = 250;
     private static final AudioFormat AUDIO_FORMAT =
             new AudioFormat(
                     AudioFormat.Encoding.PCM_SIGNED,
@@ -217,12 +220,13 @@ public class LocalCaptchaAssets {
                 locale != null && locale.toLowerCase(Locale.ROOT).startsWith("zh") ? "zh" : "en";
         try {
             ByteArrayOutputStream pcm = new ByteArrayOutputStream();
-            byte[] silence = new byte[AUDIO_SAMPLE_RATE * 180 / 1000 * AUDIO_FORMAT.getFrameSize()];
+            pcm.write(silence(AUDIO_LEADING_SILENCE_MILLIS));
             for (int index = 0; index < answer.length(); index++) {
                 int digit = answer.charAt(index) - '0';
                 pcm.write(digitPcm(language, digit));
-                if (index < answer.length() - 1) pcm.write(silence);
+                if (index < answer.length() - 1) pcm.write(silence(AUDIO_DIGIT_GAP_MILLIS));
             }
+            pcm.write(silence(AUDIO_TRAILING_SILENCE_MILLIS));
             byte[] bytes = pcm.toByteArray();
             long frames = bytes.length / AUDIO_FORMAT.getFrameSize();
             try (ByteArrayInputStream input = new ByteArrayInputStream(bytes);
@@ -247,6 +251,11 @@ public class LocalCaptchaAssets {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE, "captchaAccessibleAlternativeUnavailable");
         }
+    }
+
+    private static byte[] silence(int durationMillis) {
+        int sampleFrames = (int) Math.round(AUDIO_SAMPLE_RATE * durationMillis / 1000.0);
+        return new byte[sampleFrames * AUDIO_FORMAT.getFrameSize()];
     }
 
     private byte[] digitPcm(String language, int digit) throws Exception {

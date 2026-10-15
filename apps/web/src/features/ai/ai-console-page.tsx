@@ -665,7 +665,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
       </section>
     </div>
 
-    {matchedUsers && <div className="ai-chat-result"><Typography.Title level={5}>{t("userList")}</Typography.Title><Table rowKey="id" size="small" pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }} dataSource={matchedUsers} scroll={{ x: 520 }} columns={[
+    {matchedUsers && <div className="ai-chat-result"><Typography.Title level={5}>{t("userList")}</Typography.Title><Table rowKey="id" size="medium" pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }} dataSource={matchedUsers} scroll={{ x: 520 }} columns={[
       { title: t("username"), dataIndex: "username" }, { title: t("name"), dataIndex: "displayName" },
       { title: t("status"), render: (_, row) => <Tag color={row.enabled ? "success" : "default"}>{t(row.enabled ? "enabled" : "disabled")}</Tag> },
       { title: t("version"), dataIndex: "version" },

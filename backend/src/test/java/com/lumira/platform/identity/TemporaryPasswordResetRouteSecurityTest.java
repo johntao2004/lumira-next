@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.ClientAddressResolver;
+import com.lumira.platform.identity.api.LoginResponse;
 import com.lumira.platform.identity.api.MaintenancePolicyPort;
 import com.lumira.platform.identity.api.TemporaryPasswordResetPort;
 import com.lumira.platform.users.TemporaryPasswordResetController;
@@ -134,11 +135,20 @@ class TemporaryPasswordResetRouteSecurityTest {
                                                 + "\",\"newPassword\":\"W!m8Q$zR4#vP7k2X\",\"confirmPassword\":\"W!m8Q$zR4#vP7k2X\"}"))
                 .andExpect(status().isForbidden());
         verify(resets, never())
-                .changePassword(
+                .changePasswordAndContinue(
+                        org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any());
+
+        when(resets.changePasswordAndContinue(
+                        org.mockito.ArgumentMatchers.eq(CHALLENGE),
+                        org.mockito.ArgumentMatchers.eq("W!m8Q$zR4#vP7k2X"),
+                        org.mockito.ArgumentMatchers.eq("W!m8Q$zR4#vP7k2X"),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(LoginResponse.complete());
 
         mvc.perform(
                         post("/api/auth/login/password-change")
@@ -148,14 +158,23 @@ class TemporaryPasswordResetRouteSecurityTest {
                                         "{\"challengeId\":\""
                                                 + CHALLENGE
                                                 + "\",\"newPassword\":\"W!m8Q$zR4#vP7k2X\",\"confirmPassword\":\"W!m8Q$zR4#vP7k2X\"}"))
-                .andExpect(status().isNoContent())
+                .andExpect(status().isOk())
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
+                                        "$.authenticated")
+                                .value(true))
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath(
+                                        "$.state")
+                                .value("COMPLETE"))
                 .andExpect(header().string("Cache-Control", "no-store, max-age=0"))
                 .andExpect(header().string("Pragma", "no-cache"));
         verify(resets)
-                .changePassword(
+                .changePasswordAndContinue(
                         org.mockito.ArgumentMatchers.eq(CHALLENGE),
                         org.mockito.ArgumentMatchers.eq("W!m8Q$zR4#vP7k2X"),
                         org.mockito.ArgumentMatchers.eq("W!m8Q$zR4#vP7k2X"),
+                        org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any());
     }
 

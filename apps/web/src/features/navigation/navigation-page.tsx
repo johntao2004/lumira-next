@@ -330,7 +330,7 @@ export function NavigationPage({ canCreate, canUpdate, canDelete }: { canCreate:
           <Form.Item name="globalOnly" label={t("navigationPermission")} valuePropName="checked"><Switch checkedChildren={t("navigationGlobal")} unCheckedChildren={t("navigationLocal")} /></Form.Item>
         </>}
         <Space align="start">
-          <Form.Item name="sortOrder" label={t("sortOrder")}><InputNumber min={0} max={1000000} /></Form.Item>
+          <Form.Item name="sortOrder" label={t("sortOrder")} rules={[{ type: "integer", min: 0, max: 1000000, message: t("invalidNavigation") }]}><InputNumber min={0} max={1000000} precision={0} /></Form.Item>
           <Form.Item name="enabled" label={t("status")} valuePropName="checked"><Switch checkedChildren={t("enabled")} unCheckedChildren={t("disabled")} /></Form.Item>
         </Space>
       </Form>

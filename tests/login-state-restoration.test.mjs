@@ -10,6 +10,7 @@ const pendingPasswordChange = {
   challengeId: 'password-change-challenge',
   expiresAt: '2030-01-01T00:00:00Z',
   state: 'PASSWORD_CHANGE_REQUIRED',
+  passwordChangeReason: 'BOOTSTRAP',
 };
 
 test('LoginPage restoration accepts PASSWORD_CHANGE_REQUIRED after /auth/me 401 renews the epoch', async () => {

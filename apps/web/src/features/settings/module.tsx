@@ -59,7 +59,11 @@ function MessageChannelTabs({ hasRouteAccess, hasRouteOperation }: { hasRouteAcc
 function AuthenticationSecurityTabs({ hasRouteAccess, hasRouteOperation }: { hasRouteAccess: RouteAccessCheck; hasRouteOperation: RouteOperationCheck }) {
   return <RouteTabs preserveContent tabs={routeTabsForGroup(settingsManifest, "authentication-security", {
     security: hasRouteAccess("security") ? <SecurityPage canWrite={hasRouteOperation("security", "update")} /> : undefined,
-    authentication: hasRouteAccess("authentication") ? <SettingsCard><AuthenticationPage canWrite={hasRouteOperation("authentication", "update")} /></SettingsCard> : undefined,
+    authentication: hasRouteAccess("authentication") ? <SettingsCard><AuthenticationPage
+      canWrite={hasRouteOperation("authentication", "update")}
+      hasRouteAccess={hasRouteAccess}
+      hasRouteOperation={hasRouteOperation}
+    /></SettingsCard> : undefined,
     passkey: hasRouteAccess("passkey") ? <PasskeyPage canWrite={hasRouteOperation("passkey", "update")} /> : undefined,
     wechat: hasRouteAccess("wechat") ? <SettingsCard><WechatPage canWrite={hasRouteOperation("wechat", "update")} /></SettingsCard> : undefined,
     captcha: hasRouteAccess("captcha") ? <SettingsCard><CaptchaPage canWrite={hasRouteOperation("captcha", "update")} /></SettingsCard> : undefined,

@@ -1,38 +1,38 @@
 "use client";
 
-import { KeyOutlined, LockOutlined, MoonOutlined, QrcodeOutlined, SunOutlined, UserOutlined } from "@ant-design/icons";
-import { Alert, Button, Input, Skeleton, Space, type FormInstance } from "antd";
+import { KeyOutlined, LockOutlined, QrcodeOutlined, UserOutlined } from "@ant-design/icons";
+import { Alert, Button, Input, Modal, Skeleton, Space, type FormInstance } from "antd";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { history, useLocation } from "@umijs/max";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, login, mutate, sessionMe } from "@/platform/api/client";
 import type { CurrentUser, LoginResponse, PasskeyAuthenticationAvailability, PasskeyOptions, WechatAttempt } from "@/platform/auth/api-types";
 import type { LoginMethodAvailability } from "@/platform/auth/api-types";
-import { BrandFooter } from "@/platform/branding/footer";
 import { useBranding } from "@/platform/branding/provider";
+import { AuthPageLayout } from "@/platform/auth/auth-page-layout";
 import { AsyncButton } from "@/platform/components/async-button";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
-import { LanguageSwitcher } from "@/platform/i18n/language-switcher";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
-import { announceSessionChangeAcrossTabs, subscribeSessionBoundary } from "@/platform/auth/session-lifecycle";
+import { announceSessionChangeAcrossTabs, currentSessionRevision, subscribeSessionBoundary } from "@/platform/auth/session-lifecycle";
 import { createSessionActionEpoch } from "./session-action-epoch.mjs";
 import { restorePendingLogin } from "./login-state-restoration.mjs";
 import { AgreementLinks } from "./agreement-links";
 import { MaintenanceNotice } from "./maintenance-notice";
 import { createPasskeyCredential, isPasskeySupported, toAuthenticationPayload, toPublicKeyRequestOptions } from "./passkey";
-import { PasswordRecoveryDrawer } from "./password-recovery-drawer";
-import { safeReturnPath } from "./return-path";
+import { PasswordRecoveryForm } from "./password-recovery-form";
+import { authRouteWithReturnTo, safeReturnPath } from "./return-path";
 import { SecondFactorForm } from "./second-factor-form";
 import { PreauthEnrollmentForm } from "./preauth-enrollment-form";
 import { RecoveryTicketForm } from "./recovery-ticket-form";
 import { LoginCodeForm } from "./login-code-form";
 import { MandatoryPasswordChangeForm } from "./mandatory-password-change-form";
-import { CaptchaPanel } from "./captcha-panel";
+import { CaptchaPanel, type CaptchaPanelHandle } from "./captcha-panel";
 import { useCaptchaProof } from "./use-captcha-proof";
 import { isTrustedWechatAuthorizationUrl } from "./wechat-url";
-import { isLoginResponse as isLoginResponseValue, loginResponseDisposition } from "./login-response-contract.mjs";
+import { isLoginResponse as isLoginResponseValue, loginResponseDisposition, passwordChangeReason } from "./login-response-contract.mjs";
 
 type LoginValues = { username: string; password: string };
 
@@ -43,6 +43,9 @@ type PasswordLoginFormProps = {
   passkeyPending: boolean;
   wechatPending: boolean;
   authMethodsReady: boolean;
+  passwordCaptchaRequired: boolean;
+  passwordCaptchaReady: boolean;
+  passwordCaptcha: ReactNode;
   passkeyLoginEnabled: boolean;
   wechatLoginAvailable: boolean;
   registrationAvailable: boolean;
@@ -64,6 +67,9 @@ function PasswordLoginForm({
   passkeyPending,
   wechatPending,
   authMethodsReady,
+  passwordCaptchaRequired,
+  passwordCaptchaReady,
+  passwordCaptcha,
   passkeyLoginEnabled,
   wechatLoginAvailable,
   registrationAvailable,
@@ -112,12 +118,14 @@ function PasswordLoginForm({
         placeholder={t("password")}
       />
     </Form.Item>
+    {passwordCaptcha && <div className="login-password-captcha">{passwordCaptcha}</div>}
     <div className="login-actions">
       <AsyncButton
         type="primary"
         htmlType="submit"
         block
-        pending={pending || passkeyPending || wechatPending || !authMethodsReady}
+        pending={pending || passkeyPending || wechatPending}
+        disabled={!authMethodsReady || (passwordCaptchaRequired && !passwordCaptchaReady)}
         label={t("signIn")}
       />
       {passkeyLoginEnabled && <Button
@@ -152,12 +160,11 @@ export function LoginPage() {
   const branding = useBranding();
   const client = useQueryClient();
   const { search, state } = useLocation();
-  const customBackgroundUrl = branding.loginBackgroundUrl.trim();
-  const hasCustomBackground = Boolean(customBackgroundUrl);
   const [challenge, setChallenge] = useState<LoginResponse | null>(null);
-  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [authView, setAuthView] = useState<"login" | "recovery">("login");
   const [recovered, setRecovered] = useState(false);
-  const { dark, locale, toggleDark, t } = usePreferences();
+  const [recoveredUsername, setRecoveredUsername] = useState<string | null>(null);
+  const { locale, t } = usePreferences();
   const [pending, setPending] = useState(false);
   const [passkeyPending, setPasskeyPending] = useState(false);
   const [wechatPending, setWechatPending] = useState(false);
@@ -170,6 +177,7 @@ export function LoginPage() {
   const authMethodsResolved = useRef(false);
   const [captchaLoginUnavailable, setCaptchaLoginUnavailable] = useState(false);
   const [loginCodeOpen, setLoginCodeOpen] = useState(false);
+  const [passwordCaptchaReady, setPasswordCaptchaReady] = useState(false);
   const [captchaPanelRevision, setCaptchaPanelRevision] = useState(0);
   const loadAuthMethods = useCallback(async (signal?: AbortSignal) => {
     const requestRevision = ++authMethodsRequestRevision.current;
@@ -214,6 +222,7 @@ export function LoginPage() {
   });
   const captchaProofRef = useRef(captchaProof);
   captchaProofRef.current = captchaProof;
+  const passwordCaptchaPanelRef = useRef<CaptchaPanelHandle | null>(null);
   const loginFormRef = useRef<FormInstance<LoginValues> | null>(null);
   const [loginActionEpoch] = useState(() => createSessionActionEpoch());
   const [loginFormRevision, setLoginFormRevision] = useState(0);
@@ -223,11 +232,13 @@ export function LoginPage() {
     loginFormRef.current = form;
   }, []);
   const [postPrimaryCaptchaOpen, setPostPrimaryCaptchaOpen] = useState(false);
+  const restrictedLoginCancelInFlight = useRef(false);
   const [enrollmentRequired, setEnrollmentRequired] = useState(false);
-  const [passwordChangeComplete, setPasswordChangeComplete] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState<MessageKey | null>(null);
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
+  const passwordChangeOpen = challenge?.state === "PASSWORD_CHANGE_REQUIRED";
+  const passwordCaptchaAlways = authMethods?.captcha.alwaysActions.includes("PASSWORD_LOGIN") ?? false;
   const loginCodeChannels = authMethods?.capabilities.loginCode
     ? authMethods.methods.flatMap(method => method === "EMAIL_OTP" ? ["EMAIL" as const] : method === "SMS_OTP" ? ["SMS" as const] : [])
     : [];
@@ -247,17 +258,18 @@ export function LoginPage() {
       captchaProofRef.current.cancel();
       loginFormRef.current?.resetFields();
       setPending(false);
+      restrictedLoginCancelInFlight.current = false;
       setPasskeyPending(false);
       setWechatPending(false);
       setError(null);
       setRetryAfterSeconds(null);
       setChallenge(null);
       setEnrollmentRequired(false);
-      setPasswordChangeComplete(false);
       setLoginCodeOpen(false);
       setPostPrimaryCaptchaOpen(false);
-      setRecoveryOpen(false);
+      setAuthView("login");
       setRecovered(false);
+      setRecoveredUsername(null);
       if (boundary.kind === "invalidated" && authMethodsResolved.current) void loadAuthMethods();
     });
     return () => {
@@ -312,6 +324,24 @@ export function LoginPage() {
   }, [loadAuthMethods]);
 
   useEffect(() => {
+    if (!authMethodsReady
+      || authMethods?.capabilities.captcha !== true
+      || !passwordCaptchaAlways
+      || captchaLoginUnavailable
+      || challenge
+      || loginCodeOpen
+      || enrollmentRequired) setPasswordCaptchaReady(false);
+  }, [
+    authMethods,
+    authMethodsReady,
+    captchaLoginUnavailable,
+    challenge,
+    enrollmentRequired,
+    loginCodeOpen,
+    passwordCaptchaAlways,
+  ]);
+
+  useEffect(() => {
     if (!authMethodsLoaded || challenge?.state !== "CAPTCHA_REQUIRED" || !challenge.challengeId) return;
     if (authMethods?.capabilities.captcha) {
       setCaptchaPanelRevision(revision => revision + 1);
@@ -331,24 +361,57 @@ export function LoginPage() {
     return <main className="workspace-loading"><Skeleton active paragraph={{ rows: 8 }} /></main>;
   }
 
+  const recoveryView = authView === "recovery" && !enrollmentRequired && !challenge && !loginCodeOpen;
+
   async function submit(values: LoginValues) {
-    if (!isCurrentLoginAction() || !authMethodsReady || captchaLoginUnavailable) return;
+    if (!isCurrentLoginAction() || !authMethodsReady || captchaLoginUnavailable
+      || pending || passkeyPending || wechatPending
+      || (passwordCaptchaAlways && !passwordCaptchaReady)) return;
     setPending(true);
     setError(null);
     setRetryAfterSeconds(null);
+    let passwordCaptchaConsumed = false;
     try {
-      const outcome = await captchaProof.run("PASSWORD_LOGIN", captchaProofId => login(values.username, values.password, captchaProofId));
-      if (!isCurrentLoginAction() || outcome.status !== "completed" || !captchaProof.isMounted()) return;
+      let result: LoginResponse;
+      if (passwordCaptchaAlways) {
+        const proof = await passwordCaptchaPanelRef.current?.verifyForSubmit();
+        if (!isCurrentLoginAction() || !captchaProof.isMounted() || !proof) return;
+        passwordCaptchaConsumed = true;
+        result = await login(values.username, values.password, proof.captchaProofId);
+      } else {
+        const outcome = await captchaProof.run(
+          "PASSWORD_LOGIN",
+          captchaProofId => login(values.username, values.password, captchaProofId),
+        );
+        if (!isCurrentLoginAction() || outcome.status !== "completed" || !captchaProof.isMounted()) return;
+        result = outcome.value;
+      }
+      if (!isCurrentLoginAction() || !captchaProof.isMounted()) return;
       loginFormRef.current?.setFieldValue("password", undefined);
-      continueLogin(outcome.value);
+      continueLogin(result);
     } catch (e) {
       if (!isCurrentLoginAction() || !captchaProof.isMounted()) return;
-      if (e instanceof ApiError && e.message === "passwordHashCapacity") {
+      if (passwordCaptchaConsumed
+        && !(passwordCaptchaAlways && e instanceof ApiError && e.message === "captchaRequired")) {
+        passwordCaptchaPanelRef.current?.refresh();
+      }
+      if (passwordCaptchaAlways && e instanceof ApiError && e.message === "captchaRequired") {
+        // Reloading methods remounts the always-on panel, which loads a fresh challenge.
+        const latest = await loadAuthMethods();
+        if (!isCurrentLoginAction() || !captchaProof.isMounted()) return;
+        if (latest?.capabilities.captcha !== true) {
+          setCaptchaLoginUnavailable(true);
+          setError("captchaUnavailable");
+        } else {
+          setError("captchaRequired");
+        }
+      } else if (e instanceof ApiError && e.message === "passwordHashCapacity") {
         setRetryAfterSeconds(e.retryAfterSeconds ?? 1);
         setError("passwordHashCapacity");
       } else if (e instanceof ApiError && (e.message === "temporaryPasswordExpired" || e.message === "temporaryPasswordUsed")) {
         setError("temporaryPasswordUnavailable");
-      } else setError(
+      } else {
+        setError(
         e instanceof ApiError && e.message === "captchaUnavailable" ? "captchaUnavailable" :
         e instanceof ApiError && e.message === "captchaRequired" ? "captchaRequired" :
         e instanceof ApiError && e.message === "secondFactorUnavailable" ? "secondFactorUnavailable" :
@@ -361,7 +424,8 @@ export function LoginPage() {
               : e instanceof ApiError && e.status === 403
                 ? "forbidden"
                 : "unavailable",
-      );
+        );
+      }
     } finally {
       if (isCurrentLoginAction() && captchaProof.isMounted()) setPending(false);
     }
@@ -426,7 +490,6 @@ export function LoginPage() {
     if (!loginActionEpoch.isCurrent(expectedRevision)) return;
     setLoginCodeOpen(false);
     setError(null);
-    setPasswordChangeComplete(false);
     const disposition = loginResponseDisposition(result);
     if (disposition === "enrollment") {
       setChallenge(result);
@@ -437,6 +500,7 @@ export function LoginPage() {
       setChallenge(result);
       setEnrollmentRequired(false);
       setPostPrimaryCaptchaOpen(false);
+      loginFormRef.current?.setFieldValue("password", undefined);
       return;
     }
     if (disposition === "mfa") {
@@ -465,14 +529,13 @@ export function LoginPage() {
     history.replace(safeReturnPath(nextPath ?? new URLSearchParams(window.location.search).get("returnTo")));
   }
 
-  function requiredPasswordChanged(completedChallengeId: string) {
-    if (!isCurrentLoginAction() || challenge?.state !== "PASSWORD_CHANGE_REQUIRED" || challenge.challengeId !== completedChallengeId) return;
-    setChallenge(null);
-    setEnrollmentRequired(false);
-    setPostPrimaryCaptchaOpen(false);
-    setError(null);
-    setPasswordChangeComplete(true);
+  function requiredPasswordChanged(completedChallengeId: string, result: LoginResponse, submittedSessionRevision: number) {
+    if (!isCurrentLoginAction()
+      || submittedSessionRevision !== currentSessionRevision()
+      || challenge?.state !== "PASSWORD_CHANGE_REQUIRED"
+      || challenge.challengeId !== completedChallengeId) return;
     loginFormRef.current?.setFieldValue("password", undefined);
+    continueLogin(result, result.nextPath ?? undefined, renderedLoginActionRevision);
   }
 
   async function confirmPostPrimaryCaptcha(proof: Parameters<typeof captchaProof.finish>[0] & { attemptId: string | null }) {
@@ -511,16 +574,20 @@ export function LoginPage() {
   }
 
   async function cancelRestrictedLogin() {
-    if (!isCurrentLoginAction()) return;
+    if (!isCurrentLoginAction() || pending || restrictedLoginCancelInFlight.current) return;
     if (!challenge?.challengeId) {
+      if (challenge?.state === "PASSWORD_CHANGE_REQUIRED") {
+        setError("loginContinuationUnavailable");
+        return;
+      }
       captchaProof.cancel();
       setPostPrimaryCaptchaOpen(false);
       setChallenge(null);
       setEnrollmentRequired(false);
-      setPasswordChangeComplete(false);
       setError(null);
       return;
     }
+    restrictedLoginCancelInFlight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -533,52 +600,23 @@ export function LoginPage() {
       if (!isCurrentLoginAction() || !captchaProof.isMounted()) return;
       setError(cause instanceof ApiError && cause.message === "secondFactorExpired" ? "secondFactorExpired" : "unavailable");
     } finally {
+      restrictedLoginCancelInFlight.current = false;
       if (isCurrentLoginAction() && captchaProof.isMounted()) setPending(false);
     }
   }
 
   return (
-    <main className="login-page" data-has-background={hasCustomBackground}>
-      <PasswordRecoveryDrawer
-        key={loginFormRevision}
-        open={recoveryOpen}
-        onClose={() => setRecoveryOpen(false)}
-        onRecovered={username => {
-          if (!isCurrentLoginAction()) return;
-          setRecoveryOpen(false);
-          setRecovered(true);
-          setError(null);
-          loginFormRef.current?.setFieldsValue({ username, password: undefined });
-        }}
-      />
-      {hasCustomBackground && (
-        <div
-          className="login-hero"
-          aria-hidden="true"
-          style={{ backgroundImage: `url(${JSON.stringify(customBackgroundUrl)})` }}
-        />
-      )}
-      <section className="login-shell">
-        <Space className="login-utilities">
-          <Button
-            aria-label={t(dark ? "lightMode" : "darkMode")}
-            icon={dark ? <SunOutlined /> : <MoonOutlined />}
-            onClick={toggleDark}
-          />
-          <LanguageSwitcher />
-        </Space>
-        <div className="login-content">
-          <h1>{t("welcome", { name: branding.websiteName })}</h1>
+    <>
+      <AuthPageLayout inert={passwordChangeOpen}>
           <MaintenanceNotice />
-          <div className="login-tab">{t(enrollmentRequired ? "preauthEnrollmentTitle" : challenge?.state === "PASSWORD_CHANGE_REQUIRED" ? "mandatoryPasswordChangeTitle" : challenge ? "mfaTitle" : loginCodeOpen ? "loginCodeSignIn" : "passwordLogin")}</div>
+          <div className="login-tab" role="heading" aria-level={2}>{t(recoveryView ? "forgotPassword" : enrollmentRequired ? "preauthEnrollmentTitle" : passwordChangeOpen ? "passwordLogin" : challenge ? "mfaTitle" : loginCodeOpen ? "loginCodeSignIn" : "passwordLogin")}</div>
           <FeedbackBubble kind="success" id="login-recovered" content={recovered ? t("passwordRecovered") : undefined} />
-          <FeedbackBubble kind="success" id="login-password-changed" content={passwordChangeComplete ? t("mandatoryPasswordChangeComplete") : undefined} />
-          <FeedbackBubble id="login-error" content={error ? t(error, error === "passwordHashCapacity" ? { seconds: retryAfterSeconds ?? 1 } : undefined) : undefined} />
-          {authMethodsLoadFailed && <Space direction="vertical" style={{ width: "100%" }}>
+          <FeedbackBubble id="login-error" content={!passwordChangeOpen && error ? t(error, error === "passwordHashCapacity" ? { seconds: retryAfterSeconds ?? 1 } : undefined) : undefined} />
+          {!recoveryView && authMethodsLoadFailed && <Space direction="vertical" style={{ width: "100%" }}>
             <Alert type="warning" showIcon title={t("unavailable")} />
             <Button block disabled={!authMethodsLoaded} onClick={() => { void loadAuthMethods(); }}>{t("retry")}</Button>
           </Space>}
-          {captchaLoginUnavailable && !authMethodsLoadFailed && <Space direction="vertical" style={{ width: "100%" }}>
+          {!recoveryView && captchaLoginUnavailable && !authMethodsLoadFailed && <Space direction="vertical" style={{ width: "100%" }}>
             <Alert type="warning" showIcon title={t("captchaRequiredUnavailable")} />
             <Button block disabled={!authMethodsLoaded} onClick={() => { void loadAuthMethods(); }}>{t("retry")}</Button>
           </Space>}
@@ -599,17 +637,23 @@ export function LoginPage() {
             onVerified={proof => { void confirmPostPrimaryCaptcha(proof); }}
             onCancel={() => { void cancelRestrictedLogin(); }}
           />}
-          {enrollmentRequired ? (
+          {recoveryView ? <PasswordRecoveryForm
+            key={loginFormRevision}
+            onBack={() => {
+              setAuthView("login");
+              setError(null);
+            }}
+            onRecovered={username => {
+              if (!isCurrentLoginAction()) return;
+              setAuthView("login");
+              setRecovered(true);
+              setRecoveredUsername(username);
+              setError(null);
+            }}
+          /> : enrollmentRequired ? (
             <PreauthEnrollmentForm
               onCancel={() => { void cancelRestrictedLogin(); }}
               onComplete={result => continueLogin(result)}
-            />
-          ) : challenge?.state === "PASSWORD_CHANGE_REQUIRED" && challenge.challengeId ? (
-            <MandatoryPasswordChangeForm
-              challengeId={challenge.challengeId}
-              expiresAt={challenge.expiresAt}
-              onCancel={() => { void cancelRestrictedLogin(); }}
-              onChanged={requiredPasswordChanged}
             />
           ) : challenge?.state === "RECOVERY_REQUIRED" && challenge.challengeId ? (
             <RecoveryTicketForm
@@ -626,7 +670,7 @@ export function LoginPage() {
           ) : challenge && challenge.state === "CAPTCHA_REQUIRED" ? <>
             {authMethodsLoaded && !authMethods?.capabilities.captcha && <Alert type="warning" showIcon title={t("captchaRequiredUnavailable")} />}
             <Button block disabled={pending} onClick={() => { void cancelRestrictedLogin(); }}>{t("loginCodeBack")}</Button>
-          </> : challenge ? <>
+          </> : challenge && !passwordChangeOpen ? <>
             <Button block onClick={() => { setChallenge(null); setError(null); }}>{t("mfaBack")}</Button>
           </> : loginCodeOpen && loginCodeChannels.length > 0 ? <LoginCodeForm
             channels={loginCodeChannels}
@@ -646,6 +690,24 @@ export function LoginPage() {
             passkeyPending={passkeyPending}
             wechatPending={wechatPending}
             authMethodsReady={authMethodsReady && !captchaLoginUnavailable}
+            passwordCaptchaRequired={passwordCaptchaAlways}
+            passwordCaptchaReady={passwordCaptchaReady}
+            passwordCaptcha={passwordCaptchaAlways
+              && !captchaProof.action
+              && authMethods?.capabilities.captcha === true
+              && !captchaLoginUnavailable
+              ? <CaptchaPanel
+                ref={passwordCaptchaPanelRef}
+                action="PASSWORD_LOGIN"
+                mode="password-login"
+                disabled={pending}
+                onSubmitReady={setPasswordCaptchaReady}
+                onVerified={() => {
+                  if (isCurrentLoginAction()) setPasswordCaptchaReady(false);
+                }}
+                onCancel={() => { setPasswordCaptchaReady(false); }}
+              />
+              : null}
             passkeyLoginEnabled={authMethods ? authMethods.methods.includes("PASSKEY") : passkeyLoginEnabled}
             wechatLoginAvailable={wechatLoginAvailable}
             registrationAvailable={authMethods?.registration.supported === true
@@ -654,18 +716,44 @@ export function LoginPage() {
             loginCodeAvailable={loginCodeChannels.length > 0}
             onPasskeyClick={() => { void signInWithPasskey(); }}
             onWechatClick={() => { void signInWithWechat(); }}
-            onRecoveryClick={() => { if (isCurrentLoginAction()) setRecoveryOpen(true); }}
-            onRegistrationClick={() => { if (isCurrentLoginAction()) history.push("/user/register"); }}
+            onRecoveryClick={() => {
+              if (!isCurrentLoginAction()) return;
+              setAuthView("recovery");
+              setRecovered(false);
+              setError(null);
+            }}
+            onRegistrationClick={() => { if (isCurrentLoginAction()) history.push(authRouteWithReturnTo("/user/register", search)); }}
             onLoginCodeClick={() => { if (isCurrentLoginAction()) setLoginCodeOpen(true); }}
             locale={locale}
-            registrationUsername={registrationUsername}
+            registrationUsername={recoveredUsername ?? registrationUsername}
             t={t}
           />}
           <AgreementLinks />
-        </div>
-        <footer><BrandFooter /></footer>
-      </section>
-    </main>
+      </AuthPageLayout>
+      <Modal
+        open={passwordChangeOpen}
+        title={t("mandatoryPasswordChangeTitle")}
+        width={560}
+        centered
+        footer={null}
+        closable={false}
+        keyboard={false}
+        maskClosable={false}
+        destroyOnHidden
+      >
+        {passwordChangeOpen && challenge?.challengeId ? <div className="auth-mandatory-password-dialog" style={{ width: "100%", maxWidth: 460, marginInline: "auto" }}>
+          <FeedbackBubble id="mandatory-password-change-cancel-error" content={error ? t(error) : undefined} />
+          <MandatoryPasswordChangeForm
+            challengeId={challenge.challengeId}
+            expiresAt={challenge.expiresAt}
+            reason={passwordChangeReason(challenge)}
+            cancelPending={pending}
+            onCancel={cancelRestrictedLogin}
+            onChanged={requiredPasswordChanged}
+          />
+        </div> : passwordChangeOpen ? <Alert type="error" showIcon title={t("loginContinuationUnavailable")} /> : null}
+      </Modal>
+    </>
   );
 }
 

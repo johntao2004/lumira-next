@@ -8,13 +8,13 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.CaptchaProofPort;
 import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.common.FixedWindowBuckets;
 import com.lumira.platform.common.RoleAuthenticationPolicyPort;
 import com.lumira.platform.common.SecretKeys;
 import com.lumira.platform.identity.CaptchaSettingsService.Mode;
-import java.nio.charset.StandardCharsets;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
@@ -63,9 +63,14 @@ class CaptchaProofServiceDatabaseTest {
         jdbc = new JdbcTemplate(dataSource);
         client = JdbcClient.create(dataSource);
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        createBaseTables();
-        jdbc.execute(resource("/db/migration/V34__captcha_challenge_and_policy.sql"));
-        jdbc.execute(resource("/db/migration/V43__local_captcha_verification.sql"));
+        for (String table :
+                java.util.List.of(
+                        "platform_captcha_challenge",
+                        "platform_captcha_proof",
+                        "platform_rate_bucket")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
 
         policyMode = new AtomicReference<>(Mode.ALWAYS);
         challengeType = new AtomicReference<>("IMAGE_TEXT");
@@ -437,31 +442,5 @@ class CaptchaProofServiceDatabaseTest {
         request.setRemoteAddr(source);
         request.setSession(session);
         return request;
-    }
-
-    private String resource(String path) throws Exception {
-        try (var input = CaptchaProofServiceDatabaseTest.class.getResourceAsStream(path)) {
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
-    }
-
-    private void createBaseTables() {
-        jdbc.execute(
-                """
-                CREATE TABLE platform_login_challenge (
-                    state varchar(32) NOT NULL,
-                    CONSTRAINT platform_login_challenge_state_check
-                        CHECK (state IN ('MFA_REQUIRED','ENROLLMENT_REQUIRED','RECOVERY_REQUIRED'))
-                )
-                """);
-        jdbc.execute("CREATE TABLE platform_passkey_challenge(id uuid PRIMARY KEY)");
-        jdbc.execute(
-                """
-                CREATE TABLE platform_rate_bucket (
-                    bucket_key varchar(128) PRIMARY KEY,
-                    window_start timestamptz NOT NULL,
-                    attempts integer NOT NULL
-                )
-                """);
     }
 }

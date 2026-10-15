@@ -62,7 +62,7 @@
 - `SecretKeys` 缺失时仍允许不依赖密钥的功能启动，但会在启动阶段输出明确告警；生产环境可在部署策略中把该告警升级为 fail-fast。
 - 原来挂在 `platform` 大模块下的字典、文件、设置、目录、事件、导航、通知、监控已各自拥有后端描述符和前端 manifest；`platform` 现在只保留平台壳、模块生命周期和认证入口。
 - 所有后端 Controller 都必须归属于其包对应的模块；目录模块暂时复用 identity 包中的在线会话实现，但该跨包归属已作为唯一显式例外记录在边界检查中，后续移动实现时无需改 API。
-- `backend/src/main/resources/db/module-ownership.json` 为 V1 基线建立表、视图和函数的模块归属清单；边界检查会确保清单覆盖基线对象，数据库 smoke 会确保实际库没有未归属的 `platform_*` 表。
+- `backend/src/main/resources/db/module-ownership.json` 为当前 B52 初始化结构建立表、视图和函数的模块归属清单；边界检查会确保清单覆盖基线对象，数据库 smoke 会确保实际库没有未归属的 `platform_*` 表。
 - 监控的模块总数和启用数读取模块注册能力快照，而不是只统计可选模块状态表，避免 required 模块拆分后仪表盘出现假数据。
 
 前端：
@@ -111,17 +111,15 @@ module/
 
 Controller 不直接访问 Repository；跨模块不传递另一个模块的 Repository、Entity 或 `JdbcClient`。后台任务属于 infrastructure，只通过 application/api 进入模块。
 
-### 3. 数据库按模块归属演进，不重写 V1
+### 3. 单文件初始化保留模块归属
 
-现有 `V1__platform_initialization.sql` 是可复现基线，应保持不可变；当前已用 `db/module-ownership.json` 标出 V1 中每个表、视图和函数的模块归属，并登记追加迁移的模块 owner。Flyway 仍使用单一版本历史，迁移文件保持在统一目录并由 owner 标记：
+`B52__platform_initialization.sql` 是当前全局数据库唯一初始化来源。`db/module-ownership.json` 标出每个表、视图和函数的模块归属；宿主 Flyway 只扫描初始化目录：
 
 ```text
-db/migration/V1__platform_initialization.sql   # 不再修改
-db/migration/V2__identity_argon2_password_hash.sql # identity
-db/migration/V3__group_platform_navigation.sql # navigation
+db/migration/B52__platform_initialization.sql
 ```
 
-版本号仍然全局唯一；每个迁移文件首行标注 `owner=<module-id>`，CI 检查活动迁移及表、索引和函数的归属。不要把 V1 拆成多份再重新编号，这会破坏已有环境的 Flyway 校验和恢复路径。
+当前宿主初始化不提供从已删除的全局迁移历史升级的路径。CI 核对 B52 文件及当前表、视图、函数的模块归属；数据库功能测试从初始化 SQL 提取当前对象定义，避免另存会漂移的历史 DDL。已有其他全局迁移历史的环境不能通过当前 Flyway 位置升级；恢复或重新初始化必须按单独批准的数据库操作流程处理，不自动删除数据或执行 repair。插件自有数据库对象继续由各插件的 Flyway 位置和 history table 管理；已发布的插件迁移保持不变，新版本只在所属插件目录追加。
 
 ### 4. 最后再拆 Maven 模块
 
@@ -153,8 +151,10 @@ backend/
 
 ## 2026-09-16 增量验证（历史记录）
 
+以下只记录当时的实现和检查结果，不代表当前 B52 初始化结构、当前全局 Flyway 配置或旧全局数据库升级能力。当前结构与流程以本文件上文和 README 中的 B52 说明为准。
+
 - `pnpm test`：当日 20/20 通过；其中包含模块边界检查和模块图的重复、缺失、循环依赖、required→optional 依赖测试。
-- 模块边界检查：15 个后端/前端模块描述符一致，48 个 Controller 均有明确归属；V1 的 37 张平台表和 8 个函数/视图均有数据库归属。
+- 模块边界检查：当时 15 个后端/前端模块描述符一致，48 个 Controller 均有明确归属；当时 V1 的 37 张平台表和 8 个函数/视图均有数据库归属。
 - identity 的跨包源码检查：已阻止对 settings、dictionaries、files 具体实现的回退依赖，并验证 7 个 identity-facing 端口适配器存在；feedback、files、dictionaries、notifications、communication 的端口也纳入同一边界检查。
 - 前端模块边界检查：已验证页面模块使用懒加载，禁止模块注册文件静态导入业务页面。
 - 前端平台层：已统一日期格式化与无效日期回退，并缓存 `Intl.DateTimeFormat`；错误码白名单由平台 API 工具集中处理。
@@ -162,7 +162,7 @@ backend/
 - 导航模块契约：服务端只接受已注册模块 ID，并在运行时节点中回传模块归属，避免菜单引用未安装模块后静默消失。
 - 公共 API 边界检查：已验证三组 `api` 契约不泄漏 Spring MVC、Servlet 或 JDBC 类型。
 - `pnpm typecheck`、`pnpm build`：通过；Next.js 生产构建继续只生成统一的动态 dashboard 壳。
-- `python3 scripts/database-schema-smoke.py`：当日通过；本次没有修改已执行的 V1 基线。
+- `python3 scripts/database-schema-smoke.py`：当日通过；本次没有修改当时已执行的 V1 基线。这不是当前 B52 验收结果。
 - 算法选择见 [算法基线](algorithm-baseline.md)；当前源码的验证命令见 [README](../README.md) 与 [云端开发说明](cloud-development.md)。
 
 这套标准比“每个目录都叫 module”更严格，也为未来按模块独立部署保留了清晰的升级路径。

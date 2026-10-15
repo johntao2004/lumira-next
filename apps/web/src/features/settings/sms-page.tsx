@@ -81,12 +81,12 @@ function SmsFields() {
       </> : <Form.Item name={["data", "template"]} label={<HelpLabel label={t("smsTemplate")} hint={t("smsTextTemplateHint")} />} rules={required}>
         <Input.TextArea maxLength={500} autoSize={{ minRows: 2, maxRows: 5 }} />
       </Form.Item>}
-      <Form.Item name={["data", "timeoutSeconds"]} label={t("smsTimeout")} rules={required}><InputNumber min={1} max={30} precision={0} /></Form.Item>
+      <Form.Item name={["data", "timeoutSeconds"]} label={t("smsTimeout")} rules={[{ required: true, type: "integer", min: 1, max: 30, message: t("invalidSms") }]}><InputNumber min={1} max={30} precision={0} /></Form.Item>
       </>}
     </SettingsEnabledControls>
   </>;
 }
-export function SmsPage({ canWrite }: { canWrite: boolean }) {
-  return <SettingsSection<SmsData> section="sms" formName="settings-sms" canWrite={canWrite} showSecondaryActions={false} initialExtras={initialExtras}
+export function SmsPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?: () => void | Promise<void> }) {
+  return <SettingsSection<SmsData> section="sms" formName="settings-sms" canWrite={canWrite} showSecondaryActions={false} initialExtras={initialExtras} onSaved={onSaved}
     renderExtras={snapshot => <Credentials snapshot={snapshot} />}><SmsFields /></SettingsSection>;
 }

@@ -2,7 +2,7 @@
   "formatVersion": 2,
   "id": "verification-debugger",
   "name": "验证调试器",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "sdkVersion": "1",
   "entryClass": "com.lumira.plugins.verificationdebugger.VerificationDebuggerPlugin",
   "backend": "backend/plugin.jar",

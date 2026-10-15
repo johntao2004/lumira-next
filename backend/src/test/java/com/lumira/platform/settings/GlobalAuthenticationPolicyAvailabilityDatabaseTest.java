@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
@@ -44,30 +45,12 @@ class GlobalAuthenticationPolicyAvailabilityDatabaseTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute(
-                """
-                CREATE TABLE platform_global_authentication_policy(
-                    id smallint PRIMARY KEY,
-                    version bigint NOT NULL,
-                    revision uuid NOT NULL,
-                    enabled_methods text[] NOT NULL,
-                    mfa_required boolean NOT NULL,
-                    updated_by text,
-                    change_reason text NOT NULL DEFAULT 'Initial authentication policy.',
-                    updated_at timestamptz NOT NULL DEFAULT now())
-                """);
-        jdbc.execute(
-                "CREATE TABLE platform_user(id uuid PRIMARY KEY,enabled boolean NOT NULL,deleted_at timestamptz)");
-        jdbc.update(
-                "INSERT INTO platform_user(id,enabled,deleted_at) VALUES (?,?,NULL),(?,?,NULL),(?,?,NULL),(?,?,now())",
-                UUID.randomUUID(),
-                true,
-                UUID.randomUUID(),
-                true,
-                UUID.randomUUID(),
-                false,
-                UUID.randomUUID(),
-                true);
+        jdbc.execute(TestSchema.table("platform_global_authentication_policy"));
+        jdbc.execute(TestSchema.table("platform_user"));
+        insertUser(UUID.randomUUID(), "auth-method-enabled-a", true, false);
+        insertUser(UUID.randomUUID(), "auth-method-enabled-b", true, false);
+        insertUser(UUID.randomUUID(), "auth-method-disabled", false, false);
+        insertUser(UUID.randomUUID(), "auth-method-deleted", true, true);
     }
 
     @AfterEach
@@ -133,47 +116,83 @@ class GlobalAuthenticationPolicyAvailabilityDatabaseTest {
     }
 
     @Test
-    void existingUnavailableMethodMayBeRetainedButCannotBeNewlyEnabled() {
+    void existingUnavailableMethodCannotBeRetainedAndRejectedSaveDoesNotPersist() {
+        UUID revision = UUID.randomUUID();
         jdbc.update(
                 "INSERT INTO platform_global_authentication_policy(id,version,revision,enabled_methods,mfa_required) VALUES (1,1,?,ARRAY['PASSWORD','PASSKEY']::text[],false)",
-                UUID.randomUUID());
+                revision);
         var service = service(Set.of(PrimaryMethod.PASSWORD, PrimaryMethod.EMAIL_OTP));
 
-        var retained =
-                service.save(
-                        new GlobalAuthenticationPolicyService.Input(
-                                1,
-                                List.of(
-                                        PrimaryMethod.PASSWORD,
-                                        PrimaryMethod.PASSKEY,
-                                        PrimaryMethod.EMAIL_OTP),
-                                false,
-                                "Keep existing passkey setting"),
-                        "admin");
-
-        assertEquals(
-                Set.of(PrimaryMethod.PASSWORD, PrimaryMethod.PASSKEY, PrimaryMethod.EMAIL_OTP),
-                Set.copyOf(retained.enabledMethods()));
         var error =
                 assertThrows(
                         ResponseStatusException.class,
                         () ->
                                 service.save(
                                         new GlobalAuthenticationPolicyService.Input(
-                                                2,
+                                                1,
                                                 List.of(
                                                         PrimaryMethod.PASSWORD,
                                                         PrimaryMethod.PASSKEY,
+                                                        PrimaryMethod.EMAIL_OTP),
+                                                false,
+                                                "Retain passkey after provider became invalid"),
+                                        "admin"));
+        assertEquals("authenticationMethodUnavailable", error.getReason());
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT version FROM platform_global_authentication_policy WHERE id=1",
+                        Integer.class));
+        assertEquals(
+                revision,
+                jdbc.queryForObject(
+                        "SELECT revision FROM platform_global_authentication_policy WHERE id=1",
+                        UUID.class));
+        assertEquals(
+                "{PASSWORD,PASSKEY}",
+                jdbc.queryForObject(
+                        "SELECT enabled_methods::text FROM platform_global_authentication_policy WHERE id=1",
+                        String.class));
+    }
+
+    @Test
+    void newlyEnabledUnavailableMethodIsRejectedWithoutPersistence() {
+        UUID revision = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO platform_global_authentication_policy(id,version,revision,enabled_methods,mfa_required) VALUES (1,1,?,ARRAY['PASSWORD']::text[],false)",
+                revision);
+        var service = service(Set.of(PrimaryMethod.PASSWORD, PrimaryMethod.EMAIL_OTP));
+
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                service.save(
+                                        new GlobalAuthenticationPolicyService.Input(
+                                                1,
+                                                List.of(
+                                                        PrimaryMethod.PASSWORD,
                                                         PrimaryMethod.SMS_OTP),
                                                 false,
                                                 "Try unconfigured SMS"),
                                         "admin"));
+
         assertEquals("authenticationMethodUnavailable", error.getReason());
         assertEquals(
-                2,
+                1,
                 jdbc.queryForObject(
                         "SELECT version FROM platform_global_authentication_policy WHERE id=1",
                         Integer.class));
+        assertEquals(
+                revision,
+                jdbc.queryForObject(
+                        "SELECT revision FROM platform_global_authentication_policy WHERE id=1",
+                        UUID.class));
+        assertEquals(
+                "{PASSWORD}",
+                jdbc.queryForObject(
+                        "SELECT enabled_methods::text FROM platform_global_authentication_policy WHERE id=1",
+                        String.class));
     }
 
     private GlobalAuthenticationPolicyService service(Set<PrimaryMethod> available) {
@@ -190,5 +209,16 @@ class GlobalAuthenticationPolicyAvailabilityDatabaseTest {
                 mock(PluginExtensionsPort.class),
                 reachability,
                 availability);
+    }
+
+    private void insertUser(UUID id, String username, boolean enabled, boolean deleted) {
+        jdbc.update(
+                "INSERT INTO platform_user(id,username,display_name,password_hash,enabled,deleted_at) VALUES (?,?,?,?,?,CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)",
+                id,
+                username,
+                "Test " + username,
+                "unused-hash",
+                enabled,
+                deleted);
     }
 }

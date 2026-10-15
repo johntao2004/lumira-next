@@ -1,7 +1,7 @@
 "use client";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 
-import { Button, Card, DatePicker, Input, Select, Typography, App, type DatePickerProps } from "antd";
+import { Alert, Button, Card, DatePicker, Input, Select, Space, Typography, App, type DatePickerProps } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
@@ -19,6 +19,8 @@ import { useListRequest } from "@/platform/routing/use-list-request";
 import { listRequestParams } from "@/platform/api/pagination";
 import { NotificationContent, NotificationEntryContent, notificationParams } from "./notification-content";
 import { safeNotificationHref } from "./safe-notification-href";
+import { EventTraceDrawer } from "@/features/events/event-trace-drawer";
+import type { EventTraceTarget } from "@/features/events/event-trace-drawer";
 
 type AdminNotification = {
   id: string;
@@ -36,14 +38,18 @@ type AdminNotification = {
 };
 type Draft = { scope: "ALL" | "USERS" | "ROLES"; userIds?: string[]; roleIds?: string[]; title: string; body: string; href?: string; expiresAt?: Exclude<DatePickerProps["value"], unknown[]> };
 type NotificationRole = { id: string; code: string; name: string };
+type BroadcastResponse = { broadcastId: string; recipientCount: number; operationId?: string; auditOperationId?: string | null; eventIds?: string[] };
+type PublishedTrace = { target: EventTraceTarget | null; limitedPermission: boolean; requiresAudit: boolean; operationId: string | null };
 const notificationErrorKeys = ["notificationInvalid", "notificationNoRecipients", "notificationTooManyRecipients", "notificationRecipientNotFound", "notificationRoleNotFound", "notificationInvalidExpiry"] as const satisfies readonly MessageKey[];
 
-export function AdminNotificationsPage({ canCreate }: { canCreate: boolean }) {
+export function AdminNotificationsPage({ canCreate, canTraceEvents = false, canTraceOperations = false }: { canCreate: boolean; canTraceEvents?: boolean; canTraceOperations?: boolean }) {
   const { t, locale } = usePreferences();
   const { message } = App.useApp();
   const client = useQueryClient();
   const [request, setRequest] = useListRequest();
   const [open, setOpen] = useState(false);
+  const [publishedTrace, setPublishedTrace] = useState<PublishedTrace | null>(null);
+  const [traceTarget, setTraceTarget] = useState<EventTraceTarget | null>(null);
   const {pending,run}=useSubmitAction({errorKeys:notificationErrorKeys,fallback:"notificationInvalid",onError:key=>{void message.error(t(key));}});
   const [preview, setPreview] = useState<AdminNotification | null>(null);
   const [form] = Form.useForm<Draft>();
@@ -66,7 +72,7 @@ export function AdminNotificationsPage({ canCreate }: { canCreate: boolean }) {
 
   const publish = (values: Draft) => run(async () => {
       if(!canCreate)return false;
-      await mutate("/platform/notifications", "POST", {
+      const published = await mutate<BroadcastResponse>("/platform/notifications", "POST", {
         ...values,
         userIds: values.scope === "USERS" ? values.userIds ?? [] : [],
         roleIds: values.scope === "ROLES" ? values.roleIds ?? [] : [],
@@ -74,6 +80,20 @@ export function AdminNotificationsPage({ canCreate }: { canCreate: boolean }) {
         expiresAt: values.expiresAt?.toISOString() ?? null,
       });
       message.success(t("notificationQueued"));
+      if (canTraceEvents) {
+        const firstEventId = published.eventIds?.[0];
+        const target: EventTraceTarget | null = canTraceOperations && published.auditOperationId
+          ? { kind: "operation", auditId: published.auditOperationId }
+          : firstEventId ? { kind: "event", eventId: firstEventId } : null;
+        const operationId = published.operationId ?? published.broadcastId ?? null;
+        const requiresAudit = !canTraceOperations && !firstEventId && Boolean(operationId);
+        setPublishedTrace(target || requiresAudit ? {
+          target,
+          limitedPermission: Boolean(target && target.kind === "event" && published.auditOperationId && !canTraceOperations),
+          requiresAudit,
+          operationId,
+        } : null);
+      } else setPublishedTrace(null);
       setOpen(false);
       form.resetFields();
       await Promise.all([
@@ -83,6 +103,18 @@ export function AdminNotificationsPage({ canCreate }: { canCreate: boolean }) {
   });
 
   return <>
+    {publishedTrace && <Alert
+      style={{ marginBottom: 16 }}
+      type="success"
+      showIcon
+      closable
+      onClose={() => setPublishedTrace(null)}
+      message={publishedTrace.requiresAudit ? <Space direction="vertical" size={4}>
+        <Typography.Text>{t("eventTraceRequiresAudit")}</Typography.Text>
+        {publishedTrace.operationId && <Typography.Text type="secondary">{t("eventTraceOperationId")}: <Typography.Text code copyable style={{ overflowWrap: "anywhere" }}>{publishedTrace.operationId}</Typography.Text></Typography.Text>}
+      </Space> : t("notificationQueued")}
+      action={publishedTrace.target ? <Button type="link" size="small" data-testid="event-trace-notification" onClick={() => setTraceTarget(publishedTrace.target)}>{t(publishedTrace.limitedPermission ? "eventTraceOpenFirstEvent" : "eventTraceOpen")}</Button> : undefined}
+    />}
     <ResourceTable<AdminNotification> 
       result={list.data}
       loading={list.isFetching}
@@ -133,5 +165,6 @@ export function AdminNotificationsPage({ canCreate }: { canCreate: boolean }) {
     <PlatformDrawer open={!!preview} placement="right" size={520} title={t("notificationPreview")} onClose={() => setPreview(null)} destroyOnHidden>
       {preview && <NotificationEntryContent entry={{ ...preview, href: safeNotificationHref(preview.href) }} onNavigate={() => setPreview(null)} />}
     </PlatformDrawer>
+    {traceTarget && <EventTraceDrawer target={traceTarget} limitedPermission={Boolean(publishedTrace?.limitedPermission && traceTarget.kind === "event")} onClose={() => setTraceTarget(null)} />}
   </>;
 }

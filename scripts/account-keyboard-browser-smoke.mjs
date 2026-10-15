@@ -9,9 +9,7 @@ const browser = await chromium.launch({
 });
 const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8010' });
 const destinations = [
-  ['个人资料', '/dashboard/account-profile'],
-  ['修改密码', '/dashboard/account-password'],
-  ['我的会话', '/dashboard/account-sessions'],
+  ['个人资料', '/dashboard/account-security'],
 ];
 async function focusMenuItem(page, item, key, itemCount) {
   for (let index = 0; index < itemCount; index += 1) {
@@ -53,6 +51,9 @@ try {
         await page.keyboard.press('ArrowDown');
       }
       await expect(entry).toBeFocused();
+      const accountMenuItems = page.locator('.account-menu-popup [role="menuitem"]');
+      await expect(accountMenuItems).toHaveCount(2);
+      await expect(accountMenuItems).toHaveText(['个人资料', '退出登录']);
       await page.keyboard.press('Enter');
       await page.waitForURL(`**${path}`);
 
@@ -65,6 +66,10 @@ try {
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
       if (label === '个人资料') {
+        const securityItem = panel.locator('.account-settings-menu').getByRole('menuitem', { name: '账号安全', exact: true });
+        await securityItem.click();
+        await page.waitForURL('**/dashboard/account-authentication-security');
+        await expect(title).toHaveText('账号安全');
         const emailButton = panel.getByRole('button', { name: '账号邮箱', exact: true });
         await emailButton.focus();
         await page.keyboard.press('Enter');
@@ -74,24 +79,36 @@ try {
         await page.keyboard.press('Escape');
         await expect(email).not.toBeVisible();
         await expect(panel).toBeVisible();
-        await expect(page).toHaveURL(/\/dashboard\/account-profile$/);
+        await expect(page).toHaveURL(/\/dashboard\/account-authentication-security$/);
         await expect(emailButton).toBeFocused();
       }
     }
 
+    await page.goto('/dashboard/account-profile?source=legacy#tab.account-profile=details');
+    await page.waitForURL('**/dashboard/account-security?source=legacy#tab.account-profile=details');
+    await expect(page.locator('.account-settings-panel .account-settings-title')).toHaveText('个人资料');
+
     // The persistent left menu uses vertical arrows on desktop and horizontal arrows on mobile.
-    await page.goto('/dashboard/account-profile');
+    await page.goto('/dashboard/account-security');
     const panel = page.locator('.account-settings-panel');
     const nav = panel.locator('.account-settings-nav');
     const menu = panel.locator('.account-settings-menu');
     await expect(nav).toBeVisible();
     const profileItem = menu.getByRole('menuitem', { name: '个人资料', exact: true });
+    const securityItem = menu.getByRole('menuitem', { name: '账号安全', exact: true });
     const passwordItem = menu.getByRole('menuitem', { name: '修改密码', exact: true });
     const sessionsItem = menu.getByRole('menuitem', { name: '我的会话', exact: true });
     const nextKey = width <= 600 ? 'ArrowRight' : 'ArrowDown';
     const itemCount = await menu.getByRole('menuitem').count();
 
     await profileItem.focus();
+    await focusMenuItem(page, securityItem, nextKey, itemCount);
+    await page.keyboard.press('Enter');
+    await page.waitForURL('**/dashboard/account-authentication-security');
+    await expect(panel.locator('.account-settings-title')).toBeFocused();
+    await expectSelectedMenuItem(securityItem, '账号安全');
+
+    await securityItem.focus();
     await focusMenuItem(page, passwordItem, nextKey, itemCount);
     await page.keyboard.press('Enter');
     await page.waitForURL('**/dashboard/account-password');

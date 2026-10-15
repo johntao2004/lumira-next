@@ -10,10 +10,11 @@
     "dev": "pnpm --dir apps/web dev",
     "build": "pnpm --dir apps/web build",
     "typecheck": "pnpm --dir apps/web typecheck",
-    "test": "pnpm check:quality && python3 scripts/module-boundaries-smoke.py && node --test tests/*.test.mjs && pnpm test:ai-model-discovery && pnpm test:ai-chat-history && pnpm test:captcha-policy && pnpm test:role-permissions && pnpm test:route-permissions && pnpm test:authorization-signature && pnpm test:authorization-cache-refresh",
+    "test": "pnpm check:quality && python3 scripts/module-boundaries-smoke.py && node --test tests/*.test.mjs && pnpm test:ai-model-discovery && pnpm test:ai-chat-history && pnpm test:authentication-method-flow && pnpm test:captcha-policy && pnpm test:role-permissions && pnpm test:route-permissions && pnpm test:authorization-signature && pnpm test:authorization-cache-refresh",
     "test:java": "node scripts/office-worker-test.mjs",
     "test:ai-model-discovery": "node --experimental-strip-types --test apps/web/src/features/ai/model-discovery.test.ts",
     "test:ai-chat-history": "node --experimental-strip-types --test apps/web/src/features/ai/chat-history.test.ts",
+    "test:authentication-method-flow": "node --experimental-strip-types --test apps/web/src/features/settings/authentication-method-flow.test.ts",
     "test:captcha-policy": "node --experimental-strip-types --test apps/web/src/platform/auth/captcha-policy.test.ts",
     "test:role-permissions": "node --experimental-strip-types --test apps/web/src/features/roles/role-permission-model.test.ts",
     "test:route-permissions": "node --experimental-strip-types --test apps/web/src/platform/shell/route-permissions.test.ts",
@@ -68,7 +69,9 @@
     "patchedDependencies": {
       "braces@3.0.3": "patches/braces@3.0.3.patch",
       "sprintf-js@1.0.3": "patches/sprintf-js@1.0.3.patch",
-      "@remix-run/router@1.23.4": "patches/@remix-run__router@1.23.4.patch"
+      "@remix-run/router@1.23.4": "patches/@remix-run__router@1.23.4.patch",
+      "react-immutable-proptypes@2.2.0": "patches/react-immutable-proptypes@2.2.0.patch",
+      "prop-types@15.8.1": "patches/prop-types@15.8.1.patch"
     }
   }
 }

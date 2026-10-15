@@ -89,7 +89,7 @@ export function PreauthEnrollmentForm({ onComplete, onCancel }: { onComplete: (l
       <Typography.Paragraph>{t("mfaSetupHint")}</Typography.Paragraph>
       <QRCode value={setup.otpauthUri} />
       <Typography.Paragraph copyable>{setup.secret}</Typography.Paragraph>
-      <Form layout="vertical" requiredMark={false} onFinish={() => void confirm()}>
+      <Form layout="vertical" requiredMark={false} size="large" onFinish={() => void confirm()}>
         <Form.Item label={t("mfaCode")} required>
           <Input value={code} onChange={event => setCode(event.target.value)} autoComplete="one-time-code" maxLength={64} autoFocus />
         </Form.Item>

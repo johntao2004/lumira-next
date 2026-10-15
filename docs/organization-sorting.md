@@ -17,5 +17,7 @@ Updates still require the current `version`. The version comparison and write
 run in one database statement, so concurrent edits cannot overwrite a newer
 sort value. Stale writes return HTTP 409 with `staleRecord`.
 
-Flyway V40 adds `sort_no` with a default of `0` and a nonnegative check. Existing
-rows receive `0`, so their preexisting code-based ordering remains in effect.
+The host initialization baseline `B52__platform_initialization.sql` defines
+`sort_no` with a default of `0` and a nonnegative check. New organizations
+without an explicit value therefore start at `0` and retain the documented
+stable tie-breaking order.

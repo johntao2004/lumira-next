@@ -79,7 +79,7 @@ function WatermarkFields() {
           key={field}
           name={["data", field]}
           label={t(label)}
-          rules={[{ required: true }]}
+          rules={[{ required: true, type: "integer", min, max, message: t("invalidWatermark") }]}
         >
           <InputNumber min={min} max={max} precision={0} addonAfter="px" />
         </Form.Item>)}
@@ -88,11 +88,11 @@ function WatermarkFields() {
         key={field}
         name={["data", field]}
         label={t(label)}
-        rules={[{ required: true }]}
+        rules={[{ required: true, type: "integer", min, max, message: t("invalidWatermark") }]}
       >
         <InputNumber min={min} max={max} precision={0} addonAfter={field === "rotate" ? "°" : undefined} />
       </Form.Item>)}
-      <Form.Item name={["data", "opacity"]} label={t("watermarkOpacity")} rules={[{ required: true }]}>
+      <Form.Item name={["data", "opacity"]} label={t("watermarkOpacity")} rules={[{ required: true, type: "number", min: 0, max: 1, message: t("invalidWatermark") }]}>
         <InputNumber min={0} max={1} step={0.05} />
       </Form.Item>
     </div>

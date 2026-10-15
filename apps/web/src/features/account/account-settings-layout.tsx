@@ -115,8 +115,8 @@ export function AccountSettingsLayout({ routeId, rolePreviewAvailable, rolePrevi
     : <Link to={`/dashboard/${id}`} aria-current={routeId === id ? "page" : undefined}>{label}</Link>;
 
   const items: MenuProps["items"] = [
-    { key: "account-profile", label: link("account-profile", t("profile")) },
-    { key: "account-security", disabled: rolePreviewActive, label: link("account-security", t("accountSecurity"), rolePreviewActive) },
+    { key: "account-security", label: link("account-security", t("profile")) },
+    { key: "account-authentication-security", disabled: rolePreviewActive, label: link("account-authentication-security", t("accountSecurity"), rolePreviewActive) },
     ...(rolePreviewAvailable ? [{ key: "account-role-preview", label: link("account-role-preview", t("rolePreview")) }] : []),
     ...(wechatAvailable ? [{ key: "account-wechat", disabled: rolePreviewActive, label: link("account-wechat", t("wechatBinding"), rolePreviewActive) }] : []),
     { key: "account-password", label: link("account-password", t("changePassword")) },
@@ -125,7 +125,8 @@ export function AccountSettingsLayout({ routeId, rolePreviewAvailable, rolePrevi
 
   const title = t({
     "account-profile": "profile",
-    "account-security": "accountSecurity",
+    "account-security": "profile",
+    "account-authentication-security": "accountSecurity",
     "account-role-preview": "rolePreview",
     "account-password": "changePassword",
     "account-sessions": "mySessions",
@@ -138,7 +139,7 @@ export function AccountSettingsLayout({ routeId, rolePreviewAvailable, rolePrevi
         className="account-settings-menu"
         mode={compact ? "horizontal" : "inline"}
         style={compact ? { borderInlineEnd: 0, borderBlockEnd: 0 } : { borderInlineEnd: 0 }}
-        selectedKeys={[routeId]}
+        selectedKeys={[routeId === "account-profile" ? "account-security" : routeId]}
         items={items}
       />
     </nav>

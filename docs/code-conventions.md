@@ -12,13 +12,14 @@
 | Java 文件和顶层类型 | UpperCamelCase，public 类型与文件同名 | SettingDocuments.java |
 | Java package | 全小写，与 src/main/java 或 src/test/java 下的路径一致 | com.lumira.platform.roles.api |
 | Java 方法、变量 | lowerCamelCase；常量 UPPER_SNAKE_CASE | expectedVersion、MAXIMUM_BYTES |
-| Flyway 迁移 | V版本__下划线描述.sql，发布后仅追加 | V22__plugin_uninstall_data_mode.sql |
+| 宿主全局数据库 | 当前唯一初始化文件为最终态 B52 基线 | B52__platform_initialization.sql |
+| 插件 Flyway 迁移 | 各插件独立使用 V版本__下划线描述.sql，已发布脚本仅追加 | plugins/feedback/migrations/V4__unify_feedback_data_scope.sql |
 | 命令脚本 | 小写短横线；可导入 Python 辅助模块用下划线 | source-naming-smoke.py、smoke_support.py |
 | 框架配置与构建入口 | 保留工具指定名称 | .umirc.ts、package.json、pom.xml、Dockerfile |
 
 使用 UTF-8、LF、空格缩进；Java/Python 为 4 空格，其余默认 2 空格，见根目录 `.editorconfig`。Java 格式化以 Spotless 的 AOSP 配置为准。文件名使用 kebab-case 不影响 React 组件函数使用 UpperCamelCase。
 
-外部依赖、第三方资源、生成代码、归档历史迁移有各自来源，不机械重命名；`node_modules`、`dist`、`target`、`.umi*`、`.runtime` 不作为自有源码检查。临时报告和测试日志放在 `.runtime`。
+外部依赖、第三方资源、生成代码有各自来源，不机械重命名；`node_modules`、`dist`、`target`、`.umi*`、`.runtime` 不作为自有源码检查。临时报告和测试日志放在 `.runtime`。全局数据库测试使用唯一初始化 SQL 的当前结构，不另存历史迁移夹具。
 
 ## 目录和职责
 

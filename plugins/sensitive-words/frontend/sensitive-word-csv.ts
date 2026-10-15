@@ -23,6 +23,22 @@ export type SensitiveImportPayload = {
 };
 
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/u;
+// Match Java Character.isWhitespace, used by String.strip and the backend matcher.
+const BOUNDARY_WHITESPACE = /^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]+|[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]+$/g;
+const MATCH_WHITESPACE = /[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]+/g;
+
+export function sensitiveWordValidationIssue(value: string): MessageKey | null {
+  const word = value.normalize("NFKC").replace(BOUNDARY_WHITESPACE, "");
+  if (CONTROL_CHARACTER.test(word)) return "sensitiveImportCsvControlCharacter";
+  const matchKey = word.replace(/\p{Cf}/gu, "").toLowerCase()
+    .replace(BOUNDARY_WHITESPACE, "").replace(MATCH_WHITESPACE, " ")
+    .replace(BOUNDARY_WHITESPACE, "");
+  if (!matchKey) return "sensitiveImportCsvEmptyWord";
+  if (word.length > SENSITIVE_IMPORT_LIMITS.wordChars
+    || matchKey.length > SENSITIVE_IMPORT_LIMITS.wordChars) return "sensitiveImportCsvWordTooLong";
+  return null;
+}
+
 const issue = (line: number | null, key: MessageKey, cells?: string[]): SensitiveImportIssue =>
   cells === undefined ? { line, key } : { line, key, cells };
 
@@ -172,6 +188,11 @@ export function parseSensitiveWordCsv(input: string): SensitiveCsvParseResult {
       issues.push(issue(record.line, "sensitiveImportCsvWordTooLong", [word]));
       continue;
     }
+    const wordIssue = sensitiveWordValidationIssue(word);
+    if (wordIssue) {
+      issues.push(issue(record.line, wordIssue, [word]));
+      continue;
+    }
     // Only the first record is a header; the literal data word "word" is retained.
     words.push({ word, line: record.line });
   }
@@ -210,6 +231,9 @@ export function validateSensitivePaste(text: string): SensitiveCsvParseResult {
     if (CONTROL_CHARACTER.test(raw)) issues.push(issue(index + 1, "sensitiveImportCsvControlCharacter", [raw]));
     if (raw.trim().length > SENSITIVE_IMPORT_LIMITS.wordChars) {
       issues.push(issue(index + 1, "sensitiveImportCsvWordTooLong", [raw.trim()]));
+    } else if (!CONTROL_CHARACTER.test(raw)) {
+      const wordIssue = sensitiveWordValidationIssue(raw.trim());
+      if (wordIssue) issues.push(issue(index + 1, wordIssue, [raw.trim()]));
     }
   });
   return { words: words.map((word, index) => ({ word, line: index + 1 })), issues, textChars: text.length };

@@ -41,7 +41,7 @@ export function ResourcePicker({ endpoint, value = [], onChange, id, max = 100 }
       </div>
       {query.error && <QueryFailure title={t(query.error instanceof ApiError && query.error.status === 403 ? "forbidden" : "unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} />}
       <Table<ResourceOption>
-        size="small"
+        size="medium"
         rowKey="id"
         loading={query.isFetching}
         dataSource={query.data?.items ?? []}

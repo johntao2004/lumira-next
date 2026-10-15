@@ -18,7 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 /**
- * Runs the published MFA migrations plus V7 against an explicitly disposable, isolated database.
+ * Runs the published MFA migrations against an explicitly disposable, isolated baseline database.
  */
 @EnabledIfEnvironmentVariable(
         named = "LUMIRA_PLUGIN_PERMISSION_FINALIZER_TEST_DB_URL",
@@ -152,7 +152,7 @@ class MfaPluginPermissionFinalizerDatabaseTest {
     }
 
     @Test
-    void postV51FreshInstallDoesNotLinkPageAndActionOrReplayBootstrapSeeds() {
+    void freshBaselineDoesNotLinkPageAndActionOrReplayBootstrapSeeds() {
         assertTrue(hasEffective(FEEDBACK_ACTION_ACTOR, FEEDBACK_UPDATE));
         assertFalse(hasEffective(FEEDBACK_ACTION_ACTOR, FEEDBACK_ACCESS));
         assertFalse(hasEffective(FEEDBACK_ACTION_ACTOR, "platform:feedback:read-all"));

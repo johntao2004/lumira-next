@@ -2,7 +2,7 @@ package com.lumira.platform.identity;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -38,7 +38,9 @@ class AccountEmailStoreTest {
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY)");
         jdbc.update("INSERT INTO platform_user(id) VALUES(?)", owner);
-        jdbc.execute(TestMigration.read("V25__account_email_verification.sql"));
+        jdbc.execute(TestSchema.table("platform_account_email"));
+        TestSchema.indexes("platform_account_email").forEach(jdbc::execute);
+        TestSchema.foreignKeys("platform_account_email").forEach(jdbc::execute);
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         store = new AccountEmailStore(JdbcClient.create(ds));
     }

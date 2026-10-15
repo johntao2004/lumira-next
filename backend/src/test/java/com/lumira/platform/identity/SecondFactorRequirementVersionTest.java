@@ -100,6 +100,7 @@ class SecondFactorRequirementVersionTest {
                     primary_method varchar(16) NOT NULL DEFAULT 'PASSWORD',
                     state varchar(32) NOT NULL DEFAULT 'MFA_REQUIRED', policy_revision uuid NOT NULL,
                     captcha_policy_revision varchar(128), captcha_satisfied boolean NOT NULL DEFAULT false,
+                    password_change_reason varchar(32),
                     created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     expires_at timestamptz NOT NULL, attempts integer NOT NULL DEFAULT 0
                 )

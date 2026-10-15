@@ -11,12 +11,14 @@ import static org.mockito.Mockito.when;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.CaptchaProofPort;
 import com.lumira.platform.common.ClientAddressResolver;
+import com.lumira.platform.common.CsrfTokenContract;
 import com.lumira.platform.common.FixedWindowBuckets;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PluginExtensionsPort;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.identity.api.AccountSecurityPort;
+import com.lumira.platform.identity.api.AuthenticationSession;
 import com.lumira.platform.identity.api.EffectiveAuthenticationPolicyPort;
 import com.lumira.platform.identity.api.LoginResponse;
 import com.lumira.platform.identity.api.MaintenancePolicyPort;
@@ -47,6 +49,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.csrf.DefaultCsrfToken;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -59,7 +63,7 @@ class TemporaryPasswordResetDatabaseTest {
     private static final String USERNAME = "reset-target";
     private static final UUID ADMIN_ID = UUID.fromString("6cbf7c9f-55bd-4c7e-80dd-3a20a8e59ac6");
     private static final UUID USER_ID = UUID.fromString("1a2e80f4-3a87-422a-a11e-3eb953142d61");
-    private static final String INITIAL_PASSWORD = "InitialPassword!8172";
+    private static final String INITIAL_PASSWORD = "Admin!Blue8274";
     private static final String REPLACEMENT_PASSWORD = "W!m8Q$zR4#vP7k2X";
     private static final String RESET_PERMISSION =
             PlatformOperation.USER_RESET_PASSWORD.permission();
@@ -83,8 +87,14 @@ class TemporaryPasswordResetDatabaseTest {
     private AuditPort audit;
     private PasswordCredentialProof proofs;
     private TemporaryPasswordResetService resets;
+    private BootstrapPasswordChangeRequirementService bootstrapPasswords;
     private SecondFactorLoginService login;
     private ProviderManager passwordProvider;
+    private MaintenancePolicyPort maintenance;
+    private CaptchaProofAccess captcha;
+    private boolean mfaRequired = true;
+    private boolean captchaRequired;
+    private String policyRevisionVariant = "";
 
     @BeforeEach
     void setUp() {
@@ -168,6 +178,7 @@ class TemporaryPasswordResetDatabaseTest {
         var security = (SecurityPolicyPort) () -> passwordPolicy;
         var buckets = new FixedWindowBuckets(client);
         var limiter = new PasswordChangeLimiter(buckets);
+        bootstrapPasswords = new BootstrapPasswordChangeRequirementService(client);
         audit = mock(AuditPort.class);
         resets =
                 new TemporaryPasswordResetService(
@@ -210,20 +221,23 @@ class TemporaryPasswordResetDatabaseTest {
         dao.setPasswordEncoder(encoder);
         passwordProvider =
                 new ProviderManager(List.of(new PasswordProofAuthenticationProvider(dao, proofs)));
-        var maintenance = mock(MaintenancePolicyPort.class);
+        maintenance = mock(MaintenancePolicyPort.class);
         when(maintenance.canLogin(any(String.class))).thenReturn(true);
-        var captcha = mock(CaptchaProofAccess.class);
+        captcha = mock(CaptchaProofAccess.class);
         when(captcha.begin(
                         eq(CaptchaProofPort.Action.POST_PRIMARY_AUTH),
                         eq(USER_ID),
                         isNull(),
                         any()))
-                .thenReturn(
-                        new CaptchaProofAccess.Gate(
-                                mock(CaptchaProofPort.class),
-                                CaptchaProofPort.Action.POST_PRIMARY_AUTH,
-                                new CaptchaProofPort.Requirement(
-                                        false, "test-captcha-policy", null)));
+                .thenAnswer(
+                        ignored ->
+                                new CaptchaProofAccess.Gate(
+                                        mock(CaptchaProofPort.class),
+                                        CaptchaProofPort.Action.POST_PRIMARY_AUTH,
+                                        new CaptchaProofPort.Requirement(
+                                                captchaRequired,
+                                                "test-captcha-policy",
+                                                captchaRequired ? "IMAGE_TEXT" : null)));
         login =
                 new SecondFactorLoginService(
                         client,
@@ -240,7 +254,8 @@ class TemporaryPasswordResetDatabaseTest {
                         proofs,
                         captcha,
                         mock(MfaRecoveryTicketPort.class),
-                        resets);
+                        resets,
+                        bootstrapPasswords);
         SecurityContextHolder.clearContext();
     }
 
@@ -339,6 +354,412 @@ class TemporaryPasswordResetDatabaseTest {
         assertFalse(mfa.authenticated());
         verify(audit).append(ADMIN, "user.passwordReset", USER_ID);
         verify(audit).append(USERNAME, "account.forcedPasswordChanged", USER_ID);
+    }
+
+    @Test
+    void bootstrapRequirementCoversEveryPrimaryMethodAndSurvivesCancelAndChallengeExpiry() {
+        UUID revision = user(USERNAME).credentialRevision();
+        jdbc.update(
+                "INSERT INTO platform_bootstrap_password_change_requirement(user_id,primary_credential_revision) VALUES(?,?)",
+                USER_ID,
+                revision);
+
+        MockHttpServletRequest lastRequest = null;
+        for (PrimaryMethod method : METHODS) {
+            var request = new MockHttpServletRequest("POST", "/api/auth/login");
+            LoginResponse response = primaryLogin(method, request);
+            assertEquals("PASSWORD_CHANGE_REQUIRED", response.state());
+            assertEquals("BOOTSTRAP", response.passwordChangeReason());
+            assertFalse(response.authenticated());
+            assertFalse(response.secondFactorRequired());
+            LoginResponse restored = login.pending(request);
+            assertEquals(response.challengeId(), restored.challengeId());
+            assertEquals(response.state(), restored.state());
+            assertEquals(response.passwordChangeReason(), restored.passwordChangeReason());
+            assertTrue(
+                    Duration.between(response.expiresAt(), restored.expiresAt())
+                                    .abs()
+                                    .compareTo(Duration.ofNanos(1_000))
+                            <= 0);
+            assertFalse(restored.authenticated());
+            assertFalse(restored.secondFactorRequired());
+            assertNull(SecurityContextHolder.getContext().getAuthentication());
+            assertEquals(
+                    0, jdbc.queryForObject("SELECT count(*) FROM spring_session", Integer.class));
+            lastRequest = request;
+        }
+
+        assertNotNull(lastRequest);
+        UUID firstChallenge =
+                UUID.fromString(
+                        (String)
+                                lastRequest
+                                        .getSession()
+                                        .getAttribute(SecondFactorLoginService.PENDING));
+        login.cancel(firstChallenge, lastRequest);
+        assertNull(
+                jdbc.queryForObject(
+                        "SELECT completed_at FROM platform_bootstrap_password_change_requirement WHERE user_id=?",
+                        java.time.OffsetDateTime.class,
+                        USER_ID));
+
+        var expiringRequest = new MockHttpServletRequest("POST", "/api/auth/login");
+        LoginResponse expiring = loginAs(INITIAL_PASSWORD, expiringRequest);
+        assertEquals("BOOTSTRAP", expiring.passwordChangeReason());
+        jdbc.update(
+                "UPDATE platform_login_challenge SET expires_at=now()-interval '1 second' WHERE id=?",
+                expiring.challengeId());
+        assertEquals("EXPIRED", login.pending(expiringRequest).state());
+        assertNull(
+                jdbc.queryForObject(
+                        "SELECT completed_at FROM platform_bootstrap_password_change_requirement WHERE user_id=?",
+                        java.time.OffsetDateTime.class,
+                        USER_ID));
+
+        var retryRequest = new MockHttpServletRequest("POST", "/api/auth/login");
+        assertEquals("BOOTSTRAP", loginAs(INITIAL_PASSWORD, retryRequest).passwordChangeReason());
+    }
+
+    @Test
+    void bootstrapChangeCompletesDurableMarkerRejectsReplayAndRequiresFreshLogin() {
+        UUID revision = user(USERNAME).credentialRevision();
+        jdbc.update(
+                "INSERT INTO platform_bootstrap_password_change_requirement(user_id,primary_credential_revision) VALUES(?,?)",
+                USER_ID,
+                revision);
+        var request = new MockHttpServletRequest("POST", "/api/auth/login");
+        LoginResponse required = loginAs(INITIAL_PASSWORD, request);
+        assertEquals("BOOTSTRAP", required.passwordChangeReason());
+        assertFailure(
+                "newPasswordMustDiffer",
+                () ->
+                        resets.changePassword(
+                                required.challengeId(),
+                                INITIAL_PASSWORD,
+                                INITIAL_PASSWORD,
+                                request));
+
+        resets.changePassword(
+                required.challengeId(), REPLACEMENT_PASSWORD, REPLACEMENT_PASSWORD, request);
+
+        assertNotNull(
+                jdbc.queryForObject(
+                        "SELECT completed_at FROM platform_bootstrap_password_change_requirement WHERE user_id=?",
+                        java.time.OffsetDateTime.class,
+                        USER_ID));
+        assertTrue(encoder.matches(REPLACEMENT_PASSWORD, user(USERNAME).passwordHash()));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM spring_session", Integer.class));
+        assertFailure(
+                "secondFactorExpired",
+                () ->
+                        resets.changePassword(
+                                required.challengeId(),
+                                REPLACEMENT_PASSWORD,
+                                REPLACEMENT_PASSWORD,
+                                request));
+
+        LoginResponse freshLogin =
+                loginAs(
+                        REPLACEMENT_PASSWORD,
+                        new MockHttpServletRequest("POST", "/api/auth/login"));
+        assertEquals("MFA_REQUIRED", freshLogin.state());
+        assertNull(freshLogin.passwordChangeReason());
+    }
+
+    @Test
+    void bootstrapChangeContinuesToCompleteWithRotatedAuthenticatedSession() {
+        mfaRequired = false;
+        UUID revision = user(USERNAME).credentialRevision();
+        jdbc.update(
+                "INSERT INTO platform_bootstrap_password_change_requirement(user_id,primary_credential_revision) VALUES(?,?)",
+                USER_ID,
+                revision);
+        var request = new MockHttpServletRequest("POST", "/api/auth/login");
+        var response = new MockHttpServletResponse();
+        LoginResponse required = loginAs(INITIAL_PASSWORD, request);
+        String previousSessionId = request.getSession().getId();
+        var csrf = CsrfTokenContract.sessionRepository();
+        csrf.saveToken(
+                new DefaultCsrfToken(CsrfTokenContract.HEADER_NAME, "_csrf", "old-csrf-token"),
+                request,
+                response);
+        seedExistingSessions(previousSessionId);
+
+        LoginResponse continued =
+                resets.changePasswordAndContinue(
+                        required.challengeId(),
+                        REPLACEMENT_PASSWORD,
+                        REPLACEMENT_PASSWORD,
+                        request,
+                        continuation ->
+                                login.continueAfterPasswordChange(continuation, request, response));
+
+        assertEquals("COMPLETE", continued.state());
+        assertTrue(continued.authenticated());
+        assertFalse(continued.secondFactorRequired());
+        assertNull(continued.challengeId());
+        assertNull(continued.nextPath());
+        assertNotEquals(previousSessionId, request.getSession().getId());
+        assertNull(request.getSession().getAttribute(SecondFactorLoginService.PENDING));
+        assertNull(csrf.loadToken(request));
+        assertTrue(encoder.matches(REPLACEMENT_PASSWORD, user(USERNAME).passwordHash()));
+        assertNotNull(
+                jdbc.queryForObject(
+                        "SELECT completed_at FROM platform_bootstrap_password_change_requirement WHERE user_id=?",
+                        java.time.OffsetDateTime.class,
+                        USER_ID));
+        assertEquals(
+                0,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM spring_session WHERE principal_name=?",
+                        Integer.class,
+                        USERNAME));
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM spring_session WHERE principal_name=?",
+                        Integer.class,
+                        ADMIN));
+        assertEquals(
+                user(USERNAME).credentialRevision().toString(),
+                request.getSession()
+                        .getAttribute(AuthenticationSession.PRIMARY_CREDENTIAL_REVISION));
+        var savedContext =
+                request.getSession()
+                        .getAttribute(
+                                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+        assertNotNull(savedContext);
+        assertTrue(
+                ((org.springframework.security.core.context.SecurityContext) savedContext)
+                        .getAuthentication()
+                        .isAuthenticated());
+        assertEquals(
+                USERNAME,
+                ((org.springframework.security.core.context.SecurityContext) savedContext)
+                        .getAuthentication()
+                        .getName());
+        assertEquals("NONE", login.pending(request).state());
+        assertFailure(
+                "secondFactorExpired",
+                () ->
+                        resets.changePasswordAndContinue(
+                                required.challengeId(),
+                                REPLACEMENT_PASSWORD,
+                                REPLACEMENT_PASSWORD,
+                                request,
+                                continuation ->
+                                        login.continueAfterPasswordChange(
+                                                continuation, request, response)));
+    }
+
+    @Test
+    void temporaryResetContinuesThroughMfaAndBindsNewChallengeToRotatedSession() {
+        var reset = reset(USER_ID, ADMIN);
+        var request = new MockHttpServletRequest("POST", "/api/auth/login");
+        var response = new MockHttpServletResponse();
+        LoginResponse required = loginAs(reset.temporaryPassword(), request);
+        String previousSessionId = request.getSession().getId();
+        var csrf = CsrfTokenContract.sessionRepository();
+        csrf.saveToken(
+                new DefaultCsrfToken(CsrfTokenContract.HEADER_NAME, "_csrf", "old-csrf-token"),
+                request,
+                response);
+        seedExistingSessions(previousSessionId);
+
+        LoginResponse continued =
+                resets.changePasswordAndContinue(
+                        required.challengeId(),
+                        REPLACEMENT_PASSWORD,
+                        REPLACEMENT_PASSWORD,
+                        request,
+                        continuation ->
+                                login.continueAfterPasswordChange(continuation, request, response));
+
+        assertEquals("MFA_REQUIRED", continued.state());
+        assertFalse(continued.authenticated());
+        assertTrue(continued.secondFactorRequired());
+        assertNotNull(continued.challengeId());
+        assertNotEquals(previousSessionId, request.getSession().getId());
+        assertEquals(
+                continued.challengeId().toString(),
+                request.getSession().getAttribute(SecondFactorLoginService.PENDING));
+        assertNull(csrf.loadToken(request));
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertNull(
+                request.getSession()
+                        .getAttribute(
+                                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
+        assertEquals(
+                FixedWindowBuckets.key("mfa-session", request.getSession().getId()).substring(12),
+                jdbc.queryForObject(
+                        "SELECT session_hash FROM platform_login_challenge WHERE id=?",
+                        String.class,
+                        continued.challengeId()));
+        assertTrue(encoder.matches(REPLACEMENT_PASSWORD, user(USERNAME).passwordHash()));
+        assertEquals(
+                0,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM spring_session WHERE principal_name=?",
+                        Integer.class,
+                        USERNAME));
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM spring_session WHERE principal_name=?",
+                        Integer.class,
+                        ADMIN));
+        assertEquals(continued.challengeId(), login.pending(request).challengeId());
+        assertFailure(
+                "secondFactorExpired",
+                () ->
+                        resets.changePasswordAndContinue(
+                                required.challengeId(),
+                                REPLACEMENT_PASSWORD,
+                                REPLACEMENT_PASSWORD,
+                                request,
+                                continuation ->
+                                        login.continueAfterPasswordChange(
+                                                continuation, request, response)));
+        assertEquals(continued.challengeId(), login.pending(request).challengeId());
+    }
+
+    @Test
+    void temporaryResetContinuesThroughCaptchaWithoutCreatingAnAuthenticatedSession() {
+        captchaRequired = true;
+        var reset = reset(USER_ID, ADMIN);
+        var request = new MockHttpServletRequest("POST", "/api/auth/login");
+        var response = new MockHttpServletResponse();
+        LoginResponse required = loginAs(reset.temporaryPassword(), request);
+        String previousSessionId = request.getSession().getId();
+
+        LoginResponse continued =
+                resets.changePasswordAndContinue(
+                        required.challengeId(),
+                        REPLACEMENT_PASSWORD,
+                        REPLACEMENT_PASSWORD,
+                        request,
+                        continuation ->
+                                login.continueAfterPasswordChange(continuation, request, response));
+
+        assertEquals("CAPTCHA_REQUIRED", continued.state());
+        assertFalse(continued.authenticated());
+        assertTrue(continued.secondFactorRequired());
+        assertNotNull(continued.challengeId());
+        assertNotEquals(previousSessionId, request.getSession().getId());
+        assertEquals(
+                continued.challengeId().toString(),
+                request.getSession().getAttribute(SecondFactorLoginService.PENDING));
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertNull(
+                request.getSession()
+                        .getAttribute(
+                                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
+        assertEquals(
+                FixedWindowBuckets.key("mfa-session", request.getSession().getId()).substring(12),
+                jdbc.queryForObject(
+                        "SELECT session_hash FROM platform_login_challenge WHERE id=?",
+                        String.class,
+                        continued.challengeId()));
+        assertTrue(encoder.matches(REPLACEMENT_PASSWORD, user(USERNAME).passwordHash()));
+    }
+
+    @Test
+    void concurrentPolicyRevisionChangeRollsBackPasswordAndPreservesOldChallenge() {
+        var reset = reset(USER_ID, ADMIN);
+        var request = new MockHttpServletRequest("POST", "/api/auth/login");
+        var response = new MockHttpServletResponse();
+        LoginResponse required = loginAs(reset.temporaryPassword(), request);
+        String oldSessionId = request.getSession().getId();
+
+        assertFailure(
+                "authenticationProofExpired",
+                () ->
+                        resets.changePasswordAndContinue(
+                                required.challengeId(),
+                                REPLACEMENT_PASSWORD,
+                                REPLACEMENT_PASSWORD,
+                                request,
+                                continuation -> {
+                                    policyRevisionVariant = "concurrent-policy-change";
+                                    return login.continueAfterPasswordChange(
+                                            continuation, request, response);
+                                }));
+
+        assertTrue(encoder.matches(reset.temporaryPassword(), user(USERNAME).passwordHash()));
+        assertFalse(encoder.matches(REPLACEMENT_PASSWORD, user(USERNAME).passwordHash()));
+        assertEquals(oldSessionId, request.getSession().getId());
+        assertEquals(
+                required.challengeId(),
+                jdbc.queryForObject(
+                        "SELECT id FROM platform_login_challenge WHERE user_id=?",
+                        UUID.class,
+                        USER_ID));
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM platform_password_change_requirement WHERE user_id=?",
+                        Integer.class,
+                        USER_ID));
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        policyRevisionVariant = "";
+        assertEquals(required.challengeId(), login.pending(request).challengeId());
+    }
+
+    @Test
+    void expiredPasswordChangeChallengeCannotCommitOrContinueLogin() {
+        var reset = reset(USER_ID, ADMIN);
+        var request = new MockHttpServletRequest("POST", "/api/auth/login");
+        var response = new MockHttpServletResponse();
+        LoginResponse required = loginAs(reset.temporaryPassword(), request);
+        jdbc.update(
+                "UPDATE platform_login_challenge SET expires_at=now()-interval '1 second' WHERE id=?",
+                required.challengeId());
+
+        assertFailure(
+                "secondFactorExpired",
+                () ->
+                        resets.changePasswordAndContinue(
+                                required.challengeId(),
+                                REPLACEMENT_PASSWORD,
+                                REPLACEMENT_PASSWORD,
+                                request,
+                                continuation ->
+                                        login.continueAfterPasswordChange(
+                                                continuation, request, response)));
+
+        assertTrue(encoder.matches(reset.temporaryPassword(), user(USERNAME).passwordHash()));
+        assertFalse(encoder.matches(REPLACEMENT_PASSWORD, user(USERNAME).passwordHash()));
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM platform_password_change_requirement WHERE user_id=?",
+                        Integer.class,
+                        USER_ID));
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    @Test
+    void nonPasswordCredentialEpochChangesKeepBootstrapRequirementBoundToCurrentRevision() {
+        UUID revision = user(USERNAME).credentialRevision();
+        jdbc.update(
+                "INSERT INTO platform_bootstrap_password_change_requirement(user_id,primary_credential_revision) VALUES(?,?)",
+                USER_ID,
+                revision);
+        var accountSecurity =
+                new AccountSecurityService(
+                        client, encoder, new IdentityAuthenticationPolicyWriteLock(client));
+
+        UUID changedRevision = accountSecurity.bumpPrimaryCredentialRevision(USER_ID);
+
+        assertEquals(
+                changedRevision,
+                jdbc.queryForObject(
+                        "SELECT primary_credential_revision FROM platform_bootstrap_password_change_requirement WHERE user_id=?",
+                        UUID.class,
+                        USER_ID));
+        LoginResponse required =
+                loginAs(INITIAL_PASSWORD, new MockHttpServletRequest("POST", "/api/auth/login"));
+        assertEquals("BOOTSTRAP", required.passwordChangeReason());
     }
 
     @Test
@@ -480,6 +901,40 @@ class TemporaryPasswordResetDatabaseTest {
                 passwordAuthentication(password), request, new MockHttpServletResponse());
     }
 
+    private void seedExistingSessions(String currentSessionId) {
+        long expiry = System.currentTimeMillis() + 60_000;
+        jdbc.update(
+                "INSERT INTO spring_session(primary_id,session_id,principal_name,expiry_time) VALUES(?,?,?,?)",
+                UUID.randomUUID().toString(),
+                currentSessionId,
+                USERNAME,
+                expiry);
+        jdbc.update(
+                "INSERT INTO spring_session(primary_id,session_id,principal_name,expiry_time) VALUES(?,?,?,?)",
+                UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
+                USERNAME,
+                expiry);
+        jdbc.update(
+                "INSERT INTO spring_session(primary_id,session_id,principal_name,expiry_time) VALUES(?,?,?,?)",
+                UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
+                ADMIN,
+                expiry);
+    }
+
+    private LoginResponse primaryLogin(PrimaryMethod method, MockHttpServletRequest request) {
+        if (method == PrimaryMethod.PASSWORD) return loginAs(INITIAL_PASSWORD, request);
+        var authentication =
+                UsernamePasswordAuthenticationToken.authenticated(USERNAME, null, List.of());
+        return login.complete(
+                authentication,
+                method,
+                user(USERNAME).credentialRevision().toString(),
+                request,
+                new MockHttpServletResponse());
+    }
+
     private org.springframework.security.core.Authentication passwordAuthentication(
             String password) {
         return passwordProvider.authenticate(
@@ -539,15 +994,15 @@ class TemporaryPasswordResetDatabaseTest {
                                 userId);
                 UUID policyRevision =
                         UUID.nameUUIDFromBytes(
-                                ("password-policy:" + primaryRevision)
+                                ("password-policy:" + primaryRevision + ":" + policyRevisionVariant)
                                         .getBytes(StandardCharsets.UTF_8));
                 return new EffectivePolicy(
                         policyRevision,
                         METHODS,
                         METHODS,
-                        true,
+                        mfaRequired,
                         List.of(),
-                        false,
+                        captchaRequired,
                         primaryRevision,
                         factorRevision);
             }
@@ -605,9 +1060,11 @@ class TemporaryPasswordResetDatabaseTest {
         jdbc.execute(
                 "CREATE FUNCTION platform_is_last_recovery_administrator(uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT EXISTS(SELECT 1 FROM qa_last_recovery_administrator WHERE user_id=$1) $$");
         jdbc.execute(
-                "CREATE TABLE platform_login_challenge(id uuid PRIMARY KEY,user_id uuid NOT NULL,provider_id text NOT NULL,session_hash char(64) NOT NULL,requirement_version uuid,primary_method varchar(16) NOT NULL,state varchar(32) NOT NULL CHECK(state IN ('MFA_REQUIRED','ENROLLMENT_REQUIRED','RECOVERY_REQUIRED','CAPTCHA_REQUIRED','PASSWORD_CHANGE_REQUIRED')),policy_revision uuid NOT NULL,captcha_policy_revision varchar(128),captcha_satisfied boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at timestamptz NOT NULL,attempts integer NOT NULL DEFAULT 0)");
+                "CREATE TABLE platform_login_challenge(id uuid PRIMARY KEY,user_id uuid NOT NULL,provider_id text NOT NULL,session_hash char(64) NOT NULL,requirement_version uuid,primary_method varchar(16) NOT NULL,state varchar(32) NOT NULL CHECK(state IN ('MFA_REQUIRED','ENROLLMENT_REQUIRED','RECOVERY_REQUIRED','CAPTCHA_REQUIRED','PASSWORD_CHANGE_REQUIRED')),policy_revision uuid NOT NULL,captcha_policy_revision varchar(128),captcha_satisfied boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,expires_at timestamptz NOT NULL,attempts integer NOT NULL DEFAULT 0,password_change_reason varchar(32),CHECK ((state='PASSWORD_CHANGE_REQUIRED' AND password_change_reason IS NOT NULL AND password_change_reason IN ('BOOTSTRAP','TEMPORARY_RESET')) OR (state<>'PASSWORD_CHANGE_REQUIRED' AND password_change_reason IS NULL)))");
         jdbc.execute(
                 "CREATE TABLE platform_password_change_requirement(user_id uuid PRIMARY KEY REFERENCES platform_user(id) ON DELETE CASCADE,primary_credential_revision uuid NOT NULL,expires_at timestamptz NOT NULL,claimed_at timestamptz,issued_by uuid NOT NULL REFERENCES platform_user(id),created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,CHECK(expires_at>created_at),CHECK(claimed_at IS NULL OR claimed_at>=created_at))");
+        jdbc.execute(
+                "CREATE TABLE platform_bootstrap_password_change_requirement(user_id uuid PRIMARY KEY REFERENCES platform_user(id) ON DELETE CASCADE,primary_credential_revision uuid NOT NULL,created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,completed_at timestamptz,CHECK(completed_at IS NULL OR completed_at>=created_at))");
         jdbc.execute(
                 "CREATE TABLE spring_session(primary_id char(36) PRIMARY KEY,session_id char(36) NOT NULL UNIQUE,principal_name varchar(100) NOT NULL,expiry_time bigint NOT NULL)");
         jdbc.execute(

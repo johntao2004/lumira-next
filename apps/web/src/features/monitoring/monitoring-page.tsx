@@ -2,7 +2,7 @@
 
 import { ProCard, StatisticCard } from "@ant-design/pro-components";
 import { QuestionCircleOutlined } from "@ant-design/icons";
-import { Col, Empty, List, Progress, Row, Select, Skeleton, Space, Statistic, Tag, Tooltip, Typography } from "antd";
+import { Button, Col, Empty, List, Progress, Row, Select, Skeleton, Space, Statistic, Tag, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +13,8 @@ import { formatDateTime } from "@/platform/i18n/format";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
 import { getMonitoringRefetchInterval, REALTIME_POLL_MS } from "./monitoring-refresh-interval";
+import { EventTraceDrawer } from "@/features/events/event-trace-drawer";
+import type { EventTraceTarget } from "@/features/events/event-trace-drawer";
 
 type PlatformSummary = {
   totalUsers: number;
@@ -54,6 +56,8 @@ type DatabaseRuntime = {
 };
 
 type FlowEvent = {
+  id?: string;
+  eventId?: string;
   sourceType: string;
   eventType: string;
   status: "PENDING" | "PROCESSING" | "DELIVERED" | "FAILED" | "DEAD_LETTER";
@@ -199,8 +203,9 @@ function eventFlowStatusColor(status: EventFlowStatus): string {
 }
 
 /** Read-only operational snapshot with a selectable interval while the page is visible. */
-export function MonitoringPage() {
+export function MonitoringPage({ canTraceEvents = false }: { canTraceEvents?: boolean }) {
   const { t, locale } = usePreferences();
+  const [traceTarget, setTraceTarget] = useState<EventTraceTarget | null>(null);
   const [refreshMode, setRefreshMode] = useState<RefreshMode>(5_000);
   // React Query's fetchFailureCount resets when each refetch begins. Keep the
   // streak across requests so repeated outage polls actually back off.
@@ -276,7 +281,7 @@ export function MonitoringPage() {
       && data.database.activeConnections !== null && data.database.activeConnections >= data.database.maxConnections);
   const formatTime = (value: string) => formatDateTime(value, locale, { dateStyle: "short", timeStyle: "medium" });
 
-  return <div className="monitoring-page">
+  return <><div className="monitoring-page">
     {query.error && <QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} />}
     <div className="monitoring-toolbar">
       <Space wrap size={[12, 8]}>
@@ -408,19 +413,25 @@ export function MonitoringPage() {
           : <List
               size="small"
               dataSource={data.flow.recentEvents}
-              renderItem={event => <List.Item>
-                <div className="monitoring-event-row">
-                  <Space wrap size={[8, 4]}>
-                    <Typography.Text strong>{event.eventType}</Typography.Text>
-                    <Tag>{event.sourceType}</Tag>
-                    <Tag color={eventStatusColor(event.status)}>{t(eventStatusKeys[event.status])}</Tag>
-                    <Typography.Text type="secondary">{t("eventAttempts")}: {event.attempts}</Typography.Text>
-                  </Space>
-                  <Typography.Text type="secondary">{formatTime(event.createdAt)}</Typography.Text>
-                </div>
-              </List.Item>}
+              renderItem={event => {
+                const eventId = event.id ?? event.eventId;
+                return <List.Item data-testid={eventId ? `event-trace-event-${eventId}` : undefined}>
+                  <div className="monitoring-event-row">
+                    <Space wrap size={[8, 4]}>
+                      <Typography.Text strong>{event.eventType}</Typography.Text>
+                      <Tag>{event.sourceType}</Tag>
+                      <Tag color={eventStatusColor(event.status)}>{t(eventStatusKeys[event.status])}</Tag>
+                      <Typography.Text type="secondary">{t("eventAttempts")}: {event.attempts}</Typography.Text>
+                    </Space>
+                    <Space wrap size={[8, 4]}>
+                      <Typography.Text type="secondary">{formatTime(event.createdAt)}</Typography.Text>
+                      {canTraceEvents && eventId && <Button type="link" size="small" data-testid={`event-trace-open-event-${eventId}`} onClick={() => setTraceTarget({ kind: "event", eventId })}>{t("eventTraceOpen")}</Button>}
+                    </Space>
+                  </div>
+                </List.Item>;
+              }}
             />}
       </ProCard>
     </>}
-  </div>;
+  </div>{traceTarget && <EventTraceDrawer target={traceTarget} onClose={() => setTraceTarget(null)} />}</>;
 }

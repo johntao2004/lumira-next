@@ -6,5 +6,5 @@ const AuditPage = lazy(() => import("./audit-page").then(({ AuditPage }) => ({ d
 
 export const auditFrontendModule = {
   ...auditManifest,
-  pages: { audit: () => <AuditPage /> },
+  pages: { audit: ({ hasGlobal }) => <AuditPage canTraceEvents={hasGlobal("platform:event-outbox:access")} /> },
 } satisfies FrontendModule;

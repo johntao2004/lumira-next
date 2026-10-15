@@ -2,7 +2,7 @@ package com.lumira.platform.mail;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.SecretKeys;
 import java.nio.file.*;
 import java.time.Duration;
@@ -39,7 +39,7 @@ class MailDeliveryStoreTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(ds);
-        jdbc.execute(TestMigration.read("V24__mail_delivery_queue.sql"));
+        jdbc.execute(TestSchema.table("platform_mail_delivery"));
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         store =
                 new MailDeliveryStore(

@@ -14,8 +14,8 @@ function apiRule(method, path) {
 }
 
 test("feedback manifest separates scoped read, create, update and reply permissions", () => {
-  assert.equal(manifest.version, "1.0.13");
-  assert.match(frontendManifest, /version: "1\.0\.13"/);
+  assert.equal(manifest.version, "1.0.14");
+  assert.match(frontendManifest, /version: "1\.0\.14"/);
   assert.deepEqual(manifest.permissions, [
     "platform:feedback:access",
     "platform:feedback:read",

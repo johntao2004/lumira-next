@@ -8,7 +8,7 @@ const ApiDocsPage = lazy(() => import("./api-docs-page").then(({ ApiDocsPage }) 
 export const monitoringFrontendModule = {
   ...monitoringManifest,
   pages: {
-    monitoring: () => <MonitoringPage />,
+    monitoring: ({ hasGlobal }) => <MonitoringPage canTraceEvents={hasGlobal("platform:event-outbox:access")} />,
     "api-docs": () => <ApiDocsPage />,
   },
 } satisfies FrontendModule;

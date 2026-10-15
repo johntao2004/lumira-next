@@ -16,7 +16,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
-/** Exercises the feedback plugin's V2-to-V4 upgrade in an explicitly disposable database. */
+/** Exercises feedback plugin permission migrations on the current host baseline. */
 @EnabledIfEnvironmentVariable(
         named = "LUMIRA_FEEDBACK_PERMISSION_MIGRATION_TEST_DB_URL",
         matches = ".+")
@@ -75,14 +75,15 @@ class FeedbackPermissionMigrationDatabaseTest {
                         Integer.class),
                 "The feedback permission migration database must be fresh.");
 
-        Flyway.configure()
-                .dataSource(dataSource)
-                .locations("classpath:db/migration")
-                .schemas("public")
-                .defaultSchema("public")
-                .target("50")
-                .load()
-                .migrate();
+        Flyway host =
+                Flyway.configure()
+                        .dataSource(dataSource)
+                        .locations("classpath:db/migration")
+                        .schemas("public")
+                        .defaultSchema("public")
+                        .load();
+        host.migrate();
+        assertEquals("52", host.info().current().getVersion().getVersion());
 
         insertUser(BROAD_READ_USER, "feedback-migration-broad-read");
         insertUser(ORGANIZATION_READ_USER, "feedback-migration-org-read");
@@ -166,27 +167,7 @@ class FeedbackPermissionMigrationDatabaseTest {
                 .load()
                 .migrate();
 
-        Flyway.configure()
-                .dataSource(dataSource)
-                .locations("classpath:db/migration")
-                .schemas("public")
-                .defaultSchema("public")
-                .load()
-                .migrate();
-        assertEquals(
-                "51",
-                Flyway.configure()
-                        .dataSource(dataSource)
-                        .locations("classpath:db/migration")
-                        .schemas("public")
-                        .defaultSchema("public")
-                        .load()
-                        .info()
-                        .current()
-                        .getVersion()
-                        .getVersion());
-
-        // A plugin installed after host V51 may still encounter these historical names.
+        // Exercise the plugin migration against current host tables and permissions.
         grantDirect(ACTION_ONLY_USER, UPDATE);
         crossRoleAccessRole =
                 insertRole("feedback-migration-cross-role-access", "ORGANIZATION", true);
@@ -195,7 +176,7 @@ class FeedbackPermissionMigrationDatabaseTest {
         assignOrganization(CROSS_ROLE_USER, feedbackOrganization);
         grantDirect(CROSS_ROLE_USER, UPDATE);
 
-        // Reintroduce the inert legacy scoped grants after V51 to exercise V4's own deletion path.
+        // Exercise V4's handling of historical grants that still exist in plugin data.
         grantRole(scopedActionRole, READ_ALL);
         grantRole(scopedActionRole, UPDATE);
         grantRole(scopedActionRole, REPLY);

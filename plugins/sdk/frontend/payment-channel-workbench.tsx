@@ -13,6 +13,7 @@ import { useCenteredModalConfirm } from "@/platform/components/use-centered-moda
 import { formatDateTime } from "@/platform/i18n/format";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { usePreferences } from "@/platform/providers";
+import { validPaymentText } from "./payment-input-validation";
 
 export type PaymentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko" | "fr" | "es" | "de";
 
@@ -355,7 +356,9 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
     try {
       const amountFen = values.amountFen;
       const subject = values.subject?.trim() ?? "";
-      if (!Number.isSafeInteger(amountFen) || Number(amountFen) < 1 || !subject) {
+      if (!Number.isSafeInteger(amountFen) || Number(amountFen) < 1
+        || Number(amountFen) > 2_147_483_647
+        || !validPaymentText(subject, Math.min(subjectMaxLength, 127))) {
         setCreateError(text("requestFailed"));
         return;
       }
@@ -443,7 +446,11 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
       setRefundError(text("refundReasonRequired"));
       return;
     }
-    if (new TextEncoder().encode(reason).length > 80) {
+    if (reason.includes("\0")) {
+      setRefundError(text("requestFailed"));
+      return;
+    }
+    if (!validPaymentText(reason, 80)) {
       setRefundError(messages.refundReasonTooLong ?? text("requestFailed"));
       return;
     }
@@ -492,7 +499,7 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
     {
       title: text("actions"),
       key: "actions",
-      render: (_, row) => <TableActions>
+      render: (_, row) => <TableActions wrap>
         {qrAvailable(row, qrNow) && (
           <Button type="link" onClick={() => {
             if (!trustedQrUrl(row)) {
@@ -583,6 +590,7 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
       {ordersQuery.error && <FeedbackBubble id="payment-orders-error" content={text("loadFailed")} />}
       <Card title={text("ordersTitle")}>
       <ResourceTable<WorkbenchOrder>
+        embedded
         result={ordersQuery.data}
         loading={ordersQuery.isFetching}
         error={ordersQuery.error}
@@ -625,7 +633,14 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
           <Form.Item
             name="subject"
             label={text("subject")}
-            rules={[{ required: true, whitespace: true, max: subjectMaxLength, message: text("requestFailed") }]}
+            rules={[
+              { required: true, whitespace: true, message: text("requestFailed") },
+              {
+                validator: (_rule, value: string | undefined) => !value
+                  || validPaymentText(value.trim(), Math.min(subjectMaxLength, 127))
+                  ? Promise.resolve() : Promise.reject(new Error(text("requestFailed"))),
+              },
+            ]}
           >
             <Input maxLength={subjectMaxLength} />
           </Form.Item>

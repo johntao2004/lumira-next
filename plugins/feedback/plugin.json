@@ -2,7 +2,7 @@
   "formatVersion": 2,
   "id": "feedback",
   "name": "工单反馈",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "sdkVersion": "1",
   "entryClass": "com.lumira.platform.feedback.LumiraPlugin",
   "backend": "backend/plugin.jar",

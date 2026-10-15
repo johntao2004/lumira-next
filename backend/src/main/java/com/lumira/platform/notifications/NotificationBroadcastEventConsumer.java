@@ -1,13 +1,15 @@
 package com.lumira.platform.notifications;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
 import java.time.OffsetDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 /** Writes an administrator broadcast snapshot into the account inbox. */
 public final class NotificationBroadcastEventConsumer implements DurableEventConsumerPort {
@@ -33,6 +35,11 @@ public final class NotificationBroadcastEventConsumer implements DurableEventCon
 
     @Override
     public void consume(Event event) {
+        consumeWithResult(event);
+    }
+
+    @Override
+    public ConsumptionResult consumeWithResult(Event event) {
         JsonNode payload = parse(event);
         UUID broadcastId = uuid(payload, "broadcastId");
         int chunk = integer(payload, "chunk");
@@ -56,7 +63,12 @@ public final class NotificationBroadcastEventConsumer implements DurableEventCon
         String href = nullableText(payload, "href");
         if (href != null) href = NotificationHref.normalize(href);
         OffsetDateTime expiresAt = nullableExpiry(payload);
-        if (expiresAt != null && !expiresAt.isAfter(OffsetDateTime.now())) return;
+        if (expiresAt != null && !expiresAt.isAfter(OffsetDateTime.now()))
+            return ConsumptionResult.of(
+                    recipients.size(),
+                    0,
+                    java.util.Map.of("EXPIRED", recipients.size()),
+                    "EXPIRED_ALL");
 
         ObjectNode params = mapper.createObjectNode();
         params.put("title", title);
@@ -78,7 +90,12 @@ public final class NotificationBroadcastEventConsumer implements DurableEventCon
                                                 normalizedHref,
                                                 expiresAt))
                         .toList();
-        store.createBatch(requests);
+        NotificationStore.BatchResult result = store.createBatchWithResult(requests);
+        return ConsumptionResult.of(
+                result.expectedCount(),
+                result.inboxCreated(),
+                result.skippedByReason(),
+                result.resultCode());
     }
 
     private JsonNode parse(Event event) {

@@ -8,17 +8,19 @@ export const identityManifest = {
   dependencies: [],
   routes: [
     { id: "account-profile", label: "profile", permission: null, hidden: true, group: "user-management", order: 24 },
-    { id: "account-security", label: "accountSecurity", permission: null, hidden: true, group: "user-management", order: 25 },
-    { id: "account-role-preview", label: "rolePreview", permission: null, hidden: true, group: "user-management", order: 26 },
-    { id: "account-wechat", label: "wechatBinding", permission: null, hidden: true, group: "user-management", order: 27 },
-    { id: "account-password", label: "changePassword", permission: null, hidden: true, group: "user-management", order: 28 },
-    { id: "account-sessions", label: "mySessions", permission: null, hidden: true, group: "user-management", order: 29 },
+    { id: "account-security", label: "profile", permission: null, hidden: true, group: "user-management", order: 25 },
+    { id: "account-authentication-security", label: "accountSecurity", permission: null, hidden: true, group: "user-management", order: 26 },
+    { id: "account-role-preview", label: "rolePreview", permission: null, hidden: true, group: "user-management", order: 27 },
+    { id: "account-wechat", label: "wechatBinding", permission: null, hidden: true, group: "user-management", order: 28 },
+    { id: "account-password", label: "changePassword", permission: null, hidden: true, group: "user-management", order: 29 },
+    { id: "account-sessions", label: "mySessions", permission: null, hidden: true, group: "user-management", order: 30 },
   ],
 } as const satisfies FrontendModuleManifest;
 
 export const accountSettingsRouteIds = [
   "account-profile",
   "account-security",
+  "account-authentication-security",
   "account-role-preview",
   "account-password",
   "account-sessions",

@@ -114,6 +114,7 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
     private final CaptchaProofAccess captcha;
     private final MfaRecoveryTicketPort recoveryTickets;
     private final TemporaryPasswordResetService temporaryPasswords;
+    private final BootstrapPasswordChangeRequirementService bootstrapPasswords;
 
     @org.springframework.beans.factory.annotation.Autowired
     public SecondFactorLoginService(
@@ -131,7 +132,8 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
             PasswordCredentialProof passwordProofs,
             CaptchaProofAccess captcha,
             MfaRecoveryTicketPort recoveryTickets,
-            TemporaryPasswordResetService temporaryPasswords) {
+            TemporaryPasswordResetService temporaryPasswords,
+            BootstrapPasswordChangeRequirementService bootstrapPasswords) {
         this.jdbc = jdbc;
         this.tx = tx;
         this.plugins = plugins;
@@ -147,6 +149,43 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
         this.captcha = captcha;
         this.recoveryTickets = recoveryTickets;
         this.temporaryPasswords = temporaryPasswords;
+        this.bootstrapPasswords = bootstrapPasswords;
+    }
+
+    /** Compatibility constructor retained for focused temporary-password flow tests. */
+    public SecondFactorLoginService(
+            JdbcClient jdbc,
+            TransactionTemplate tx,
+            PluginExtensionsPort plugins,
+            UserDetailsService users,
+            MaintenancePolicyPort maintenance,
+            LoginAudit audit,
+            ClientAddressResolver addresses,
+            FixedWindowBuckets buckets,
+            AuthenticationPolicyWriteLock policyLock,
+            EffectiveAuthenticationPolicyPort policies,
+            AccountSecurityPort accountSecurity,
+            PasswordCredentialProof passwordProofs,
+            CaptchaProofAccess captcha,
+            MfaRecoveryTicketPort recoveryTickets,
+            TemporaryPasswordResetService temporaryPasswords) {
+        this(
+                jdbc,
+                tx,
+                plugins,
+                users,
+                maintenance,
+                audit,
+                addresses,
+                buckets,
+                policyLock,
+                policies,
+                accountSecurity,
+                passwordProofs,
+                captcha,
+                recoveryTickets,
+                temporaryPasswords,
+                null);
     }
 
     /** Compatibility constructor retained for focused authentication-flow tests. */
@@ -180,12 +219,13 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                 passwordProofs,
                 captcha,
                 recoveryTickets,
+                null,
                 null);
     }
 
     public LoginResponse primary(
             Authentication auth, HttpServletRequest req, HttpServletResponse res) {
-        return primary(auth, PrimaryMethod.PASSWORD, null, req, res);
+        return primary(auth, PrimaryMethod.PASSWORD, null, req, res, null);
     }
 
     @Override
@@ -196,7 +236,7 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
             HttpServletRequest req,
             HttpServletResponse res) {
         if (method == null) throw failure("authenticationMethodInvalid");
-        return primary(auth, method, primaryCredentialRevision, req, res);
+        return primary(auth, method, primaryCredentialRevision, req, res, null);
     }
 
     public LoginResponse primary(
@@ -204,7 +244,25 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
             PrimaryMethod method,
             HttpServletRequest req,
             HttpServletResponse res) {
-        return primary(auth, method, null, req, res);
+        return primary(auth, method, null, req, res, null);
+    }
+
+    LoginResponse continueAfterPasswordChange(
+            TemporaryPasswordResetService.Continuation continuation,
+            HttpServletRequest req,
+            HttpServletResponse res) {
+        if (continuation == null || !continuation.belongsTo(req))
+            throw failure("secondFactorExpired");
+        Authentication proof =
+                UsernamePasswordAuthenticationToken.authenticated(
+                        continuation.username(), null, List.of());
+        return primary(
+                proof,
+                continuation.primaryMethod(),
+                continuation.primaryCredentialRevision().toString(),
+                req,
+                res,
+                continuation);
     }
 
     private LoginResponse primary(
@@ -213,34 +271,61 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
             String primaryCredentialRevision,
             HttpServletRequest req,
             HttpServletResponse res) {
+        return primary(auth, method, primaryCredentialRevision, req, res, null);
+    }
+
+    private LoginResponse primary(
+            Authentication auth,
+            PrimaryMethod method,
+            String primaryCredentialRevision,
+            HttpServletRequest req,
+            HttpServletResponse res,
+            TemporaryPasswordResetService.Continuation continuation) {
+        if (method == null) throw failure("authenticationMethodInvalid");
+        if (continuation != null
+                && (!continuation.belongsTo(req)
+                        || !continuation.username().equals(auth.getName())))
+            throw failure("secondFactorExpired");
         SecurityContextHolder.clearContext();
         var session = req.getSession();
         session.removeAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
-        cancel(req);
-        req.changeSessionId();
+        if (continuation == null) {
+            cancel(req);
+            req.changeSessionId();
+        }
         PrimaryResult result =
                 tx.execute(
                         status -> {
                             policyLock.lockForAuthentication();
                             UUID userId = lockUserByName(auth.getName());
+                            if (continuation != null && !continuation.userId().equals(userId))
+                                throw failure("authenticationProofExpired");
                             if (!maintenance.canLogin(auth.getName()))
                                 throw unavailable("maintenanceActive");
                             PasswordCredentialProof.Evidence passwordEvidence = null;
-                            if (method == PrimaryMethod.PASSWORD)
+                            if (method == PrimaryMethod.PASSWORD && continuation == null)
                                 passwordEvidence = verifyPasswordProof(auth, userId);
                             var effective = policies.resolve(userId);
                             if (effective.usableMethods().isEmpty())
                                 throw conflict("authenticationPolicyConflict");
+                            if (continuation != null
+                                    && (!continuation.policyRevision().equals(effective.revision())
+                                            || !continuation
+                                                    .primaryCredentialRevision()
+                                                    .equals(effective.primaryCredentialRevision())))
+                                throw conflict("authenticationProofExpired");
                             if (!effective.allowedMethods().contains(method))
                                 throw conflict("authenticationMethodDisabled");
                             if (!effective.usableMethods().contains(method))
                                 throw conflict("authenticationMethodUnavailable");
                             String observedPrimaryRevision =
-                                    method == PrimaryMethod.PASSWORD
-                                            ? passwordEvidence
-                                                    .primaryCredentialRevision()
-                                                    .toString()
-                                            : primaryCredentialRevision;
+                                    continuation != null
+                                            ? continuation.primaryCredentialRevision().toString()
+                                            : method == PrimaryMethod.PASSWORD
+                                                    ? passwordEvidence
+                                                            .primaryCredentialRevision()
+                                                            .toString()
+                                                    : primaryCredentialRevision;
                             if (observedPrimaryRevision == null
                                     || !observedPrimaryRevision.equals(
                                             effective.primaryCredentialRevision().toString()))
@@ -265,30 +350,36 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                                             reset.active()
                                                     ? reset.expiresAt()
                                                     : Instant.now().plusSeconds(300);
-                                    UUID challenge = UUID.randomUUID();
-                                    jdbc.sql(
-                                                    "INSERT INTO platform_login_challenge(id,user_id,provider_id,session_hash,requirement_version,primary_method,state,policy_revision,captcha_policy_revision,captcha_satisfied,expires_at) VALUES(:id,:user,'password-change',:session,NULL,:method,'PASSWORD_CHANGE_REQUIRED',:revision,NULL,true,:expires)")
-                                            .param("id", challenge)
-                                            .param("user", userId)
-                                            .param("session", sessionHash(req))
-                                            .param("method", method.name())
-                                            .param("revision", effective.revision())
-                                            .param("expires", java.sql.Timestamp.from(expires))
-                                            .update();
-                                    req.getSession().setAttribute(PENDING, challenge.toString());
-                                    return new PrimaryResult(
-                                            pendingResponse(
-                                                    challenge,
-                                                    expires,
-                                                    "PASSWORD_CHANGE_REQUIRED",
-                                                    effective.revision()),
-                                            auth.getName(),
+                                    return passwordChangePending(
                                             userId,
+                                            auth.getName(),
+                                            method,
                                             effective.revision(),
-                                            null);
+                                            expires,
+                                            "TEMPORARY_RESET",
+                                            req);
                                 } else if (reset != null) {
                                     temporaryPasswords.discardObsolete(
                                             userId, effective.primaryCredentialRevision());
+                                }
+                            }
+                            if (bootstrapPasswords != null) {
+                                var bootstrap = bootstrapPasswords.lockRequirement(userId);
+                                if (bootstrap != null && bootstrap.completedAt() == null) {
+                                    if (!bootstrap
+                                            .credentialRevision()
+                                            .equals(effective.primaryCredentialRevision()))
+                                        bootstrapPasswords.bindCurrentRevision(
+                                                userId, effective.primaryCredentialRevision());
+                                    Instant expires = Instant.now().plusSeconds(300);
+                                    return passwordChangePending(
+                                            userId,
+                                            auth.getName(),
+                                            method,
+                                            effective.revision(),
+                                            expires,
+                                            "BOOTSTRAP",
+                                            req);
                                 }
                             }
                             var captchaGate =
@@ -340,6 +431,10 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                                                         .map(Requirement::selfEnabled)
                                                         .orElse(false),
                                                 factorStatus.configured());
+                            }
+                            if (continuation != null) {
+                                req.changeSessionId();
+                                CsrfTokenContract.sessionRepository().saveToken(null, req, res);
                             }
                             UUID challenge = UUID.randomUUID();
                             Instant expires = Instant.now().plusSeconds(300);
@@ -411,7 +506,7 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                             jdbc.sql(
                                             """
                                             SELECT c.id,c.user_id,c.expires_at,c.state,c.primary_method,c.policy_revision
-                                                  ,c.captcha_policy_revision,c.captcha_satisfied
+                                                  ,c.captcha_policy_revision,c.captcha_satisfied,c.password_change_reason
                               FROM platform_login_challenge c
                              WHERE c.id=:id AND c.session_hash=:session
                                AND c.expires_at>CURRENT_TIMESTAMP AND c.attempts<5
@@ -431,7 +526,8 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                                                             rs.getObject(
                                                                     "policy_revision", UUID.class),
                                                             rs.getString("captcha_policy_revision"),
-                                                            rs.getBoolean("captcha_satisfied")))
+                                                            rs.getBoolean("captcha_satisfied"),
+                                                            rs.getString("password_change_reason")))
                                     .optional();
                     if (challenge.isEmpty()) {
                         deleteChallenge(challengeId, req);
@@ -459,7 +555,8 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                             challenge.get().id(),
                             challenge.get().expiresAt(),
                             challenge.get().state(),
-                            challenge.get().revision());
+                            challenge.get().revision(),
+                            challenge.get().passwordChangeReason());
                 });
     }
 
@@ -1290,6 +1387,42 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
         }
     }
 
+    private PrimaryResult passwordChangePending(
+            UUID userId,
+            String username,
+            PrimaryMethod method,
+            UUID policyRevision,
+            Instant expires,
+            String reason,
+            HttpServletRequest request) {
+        String providerId =
+                switch (reason) {
+                    case "BOOTSTRAP" -> "bootstrap-password-change";
+                    case "TEMPORARY_RESET" -> "password-change";
+                    default -> throw new IllegalArgumentException("Unknown password-change reason");
+                };
+        UUID challenge = UUID.randomUUID();
+        jdbc.sql(
+                        "INSERT INTO platform_login_challenge(id,user_id,provider_id,session_hash,requirement_version,primary_method,state,policy_revision,captcha_policy_revision,captcha_satisfied,expires_at,password_change_reason) VALUES(:id,:user,:provider,:session,NULL,:method,'PASSWORD_CHANGE_REQUIRED',:revision,NULL,true,:expires,:reason)")
+                .param("id", challenge)
+                .param("user", userId)
+                .param("provider", providerId)
+                .param("session", sessionHash(request))
+                .param("method", method.name())
+                .param("revision", policyRevision)
+                .param("expires", java.sql.Timestamp.from(expires))
+                .param("reason", reason)
+                .update();
+        request.getSession().setAttribute(PENDING, challenge.toString());
+        return new PrimaryResult(
+                pendingResponse(
+                        challenge, expires, "PASSWORD_CHANGE_REQUIRED", policyRevision, reason),
+                username,
+                userId,
+                policyRevision,
+                null);
+    }
+
     private Challenge lockChallenge(UUID id, HttpServletRequest req, UUID userId, String username) {
         return jdbc.sql(
                         """
@@ -1442,6 +1575,11 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
 
     private static LoginResponse pendingResponse(
             UUID id, Instant expires, String state, UUID revision) {
+        return pendingResponse(id, expires, state, revision, null);
+    }
+
+    private static LoginResponse pendingResponse(
+            UUID id, Instant expires, String state, UUID revision, String passwordChangeReason) {
         List<String> factors =
                 switch (state) {
                     case "MFA_REQUIRED" -> List.of("TOTP", "RECOVERY_CODE");
@@ -1465,7 +1603,8 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
                 state,
                 revision.toString(),
                 factors,
-                next);
+                next,
+                passwordChangeReason);
     }
 
     private static void unauthorized(String reason) {
@@ -1500,5 +1639,6 @@ public class SecondFactorLoginService implements PrimaryAuthenticationPort {
             PrimaryMethod primaryMethod,
             UUID revision,
             String captchaPolicyRevision,
-            boolean captchaSatisfied) {}
+            boolean captchaSatisfied,
+            String passwordChangeReason) {}
 }

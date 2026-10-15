@@ -76,6 +76,7 @@ export function RecoveryTicketForm({
       {delivery && <Typography.Text type="secondary">{t("mfaRecoveryTicketExpires", { expiresAt: new Date(delivery.expiresAt).toLocaleString() })}</Typography.Text>}
       <FeedbackBubble id="mfa-recovery-verify-error" content={verifyAction.error ? t(verifyAction.error) : undefined} />
       <Input.Password
+        size="large"
         value={ticket}
         onChange={event => setTicket(event.target.value)}
         autoComplete="one-time-code"

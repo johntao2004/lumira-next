@@ -14,6 +14,22 @@ same DTO shape but their codes remain owned by their plugin. Authorization comes
 context (`AdministrationPort`, a trusted actor, and a typed page/action), never from `Referer`, a
 client-supplied page header, or arbitrary request metadata.
 
+## Default roles and grant origin
+
+The B52 baseline seeds two assignable roles: `admin` (“管理员”, ALL scope) and `user` (“普通用户”,
+SELF scope). The administrator role receives the explicit platform and installed-plugin management
+grants; the ordinary role receives only `platform:feedback:access`, `platform:feedback:read`, and
+`platform:feedback:create`. B52 does not create accounts or seed rows in `platform_authority`.
+First startup creates only the `admin` bootstrap account and binds it to the `admin` role, so its
+permissions have a role-grant origin rather than system-reserved per-user grants. No ordinary
+account is pre-created. Registration remains disabled by default and selects the `user` role if it
+is later enabled.
+
+`platform_role_authority` stores role grants and `platform_authority` stores exceptional
+per-account grants. They both participate in effective authorization, but they remain separate
+sources when editing roles or assigning a role to an account. A user-specific grant must not be
+treated as a system role or copied into the ordinary role implicitly.
+
 ## Managed host catalog
 
 Unless marked scoped below, a page access grant and its operations are global. Operation scope is
@@ -85,30 +101,32 @@ on the same ALL role or direct grant. Ineffective action grants from non-ALL rol
 removed without activation. The generated role is independently maintained and must be assigned
 explicitly to future users.
 
-## Migration and role editing
+## Current permission schema and role editing
 
-V50 remains an immutable historical migration; V51 converts its grants to normal page and action
-authorities and removes the opaque source grants from authorization storage. Existing navigation
-rows keep their placement and presentation settings while page permission keys move to the
-page-owned access codes. Simple former read/write grants map independently to page access and
-actions, so a write-only grant does not synthesize page access.
+The B52 baseline defines the current page/action permission catalog, its scope-aware views and
+functions, and the metadata used to interpret known legacy permission components. The former
+global incremental migration files are not shipped or run, and the repository does not upgrade
+databases carrying the old global migration history; initialize a dedicated database using the
+documented B52 procedure instead. The current state keeps page access separate from operations,
+so a write-only grant does not synthesize page access.
 
-For a historical compound grant whose source components all existed on one role, V51 stores the
-logical action as an ordinary grant on that role at its existing scope when the old global-source
-requirements were met. Where components were combined across direct and role grants, V51
-materializes the effective action as an ordinary scoped grant for that user. These are migration
-results: runtime authorization, role editing, visible-user checks, and role previews read ordinary
-grants and current scopes without consulting historical projection metadata. Plugin permission
-catalog version 2 remains unchanged.
+When the B52 permission-normalization function sees known legacy components, it preserves a
+logical action as an ordinary grant at the corresponding role scope or materializes an effective
+scoped grant for the user when its source components came from direct and role grants. The
+function records handled source grants in `platform_permission_migration_archive` and removes
+hidden `platform:__v50:*` projection grants from active authorization storage. That database table
+is part of the B52 schema; it is not a retained SQL migration archive. Runtime authorization, role
+editing, visible-user checks, and role previews read ordinary grants and current scopes without
+consulting projection metadata. Plugin permission catalog version 2 remains unchanged.
 
 Role responses expose independent grants only in `authorities`. For request compatibility, a role
 write may omit `legacyProjectionPermissions` or send it as null/empty; a non-empty value returns
 HTTP 400 before the role is written. The field is never used for authorization or persistence and is
 not included in responses. Existing unrelated unknown or retired ordinary grants remain stored and
 can be preserved when editing a role, but cannot be newly assigned; retired grants do not become
-effective. V51 archives the known former shared grants and all `platform:__v50:*` sources for
-audit, then removes them from role and direct-user grant tables so they cannot be restored through
-this compatibility field.
+effective. B52's normalization function records recognized former shared grants and all
+`platform:__v50:*` sources in the permission archive table before removing them from role and
+direct-user grant tables, so they cannot be restored through this compatibility field.
 
 Role delegation requires global authority for current active grants and for any new grant. Role
 preview intersects the target role's ordinary grants and data scope with the actor's current

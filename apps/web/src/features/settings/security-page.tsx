@@ -20,7 +20,7 @@ export function SecurityPage({ canWrite }: { canWrite: boolean }) {
               className="security-policy-field"
               name={["data", "passwordMinLength"]}
               label={t("passwordMinLength")}
-              rules={[{ required: true, type: "number", min: 8, max: MAX_PASSWORD_BYTES }]}
+              rules={[{ required: true, type: "integer", min: 8, max: MAX_PASSWORD_BYTES }]}
             >
               <InputNumber min={8} max={MAX_PASSWORD_BYTES} precision={0} />
             </Form.Item>
@@ -41,16 +41,20 @@ export function SecurityPage({ canWrite }: { canWrite: boolean }) {
         <section className="security-policy-panel" aria-label={t("securityLoginLimits")}>
           <Typography.Title level={5}>{t("securityLoginLimits")}</Typography.Title>
           <div className="security-policy-fields security-policy-single-column">
-            <Form.Item className="security-policy-field" name={["data", "loginAccountPerMinute"]} label={t("loginAccountPerMinute")} rules={[{ required: true, type: "number", min: 1, max: 10000 }]}>
+            <Form.Item className="security-policy-field" name={["data", "loginAccountPerMinute"]} label={t("loginAccountPerMinute")} rules={[{ required: true, type: "integer", min: 1, max: 10000 }]}>
               <InputNumber min={1} max={10000} precision={0} />
             </Form.Item>
-            <Form.Item className="security-policy-field" name={["data", "loginSourcePerMinute"]} label={t("loginSourcePerMinute")} rules={[{ required: true, type: "number", min: 1, max: 10000 }]}>
+            <Form.Item className="security-policy-field" name={["data", "loginSourcePerMinute"]} label={t("loginSourcePerMinute")} dependencies={[["data", "loginAccountPerMinute"]]} rules={[{ required: true, type: "integer", min: 1, max: 10000 }, ({ getFieldValue }) => ({ validator: async (_, value: number) => {
+              if (value < getFieldValue(["data", "loginAccountPerMinute"])) throw new Error(t("invalidSecurity"));
+            } })]}>
               <InputNumber min={1} max={10000} precision={0} />
             </Form.Item>
-            <Form.Item className="security-policy-field" name={["data", "recoveryAccountPerMinute"]} label={t("recoveryAccountPerMinute")} rules={[{ required: true, type: "number", min: 1, max: 10000 }]}>
+            <Form.Item className="security-policy-field" name={["data", "recoveryAccountPerMinute"]} label={t("recoveryAccountPerMinute")} rules={[{ required: true, type: "integer", min: 1, max: 10000 }]}>
               <InputNumber min={1} max={10000} precision={0} />
             </Form.Item>
-            <Form.Item className="security-policy-field" name={["data", "recoverySourcePerMinute"]} label={t("recoverySourcePerMinute")} rules={[{ required: true, type: "number", min: 1, max: 10000 }]}>
+            <Form.Item className="security-policy-field" name={["data", "recoverySourcePerMinute"]} label={t("recoverySourcePerMinute")} dependencies={[["data", "recoveryAccountPerMinute"]]} rules={[{ required: true, type: "integer", min: 1, max: 10000 }, ({ getFieldValue }) => ({ validator: async (_, value: number) => {
+              if (value < getFieldValue(["data", "recoveryAccountPerMinute"])) throw new Error(t("invalidSecurity"));
+            } })]}>
               <InputNumber min={1} max={10000} precision={0} />
             </Form.Item>
           </div>
@@ -58,19 +62,21 @@ export function SecurityPage({ canWrite }: { canWrite: boolean }) {
         <section className="security-policy-panel security-policy-verification" aria-label={t("securityVerification")}>
           <Typography.Title level={5}>{t("securityVerification")}</Typography.Title>
           <div className="security-policy-fields">
-            <Form.Item className="security-policy-field" name={["data", "verificationCodeExpireSeconds"]} label={t("verificationExpireSeconds")} rules={[{ required: true, type: "number", min: 60, max: 3600 }]}>
+            <Form.Item className="security-policy-field" name={["data", "verificationCodeExpireSeconds"]} label={t("verificationExpireSeconds")} rules={[{ required: true, type: "integer", min: 60, max: 3600 }]}>
               <InputNumber min={60} max={3600} precision={0} />
             </Form.Item>
-            <Form.Item className="security-policy-field" name={["data", "verificationCodeCooldownSeconds"]} label={t("verificationCooldownSeconds")} rules={[{ required: true, type: "number", min: 1, max: 3600 }]}>
+            <Form.Item className="security-policy-field" name={["data", "verificationCodeCooldownSeconds"]} label={t("verificationCooldownSeconds")} dependencies={[["data", "verificationCodeExpireSeconds"]]} rules={[{ required: true, type: "integer", min: 1, max: 3600 }, ({ getFieldValue }) => ({ validator: async (_, value: number) => {
+              if (value > getFieldValue(["data", "verificationCodeExpireSeconds"])) throw new Error(t("invalidSecurity"));
+            } })]}>
               <InputNumber min={1} max={3600} precision={0} />
             </Form.Item>
-            <Form.Item className="security-policy-field" name={["data", "verificationRequestsPerMinute"]} label={t("verificationRequestsPerMinute")} rules={[{ required: true, type: "number", min: 1, max: 10000 }]}>
+            <Form.Item className="security-policy-field" name={["data", "verificationRequestsPerMinute"]} label={t("verificationRequestsPerMinute")} rules={[{ required: true, type: "integer", min: 1, max: 10000 }]}>
               <InputNumber min={1} max={10000} precision={0} />
             </Form.Item>
-            <Form.Item className="security-policy-field" name={["data", "verificationDailyLimit"]} label={t("verificationDailyLimit")} rules={[{ required: true, type: "number", min: 1, max: 10000 }]}>
+            <Form.Item className="security-policy-field" name={["data", "verificationDailyLimit"]} label={t("verificationDailyLimit")} rules={[{ required: true, type: "integer", min: 1, max: 10000 }]}>
               <InputNumber min={1} max={10000} precision={0} />
             </Form.Item>
-            <Form.Item className="security-policy-field" name={["data", "verificationFailureLimit"]} label={t("verificationFailureLimit")} rules={[{ required: true, type: "number", min: 1, max: 20 }]}>
+            <Form.Item className="security-policy-field" name={["data", "verificationFailureLimit"]} label={t("verificationFailureLimit")} rules={[{ required: true, type: "integer", min: 1, max: 20 }]}>
               <InputNumber min={1} max={20} precision={0} />
             </Form.Item>
           </div>

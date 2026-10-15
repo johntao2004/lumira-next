@@ -3,9 +3,9 @@ package com.lumira.platform.files;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AuditPort;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -47,18 +47,12 @@ class FilePhysicalQuotaRegressionTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(ds);
-        // Exact current table definitions, without global migrations or real application rows.
-        table("V1__platform_initialization.sql", "platform_file");
-        jdbc.execute("ALTER TABLE platform_file ADD PRIMARY KEY(id)");
-        jdbc.execute(
-                "ALTER TABLE platform_file ADD COLUMN legacy_local_cleanup_pending boolean NOT NULL DEFAULT false");
-        jdbc.execute(
-                Files.readString(
-                                Path.of(
-                                        "src/main/resources/db/migration/V17__file_recycle_bin.sql"))
-                        .replace("public.", ""));
-        table("V6__database_backed_file_and_ai_state.sql", "platform_file_blob_chunk");
-        jdbc.execute("CREATE TABLE platform_feedback_file(file_id uuid)");
+        // Extract current table definitions, without global migrations or application rows.
+        jdbc.execute(TestSchema.table("platform_file"));
+        TestSchema.indexes("platform_file").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_file_blob_chunk"));
+        TestSchema.indexes("platform_file_blob_chunk").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_feedback_file"));
         jdbc.execute(
                 "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text,display_name text,version bigint,deleted_at timestamptz)");
         jdbc.update("INSERT INTO platform_user VALUES(?,'fixture','Fixture',0,NULL)", owner);
@@ -70,15 +64,6 @@ class FilePhysicalQuotaRegressionTest {
         doReturn(List.of()).when(files).expirePendingBrandingImages();
         blobs = new PostgresBlobStore(jdbc, files, manager);
         audit = mock(AuditPort.class);
-    }
-
-    private void table(String migration, String name) throws Exception {
-        String source = Files.readString(Path.of("src/main/resources/db/migration", migration));
-        String marker = "CREATE TABLE public." + name + " (";
-        int start = source.indexOf(marker);
-        assertTrue(start >= 0);
-        int end = source.indexOf("\n);", start) + 3;
-        jdbc.execute(source.substring(start, end).replace("public.", ""));
     }
 
     @AfterEach

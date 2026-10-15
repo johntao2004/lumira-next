@@ -2,17 +2,20 @@ package com.lumira.platform.notifications;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.PageRequest;
-import java.util.*;
-import java.util.concurrent.*;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
+
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.*;
+import java.util.concurrent.*;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class NotificationStoreTest {
@@ -43,10 +46,10 @@ class NotificationStoreTest {
         jdbc.execute(
                 "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,enabled"
                         + " BOOLEAN,deleted_at timestamptz)");
-        jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
-        jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
-        // V41 widened the message-key pattern to the camelCase catalogue keys used by broadcasts.
-        jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
+        jdbc.execute(TestSchema.table("platform_event_outbox"));
+        jdbc.execute(TestSchema.table("platform_notification"));
+        TestSchema.indexes("platform_notification").forEach(jdbc::execute);
+        // The baseline table includes the final message-key constraint.
         jdbc.update(
                 "INSERT INTO platform_user(id,username,enabled)"
                         + " VALUES(?,'alice',true),(?,'bob',true)",

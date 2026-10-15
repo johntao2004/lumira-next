@@ -13,7 +13,29 @@ public record LoginResponse(
         String state,
         String policyRevision,
         List<String> factors,
-        String nextPath) {
+        String nextPath,
+        String passwordChangeReason) {
+    public LoginResponse(
+            boolean authenticated,
+            boolean secondFactorRequired,
+            UUID challengeId,
+            Instant expiresAt,
+            String state,
+            String policyRevision,
+            List<String> factors,
+            String nextPath) {
+        this(
+                authenticated,
+                secondFactorRequired,
+                challengeId,
+                expiresAt,
+                state,
+                policyRevision,
+                factors,
+                nextPath,
+                null);
+    }
+
     public LoginResponse(
             boolean authenticated,
             boolean secondFactorRequired,
@@ -27,6 +49,7 @@ public record LoginResponse(
                 authenticated ? "COMPLETE" : secondFactorRequired ? "MFA_REQUIRED" : "NONE",
                 null,
                 List.of(),
+                null,
                 null);
     }
 

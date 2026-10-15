@@ -4,15 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.events.PlatformEventOutboxStore;
 import com.lumira.platform.feedback.FeedbackPolicy;
 import com.lumira.platform.feedback.FeedbackStore;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +19,13 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
+
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class FeedbackNotificationOutboxDatabaseTest {
@@ -77,12 +80,18 @@ class FeedbackNotificationOutboxDatabaseTest {
         jdbc.execute(
                 "CREATE TABLE platform_audit(id UUID PRIMARY KEY,actor TEXT,action TEXT,target_id"
                         + " UUID)");
-        jdbc.execute(TestMigration.read("V34__feedback_storage.sql"));
-        jdbc.execute("ALTER TABLE platform_feedback ADD COLUMN category VARCHAR(100)");
-        jdbc.execute(TestMigration.read("V38__feedback_file_references.sql"));
-        jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
-        jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
-        jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
+        jdbc.execute(TestSchema.table("platform_event_operation"));
+        TestSchema.indexes("platform_event_operation").forEach(jdbc::execute);
+        for (String table :
+                List.of(
+                        "platform_feedback",
+                        "platform_feedback_file",
+                        "platform_event_outbox",
+                        "platform_notification")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
+        TestSchema.foreignKeys("platform_event_outbox").forEach(jdbc::execute);
         jdbc.update(
                 "INSERT INTO platform_user(id,username,display_name,enabled)"
                         + " VALUES(?,?,?,true),(?,?,?,true),(?,?,?,true)",

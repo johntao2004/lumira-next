@@ -3,7 +3,7 @@ package com.lumira.platform.identity;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.audit.AuditRepository;
 import com.lumira.platform.common.CaptchaProofPort;
 import com.lumira.platform.common.MailConfigurationPort;
@@ -57,23 +57,20 @@ class PasswordRecoveryServiceTest {
         jdbc.execute(
                 "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT,password_hash TEXT,enabled BOOLEAN,deleted_at TIMESTAMPTZ)");
         jdbc.execute("CREATE TABLE platform_password_change_requirement(user_id UUID PRIMARY KEY)");
+        jdbc.execute(
+                "CREATE TABLE platform_bootstrap_password_change_requirement(user_id UUID PRIMARY KEY,primary_credential_revision UUID NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,completed_at TIMESTAMPTZ,CHECK(completed_at IS NULL OR completed_at>=created_at))");
         jdbc.update(
                 "INSERT INTO platform_user(id,username,password_hash,enabled) VALUES(?,'fixture','old-hash',true)",
                 id);
         jdbc.execute("CREATE TABLE spring_session(principal_name TEXT)");
         jdbc.execute("INSERT INTO spring_session VALUES('fixture'),('other')");
-        for (String migration :
-                List.of(
-                        "V24__mail_delivery_queue.sql",
-                        "V25__account_email_verification.sql",
-                        "V26__password_reset_challenges.sql"))
-            jdbc.execute(TestMigration.read(migration));
+        jdbc.execute(TestSchema.table("platform_mail_delivery"));
+        jdbc.execute(TestSchema.table("platform_account_email"));
+        jdbc.execute(TestSchema.table("platform_password_reset"));
         jdbc.update(
                 "INSERT INTO platform_account_email(user_id,email,verified_at) VALUES(?,'verified@example.test',now())",
                 id);
-        String ddl = TestMigration.read("V2__user_management.sql");
-        int start = ddl.indexOf("CREATE TABLE platform_audit");
-        jdbc.execute(ddl.substring(start, ddl.indexOf(';', start) + 1));
+        jdbc.execute(TestSchema.table("platform_audit"));
         mail =
                 new MailDeliveryStore(
                         client,

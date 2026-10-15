@@ -15,6 +15,12 @@ import com.lumira.plugin.sdk.common.PaymentGatewayPort.RefundResult;
 import com.lumira.plugin.sdk.common.PaymentGatewayPort.RefundState;
 import com.lumira.plugin.sdk.common.PaymentGatewayPort.TradeResult;
 import com.lumira.plugin.sdk.common.PaymentGatewayPort.TradeState;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
+
+import tools.jackson.databind.json.JsonMapper;
+
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -24,13 +30,88 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
-import tools.jackson.databind.json.JsonMapper;
 
 class PaymentCoreServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-11T02:00:00Z");
     private static final long AMOUNT_FEN = 1250;
+
+    @Test
+    void subjectBoundaryCountsUtf8BytesAndRejectsNulBeforeReservingOrders() {
+        var h = new Harness("alipay-pay");
+        for (String subject :
+                List.of("a".repeat(127), "中".repeat(42) + "a", "😀".repeat(31) + "abc")) {
+            h.service.createOrder(
+                    "admin",
+                    h.page,
+                    new PaymentCoreAdminPort.CreateOrder(
+                            UUID.randomUUID(), "alipay-pay", AMOUNT_FEN, subject),
+                    "127.0.0.1");
+            var error =
+                    assertThrows(
+                            ResponseStatusException.class,
+                            () ->
+                                    h.service.createOrder(
+                                            "admin",
+                                            h.page,
+                                            new PaymentCoreAdminPort.CreateOrder(
+                                                    UUID.randomUUID(),
+                                                    "alipay-pay",
+                                                    AMOUNT_FEN,
+                                                    subject + "a"),
+                                            "127.0.0.1"));
+            assertEquals("paymentOrderInvalid", error.getReason());
+        }
+        var nulError =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                h.service.createOrder(
+                                        "admin",
+                                        h.page,
+                                        new PaymentCoreAdminPort.CreateOrder(
+                                                UUID.randomUUID(),
+                                                "alipay-pay",
+                                                AMOUNT_FEN,
+                                                "bad\0title"),
+                                        "127.0.0.1"));
+        assertEquals("paymentOrderInvalid", nulError.getReason());
+        assertEquals(3, h.gateway.precreateCalls);
+    }
+
+    @Test
+    void refundRejectsNulAndUtf8OverflowBeforeReservingOrCallingGateway() {
+        var h = new Harness("alipay-pay");
+        var order = h.createOrder();
+        h.store.setStatus(order.orderId(), "PAID");
+        for (String reason :
+                List.of(
+                        "bad\0reason",
+                        "\0refund",
+                        "refund\0",
+                        "\0refund\0",
+                        "中".repeat(27),
+                        "😀".repeat(21))) {
+            var error =
+                    assertThrows(
+                            ResponseStatusException.class,
+                            () ->
+                                    h.service.refundOrder(
+                                            "admin",
+                                            h.page,
+                                            order.orderId(),
+                                            new PaymentCoreAdminPort.RefundRequest(
+                                                    UUID.randomUUID(), reason)));
+            assertEquals("paymentRefundInvalid", error.getReason());
+            assertEquals("PAID", h.store.findOrder(order.orderId()).orElseThrow().status());
+        }
+        assertEquals(0, h.gateway.refundCalls);
+        h.service.refundOrder(
+                "admin",
+                h.page,
+                order.orderId(),
+                new PaymentCoreAdminPort.RefundRequest(UUID.randomUUID(), "中".repeat(26) + "ab"));
+        assertEquals(1, h.gateway.refundCalls);
+    }
 
     @Test
     void repeatedCreateWithSameKeyAndPayloadCallsProviderOnlyOnceAndDifferentPayloadConflicts() {

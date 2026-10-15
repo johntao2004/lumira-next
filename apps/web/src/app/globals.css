@@ -5,7 +5,6 @@
   --muted: #8c8c8c;
   --line: #f0f0f0;
   --scrollbar-thumb: rgba(0, 0, 0, 0.18);
-  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
   --app-font-size: 14px;
   --form-item-gap: 16px;
   --form-action-gap: 10px;
@@ -19,7 +18,6 @@
   --muted: #8c8c8c;
   --line: #303030;
   --scrollbar-thumb: rgba(255, 255, 255, 0.2);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.36);
   color-scheme: dark;
 }
 
@@ -53,11 +51,6 @@ html::-webkit-scrollbar-thumb {
   border-radius: 999px;
 }
 
-html::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: content-box;
-}
-
 body {
   margin: 0;
   font-size: var(--app-font-size);
@@ -83,6 +76,10 @@ input {
 
 .\!mt-2 {
   margin-block-start: 0.5rem !important;
+}
+
+.mb-3 {
+  margin-block-end: 0.75rem !important;
 }
 
 .mb-4 {
@@ -127,6 +124,10 @@ input {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
+}
+
+.mt-3 {
+  margin-block-start: 0.75rem !important;
 }
 
 .mt-4 {
@@ -305,7 +306,7 @@ input {
   max-width: 620px;
   min-height: 100dvh;
   min-width: 0;
-  padding: 24px 26px;
+  padding: 72px 26px;
   background: var(--surface);
   justify-self: center;
 }
@@ -347,7 +348,25 @@ input {
   min-height: 44px;
 }
 
+.login-content input.ant-input:not(.ant-input-affix-wrapper .ant-input),
+.login-content .ant-input-number,
+.login-content .ant-select-single {
+  min-height: 44px;
+}
+
+.login-content .captcha-panel-login .captcha-answer-loading > .ant-skeleton-input,
+.login-content .captcha-panel-login .captcha-answer-loading > .ant-skeleton-button,
+.login-content .captcha-panel-login .captcha-image-refresh,
+.auth-mandatory-password-dialog .ant-input-affix-wrapper,
+.auth-mandatory-password-dialog .ant-btn {
+  min-height: 44px;
+}
+
 .login-content .ant-form-item {
+  margin-block-end: var(--form-item-gap);
+}
+
+.auth-mandatory-password-dialog .ant-form-item {
   margin-block-end: var(--form-item-gap);
 }
 
@@ -382,16 +401,69 @@ input {
 
 .captcha-answer {
   display: grid;
-  grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 136px);
   align-items: center;
   gap: 12px;
+}
+
+.login-password-captcha {
+  min-width: 0;
+  margin-block-end: var(--form-item-gap);
+}
+
+.captcha-panel-login {
+  gap: 8px;
+}
+
+.login-content .captcha-panel-login .captcha-answer {
+  width: 100%;
+  max-width: 100%;
+  align-items: center;
+}
+
+.login-content .captcha-panel-login .captcha-answer > .ant-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.captcha-image-refresh {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.login-content .captcha-panel-login .captcha-image-refresh {
+  box-sizing: border-box;
+  min-height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius);
+  background: var(--ant-color-bg-container);
+  line-height: 0;
+}
+
+.captcha-image-refresh:focus-visible {
+  border-radius: var(--ant-border-radius);
+  outline: 2px solid var(--ant-color-primary);
+  outline-offset: 2px;
+}
+
+.captcha-image-refresh:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .captcha-image-text {
   display: block;
   width: 100%;
   height: auto;
-  max-width: 200px;
+  max-width: 136px;
+  margin-inline: auto;
   object-fit: contain;
 }
 
@@ -491,10 +563,6 @@ input {
   inset-block-end: 16px;
 }
 
-.workspace.ant-pro-layout .ant-pro-sider-logo > a > h1 {
-  animation: none;
-}
-
 .workspace-loading,
 .workspace-status {
   min-height: 100dvh;
@@ -503,11 +571,20 @@ input {
 }
 
 .workspace-page {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 
 .workspace-main {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.workspace-page .ant-pro-page-container-children-container,
+.workspace-page .ant-pro-page-container-children-content {
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -535,10 +612,6 @@ input {
   line-height: 32px !important;
 }
 
-.workspace .ant-pro-global-header-header-actions-item:has(.notification-action-button):hover > * {
-  background-color: transparent;
-}
-
 .pro-account-trigger {
   display: inline-flex;
   align-items: center;
@@ -552,10 +625,6 @@ input {
   border: 0;
   border-radius: 6px;
   cursor: pointer;
-}
-
-.pro-account-trigger:hover {
-  background: var(--ant-color-fill-tertiary);
 }
 
 .pro-account-trigger > span:last-child {
@@ -615,26 +684,6 @@ input {
   overflow-wrap: anywhere;
 }
 
-.workbench-stat-link {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 6px;
-  margin-block-start: 8px;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
-
-.workbench-navigation-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: 16px;
-}
-
-.workbench-navigation-groups .ant-pro-card {
-  min-width: 0;
-}
-
 .resource-table {
   display: grid;
   min-width: 0;
@@ -680,7 +729,37 @@ input {
 
 .resource-table .resource-search,
 .resource-table .resource-data {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
+}
+
+.resource-table .resource-data .ant-pro-card,
+.resource-table .resource-data .ant-pro-card-body,
+.resource-table .resource-data .ant-table-wrapper {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.resource-table .resource-data .ant-table-wrapper {
+  width: 100%;
+}
+
+.resource-table .ant-pro-table-list-toolbar,
+.resource-table .ant-pro-table-list-toolbar-left,
+.resource-table .ant-pro-table-list-toolbar-right,
+.resource-table .ant-pro-table-list-toolbar-right > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.resource-table .ant-pro-table-list-toolbar {
+  flex-wrap: wrap;
+}
+
+.resource-table .ant-pro-table-list-toolbar-right .ant-space {
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .resource-table .resource-table-ellipsis {
@@ -845,12 +924,6 @@ input {
   box-shadow: none;
 }
 
-.table-actions .ant-btn-default:not(:disabled):not(.ant-btn-disabled):hover {
-  color: var(--ant-color-link-hover);
-  border-color: transparent;
-  background: var(--ant-button-link-hover-bg, transparent);
-}
-
 .table-actions .ant-btn-default:not(:disabled):not(.ant-btn-disabled):active {
   color: var(--ant-color-link-active);
   border-color: transparent;
@@ -859,10 +932,6 @@ input {
 
 .table-actions .ant-btn-default.ant-btn-dangerous {
   color: var(--ant-color-error);
-}
-
-.table-actions .ant-btn-default.ant-btn-dangerous:not(:disabled):not(.ant-btn-disabled):hover {
-  color: var(--ant-color-error-hover);
 }
 
 .table-actions .ant-btn-default:focus-visible {
@@ -917,7 +986,6 @@ input {
   border: 1px solid var(--ant-color-border);
   border-radius: var(--ant-border-radius-lg);
   background: var(--ant-color-bg-container);
-  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .editor-surface:focus-within {
@@ -1082,6 +1150,26 @@ textarea.editor-surface-editable {
   max-width: 100%;
 }
 
+.ant-drawer .ant-drawer-content-wrapper {
+  box-sizing: border-box;
+  max-width: 100vw;
+}
+
+.ant-drawer .ant-drawer-content,
+.ant-drawer .ant-drawer-header,
+.ant-drawer .ant-drawer-header-title,
+.ant-drawer .ant-drawer-body,
+.ant-drawer .ant-drawer-footer,
+.ant-drawer .ant-drawer-title,
+.ant-drawer .ant-drawer-extra {
+  min-width: 0;
+}
+
+.ant-drawer .ant-drawer-title {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .role-permission-tree {
   max-width: 100%;
   overflow-x: hidden;
@@ -1162,7 +1250,7 @@ textarea.editor-surface-editable {
 }
 
 .rich-text-preview a {
-  color: #1677ff;
+  color: var(--ant-color-link);
   text-decoration: underline;
 }
 
@@ -1330,8 +1418,30 @@ textarea.editor-surface-editable {
   min-height: 48px;
 }
 
+:root[data-display-scale="qhd"] .login-content input.ant-input:not(.ant-input-affix-wrapper .ant-input),
+:root[data-display-scale="qhd"] .login-content .ant-input-number,
+:root[data-display-scale="qhd"] .login-content .ant-select-single,
+:root[data-display-scale="qhd"] .login-content .captcha-panel-login .captcha-answer-loading > .ant-skeleton-input,
+:root[data-display-scale="qhd"] .login-content .captcha-panel-login .captcha-answer-loading > .ant-skeleton-button,
+:root[data-display-scale="qhd"] .login-content .captcha-panel-login .captcha-image-refresh,
+:root[data-display-scale="qhd"] .auth-mandatory-password-dialog .ant-input-affix-wrapper,
+:root[data-display-scale="qhd"] .auth-mandatory-password-dialog .ant-btn {
+  min-height: 48px;
+}
+
 :root[data-display-scale="four-k"] .login-content .ant-input-affix-wrapper,
 :root[data-display-scale="four-k"] .login-content .ant-btn {
+  min-height: 50px;
+}
+
+:root[data-display-scale="four-k"] .login-content input.ant-input:not(.ant-input-affix-wrapper .ant-input),
+:root[data-display-scale="four-k"] .login-content .ant-input-number,
+:root[data-display-scale="four-k"] .login-content .ant-select-single,
+:root[data-display-scale="four-k"] .login-content .captcha-panel-login .captcha-answer-loading > .ant-skeleton-input,
+:root[data-display-scale="four-k"] .login-content .captcha-panel-login .captcha-answer-loading > .ant-skeleton-button,
+:root[data-display-scale="four-k"] .login-content .captcha-panel-login .captcha-image-refresh,
+:root[data-display-scale="four-k"] .auth-mandatory-password-dialog .ant-input-affix-wrapper,
+:root[data-display-scale="four-k"] .auth-mandatory-password-dialog .ant-btn {
   min-height: 50px;
 }
 
@@ -1350,8 +1460,7 @@ textarea.editor-surface-editable {
 :root[data-display-scale="qhd"] .monitoring-page,
 :root[data-display-scale="qhd"] .workbench-overview,
 :root[data-display-scale="qhd"] .workbench-overview-groups,
-:root[data-display-scale="qhd"] .workbench-overview-metrics,
-:root[data-display-scale="qhd"] .workbench-navigation-groups {
+:root[data-display-scale="qhd"] .workbench-overview-metrics {
   gap: 18px;
 }
 
@@ -1360,8 +1469,7 @@ textarea.editor-surface-editable {
 :root[data-display-scale="four-k"] .monitoring-page,
 :root[data-display-scale="four-k"] .workbench-overview,
 :root[data-display-scale="four-k"] .workbench-overview-groups,
-:root[data-display-scale="four-k"] .workbench-overview-metrics,
-:root[data-display-scale="four-k"] .workbench-navigation-groups {
+:root[data-display-scale="four-k"] .workbench-overview-metrics {
   gap: 20px;
 }
 
@@ -1427,7 +1535,7 @@ textarea.editor-surface-editable {
 
   .login-shell {
     min-height: 100dvh;
-    padding: 24px;
+    padding: 72px 24px;
   }
 
   .login-utilities {
@@ -1526,10 +1634,6 @@ textarea.editor-surface-editable {
   display: none;
 }
 
-.ai-chat-sessions-chevron {
-  transition: transform 160ms ease;
-}
-
 .ai-chat-sidebar[data-sessions-open="true"] .ai-chat-sessions-chevron {
   transform: rotate(180deg);
 }
@@ -1582,17 +1686,6 @@ textarea.editor-surface-editable {
   min-width: 28px;
   margin-inline-start: auto;
   padding-inline: 4px;
-}
-
-@media (hover: hover) {
-  .ai-chat-history-menu-trigger {
-    opacity: 0;
-  }
-
-  .ai-chat-conversations .ant-conversations-item:hover .ai-chat-history-menu-trigger,
-  .ai-chat-conversations .ant-conversations-item:focus-within .ai-chat-history-menu-trigger {
-    opacity: 1;
-  }
 }
 
 .ai-chat-history-popover-content {

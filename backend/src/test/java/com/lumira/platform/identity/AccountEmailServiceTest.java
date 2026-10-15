@@ -3,7 +3,7 @@ package com.lumira.platform.identity;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.audit.AuditRepository;
 import com.lumira.platform.common.MailConfigurationPort;
 import com.lumira.platform.common.SecretKeys;
@@ -53,12 +53,10 @@ class AccountEmailServiceTest {
         var client = JdbcClient.create(ds);
         jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY,password_hash TEXT)");
         jdbc.update("INSERT INTO platform_user VALUES(?,'fixture-hash')", owner);
-        for (String migration :
-                List.of("V24__mail_delivery_queue.sql", "V25__account_email_verification.sql"))
-            jdbc.execute(TestMigration.read(migration));
-        String ddl = TestMigration.read("V2__user_management.sql");
-        int start = ddl.indexOf("CREATE TABLE platform_audit");
-        jdbc.execute(ddl.substring(start, ddl.indexOf(';', start) + 1));
+        jdbc.execute(TestSchema.table("platform_account_email"));
+        TestSchema.indexes("platform_account_email").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_mail_delivery"));
+        jdbc.execute(TestSchema.table("platform_audit"));
         var transactionManager = new DataSourceTransactionManager(ds);
         tx = new TransactionTemplate(transactionManager);
         emails = new AccountEmailStore(client);

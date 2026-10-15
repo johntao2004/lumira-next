@@ -2,10 +2,12 @@ package com.lumira.platform.identity;
 
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
-import java.time.Instant;
-import java.util.*;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+
+import java.time.Instant;
+import java.util.*;
 
 /** Read and revoke active sessions for the global online-user console. */
 @Repository
@@ -41,7 +43,8 @@ public class OnlineSessionRepository {
                         "lastAccessAt",
                         "to_timestamp(s.last_access_time / 1000.0)",
                         "expiresAt",
-                        "to_timestamp(s.expiry_time / 1000.0)"));
+                        "to_timestamp(s.expiry_time / 1000.0)"),
+                java.util.Set.of("createdAt", "lastAccessAt", "expiresAt"));
     }
 
     public long count(PageRequest request, long now) {
@@ -52,12 +55,12 @@ public class OnlineSessionRepository {
         params.putAll(filter.parameters());
         return jdbc.sql(
                         """
-                SELECT count(*)
-                FROM spring_session s JOIN platform_user u ON u.username=s.principal_name
-                WHERE s.principal_name IS NOT NULL AND s.expiry_time>:now
-                  AND (:search='' OR strpos(lower(s.principal_name),lower(:search))>0
-                    OR strpos(lower(u.display_name),lower(:search))>0)
-                """
+                        SELECT count(*)
+                        FROM spring_session s JOIN platform_user u ON u.username=s.principal_name
+                        WHERE s.principal_name IS NOT NULL AND s.expiry_time>:now
+                          AND (:search='' OR strpos(lower(s.principal_name),lower(:search))>0
+                            OR strpos(lower(u.display_name),lower(:search))>0)
+                        """
                                 + filter.sql())
                 .params(params)
                 .query(Long.class)
@@ -74,15 +77,16 @@ public class OnlineSessionRepository {
         params.putAll(filter.parameters());
         return jdbc.sql(
                         """
-                SELECT trim(s.primary_id) AS id,u.id AS user_id,s.principal_name,u.display_name,u.enabled,
-                       s.creation_time,s.last_access_time,s.expiry_time
-                FROM spring_session s JOIN platform_user u ON u.username=s.principal_name
-                WHERE s.principal_name IS NOT NULL AND s.expiry_time>:now
-                  AND (:search='' OR strpos(lower(s.principal_name),lower(:search))>0
-                    OR strpos(lower(u.display_name),lower(:search))>0)
-                """
+                        SELECT trim(s.primary_id) AS id,u.id AS user_id,s.principal_name,u.display_name,u.enabled,
+                               s.creation_time,s.last_access_time,s.expiry_time
+                        FROM spring_session s JOIN platform_user u ON u.username=s.principal_name
+                        WHERE s.principal_name IS NOT NULL AND s.expiry_time>:now
+                          AND (:search='' OR strpos(lower(s.principal_name),lower(:search))>0
+                            OR strpos(lower(u.display_name),lower(:search))>0)
+                        """
                                 + filter.sql()
-                                + " ORDER BY s.last_access_time DESC,s.primary_id LIMIT :limit OFFSET :offset")
+                                + " ORDER BY s.last_access_time DESC,s.primary_id LIMIT :limit"
+                                + " OFFSET :offset")
                 .params(params)
                 .query(
                         (rs, n) ->
@@ -108,10 +112,10 @@ public class OnlineSessionRepository {
     public int revokeUser(UUID userId) {
         return jdbc.sql(
                         """
-                DELETE FROM spring_session s USING platform_user u
-                WHERE u.id=:user AND s.principal_name=u.username
-                RETURNING trim(s.primary_id)
-                """)
+                        DELETE FROM spring_session s USING platform_user u
+                        WHERE u.id=:user AND s.principal_name=u.username
+                        RETURNING trim(s.primary_id)
+                        """)
                 .param("user", userId)
                 .query(String.class)
                 .list()

@@ -12,16 +12,18 @@ test("naming gate accepts conventional paths and rejects frontend, package and m
     mkdirSync(path.join(root, "plugins"));
     write("apps/web/src/features/demo/demo-page.tsx");
     write("backend/src/main/java/com/example/Demo.java", "package com.example;\npublic record Demo(String name) {}");
-    write("backend/src/main/resources/db/migration/V2__demo_change.sql");
+    write("backend/src/main/resources/db/migration/B52__platform_initialization.sql");
+    write("plugins/demo/migrations/V1__demo_plugin.sql");
     const code = "import importlib.util,sys; from pathlib import Path; spec=importlib.util.spec_from_file_location('naming',sys.argv[1]); mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); mod.ROOT=Path(sys.argv[2]); errors,count=mod.problems(); print('\\n'.join(errors)); sys.exit(bool(errors))";
     const check = () => spawnSync("python3", ["-c", code, path.resolve("scripts/source-naming-smoke.py"), root], { encoding: "utf8" });
     assert.equal(check().status, 0);
     write("apps/web/src/features/demo/BadName.tsx");
     write("backend/src/main/java/com/example/Wrong.java", "package com.other;\npublic class Different {}");
     write("backend/src/main/resources/db/migration/V3__BadChange.sql");
+    write("backend/src/main/resources/db/migration/B53__BadChange.sql");
     const rejected = check();
     assert.equal(rejected.status, 1);
-    for (const text of ["frontend file name", "Java package/path mismatch", "Java public type/file mismatch", "Flyway file name"]) assert.ok(rejected.stdout.includes(text), text);
+    for (const text of ["frontend file name", "Java package/path mismatch", "Java public type/file mismatch", "Flyway file name", "global migration directory must contain only its initialization baseline"]) assert.ok(rejected.stdout.includes(text), text);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

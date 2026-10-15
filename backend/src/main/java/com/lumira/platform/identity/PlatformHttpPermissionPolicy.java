@@ -5,15 +5,18 @@ import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PluginAuthorizationPort;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
+
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.util.AntPathMatcher;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /** Route-owned HTTP authorization for the host dashboard API. */
 final class PlatformHttpPermissionPolicy {
@@ -24,9 +27,21 @@ final class PlatformHttpPermissionPolicy {
             String method,
             String path,
             PlatformPageId page,
-            List<PlatformOperation> operationsAny) {
+            List<PlatformOperation> operationsAny,
+            List<PlatformPageId> pagesAll) {
+        Route(
+                String method,
+                String path,
+                PlatformPageId page,
+                List<PlatformOperation> operationsAny) {
+            this(method, path, page, operationsAny, List.of(page));
+        }
+
         Route {
             operationsAny = List.copyOf(operationsAny);
+            pagesAll = List.copyOf(pagesAll);
+            if (!pagesAll.contains(page))
+                throw new IllegalArgumentException("Route page must be required");
             if (operationsAny.stream().anyMatch(operation -> operation.page() != page))
                 throw new IllegalArgumentException("Route operation belongs to another page");
         }
@@ -47,8 +62,11 @@ final class PlatformHttpPermissionPolicy {
                     || authentication instanceof AnonymousAuthenticationToken) return false;
             RequestAuthorizationContext context = authorizationContext(authentication);
             if (context == null) return false;
+            for (PlatformPageId requiredPage : route.pagesAll()) {
+                if (!grantsFor(context, requiredPage.scope())
+                        .contains(requiredPage.accessPermission())) return false;
+            }
             Set<String> grants = grantsFor(context, route.page().scope());
-            if (!grants.contains(route.page().accessPermission())) return false;
             if (route.operationsAny().isEmpty()) return true;
             return route.operationsAny().stream()
                     .anyMatch(
@@ -126,6 +144,17 @@ final class PlatformHttpPermissionPolicy {
                 "/api/platform/mail-deliveries");
         page(routes, HttpMethod.GET, PlatformPageId.SMS_DELIVERIES, "/api/platform/sms-deliveries");
         page(routes, HttpMethod.GET, PlatformPageId.EVENT_OUTBOX, "/api/platform/event-outbox");
+        page(
+                routes,
+                HttpMethod.GET,
+                PlatformPageId.EVENT_OUTBOX,
+                "/api/platform/event-outbox/*/trace");
+        pages(
+                routes,
+                HttpMethod.GET,
+                PlatformPageId.EVENT_OUTBOX,
+                List.of(PlatformPageId.EVENT_OUTBOX, PlatformPageId.AUDIT),
+                "/api/platform/event-outbox/operations/*/trace");
         action(
                 routes,
                 HttpMethod.POST,
@@ -739,6 +768,16 @@ final class PlatformHttpPermissionPolicy {
     private static void page(
             List<Route> routes, HttpMethod method, PlatformPageId page, String... paths) {
         for (String path : paths) routes.add(new Route(method.name(), path, page, List.of()));
+    }
+
+    private static void pages(
+            List<Route> routes,
+            HttpMethod method,
+            PlatformPageId primaryPage,
+            List<PlatformPageId> pagesAll,
+            String... paths) {
+        for (String path : paths)
+            routes.add(new Route(method.name(), path, primaryPage, List.of(), pagesAll));
     }
 
     private static void action(

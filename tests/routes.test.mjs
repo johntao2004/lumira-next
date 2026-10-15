@@ -92,12 +92,12 @@ test('navigation groups own the intended routes while hidden account pages stay 
   for (const [routeId, group] of Object.entries(expectedOwners)) {
     assert.equal(routesById.get(routeId)?.group, group, `${routeId} belongs to ${group}`);
   }
-  for (const routeId of ['account-profile', 'account-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions', 'file-retention', 'mfa-authenticator']) {
+  for (const routeId of ['account-profile', 'account-security', 'account-authentication-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions', 'file-retention', 'mfa-authenticator']) {
     const route = routesById.get(routeId);
     assert.equal(route?.hidden, true, `${routeId} stays hidden`);
     assert.ok(!navigationGroups.some(group => group.sections.includes(routeId)), `${routeId} is not a menu item`);
   }
-  for (const routeId of ['account-profile', 'account-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions']) {
+  for (const routeId of ['account-profile', 'account-security', 'account-authentication-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions']) {
     assert.equal(routesById.get(routeId)?.group, 'user-management');
   }
   assert.deepEqual(availableNavigation([]).find(group => group.id === 'overview').pages.map(page => page.id), ['home', 'files']);

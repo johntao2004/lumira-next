@@ -156,6 +156,7 @@ public class PasswordService {
                     jdbc.sql("DELETE FROM platform_password_change_requirement WHERE user_id=:id")
                             .param("id", current.id())
                             .update();
+                    IdentityConfiguration.completeBootstrapRequirement(jdbc, current.id());
                     jdbc.sql("DELETE FROM spring_session WHERE principal_name=:name")
                             .param("name", username)
                             .update();

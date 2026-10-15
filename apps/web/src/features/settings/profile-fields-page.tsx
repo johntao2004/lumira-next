@@ -167,8 +167,8 @@ function FieldEditor({ index, canReadDictionaries }: { index: number; canReadDic
         }}
       />
     </Form.Item>
-    <Form.Item name={[index, "weight"]} label={t("fieldWeight")}><InputNumber min={1} max={100} precision={0} /></Form.Item>
-    <Form.Item name={[index, "sortNo"]} hidden><InputNumber /></Form.Item>
+    <Form.Item name={[index, "weight"]} label={t("fieldWeight")} rules={[{ required: true, type: "integer", min: 1, max: 100, message: t("invalidProfileFields") }]}><InputNumber min={1} max={100} precision={0} /></Form.Item>
+    <Form.Item name={[index, "sortNo"]} hidden rules={[{ required: true, type: "integer", min: 0, max: 100000, message: t("invalidProfileFields") }]}><InputNumber /></Form.Item>
     <Form.Item name={[index, "visible"]} label={t("fieldVisible")} valuePropName="checked"><Switch disabled={primary ? true : undefined} /></Form.Item>
     <Form.Item name={[index, "required"]} label={t("fieldRequired")} valuePropName="checked" rules={[{ validator: async (_, required) => {
       if (custom && value?.visible && required && (placements.length === 0 || registrationOnly)) throw new Error(t("invalidProfileFields"));

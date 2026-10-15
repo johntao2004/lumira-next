@@ -1,0 +1,9 @@
+diff --git a/index.js b/index.js
+--- a/index.js
++++ b/index.js
+@@ -17,3 +17,5 @@
+   // http://fb.me/prop-types-in-prod
+   module.exports = require('./factoryWithThrowingShims')();
+ }
++
++module.exports.default = module.exports;

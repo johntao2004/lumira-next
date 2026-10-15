@@ -165,7 +165,7 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
   </div> : undefined;
   return <Space orientation="vertical" size="middle" className="w-full ai-models-page">
     {query.error ? <QueryFailure title={t("unavailable")} pending={query.isFetching} onRetry={() => void query.refetch()} /> : <Card className="ai-models-card" title={t("aiConfiguredProviders")} extra={canCreate && <Button type="primary" onClick={() => setSelected(null)}>{t("aiProviderAdd")}</Button>}>
-      <Table<Provider> className="ai-models-table" size="small" rowKey="id" loading={query.isFetching} dataSource={query.data ?? []} pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }} locale={{ emptyText: t("aiNoProviders") }} scroll={{ x: "max-content" }} columns={[
+      <Table<Provider> className="ai-models-table" size="medium" rowKey="id" loading={query.isFetching} dataSource={query.data ?? []} pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }} locale={{ emptyText: t("aiNoProviders") }} scroll={{ x: "max-content" }} columns={[
         { title: t("aiProviderName"), dataIndex: "name", render: (value: string) => <span className="ai-model-value">{value}</span> },
         { title: t("aiProviderKind"), render: (_, row) => <Tag>{t(providerKindLabel[row.providerKind] as never)}</Tag> },
         { title: t("aiModelName"), dataIndex: "modelName", render: (value: string) => <span className="ai-model-value">{value}</span> },

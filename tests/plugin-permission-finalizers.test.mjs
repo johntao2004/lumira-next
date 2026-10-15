@@ -5,7 +5,7 @@ import test from 'node:test';
 const plugins = [
   {
     id: 'feedback',
-    version: '1.0.13',
+    version: '1.0.14',
     backend: 'plugins/feedback/backend/src/main/java/com/lumira/platform/feedback/FeedbackModuleConfiguration.java',
     migration: 'plugins/feedback/migrations/V3__finalize_platform_permission_migration.sql',
   },
@@ -17,7 +17,7 @@ const plugins = [
   },
   {
     id: 'sensitive-words',
-    version: '1.0.8',
+    version: '1.0.9',
     backend: 'plugins/sensitive-words/backend/src/main/java/com/lumira/platform/sensitive/SensitiveWordsModuleConfiguration.java',
     migration: 'plugins/sensitive-words/migrations/V3__finalize_platform_permission_migration.sql',
   },

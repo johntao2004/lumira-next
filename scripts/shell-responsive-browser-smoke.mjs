@@ -75,10 +75,17 @@ try {
   await page.waitForURL('**/dashboard/branding');
   await expect(navigationDrawer).not.toBeVisible();
 
-  for (const [key, path] of [['profile', '/dashboard/account-profile'], ['mySessions', '/dashboard/account-sessions'], ['changePassword', '/dashboard/account-password']]) {
-    await page.locator('.pro-account-trigger').click();
-    await page.getByRole('menuitem', { name: translate('zh-CN', key), exact: true }).click();
-    await page.waitForURL(`**${path}`);
+  await page.locator('.pro-account-trigger').click();
+  const accountMenuItems = page.locator('.account-menu-popup [role="menuitem"]');
+  await expect(accountMenuItems).toHaveCount(2);
+  await expect(accountMenuItems).toHaveText([translate('zh-CN', 'profile'), translate('zh-CN', 'accountLogout')]);
+  await page.getByRole('menuitem', { name: translate('zh-CN', 'profile'), exact: true }).click();
+  await page.waitForURL('**/dashboard/account-security');
+  for (const [key, path] of [['profile', '/dashboard/account-security'], ['accountSecurity', '/dashboard/account-authentication-security'], ['mySessions', '/dashboard/account-sessions'], ['changePassword', '/dashboard/account-password']]) {
+    if (key !== 'profile') {
+      await page.locator('.account-settings-menu').getByRole('menuitem', { name: translate('zh-CN', key), exact: true }).click();
+      await page.waitForURL(`**${path}`);
+    }
     const panel = page.locator('.account-settings-panel');
     await expect(panel).toBeVisible();
     await expect(panel.locator('.account-settings-title')).toHaveText(translate('zh-CN', key));

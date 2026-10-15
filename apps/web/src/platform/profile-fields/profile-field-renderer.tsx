@@ -6,6 +6,7 @@ import { DictionarySelect } from "@/platform/components/dictionary-select";
 import { usePreferences } from "@/platform/providers";
 import { localizeProfileFieldGroupLabel, localizeProfileFieldLabel } from "./localization";
 import { profileFieldRuns, type DictionarySelection, type ProfileFieldDefinition, type ProfileFieldOption } from "./types";
+import { profileFieldValueValid } from "./validation";
 
 type Props = {
   fields: readonly ProfileFieldDefinition[];
@@ -33,7 +34,9 @@ export function ProfileFieldRenderer({ fields, disabled = false, dictionarySelec
       name={field.key}
       label={localizeProfileFieldLabel(field, t)}
       extra={field.description || undefined}
-      rules={[{ required: field.required, message: t("invalidProfileValues") }]}
+      rules={[{ required: field.required, message: t("invalidProfileValues") }, { validator: async (_, value: unknown) => {
+        if (!profileFieldValueValid(field, value)) throw new Error(t("invalidProfileValues"));
+      } }]}
       getValueFromEvent={field.type === "SELECT" || field.type === "NUMBER" ? (value: string | number | undefined | null) => value ?? "" : undefined}
     >
       {field.type === "SELECT" && field.dictionaryCode

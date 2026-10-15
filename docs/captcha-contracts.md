@@ -78,4 +78,4 @@ type CaptchaSettings = {
 
 PUT /api/platform/settings/captcha 输入 {version, data, changeReason?}。changeReason 可省略或留空；此时服务端写入固定缺省原因，并照常记录设置审计事件。缺失的动作设置按 OFF 保存，响应返回与后续 GET 一致的规范化 data、version、revision 和 readiness。保留版本冲突、修改原因校验、全局授权和认证策略写锁；启用 CAPTCHA 或设置角色 ALWAYS 时必须通过真实本地资源与语音 readiness。数据库中的历史 Tencent 凭据列不更新，原 SecretStore 值不读取。
 
-Flyway V43 为挑战增加 keyed verification_digest，并使升级前的活动 Tencent 挑战及未消费 proof 失效；全局动作设置保持原值，只轮换设置修订版本。
+宿主初始化基线 `B52__platform_initialization.sql` 直接提供含 keyed `verification_digest` 的最终挑战与 proof 结构。策略修订变化会使绑定旧修订的挑战失效；动作设置按当前持久化配置读取。

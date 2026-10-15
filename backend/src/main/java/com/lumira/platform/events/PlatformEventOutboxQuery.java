@@ -2,13 +2,15 @@ package com.lumira.platform.events;
 
 import com.lumira.platform.common.*;
 import com.lumira.platform.common.AdministrationPort;
-import java.time.OffsetDateTime;
-import java.util.*;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.time.OffsetDateTime;
+import java.util.*;
 
 /**
  * Metadata-only operational view. Event payloads never leave the internal producer/consumer
@@ -45,7 +47,10 @@ public class PlatformEventOutboxQuery {
         if (status == null || (!status.isEmpty() && !STATUSES.contains(status)))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidEventStatus");
         String filter =
-                " WHERE (:status='' OR status=:status) AND (:search='' OR strpos(lower(source_type),lower(:search))>0 OR strpos(lower(event_type),lower(:search))>0 OR strpos(lower(event_key),lower(:search))>0)";
+                " WHERE (:status='' OR status=:status) AND (:search='' OR"
+                        + " strpos(lower(source_type),lower(:search))>0 OR"
+                        + " strpos(lower(event_type),lower(:search))>0 OR"
+                        + " strpos(lower(event_key),lower(:search))>0)";
         var fieldFilter =
                 PageFilterSql.build(
                         page,
@@ -65,7 +70,8 @@ public class PlatformEventOutboxQuery {
                                 "createdAt",
                                 "created_at",
                                 "deliveredAt",
-                                "delivered_at"));
+                                "delivered_at"),
+                        java.util.Set.of("createdAt", "deliveredAt"));
         var countParams = new HashMap<String, Object>();
         countParams.put("status", status);
         countParams.put("search", page.search());
@@ -75,12 +81,28 @@ public class PlatformEventOutboxQuery {
         rowsParams.put("offset", page.offset());
         var rows =
                 jdbc.sql(
-                                "SELECT id,source_type,event_type,event_key,status,attempts,last_error,available_at,delivered_at,created_at,updated_at FROM platform_event_outbox"
+                                "SELECT"
+                                    + " id,source_type,event_type,event_key,status,attempts,last_error,available_at,delivered_at,created_at,updated_at"
+                                    + " FROM platform_event_outbox"
                                         + filter
                                         + fieldFilter.sql()
-                                        + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset")
+                                        + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET"
+                                        + " :offset")
                         .params(rowsParams)
-                        .query(Entry.class)
+                        .query(
+                                (rs, n) ->
+                                        new Entry(
+                                                rs.getObject("id", UUID.class),
+                                                rs.getString("source_type"),
+                                                rs.getString("event_type"),
+                                                rs.getString("event_key"),
+                                                rs.getString("status"),
+                                                rs.getInt("attempts"),
+                                                safeErrorCode(rs.getString("last_error")),
+                                                rs.getObject("available_at", OffsetDateTime.class),
+                                                rs.getObject("delivered_at", OffsetDateTime.class),
+                                                rs.getObject("created_at", OffsetDateTime.class),
+                                                rs.getObject("updated_at", OffsetDateTime.class)))
                         .list();
         var count =
                 jdbc.sql("SELECT count(*) FROM platform_event_outbox" + filter + fieldFilter.sql())
@@ -88,5 +110,14 @@ public class PlatformEventOutboxQuery {
                         .query(Long.class)
                         .single();
         return new PageResult<>(rows, count, page.page(), page.pageSize());
+    }
+
+    private static String safeErrorCode(String value) {
+        if (value == null || value.isBlank()) return null;
+        return switch (value.strip().toUpperCase(Locale.ROOT)) {
+            case "CONSUMER_FAILED", "NO_CONSUMER", "LEASE_EXPIRED", "UNSPECIFIED" ->
+                    value.strip().toUpperCase(Locale.ROOT);
+            default -> "OTHER_ERROR";
+        };
     }
 }

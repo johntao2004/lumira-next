@@ -2,10 +2,9 @@ package com.lumira.platform.feedback;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.dictionaries.DictionaryLookupRepository;
 import com.lumira.platform.dictionaries.DictionaryLookupService;
-import java.nio.file.*;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -22,7 +21,7 @@ class FeedbackCatalogTest {
     String schema;
 
     @BeforeEach
-    void setup() throws Exception {
+    void setup() {
         String url = System.getenv("LUMIRA_TEST_DB_URL"),
                 user = System.getenv("LUMIRA_TEST_DB_USER"),
                 password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
@@ -40,15 +39,15 @@ class FeedbackCatalogTest {
                         new DictionaryLookupService(
                                 new DictionaryLookupRepository(
                                         JdbcClient.create(ds), new JsonMapper())));
-        jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT)");
-        jdbc.execute("CREATE TABLE platform_authority(user_id UUID,authority TEXT)");
-        for (String file :
-                List.of(
-                        "V10__dictionary_types.sql",
-                        "V11__dictionary_items.sql",
-                        "V35__feedback_dictionaries.sql")) jdbc.execute(TestMigration.read(file));
+        for (String table : List.of("platform_dictionary", "platform_dictionary_item")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
+        TestSchema.seeds("platform_dictionary").forEach(jdbc::execute);
+        TestSchema.seeds("platform_dictionary_item").forEach(jdbc::execute);
         jdbc.update(
-                "INSERT INTO platform_dictionary(id,code,name) VALUES(gen_random_uuid(),?,'工单反馈分类')",
+                "DELETE FROM platform_dictionary_item item USING platform_dictionary dictionary "
+                        + "WHERE item.dictionary_id=dictionary.id AND dictionary.code=?",
                 FeedbackCatalog.CATEGORY);
         jdbc.update(
                 "INSERT INTO platform_dictionary_item(id,dictionary_id,value,label,sort_order) SELECT gen_random_uuid(),id,'OTHER','其他',10 FROM platform_dictionary WHERE code=?",
@@ -78,7 +77,7 @@ class FeedbackCatalogTest {
     }
 
     @Test
-    void seedsLegacyChoicesAndReflectsChangedDefaultsAndTerminalFlags() throws Exception {
+    void loadsCurrentBaselineChoicesAndReflectsChangedDefaultsAndTerminalFlags() {
         var initial = catalog.load();
         assertEquals(
                 List.of("OPEN", "PROCESSING", "RESOLVED", "CLOSED"),
@@ -92,7 +91,6 @@ class FeedbackCatalogTest {
         change(FeedbackCatalog.STATUS, "PROCESSING", "remark", "TERMINAL");
         assertEquals("HIGH", catalog.load().policy().defaultPriority());
         assertTrue(catalog.load().policy().statuses().get("PROCESSING"));
-        jdbc.execute(TestMigration.read("V35__feedback_dictionaries.sql"));
         assertEquals("HIGH", catalog.load().policy().defaultPriority());
     }
 

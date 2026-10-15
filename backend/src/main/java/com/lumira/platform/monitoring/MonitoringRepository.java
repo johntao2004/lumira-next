@@ -1,8 +1,9 @@
 package com.lumira.platform.monitoring;
 
-import java.time.OffsetDateTime;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+
+import java.time.OffsetDateTime;
 
 /** Read-only aggregate counters for the platform operations dashboard. */
 @Repository
@@ -30,6 +31,7 @@ public class MonitoringRepository {
             OffsetDateTime measuredAt) {}
 
     public record FlowEvent(
+            java.util.UUID id,
             String sourceType,
             String eventType,
             String status,
@@ -123,7 +125,7 @@ public class MonitoringRepository {
     public java.util.List<FlowEvent> recentFlow() {
         return jdbc.sql(
                         """
-                        SELECT source_type, event_type, status, attempts, created_at
+                        SELECT id,source_type,event_type,status,attempts,created_at
                         FROM platform_event_outbox
                         ORDER BY created_at DESC, id DESC
                         LIMIT 8

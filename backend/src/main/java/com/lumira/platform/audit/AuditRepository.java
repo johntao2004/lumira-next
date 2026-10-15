@@ -3,10 +3,12 @@ package com.lumira.platform.audit;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
-import java.time.OffsetDateTime;
-import java.util.*;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+
+import java.time.OffsetDateTime;
+import java.util.*;
 
 @Repository
 public class AuditRepository implements AuditPort {
@@ -15,7 +17,8 @@ public class AuditRepository implements AuditPort {
 
     private final JdbcClient jdbc;
     private static final String FILTER =
-            " WHERE (:search='' OR strpos(lower(actor),lower(:search))>0 OR strpos(lower(action),lower(:search))>0)";
+            " WHERE (:search='' OR strpos(lower(actor),lower(:search))>0 OR"
+                    + " strpos(lower(action),lower(:search))>0)";
 
     public AuditRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
@@ -23,9 +26,16 @@ public class AuditRepository implements AuditPort {
 
     /** Call inside the same transaction as the state change being recorded. */
     public void append(String actor, String action, UUID targetId) {
+        append(UUID.randomUUID(), actor, action, targetId);
+    }
+
+    /** Call inside the same transaction when another record must reference this exact audit row. */
+    @Override
+    public void append(UUID id, String actor, String action, UUID targetId) {
         jdbc.sql(
-                        "INSERT INTO platform_audit(id,actor,action,target_id) VALUES(:id,:actor,:action,:target)")
-                .param("id", UUID.randomUUID())
+                        "INSERT INTO platform_audit(id,actor,action,target_id)"
+                                + " VALUES(:id,:actor,:action,:target)")
+                .param("id", Objects.requireNonNull(id))
                 .param("actor", actor)
                 .param("action", action)
                 .param("target", targetId)
@@ -43,7 +53,8 @@ public class AuditRepository implements AuditPort {
                         "targetId",
                         "target_id",
                         "createdAt",
-                        "created_at"));
+                        "created_at"),
+                java.util.Set.of("createdAt"));
     }
 
     public long count(PageRequest p) {
@@ -87,15 +98,15 @@ public class AuditRepository implements AuditPort {
             throw new IllegalArgumentException("Invalid audit retention batch");
         return jdbc.sql(
                         """
-            WITH doomed AS (
-              SELECT id FROM platform_audit
-              WHERE created_at < :cutoff
-              ORDER BY created_at,id
-              LIMIT :limit
-              FOR UPDATE SKIP LOCKED
-            )
-            DELETE FROM platform_audit a USING doomed d WHERE a.id=d.id
-            """)
+                        WITH doomed AS (
+                          SELECT id FROM platform_audit
+                          WHERE created_at < :cutoff
+                          ORDER BY created_at,id
+                          LIMIT :limit
+                          FOR UPDATE SKIP LOCKED
+                        )
+                        DELETE FROM platform_audit a USING doomed d WHERE a.id=d.id
+                        """)
                 .param("cutoff", cutoff)
                 .param("limit", batchSize)
                 .update();

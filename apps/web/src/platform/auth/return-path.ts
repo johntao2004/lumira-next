@@ -8,3 +8,11 @@ export function safeReturnPath(value: string | null | undefined): string {
     return url.pathname + url.search + url.hash;
   } catch { return "/dashboard/home"; }
 }
+
+/** Keep the selected post-login destination while moving between public auth pages. */
+export function authRouteWithReturnTo(path: string, search: string): string {
+  const returnTo = new URLSearchParams(search).get("returnTo");
+  if (returnTo === null) return path;
+  const query = new URLSearchParams({ returnTo });
+  return `${path}?${query.toString()}`;
+}

@@ -3,9 +3,12 @@ package com.lumira.platform.events;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.lumira.platform.common.DurableEventConsumerPort;
+
+import org.junit.jupiter.api.Test;
+
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.jupiter.api.Test;
 
 class PlatformEventOutboxWorkerTest {
     @Test
@@ -33,13 +36,14 @@ class PlatformEventOutboxWorkerTest {
                     }
                 };
         when(store.event(claim)).thenReturn(Optional.of(event));
-        when(store.deliver(claim)).thenReturn(true);
+        when(store.deliver(eq(claim), any(DurableEventConsumerPort.ConsumptionResult.class)))
+                .thenReturn(true);
         var worker =
                 new PlatformEventOutboxWorker(
                         store, new PlatformEventConsumerRegistry(java.util.List.of(consumer)));
         try {
             worker.process(claim);
-            verify(store).deliver(claim);
+            verify(store).deliver(claim, DurableEventConsumerPort.ConsumptionResult.unknown());
             verify(store, never()).fail(any(), anyString());
         } finally {
             worker.close();
@@ -77,7 +81,7 @@ class PlatformEventOutboxWorkerTest {
         try {
             worker.process(claim);
             verify(store).fail(claim, "CONSUMER_FAILED");
-            verify(store, never()).deliver(any());
+            verify(store, never()).deliver(any(), any());
         } finally {
             worker.close();
         }

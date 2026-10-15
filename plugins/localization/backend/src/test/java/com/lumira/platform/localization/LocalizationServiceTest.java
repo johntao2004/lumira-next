@@ -8,15 +8,59 @@ import static org.mockito.Mockito.*;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
 
 class LocalizationServiceTest {
+    @Test
+    void rejectsDuplicateCanonicalTranslationLocalesBeforePersistence() {
+        var repository = mock(LocalizationRepository.class);
+        var localeRepository = mock(LocalizationLocaleRepository.class);
+        var en =
+                new LocalizationLocaleRepository.Language(
+                        "en", "English", "en", "en", true, true, 1L, null, null);
+        var zh =
+                new LocalizationLocaleRepository.Language(
+                        "zh-CN", "Chinese", "en", "en", true, true, 1L, null, null);
+        when(localeRepository.listEnabled()).thenReturn(List.of(en, zh));
+        when(localeRepository.find("en")).thenReturn(Optional.of(en));
+        var audit = mock(AuditPort.class);
+        var service =
+                new LocalizationService(
+                        repository,
+                        localeRepository,
+                        mock(LocalizationBuiltinCatalog.class),
+                        mock(AdministrationPort.class),
+                        audit);
+        var translations = new java.util.LinkedHashMap<String, String>();
+        translations.put("en", "First");
+        translations.put("EN", "Second");
+
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                service.create(
+                                        new LocalizationService.Input(
+                                                "custom.translation",
+                                                "custom",
+                                                "Source",
+                                                translations,
+                                                true,
+                                                null),
+                                        "admin"));
+
+        assertEquals("invalidLocalization", error.getReason());
+        verifyNoInteractions(repository, audit);
+    }
+
     @Test
     void rejectsUnknownLocaleAndUnsafeKeysBeforePersistence() {
         var repository = mock(LocalizationRepository.class);

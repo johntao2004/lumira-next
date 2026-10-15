@@ -141,11 +141,18 @@ public class AccountSecurityService implements AccountSecurityPort {
     public UUID bumpPrimaryCredentialRevision(UUID id) {
         policyLock.lockForAuthentication();
         lockUser(id);
-        return jdbc.sql(
-                        "UPDATE platform_user SET primary_credential_revision=gen_random_uuid() WHERE id=:id RETURNING primary_credential_revision")
+        UUID revision =
+                jdbc.sql(
+                                "UPDATE platform_user SET primary_credential_revision=gen_random_uuid() WHERE id=:id RETURNING primary_credential_revision")
+                        .param("id", id)
+                        .query(UUID.class)
+                        .single();
+        jdbc.sql(
+                        "UPDATE platform_bootstrap_password_change_requirement SET primary_credential_revision=:revision WHERE user_id=:id AND completed_at IS NULL")
                 .param("id", id)
-                .query(UUID.class)
-                .single();
+                .param("revision", revision)
+                .update();
+        return revision;
     }
 
     @Override

@@ -2,10 +2,12 @@ package com.lumira.platform.identity;
 
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
-import java.time.Instant;
-import java.util.*;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+
+import java.time.Instant;
+import java.util.*;
 
 @Repository
 public class AccountSessionRepository {
@@ -29,7 +31,8 @@ public class AccountSessionRepository {
                         "current", "session_id=:current",
                         "createdAt", "to_timestamp(creation_time / 1000.0)",
                         "lastAccessAt", "to_timestamp(last_access_time / 1000.0)",
-                        "expiresAt", "to_timestamp(expiry_time / 1000.0)"));
+                        "expiresAt", "to_timestamp(expiry_time / 1000.0)"),
+                java.util.Set.of("createdAt", "lastAccessAt", "expiresAt"));
     }
 
     public long count(String username, String currentId, long now, PageRequest page) {
@@ -40,7 +43,8 @@ public class AccountSessionRepository {
         parameters.put("current", currentId);
         parameters.putAll(filter.parameters());
         return jdbc.sql(
-                        "SELECT count(*) FROM spring_session WHERE principal_name=:name AND expiry_time>:now"
+                        "SELECT count(*) FROM spring_session WHERE principal_name=:name AND"
+                                + " expiry_time>:now"
                                 + filter.sql())
                 .params(parameters)
                 .query(Long.class)
@@ -57,9 +61,13 @@ public class AccountSessionRepository {
         parameters.put("offset", p.offset());
         parameters.putAll(filter.parameters());
         return jdbc.sql(
-                        "SELECT primary_id,creation_time,last_access_time,expiry_time,session_id=:current AS current FROM spring_session WHERE principal_name=:name AND expiry_time>:now"
+                        "SELECT"
+                            + " primary_id,creation_time,last_access_time,expiry_time,session_id=:current"
+                            + " AS current FROM spring_session WHERE principal_name=:name AND"
+                            + " expiry_time>:now"
                                 + filter.sql()
-                                + " ORDER BY (session_id=:current) DESC,last_access_time DESC,primary_id LIMIT :limit OFFSET :offset")
+                                + " ORDER BY (session_id=:current) DESC,last_access_time"
+                                + " DESC,primary_id LIMIT :limit OFFSET :offset")
                 .params(parameters)
                 .query(
                         (rs, n) ->
@@ -82,7 +90,8 @@ public class AccountSessionRepository {
 
     public List<String> deleteOthers(String username, String currentId) {
         return jdbc.sql(
-                        "DELETE FROM spring_session WHERE principal_name=:name AND session_id<>:current RETURNING primary_id")
+                        "DELETE FROM spring_session WHERE principal_name=:name AND"
+                                + " session_id<>:current RETURNING primary_id")
                 .param("name", username)
                 .param("current", currentId)
                 .query(String.class)
@@ -91,7 +100,8 @@ public class AccountSessionRepository {
 
     public boolean current(String username, UUID id, String currentId) {
         return jdbc.sql(
-                        "SELECT EXISTS(SELECT 1 FROM spring_session WHERE primary_id=:id AND principal_name=:name AND session_id=:current)")
+                        "SELECT EXISTS(SELECT 1 FROM spring_session WHERE primary_id=:id AND"
+                                + " principal_name=:name AND session_id=:current)")
                 .param("id", id.toString())
                 .param("name", username)
                 .param("current", currentId)

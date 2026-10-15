@@ -43,9 +43,7 @@ public class AuthenticationMethodAvailabilityService
 
     private boolean passkeyReady() {
         var policy = passkeys.currentPolicy();
-        return policy != null
-                && Boolean.TRUE.equals(policy.enabled())
-                && Boolean.TRUE.equals(policy.passwordlessEnabled());
+        return policy != null && policy.passwordlessReady();
     }
 
     private boolean emailReady() {

@@ -100,12 +100,9 @@ public class GlobalAuthenticationPolicyService implements GlobalAuthenticationPo
         guard.requireOperationGlobal(actor, PlatformOperation.AUTHENTICATION_UPDATE);
         Policy before = readPolicy();
         if (before.version() != input.version()) throw error(HttpStatus.CONFLICT, "staleRecord");
-        // An enabled but currently unavailable method can be retained while another method is
-        // configured. Only newly enabling a provider requires it to be ready. This matters for
-        // the shipped PASSWORD+PASSKEY baseline when passkey has not yet been configured.
-        Set<PrimaryMethod> newlyEnabled = EnumSet.copyOf(methods);
-        newlyEnabled.removeAll(before.enabledMethods());
-        if (!methodAvailability.availableMethods().containsAll(newlyEnabled))
+        // Every submitted method must be ready at save time, even when the current policy already
+        // contains it. This prevents an invalidated provider from being retained accidentally.
+        if (!methodAvailability.availableMethods().containsAll(methods))
             throw error(HttpStatus.CONFLICT, "authenticationMethodUnavailable");
         ensureReachable(methods);
         UUID revision = UUID.randomUUID();

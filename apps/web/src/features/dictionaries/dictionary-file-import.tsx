@@ -211,7 +211,8 @@ export function DictionaryFileImport() {
           <FeedbackBubble id="dictionary-file-import-error" content={error ? t(error) : undefined} />
           {issues.length > 0 && (
             <Table
-              size="small"
+              size="medium"
+              scroll={{ x: "max-content" }}
               rowKey={(item) => `${item.row}-${item.field}-${item.reason}`}
               pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }}
               dataSource={issues}
@@ -230,7 +231,8 @@ export function DictionaryFileImport() {
             <>
               <p>{t("dictionaryItems")}: {currentPreview.result.summary.itemCount}</p>
               <Table
-                size="small"
+                size="medium"
+                scroll={{ x: "max-content" }}
                 rowKey="value"
                 pagination={{ defaultPageSize: DEFAULT_TABLE_PAGE_SIZE, showSizeChanger: true, pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS] }}
                 dataSource={currentPreview.result.rows}

@@ -6,16 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.events.PlatformEventOutboxStore;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +24,13 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
+
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class NotificationAdminServiceDatabaseTest {
@@ -69,9 +72,13 @@ class NotificationAdminServiceDatabaseTest {
         jdbc.execute(
                 "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT UNIQUE,display_name"
                         + " TEXT,enabled BOOLEAN NOT NULL,deleted_at timestamptz)");
-        jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
-        jdbc.execute(TestMigration.read("V40__platform_notifications.sql"));
-        jdbc.execute(TestMigration.read("V41__notification_message_key_case.sql"));
+        jdbc.execute(TestSchema.table("platform_event_operation"));
+        TestSchema.indexes("platform_event_operation").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_event_outbox"));
+        TestSchema.indexes("platform_event_outbox").forEach(jdbc::execute);
+        TestSchema.foreignKeys("platform_event_outbox").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_notification"));
+        TestSchema.indexes("platform_notification").forEach(jdbc::execute);
         jdbc.execute(
                 "CREATE TABLE platform_role(id UUID PRIMARY KEY,code TEXT NOT NULL,name TEXT NOT"
                         + " NULL,enabled BOOLEAN NOT NULL)");

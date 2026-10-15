@@ -7,15 +7,18 @@ import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
-import java.time.OffsetDateTime;
-import java.util.*;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
+
+import java.time.OffsetDateTime;
+import java.util.*;
 
 /** Global, in-app notification administration. External delivery remains in the mail/SMS queues. */
 @Service
@@ -44,7 +47,22 @@ public class NotificationAdminService {
             String href,
             String expiresAt) {}
 
-    public record Published(UUID broadcastId, int recipientCount) {}
+    public record Published(
+            UUID broadcastId,
+            int recipientCount,
+            UUID operationId,
+            UUID auditOperationId,
+            List<UUID> eventIds) {
+        public Published {
+            eventIds = eventIds == null ? List.of() : List.copyOf(eventIds);
+        }
+
+        public Published(UUID broadcastId, int recipientCount) {
+            this(broadcastId, recipientCount, broadcastId, null, List.of());
+        }
+    }
+
+    private record Enqueued(int recipientCount, List<UUID> eventIds) {}
 
     public NotificationAdminService(
             NotificationStore store,
@@ -132,14 +150,34 @@ public class NotificationAdminService {
         if (recipients.size() > MAX_RECIPIENTS)
             throw new ResponseStatusException(
                     HttpStatus.PAYLOAD_TOO_LARGE, "notificationTooManyRecipients");
+        if (eventPublisher == null)
+            throw new IllegalStateException("Durable notification event publisher is unavailable");
 
         UUID broadcastId = UUID.randomUUID();
-        int queued = enqueueBroadcast(broadcastId, recipients, title, body, href, expiresAt);
-        audit.append(actor, "notification.broadcast", broadcastId);
-        return new Published(broadcastId, queued);
+        UUID auditOperationId = UUID.randomUUID();
+        int expectedEvents = (recipients.size() + RECIPIENTS_PER_EVENT - 1) / RECIPIENTS_PER_EVENT;
+        eventPublisher.recordOperation(
+                new DurableEventPublisherPort.Operation(
+                        broadcastId,
+                        "notification.broadcast",
+                        "BROADCAST",
+                        broadcastId,
+                        null,
+                        auditOperationId,
+                        expectedEvents,
+                        recipients.size(),
+                        "EVENTS_PENDING"));
+        Enqueued queued = enqueueBroadcast(broadcastId, recipients, title, body, href, expiresAt);
+        audit.append(auditOperationId, actor, "notification.broadcast", broadcastId);
+        return new Published(
+                broadcastId,
+                queued.recipientCount(),
+                broadcastId,
+                auditOperationId,
+                queued.eventIds());
     }
 
-    private int enqueueBroadcast(
+    private Enqueued enqueueBroadcast(
             UUID broadcastId,
             List<UUID> recipients,
             String title,
@@ -149,6 +187,7 @@ public class NotificationAdminService {
         if (eventPublisher == null)
             throw new IllegalStateException("Durable notification event publisher is unavailable");
         int queued = 0;
+        List<UUID> eventIds = new ArrayList<>();
         for (int offset = 0, chunk = 0;
                 offset < recipients.size();
                 offset += RECIPIENTS_PER_EVENT, chunk++) {
@@ -156,6 +195,7 @@ public class NotificationAdminService {
                     recipients.subList(
                             offset, Math.min(offset + RECIPIENTS_PER_EVENT, recipients.size()));
             UUID eventId = UUID.randomUUID();
+            eventIds.add(eventId);
             ObjectNode payload = mapper.createObjectNode();
             payload.put("broadcastId", broadcastId.toString());
             payload.put("chunk", chunk);
@@ -180,12 +220,13 @@ public class NotificationAdminService {
                             BROADCAST_SOURCE,
                             BROADCAST_EVENT,
                             "broadcast:" + broadcastId + ":" + chunk,
-                            mapper.writeValueAsString(payload));
+                            mapper.writeValueAsString(payload),
+                            broadcastId);
             if (!inserted)
                 throw new IllegalStateException("Notification broadcast event already exists");
             queued += recipientChunk.size();
         }
-        return queued;
+        return new Enqueued(queued, eventIds);
     }
 
     private List<UUID> resolveRecipients(

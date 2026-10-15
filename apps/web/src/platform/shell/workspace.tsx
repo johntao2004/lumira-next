@@ -22,7 +22,7 @@ import {
   ProCard,
   ProLayout,
 } from "@ant-design/pro-components";
-import { AppstoreFilled, ArrowRightOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
+import { AppstoreFilled, MoonOutlined, SunOutlined } from "@ant-design/icons";
 import { history, Link, useLocation } from "@umijs/max";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Result, Skeleton, Space, Statistic, Tag, Typography } from "antd";
@@ -43,6 +43,7 @@ const rolePreviewPageIds = new Set([
   "feedback",
   "account-role-preview",
   "account-profile",
+  "account-security",
   "account-password",
   "account-sessions",
 ]);
@@ -59,7 +60,6 @@ import {
   runtimeBreadcrumbLabels,
   runtimeNavigationTrail,
   routes,
-  type NavigationPage,
   type Section,
 } from "./routes";
 
@@ -284,17 +284,7 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
   }
 
   const accountActions = {
-    displayName: user.data.displayName,
-    onProfile: () => history.push("/dashboard/account-profile"),
-    onAuthenticationSecurity: () => history.push("/dashboard/account-security"),
-    onRolePreview: user.data.authorizationContext?.rolePreviewSupported
-      ? () => history.push("/dashboard/account-role-preview")
-      : undefined,
-    onWechat: user.data.effectiveAuthentication?.allowedMethods.includes("WECHAT")
-      ? () => history.push("/dashboard/account-wechat")
-      : undefined,
-    onSessions: () => history.push("/dashboard/account-sessions"),
-    onChangePassword: () => history.push("/dashboard/account-password"),
+    onProfile: () => history.push("/dashboard/account-security"),
     onLogout: async () => {
       try {
         await logout();
@@ -389,9 +379,9 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
             },
             ...(dark ? {
               sider: {
-                colorBgMenuItemSelected: "#1677ff",
-                colorTextMenuSelected: "#fff",
-                colorTextSubMenuSelected: "#fff",
+                colorBgMenuItemSelected: "var(--ant-color-primary)",
+                colorTextMenuSelected: "var(--ant-color-text-light-solid)",
+                colorTextSubMenuSelected: "var(--ant-color-text-light-solid)",
               },
             } : {}),
           }}
@@ -562,10 +552,8 @@ function Workbench({
   const [greetingKey, setGreetingKey] = useState<WorkbenchGreetingKey>(() =>
     workbenchGreetingForHour(new Date().getHours()),
   );
-  const pages = navigation.flatMap((group) => group.pages);
-  const pageById = new Map(pages.map(page => [page.id, page] as const));
-  const monitoringPage = pageById.get("monitoring");
-  const canReadSystemOverview = !previewActive && monitoringPage !== undefined;
+  const canReadSystemOverview = !previewActive
+    && navigation.some(group => group.pages.some(page => page.id === "monitoring"));
   const monitoringQueryKey = ["workbench-monitoring-summary", userId, authorizationRevision] as const;
   const monitoring = useQuery({
     queryKey: monitoringQueryKey,
@@ -604,29 +592,10 @@ function Workbench({
           error={monitoring.error}
           pending={monitoring.isFetching}
           onRetry={() => void monitoring.refetch()}
-          pageById={pageById}
-          monitoringPage={monitoringPage}
         />
       ) : (
         <FileUsage refreshInterval={60_000} pendingDeletionRefreshInterval={60_000} />
       )}
-      <div className="workbench-navigation-groups">
-        {navigation.map((group) => (
-          <ProCard
-            key={group.id}
-            title={localizedNavigationLabel(group.label, group.labelDefault, t)}
-            extra={<Tag>{group.pages.length}</Tag>}
-          >
-            <Space wrap size={[8, 12]}>
-              {group.pages.map((page) => (
-                <Link key={page.id} to={page.path || `/dashboard/${page.id}`}>
-                  <Button>{localizedNavigationLabel(page.label, page.labelDefault, t)}</Button>
-                </Link>
-              ))}
-            </Space>
-          </ProCard>
-        ))}
-      </div>
     </div>
   );
 }
@@ -655,16 +624,12 @@ function WorkbenchSystemOverview({
   error,
   pending,
   onRetry,
-  pageById,
-  monitoringPage,
 }: {
   data: WorkbenchMonitoringSnapshot | undefined;
   loading: boolean;
   error: Error | null;
   pending: boolean;
   onRetry: () => void;
-  pageById: Map<string, NavigationPage>;
-  monitoringPage: NavigationPage | undefined;
 }) {
   const { t } = usePreferences();
   const summary = data?.summary;
@@ -675,36 +640,32 @@ function WorkbenchSystemOverview({
         {
           label: "totalUsers" as const,
           value: summary.totalUsers,
-          preferredPageId: "users",
           suffix: <Typography.Text type="secondary">/ {summary.activeUsers} {t("activeUsers")}</Typography.Text>,
         },
-        { label: "activeSessions" as const, value: summary.activeSessions, preferredPageId: "online-users" },
-        { label: "auditEvents24h" as const, value: summary.auditEvents24h, preferredPageId: "audit" },
-        { label: "unreadNotifications" as const, value: summary.unreadNotifications, preferredPageId: "notifications" },
+        { label: "activeSessions" as const, value: summary.activeSessions },
+        { label: "auditEvents24h" as const, value: summary.auditEvents24h },
+        { label: "unreadNotifications" as const, value: summary.unreadNotifications },
       ],
     },
     {
       title: "queueHealth" as const,
       metrics: [
-        { label: "pendingOutbox" as const, value: summary.pendingOutbox, preferredPageId: "event-outbox" },
-        { label: "processingOutbox" as const, value: summary.processingOutbox, preferredPageId: "event-outbox" },
-        { label: "failedOutbox" as const, value: summary.failedOutbox, preferredPageId: "event-outbox", attention: true },
-        { label: "deadLetterOutbox" as const, value: summary.deadLetterOutbox, preferredPageId: "event-outbox", attention: true },
+        { label: "pendingOutbox" as const, value: summary.pendingOutbox },
+        { label: "processingOutbox" as const, value: summary.processingOutbox },
+        { label: "failedOutbox" as const, value: summary.failedOutbox, attention: true },
+        { label: "deadLetterOutbox" as const, value: summary.deadLetterOutbox, attention: true },
       ],
     },
     {
       title: "deliveryHealth" as const,
       metrics: [
-        { label: "pendingMail" as const, value: summary.pendingMail, preferredPageId: "mail-deliveries" },
-        { label: "failedMail" as const, value: summary.failedMail, preferredPageId: "mail-deliveries", attention: true },
-        { label: "pendingSms" as const, value: summary.pendingSms, preferredPageId: "sms-deliveries" },
-        { label: "failedSms" as const, value: summary.failedSms, preferredPageId: "sms-deliveries", attention: true },
+        { label: "pendingMail" as const, value: summary.pendingMail },
+        { label: "failedMail" as const, value: summary.failedMail, attention: true },
+        { label: "pendingSms" as const, value: summary.pendingSms },
+        { label: "failedSms" as const, value: summary.failedSms, attention: true },
       ],
     },
   ] : [];
-  const visibleTarget = (preferredPageId: string) => pageById.get(preferredPageId)
-    ?? (preferredPageId === "sms-deliveries" ? pageById.get("mail-deliveries") : undefined)
-    ?? monitoringPage;
 
   return (
     <section className="workbench-overview" aria-label={t("monitoringSummary")}>
@@ -716,28 +677,16 @@ function WorkbenchSystemOverview({
           {metricGroups.map(group => (
             <ProCard key={group.title} title={t(group.title)} className="workbench-overview-card">
               <div className="workbench-overview-metrics">
-                {group.metrics.map(metric => {
-                  const destination = visibleTarget(metric.preferredPageId);
-                  const targetPath = destination?.path || (destination ? `/dashboard/${destination.id}` : undefined);
-                  const href = metric.preferredPageId === "sms-deliveries"
-                    && destination?.id === "mail-deliveries"
-                    ? `${targetPath}#tab=sms-deliveries`
-                    : targetPath;
-                  return (
-                    <div key={metric.label} className="workbench-overview-metric">
-                      <Statistic
-                        title={t(metric.label)}
-                        value={metric.value}
-                        suffix={"suffix" in metric ? metric.suffix : undefined}
-                        styles={{ content: { color: "attention" in metric && metric.attention && metric.value > 0 ? "var(--ant-color-error)" : undefined } }}
-                      />
-                      {destination && href && <Link className="workbench-stat-link" to={href}>
-                        {localizedNavigationLabel(destination.label, destination.labelDefault, t)}
-                        <ArrowRightOutlined aria-hidden />
-                      </Link>}
-                    </div>
-                  );
-                })}
+                {group.metrics.map(metric => (
+                  <div key={metric.label} className="workbench-overview-metric">
+                    <Statistic
+                      title={t(metric.label)}
+                      value={metric.value}
+                      suffix={"suffix" in metric ? metric.suffix : undefined}
+                      styles={{ content: { color: "attention" in metric && metric.attention && metric.value > 0 ? "var(--ant-color-error)" : undefined } }}
+                    />
+                  </div>
+                ))}
               </div>
             </ProCard>
           ))}

@@ -196,7 +196,7 @@ export function BrandingPage({ canWrite }: { canWrite: boolean }) {
     >
       <Input maxLength={max} />
     </Form.Item>)}
-    <Form.Item name={["data", "copyrightStartYear"]} label={t("copyrightStartYear")} rules={[{ required: true}]}>
+    <Form.Item name={["data", "copyrightStartYear"]} label={t("copyrightStartYear")} rules={[{ required: true, type: "integer", min: 1900, max: 9999, message: t("invalidBranding") }]}>
       <InputNumber min={1900} max={9999} precision={0} />
     </Form.Item>
   </SettingsSection>;

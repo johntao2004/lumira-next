@@ -7,9 +7,9 @@ import { SettingsEnabledControls } from "@/platform/components/settings-enabled-
 import { usePreferences } from "@/platform/providers";
 
 /** Relying-party policy stays versioned through the shared settings editor. */
-export function PasskeyPage({ canWrite }: { canWrite: boolean }) {
+export function PasskeyPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?: () => void | Promise<void> }) {
   const { t } = usePreferences();
-  return <SettingsSection section="passkey" className="passkey-settings" canWrite={canWrite} showSecondaryActions={false}>
+  return <SettingsSection section="passkey" className="passkey-settings" canWrite={canWrite} showSecondaryActions={false} onSaved={onSaved}>
     <section className="auth-settings-section">
       <Typography.Title level={5}>{t("passkeySettings")}</Typography.Title>
       <Typography.Paragraph type="secondary">{t("passkeySettingsHint")}</Typography.Paragraph>
@@ -48,7 +48,7 @@ export function PasskeyPage({ canWrite }: { canWrite: boolean }) {
           >
             <Input.TextArea rows={4} maxLength={16_384} autoComplete="off" />
           </Form.Item>
-          <Form.Item name={["data", "challengeTtlSeconds"]} label={t("passkeyChallengeTtl")} rules={[{ required: true, type: "number", min: 30, max: 600, message: t("invalidPasskeySettings") }]}>
+          <Form.Item name={["data", "challengeTtlSeconds"]} label={t("passkeyChallengeTtl")} rules={[{ required: true, type: "integer", min: 30, max: 600, message: t("invalidPasskeySettings") }]}>
             <InputNumber min={30} max={600} precision={0} addonAfter={t("seconds")} />
           </Form.Item>
         </div>

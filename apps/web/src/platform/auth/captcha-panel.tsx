@@ -1,7 +1,7 @@
 "use client";
 
-import { Alert, Button, Input, Space, Typography } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { Alert, Button, Input, Skeleton, Space, Typography } from "antd";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ApiError, mutate } from "@/platform/api/client";
 import { AsyncButton } from "@/platform/components/async-button";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
@@ -27,19 +27,32 @@ export type CaptchaProof = {
   expiresAt: string;
 };
 
-type SliderSample = { x: number; y: number; elapsedMs: number };
+export type CaptchaPanelHandle = {
+  verifyForSubmit: () => Promise<CaptchaProof | null>;
+  refresh: () => void;
+};
 
-export function CaptchaPanel({
-  action: captchaAction,
-  attemptId,
-  onVerified,
-  onCancel,
-}: {
+type CaptchaPanelProps = {
   action: CaptchaAction;
   attemptId?: string;
+  mode?: "panel" | "password-login";
+  disabled?: boolean;
   onVerified: (proof: CaptchaProof) => void;
   onCancel: () => void;
-}) {
+  onSubmitReady?: (ready: boolean) => void;
+};
+
+type SliderSample = { x: number; y: number; elapsedMs: number };
+
+export const CaptchaPanel = forwardRef<CaptchaPanelHandle, CaptchaPanelProps>(function CaptchaPanel({
+  action: captchaAction,
+  attemptId,
+  mode = "panel",
+  disabled = false,
+  onVerified,
+  onCancel,
+  onSubmitReady,
+}, ref) {
   const { locale, t } = usePreferences();
   const generation = useRef(createCaptchaAttemptGuard());
   const autoLoader = useRef(createCaptchaPanelAutoLoader());
@@ -47,7 +60,9 @@ export function CaptchaPanel({
   const sliderSamples = useRef<SliderSample[]>([]);
   const [challenge, setChallenge] = useState<LocalCaptchaChallenge | null>(null);
   const [answer, setAnswer] = useState("");
+  const answerRef = useRef("");
   const [sliderX, setSliderX] = useState(0);
+  const [loadAttempted, setLoadAttempted] = useState(false);
   const actionState = useSubmitAction({
     errorKeys: [
       "captchaUnavailable", "captchaInvalid", "captchaChallengeExpired", "captchaChallengeLocked",
@@ -73,14 +88,17 @@ export function CaptchaPanel({
   useEffect(() => {
     generation.current.invalidate();
     setChallenge(null);
+    answerRef.current = "";
     setAnswer("");
     setSliderX(0);
+    setLoadAttempted(false);
     sliderSamples.current = [];
     sliderStartedAt.current = 0;
+    if (mode === "password-login") onSubmitReady?.(false);
     return autoLoader.current.schedule({ action: captchaAction, attemptId, locale }, () => {
       void start(false);
     });
-  }, [captchaAction, attemptId, locale]);
+  }, [captchaAction, attemptId, locale, mode, onSubmitReady]);
 
   async function start(accessible: boolean) {
     if (actionState.isPending()) {
@@ -88,7 +106,9 @@ export function CaptchaPanel({
       return;
     }
     const currentGeneration = generation.current.begin();
+    setLoadAttempted(true);
     setChallenge(null);
+    answerRef.current = "";
     setAnswer("");
     setSliderX(0);
     sliderSamples.current = [];
@@ -123,11 +143,12 @@ export function CaptchaPanel({
     }
   }
 
-  async function verify() {
-    if (!challenge || actionState.pending) return;
+  async function verify(): Promise<CaptchaProof | null> {
+    if (!challenge || actionState.isPending()) return null;
     actionState.setError(null);
     const currentGeneration = generation.current.begin();
     const isCurrent = () => generation.current.isCurrent(currentGeneration);
+    let verifiedProof: CaptchaProof | null = null;
     try {
       await actionState.run(async () => {
         let payload: Record<string, unknown>;
@@ -140,8 +161,9 @@ export function CaptchaPanel({
             trail: buildSliderTrail(sliderX, challenge.pieceY!, durationMs, sliderSamples.current),
           };
         } else {
-          if (answer.length !== 6) throw new Error("captchaInvalid");
-          payload = { challengeId: challenge.challengeId, answer };
+          const latestAnswer = answerRef.current;
+          if (latestAnswer.length !== 6) throw new Error("captchaInvalid");
+          payload = { challengeId: challenge.challengeId, answer: latestAnswer };
         }
         let proof: CaptchaProof;
         try {
@@ -151,15 +173,37 @@ export function CaptchaPanel({
           throw cause;
         }
         if (!isCurrent()) return false;
-        if (proof.action !== captchaAction || proof.attemptId !== (attemptId ?? null) || !proof.captchaProofId) {
+        if (proof.action !== captchaAction
+          || proof.attemptId !== (attemptId ?? null)
+          || typeof proof.captchaProofId !== "string"
+          || !proof.captchaProofId
+          || !Number.isFinite(Date.parse(proof.expiresAt))
+          || Date.parse(proof.expiresAt) <= Date.now()) {
           throw new Error("captchaUnavailable");
         }
         onVerified(proof);
+        verifiedProof = proof;
         return true;
       });
     } finally {
       autoLoader.current.flush();
     }
+    return verifiedProof;
+  }
+
+  async function verifyForSubmit() {
+    if (!canVerify) return null;
+    return verify();
+  }
+
+  function refresh() {
+    if (challenge) void start(challenge.type === "AUDIO");
+  }
+
+  function updateAnswer(value: string) {
+    const latestAnswer = normalizeCaptchaAnswer(value);
+    answerRef.current = latestAnswer;
+    setAnswer(latestAnswer);
   }
 
   function updateSlider(value: number) {
@@ -176,11 +220,32 @@ export function CaptchaPanel({
   const audioLanguage = resolveAudioLanguage(locale);
   const canVerify = Boolean(challenge)
     && (challenge?.type === "SLIDER" ? sliderX > 0 : answer.length === 6)
-    && !actionState.pending;
+    && !actionState.pending
+    && !disabled;
 
-  return <section aria-label={t("captchaHumanVerification")} className="captcha-panel">
-    <Typography.Paragraph type="secondary">{t("captchaPanelHint")}</Typography.Paragraph>
-    {challenge && <Alert
+  useImperativeHandle(ref, () => ({ verifyForSubmit, refresh }), [verifyForSubmit, refresh]);
+
+  useEffect(() => {
+    if (mode === "password-login") onSubmitReady?.(canVerify);
+  }, [canVerify, mode, onSubmitReady]);
+
+  const compactImageChallenge = mode === "password-login" && challenge?.type === "IMAGE_TEXT";
+  const hasAccessibleAlternative = challenge?.accessibleAlternativeAvailable === true;
+  const compactLoading = mode === "password-login" && !challenge && (actionState.pending || !loadAttempted);
+  const compactRetry = Boolean(mode === "password-login" && !challenge && !compactLoading);
+  const compactRefreshChallenge = mode === "password-login" && challenge && challenge.type !== "IMAGE_TEXT"
+    ? challenge
+    : null;
+  const compactRefresh = compactRefreshChallenge !== null;
+  const refreshChallenge = mode === "panel" ? challenge : compactRefreshChallenge;
+
+  return <section aria-label={t("captchaHumanVerification")} className={`captcha-panel${mode === "password-login" ? " captcha-panel-login" : ""}`}>
+    {!compactImageChallenge && !(mode === "password-login" && !challenge) && <Typography.Paragraph type="secondary">{t("captchaPanelHint")}</Typography.Paragraph>}
+    {compactLoading && <div className="captcha-answer captcha-answer-loading" role="status" aria-label={t("loading")}>
+      <Skeleton.Input active block />
+      <Skeleton.Button active block />
+    </div>}
+    {challenge && !compactImageChallenge && <Alert
       type="info"
       showIcon
       title={t(challenge.type === "AUDIO" ? "captchaAudioVerification" : "captchaVisualVerification")}
@@ -191,15 +256,9 @@ export function CaptchaPanel({
     />}
     <FeedbackBubble id="captcha-error" content={actionState.error ? t(actionState.error as MessageKey) : undefined} />
     {challenge?.type === "IMAGE_TEXT" && <div className="captcha-answer">
-      <img
-        className="captcha-image-text"
-        src={challenge.imageDataUrl}
-        width={challenge.width}
-        height={challenge.height}
-        alt={t("captchaVisualChallengeAlt")}
-      />
       <Input
         aria-label={t("captchaDigitAnswer")}
+        data-testid={mode === "password-login" ? "password-login-captcha-answer" : undefined}
         autoComplete="off"
         autoCapitalize="off"
         autoCorrect="off"
@@ -208,9 +267,27 @@ export function CaptchaPanel({
         maxLength={6}
         placeholder={t("captchaAnswerPlaceholder")}
         value={answer}
-        onChange={event => setAnswer(normalizeCaptchaAnswer(event.target.value))}
-        onPressEnter={() => { if (canVerify) void verify(); }}
+        disabled={disabled || actionState.pending}
+        onChange={event => updateAnswer(event.target.value)}
+        onPressEnter={() => { if (mode !== "password-login" && canVerify) void verify(); }}
       />
+      <button
+        className="captcha-image-refresh"
+        type="button"
+        aria-label={t("captchaRefresh")}
+        title={t("captchaRefresh")}
+        data-testid={mode === "password-login" ? "password-login-captcha-image-refresh" : undefined}
+        disabled={disabled || actionState.pending}
+        onClick={() => void start(false)}
+      >
+        <img
+          className="captcha-image-text"
+          src={challenge.imageDataUrl}
+          width={challenge.width}
+          height={challenge.height}
+          alt={t("captchaVisualChallengeAlt")}
+        />
+      </button>
     </div>}
     {challenge?.type === "AUDIO" && <div className="captcha-audio-challenge">
       <audio className="captcha-audio-player" controls preload="metadata" src={challenge.audioDataUrl}>
@@ -219,14 +296,16 @@ export function CaptchaPanel({
       <Typography.Text type="secondary">{t("captchaAudioAnswerHint")}</Typography.Text>
       <Input
         aria-label={t("captchaDigitAnswer")}
+        data-testid={mode === "password-login" ? "password-login-captcha-answer" : undefined}
         autoComplete="off"
         inputMode="numeric"
         pattern="[0-9]*"
         maxLength={6}
         placeholder={t("captchaAnswerPlaceholder")}
         value={answer}
-        onChange={event => setAnswer(normalizeCaptchaAnswer(event.target.value))}
-        onPressEnter={() => { if (canVerify) void verify(); }}
+        disabled={disabled || actionState.pending}
+        onChange={event => updateAnswer(event.target.value)}
+        onPressEnter={() => { if (mode !== "password-login" && canVerify) void verify(); }}
       />
     </div>}
     {challenge?.type === "SLIDER" && <div className="captcha-slider-challenge">
@@ -257,42 +336,51 @@ export function CaptchaPanel({
         max={challenge.width! - challenge.pieceWidth!}
         step={1}
         value={sliderX}
+        disabled={disabled || actionState.pending}
         aria-describedby="captcha-slider-help"
         aria-valuetext={t("captchaSliderPosition", { value: sliderX })}
         onChange={event => updateSlider(Number(event.target.value))}
       />
       <Typography.Text id="captcha-slider-help" type="secondary">{t("captchaSliderHint")}</Typography.Text>
     </div>}
-    <Space wrap>
-      <AsyncButton
+    {(mode === "panel" || hasAccessibleAlternative || compactRetry || compactRefresh) && <Space wrap>
+      {compactRetry && <Button
+        data-testid="password-login-captcha-retry"
+        disabled={disabled || actionState.pending}
+        onClick={() => void start(false)}
+      >{t("retry")}</Button>}
+      {mode === "panel" && <AsyncButton
         type="primary"
         pending={actionState.pending}
         onClick={() => challenge ? void verify() : void start(false)}
         disabled={challenge ? !canVerify : false}
         label={t(challenge ? "captchaVerify" : "captchaHumanVerification")}
-      />
-      {challenge && <AsyncButton
+      />}
+      {refreshChallenge && <AsyncButton
         pending={actionState.pending}
-        onClick={() => void start(challenge.type === "AUDIO")}
+        disabled={disabled}
+        onClick={() => void start(refreshChallenge.type === "AUDIO")}
         label={t("captchaRefresh")}
       />}
       {challenge?.accessibleAlternativeAvailable && <AsyncButton
         pending={actionState.pending}
+        disabled={disabled}
         onClick={() => void start(challenge.type !== "AUDIO")}
         label={t(challenge.type === "AUDIO" ? "captchaVisualVerification" : "captchaAudioVerification")}
       />}
-      <Button onClick={() => {
+      {mode === "panel" && <Button onClick={() => {
         autoLoader.current.cancel();
         generation.current.invalidate();
         setChallenge(null);
+        answerRef.current = "";
         setAnswer("");
         setSliderX(0);
         actionState.setError(null);
         onCancel();
-      }}>{t("captchaCancel")}</Button>
-    </Space>
+      }}>{t("captchaCancel")}</Button>}
+    </Space>}
   </section>;
-}
+});
 
 function resolveAudioLanguage(locale: string): { languageKey: MessageKey; fallback: boolean } {
   if (locale.toLowerCase().startsWith("zh")) return { languageKey: "captchaAudioLanguageChinese", fallback: false };

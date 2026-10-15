@@ -2,8 +2,7 @@ package com.lumira.platform.identity;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
-import java.nio.file.*;
+import com.lumira.platform.TestSchema;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
@@ -38,11 +37,8 @@ class AccountPhoneStoreTest {
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE platform_user(id UUID PRIMARY KEY)");
         jdbc.update("INSERT INTO platform_user(id) VALUES(?)", owner);
-        String ddl = TestMigration.read("V47__sms_delivery_and_account_phone.sql");
-        jdbc.execute(
-                ddl.substring(
-                        ddl.indexOf("CREATE TABLE platform_account_phone"),
-                        ddl.indexOf("-- The settings page")));
+        jdbc.execute(TestSchema.table("platform_account_phone"));
+        TestSchema.indexes("platform_account_phone").forEach(jdbc::execute);
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         store = new AccountPhoneStore(JdbcClient.create(ds));
     }

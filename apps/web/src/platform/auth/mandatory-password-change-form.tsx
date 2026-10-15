@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Space } from "antd";
+import { Button, Space } from "antd";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { mutate } from "@/platform/api/client";
 import { currentSessionRevision, subscribeSessionBoundary } from "@/platform/auth/session-lifecycle";
@@ -10,16 +10,20 @@ import { AsyncButton } from "@/platform/components/async-button";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import { usePreferences } from "@/platform/providers";
+import type { LoginResponse, PasswordChangeReason } from "./api-types";
+import { resolvePasswordChangeContinuation } from "./password-change-continuation.mjs";
 
 type PasswordChangeValues = { newPassword: string; confirmation: string };
 
-export function MandatoryPasswordChangeForm({ challengeId, expiresAt, onCancel, onChanged }: {
+export function MandatoryPasswordChangeForm({ challengeId, cancelPending, onCancel, onChanged }: {
   challengeId: string;
   expiresAt: string | null;
-  onCancel: () => void;
-  onChanged: (challengeId: string) => void;
+  reason: PasswordChangeReason;
+  cancelPending: boolean;
+  onCancel: () => Promise<void>;
+  onChanged: (challengeId: string, result: LoginResponse, submittedSessionRevision: number) => void;
 }) {
-  const { t, locale } = usePreferences();
+  const { t } = usePreferences();
   const [form] = Form.useForm<PasswordChangeValues>();
   const challengeIdRef = useRef<string | null>(challengeId);
   useLayoutEffect(() => {
@@ -29,14 +33,12 @@ export function MandatoryPasswordChangeForm({ challengeId, expiresAt, onCancel, 
     };
   }, [challengeId]);
   const action = useSubmitAction({
-    errorKeys: ["secondFactorExpired", "passwordPolicy", "passwordMismatch", "passwordMustDiffer", "passwordChangeLimited", "forbidden", "unavailable"],
+    errorKeys: ["secondFactorExpired", "passwordPolicy", "passwordMismatch", "passwordMustDiffer", "passwordChangeLimited", "forbidden", "unavailable", "loginContinuationUnavailable"],
     errorAliases: {
       passwordConfirmationMismatch: "passwordMismatch",
       newPasswordMustDiffer: "passwordMustDiffer",
     },
   });
-  const parsedExpiry = expiresAt ? Date.parse(expiresAt) : Number.NaN;
-
   useEffect(() => {
     form.resetFields();
     const unsubscribe = subscribeSessionBoundary(() => {
@@ -50,38 +52,45 @@ export function MandatoryPasswordChangeForm({ challengeId, expiresAt, onCancel, 
   }, [challengeId, form]);
 
   async function submit(values: PasswordChangeValues) {
+    if (cancelPending) return;
     const revision = currentSessionRevision();
     await action.run(async () => {
-      await mutate<void>("/auth/login/password-change", "POST", {
+      const response = await mutate<unknown>("/auth/login/password-change", "POST", {
         challengeId,
         newPassword: values.newPassword,
         confirmPassword: values.confirmation,
       });
-      if (revision !== currentSessionRevision() || challengeIdRef.current !== challengeId) return false;
+      const continuation = resolvePasswordChangeContinuation({
+        response,
+        challengeId,
+        activeChallengeId: challengeIdRef.current,
+        submittedSessionRevision: revision,
+        currentSessionRevision: currentSessionRevision(),
+      });
+      if (continuation.status === "stale") return false;
       form.resetFields();
-      onChanged(challengeId);
+      if (continuation.status === "invalid") {
+        action.setError("loginContinuationUnavailable");
+        return false;
+      }
+      onChanged(challengeId, continuation.response as LoginResponse, revision);
     });
   }
 
-  function cancel() {
-    challengeIdRef.current = null;
+  async function cancel() {
+    if (action.pending || cancelPending) return;
     form.resetFields();
-    onCancel();
+    await onCancel();
   }
 
-  const expiresLabel = Number.isFinite(parsedExpiry)
-    ? t("mandatoryPasswordChangeExpires", { expiresAt: new Date(parsedExpiry).toLocaleString(locale) })
-    : undefined;
-
   return <Space orientation="vertical" style={{ width: "100%" }}>
-    <Alert type="warning" showIcon title={t("mandatoryPasswordChangeHint")} description={expiresLabel} />
     <FeedbackBubble id="mandatory-password-change-error" content={action.errorMessage} />
-    <Form form={form} layout="vertical" requiredMark={false} disabled={action.pending} onFinish={submit}>
+    <Form form={form} layout="vertical" requiredMark={false} size="large" disabled={action.pending || cancelPending} onFinish={submit}>
       <NewPasswordFields passwordName="newPassword" confirmationName="confirmation" />
-      <Space orientation="vertical" style={{ width: "100%" }}>
-        <AsyncButton type="primary" htmlType="submit" block pending={action.pending} label={t("mandatoryPasswordChangeSubmit")} />
-        <Button block disabled={action.pending} onClick={cancel}>{t("mfaBack")}</Button>
-      </Space>
+      <div className="login-actions">
+        <AsyncButton type="primary" htmlType="submit" block pending={action.pending} disabled={cancelPending} label={t("mandatoryPasswordChangeSubmit")} />
+        <Button block loading={cancelPending} disabled={action.pending || cancelPending} onClick={() => { void cancel(); }}>{t("mandatoryPasswordChangeCancel")}</Button>
+      </div>
     </Form>
   </Space>;
 }

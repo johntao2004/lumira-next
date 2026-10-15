@@ -2,7 +2,7 @@ package com.lumira.platform.identity;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -40,10 +40,14 @@ class PasswordResetStoreTest {
         jdbc.execute(
                 "CREATE TABLE platform_user(id UUID PRIMARY KEY,username TEXT NOT NULL,password_hash TEXT NOT NULL,enabled BOOLEAN NOT NULL)");
         jdbc.execute("CREATE TABLE platform_password_change_requirement(user_id UUID PRIMARY KEY)");
+        jdbc.execute(
+                "CREATE TABLE platform_bootstrap_password_change_requirement(user_id UUID PRIMARY KEY,primary_credential_revision UUID,created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,completed_at TIMESTAMPTZ)");
         jdbc.execute("CREATE TABLE spring_session(principal_name TEXT)");
         jdbc.update("INSERT INTO platform_user VALUES(?,'owner','old-hash',true)", id);
-        jdbc.execute(TestMigration.read("V25__account_email_verification.sql"));
-        jdbc.execute(TestMigration.read("V26__password_reset_challenges.sql"));
+        jdbc.execute(TestSchema.table("platform_account_email"));
+        jdbc.execute(TestSchema.table("platform_password_reset"));
+        TestSchema.foreignKeys("platform_account_email").forEach(jdbc::execute);
+        TestSchema.foreignKeys("platform_password_reset").forEach(jdbc::execute);
         jdbc.update(
                 "INSERT INTO platform_account_email(user_id,email,verified_at) VALUES(?,'verified@example.test',now())",
                 id);

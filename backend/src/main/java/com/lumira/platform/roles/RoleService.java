@@ -606,8 +606,7 @@ public class RoleService {
         if (isDefaultRegistrationRole(id)
                 && (!Boolean.TRUE.equals(in.enabled())
                         || !"SELF".equals(in.dataScope() == null ? old.dataScope() : in.dataScope())
-                        || !Set.of("platform:feedback:read", "platform:feedback:create")
-                                .containsAll(in.authorities())))
+                        || !RegistrationRoleAdapter.allowsAuthorities(in.authorities())))
             fail(HttpStatus.CONFLICT, "registrationRoleInUse");
         roles.update(
                 id,

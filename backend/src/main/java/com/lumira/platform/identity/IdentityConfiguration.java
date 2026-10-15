@@ -1,9 +1,8 @@
 package com.lumira.platform.identity;
 
-import com.lumira.platform.common.PlatformOperation;
-import com.lumira.platform.common.PlatformPageId;
+import com.lumira.platform.common.BootstrapRolePort;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -137,6 +136,8 @@ public class IdentityConfiguration {
             JdbcClient jdbc,
             PasswordEncoder encoder,
             TransactionTemplate tx,
+            IdentityAuthenticationPolicyWriteLock policyLock,
+            BootstrapRolePort administratorRoles,
             @Value("${lumira.bootstrap.password}") String password) {
         return args -> {
             if (password.isBlank()) return;
@@ -152,35 +153,170 @@ public class IdentityConfiguration {
                                             rs.next();
                                             return 0;
                                         });
+                        policyLock.lockForUpdate();
                         if (jdbc.sql("SELECT count(*) FROM platform_user")
                                         .query(Long.class)
                                         .single()
-                                != 0) return;
-                        var id = UUID.randomUUID();
-                        jdbc.sql(
-                                        "INSERT INTO platform_user(id,username,display_name,password_hash) VALUES(:id,'admin','管理员',:hash)")
-                                .param("id", id)
-                                .param("hash", encoder.encode(password))
-                                .update();
-                        var authorities = new LinkedHashSet<String>();
-                        for (var page : PlatformPageId.values())
-                            authorities.add(page.accessPermission());
-                        for (var operation : PlatformOperation.values())
-                            authorities.add(operation.permission());
-                        for (String authority : authorities)
-                            jdbc.sql(
-                                            "INSERT INTO platform_authority(user_id,authority) VALUES(:id,:authority)")
-                                    .param("id", id)
-                                    .param("authority", authority)
-                                    .update();
-                        for (String authority :
-                                com.lumira.platform.modules.PluginPermissions.values())
-                            jdbc.sql(
-                                            "INSERT INTO platform_authority(user_id,authority) VALUES(:id,:authority) ON CONFLICT DO NOTHING")
-                                    .param("id", id)
-                                    .param("authority", authority)
-                                    .update();
+                                == 0) {
+                            createBootstrapAdministrator(
+                                    jdbc, encoder, administratorRoles, password);
+                            return;
+                        }
+                        adoptExistingBootstrapAdministrator(jdbc, encoder, password);
                     });
         };
     }
+
+    private static void createBootstrapAdministrator(
+            JdbcClient jdbc,
+            PasswordEncoder encoder,
+            BootstrapRolePort administratorRoles,
+            String password) {
+        var administrator =
+                jdbc.sql(
+                                "INSERT INTO platform_user(id,username,display_name,password_hash) VALUES(:id,'admin','管理员',:hash) RETURNING id,primary_credential_revision")
+                        .param("id", UUID.randomUUID())
+                        .param("hash", encoder.encode(password))
+                        .query(
+                                (rs, row) ->
+                                        new BootstrapAdministrator(
+                                                rs.getObject("id", UUID.class),
+                                                null,
+                                                rs.getObject(
+                                                        "primary_credential_revision", UUID.class),
+                                                true))
+                        .single();
+        insertBootstrapRequirement(jdbc, administrator.id(), administrator.revision(), false);
+        administratorRoles.assignAdministratorRole(administrator.id());
+    }
+
+    /**
+     * Older installations predate the durable marker. Adopt only the existing admin account when
+     * its current hash still proves the configured bootstrap password. A retained positive
+     * password-change/reset audit takes precedence and records completion instead of forcing a
+     * password the administrator has previously replaced.
+     */
+    private static void adoptExistingBootstrapAdministrator(
+            JdbcClient jdbc, PasswordEncoder encoder, String password) {
+        var administrator =
+                jdbc.sql(
+                                "SELECT id,password_hash,primary_credential_revision,enabled FROM platform_user WHERE username='admin' AND deleted_at IS NULL FOR UPDATE")
+                        .query(
+                                (rs, row) ->
+                                        new BootstrapAdministrator(
+                                                rs.getObject("id", UUID.class),
+                                                rs.getString("password_hash"),
+                                                rs.getObject(
+                                                        "primary_credential_revision", UUID.class),
+                                                rs.getBoolean("enabled")))
+                        .optional()
+                        .orElse(null);
+        if (administrator == null) return;
+
+        var existingMarker =
+                jdbc.sql(
+                                "SELECT primary_credential_revision,completed_at FROM platform_bootstrap_password_change_requirement WHERE user_id=:id FOR UPDATE")
+                        .param("id", administrator.id())
+                        .query(
+                                (rs, row) ->
+                                        new BootstrapRequirement(
+                                                rs.getObject(
+                                                        "primary_credential_revision", UUID.class),
+                                                rs.getTimestamp("completed_at") == null))
+                        .optional()
+                        .orElse(null);
+        if (existingMarker != null) {
+            if (!existingMarker.active()) return;
+            if (hasPasswordChangeAudit(jdbc, administrator.id())
+                    || hasTemporaryReset(jdbc, administrator.id())) {
+                completeBootstrapRequirement(jdbc, administrator.id());
+                return;
+            }
+            if (!existingMarker.revision().equals(administrator.revision()))
+                bindBootstrapRequirement(jdbc, administrator.id(), administrator.revision());
+            revokeBootstrapSessionsAndChallenges(jdbc, administrator.id());
+            return;
+        }
+        // Disabled users still need the durable marker so re-enabling an admin cannot turn an
+        // unmodified bootstrap password into a normal authenticated login.
+        if (!encoder.matches(password, administrator.passwordHash())) return;
+
+        boolean passwordWasChanged = hasPasswordChangeAudit(jdbc, administrator.id());
+        boolean hasTemporaryReset = hasTemporaryReset(jdbc, administrator.id());
+        if (passwordWasChanged || hasTemporaryReset) {
+            insertBootstrapRequirement(jdbc, administrator.id(), administrator.revision(), true);
+            return;
+        }
+
+        UUID revision =
+                jdbc.sql(
+                                "UPDATE platform_user SET primary_credential_revision=gen_random_uuid() WHERE id=:id RETURNING primary_credential_revision")
+                        .param("id", administrator.id())
+                        .query(UUID.class)
+                        .single();
+        insertBootstrapRequirement(jdbc, administrator.id(), revision, false);
+        revokeBootstrapSessionsAndChallenges(jdbc, administrator.id());
+    }
+
+    private static void revokeBootstrapSessionsAndChallenges(JdbcClient jdbc, UUID userId) {
+        jdbc.sql("DELETE FROM platform_login_challenge WHERE user_id=:id")
+                .param("id", userId)
+                .update();
+        jdbc.sql("DELETE FROM spring_session WHERE principal_name='admin'").update();
+    }
+
+    private static boolean hasPasswordChangeAudit(JdbcClient jdbc, UUID userId) {
+        return jdbc.sql(
+                        "SELECT EXISTS(SELECT 1 FROM platform_audit WHERE target_id=:id AND action IN (:actions))")
+                .param("id", userId)
+                .param(
+                        "actions",
+                        List.of(
+                                "account.passwordChanged",
+                                "account.passwordRecovered",
+                                "account.smsPasswordRecovered",
+                                "account.forcedPasswordChanged",
+                                "account.passwordReset",
+                                "user.passwordReset"))
+                .query(Boolean.class)
+                .single();
+    }
+
+    private static boolean hasTemporaryReset(JdbcClient jdbc, UUID userId) {
+        return jdbc.sql(
+                        "SELECT EXISTS(SELECT 1 FROM platform_password_change_requirement WHERE user_id=:id)")
+                .param("id", userId)
+                .query(Boolean.class)
+                .single();
+    }
+
+    static void insertBootstrapRequirement(
+            JdbcClient jdbc, UUID userId, UUID revision, boolean completed) {
+        jdbc.sql(
+                        "INSERT INTO platform_bootstrap_password_change_requirement(user_id,primary_credential_revision,completed_at) VALUES(:id,:revision,CASE WHEN :completed THEN CURRENT_TIMESTAMP ELSE NULL END) ON CONFLICT(user_id) DO NOTHING")
+                .param("id", userId)
+                .param("revision", revision)
+                .param("completed", completed)
+                .update();
+    }
+
+    static void completeBootstrapRequirement(JdbcClient jdbc, UUID userId) {
+        jdbc.sql(
+                        "UPDATE platform_bootstrap_password_change_requirement SET completed_at=GREATEST(COALESCE(completed_at,created_at),CURRENT_TIMESTAMP) WHERE user_id=:id")
+                .param("id", userId)
+                .update();
+    }
+
+    static void bindBootstrapRequirement(JdbcClient jdbc, UUID userId, UUID revision) {
+        jdbc.sql(
+                        "UPDATE platform_bootstrap_password_change_requirement SET primary_credential_revision=:revision WHERE user_id=:id AND completed_at IS NULL")
+                .param("id", userId)
+                .param("revision", revision)
+                .update();
+    }
+
+    private record BootstrapAdministrator(
+            UUID id, String passwordHash, UUID revision, boolean enabled) {}
+
+    private record BootstrapRequirement(UUID revision, boolean active) {}
 }

@@ -26,9 +26,9 @@ type WechatSettingsForm = {
   appSecretValue?: string;
 };
 
-const settingErrors = ["staleRecord", "invalidChangeReason", "wechatAppInUse", "invalidWechatSettings", "secretKeyUnavailable", "forbidden", "unavailable"] as const satisfies readonly MessageKey[];
+const settingErrors = ["staleRecord", "invalidChangeReason", "wechatAppInUse", "invalidWechatSettings", "wechatOriginUnavailable", "secretKeyUnavailable", "forbidden", "unavailable"] as const satisfies readonly MessageKey[];
 
-export function WechatPage({ canWrite }: { canWrite: boolean }) {
+export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?: () => void | Promise<void> }) {
   const { t } = usePreferences();
   const client = useQueryClient();
   const [form] = Form.useForm<WechatSettingsForm>();
@@ -81,6 +81,7 @@ export function WechatPage({ canWrite }: { canWrite: boolean }) {
       });
       await client.invalidateQueries({ queryKey: ["auth-methods"] });
       setSaved(true);
+      await onSaved?.();
     });
   }
 
@@ -96,18 +97,20 @@ export function WechatPage({ canWrite }: { canWrite: boolean }) {
           <section className="auth-config-panel">
             <Typography.Title level={5}>{t("wechatSettings")}</Typography.Title>
             {query.data.ready && <Alert className="wechat-ready" type="success" showIcon message={t("wechatReady")} />}
+            {!query.data.publicOrigin && <Alert type="warning" showIcon message={t("wechatOriginUnavailable")} />}
             <div className="auth-config-fields">
               <Form.Item name="appId" label="AppID" rules={[{ required: enabled === true, whitespace: true, message: t("invalidWechatSettings") }, { max: 128, message: t("invalidWechatSettings") }]}>
                 <Input autoComplete="off" maxLength={128} />
               </Form.Item>
-              <Form.Item name="timeoutSeconds" label={t("smsTimeout")} rules={[{ required: enabled === true }, { type: "number", min: 1, message: t("invalidWechatSettings") }]}>
-                <InputNumber className="wechat-timeout-input" precision={0} min={1} style={{ width: "100%" }} />
+              <Form.Item name="timeoutSeconds" label={t("smsTimeout")} rules={[{ required: true, type: "integer", min: 1, max: 30, message: t("invalidWechatSettings") }]}>
+                <InputNumber className="wechat-timeout-input" precision={0} min={1} max={30} style={{ width: "100%" }} />
               </Form.Item>
-              <Form.Item name="publicOrigin" label={t("wechatPublicOrigin")} rules={[{ required: enabled === true, whitespace: true, message: t("invalidWechatSettings") }, { validator: async (_rule: unknown, value: string) => {
+              <Form.Item name="publicOrigin" label={t("wechatPublicOrigin")} rules={[{ required: enabled === true, whitespace: true, message: t(query.data.publicOrigin ? "invalidWechatSettings" : "wechatOriginUnavailable") }, { validator: async (_rule: unknown, value: string) => {
+                if (enabled === true && !query.data.publicOrigin) throw new Error(t("wechatOriginUnavailable"));
                 if (!value || isPublicOrigin(value)) return;
                 throw new Error(t("invalidWechatSettings"));
               } }]} extra={<Typography.Paragraph className="auth-config-note" type="secondary">{t("wechatOriginHint")}</Typography.Paragraph>}>
-                <Input autoComplete="url" maxLength={253} />
+                <Input autoComplete="url" maxLength={253} disabled={!query.data.publicOrigin} />
               </Form.Item>
             </div>
           </section>

@@ -2,6 +2,7 @@ package com.lumira.platform.communication;
 
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,7 +31,11 @@ public final class DeliveryPageQuerySupport {
     private DeliveryPageQuerySupport() {}
 
     public static Parameters parameters(PageRequest page, String state) {
-        var fieldFilter = PageFilterSql.build(page, FILTERABLE_COLUMNS);
+        var fieldFilter =
+                PageFilterSql.build(
+                        page,
+                        FILTERABLE_COLUMNS,
+                        java.util.Set.of("createdAt", "updatedAt", "availableAt", "expiresAt"));
         var countParameters = new HashMap<String, Object>();
         countParameters.put("state", state);
         countParameters.put("search", page.search());

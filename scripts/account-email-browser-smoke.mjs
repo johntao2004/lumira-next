@@ -13,8 +13,8 @@ try{
  const csrf=await(await context.request.get('/api/auth/csrf')).json();assert.equal((await context.request.post('/api/auth/login',{form:{username,password:config.LUMIRA_BOOTSTRAP_PASSWORD},headers:{[csrf.headerName]:csrf.token}})).status(),200);
  const p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
  await p.goto('/dashboard/home');await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();
- await p.waitForURL('**/dashboard/account-profile');
- const profile=p.locator('.account-settings-panel');await profile.locator('#account-profile_displayName').fill('Unsaved profile');
+ await p.waitForURL('**/dashboard/account-security');
+ const profile=p.locator('.account-settings-panel');await profile.locator('.account-settings-menu').getByRole('menuitem',{name:'账号安全',exact:true}).click();await p.waitForURL('**/dashboard/account-authentication-security');
  await profile.getByRole('button',{name:'账号邮箱',exact:true}).click();
  const email=p.getByRole('dialog',{name:'账号邮箱',exact:true});
  await expect(email.getByText('已验证邮箱: 尚未验证',{exact:true})).toBeVisible();
@@ -29,18 +29,17 @@ try{
  await expect(p.locator('.ant-message-notice').filter({hasText:'邮件服务未就绪，请联系管理员配置邮件服务器。'})).toBeVisible();
  await expect(email.getByLabel('当前密码',{exact:true})).toHaveValue('');assert.equal(submissions,1);
  await email.getByRole('button',{name:'关闭',exact:true}).click();await expect(email).not.toBeVisible();
- await expect(profile.locator('#account-profile_displayName')).toHaveValue('Unsaved profile');
  const code=randomBytes(32).toString('base64url'),hash=createHash('sha256').update(code).digest('hex');
  sql(`INSERT INTO platform_account_email(user_id,pending_email,token_hash,expires_at) VALUES('${id}','${username}@example.invalid','${hash}',CURRENT_TIMESTAMP+INTERVAL '10 minutes')`);
  await profile.getByRole('button',{name:'账号邮箱',exact:true}).click();await expect(email.getByText('待验证邮箱:',{exact:false})).toBeVisible();
  await email.getByLabel('邮件验证码',{exact:true}).fill(code);
  await email.getByRole('button',{name:'确认邮箱',exact:true}).click();await expect(p.locator('.ant-message-notice').filter({hasText:'邮箱验证成功。'})).toBeVisible();
  await expect(email.getByText('已验证邮箱: '+username+'@example.invalid',{exact:true})).toBeVisible();
- await email.getByRole('button',{name:'关闭',exact:true}).click();await expect(email).not.toBeVisible();await expect(profile.locator('#account-profile_displayName')).toHaveValue('Unsaved profile');
- await p.reload();await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();await p.waitForURL('**/dashboard/account-profile');await profile.getByRole('button',{name:'账号邮箱',exact:true}).click();
+ await email.getByRole('button',{name:'关闭',exact:true}).click();await expect(email).not.toBeVisible();await expect(profile).toBeVisible();
+ await p.reload();await p.locator('.pro-account-trigger').click();await p.getByRole('menuitem',{name:'个人资料',exact:true}).click();await p.waitForURL('**/dashboard/account-security');await profile.locator('.account-settings-menu').getByRole('menuitem',{name:'账号安全',exact:true}).click();await p.waitForURL('**/dashboard/account-authentication-security');await profile.getByRole('button',{name:'账号邮箱',exact:true}).click();
  await expect(email.getByText('已验证邮箱: '+username+'@example.invalid',{exact:true})).toBeVisible();
  await p.setViewportSize({width:390,height:844});await expect.poll(()=>p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- assert.deepEqual(errors,[]);console.log('PASS: email drawer, independent profile state, request failure feedback/password clearing, real single-use confirmation, reload persistence and mobile bounds; no email sent');
+ assert.deepEqual(errors,[]);console.log('PASS: account security email drawer, request failure feedback/password clearing, real single-use confirmation, reload persistence and mobile bounds; no email sent');
 }finally{
  try{const csrf=await(await context.request.get('/api/auth/csrf')).json();await context.request.post('/api/auth/logout',{headers:{[csrf.headerName]:csrf.token}});}finally{await browser.close();sql(`DELETE FROM platform_audit WHERE actor='${username}'; DELETE FROM platform_user WHERE id='${id}'; DELETE FROM platform_rate_bucket WHERE bucket_key='email-verify:${createHash('sha256').update(username).digest('hex')}'`);}
 }

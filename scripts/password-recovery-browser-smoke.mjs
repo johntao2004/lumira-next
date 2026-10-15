@@ -20,17 +20,18 @@ try{
   await route.fulfill({status:202,body:''}); // Presentation only; never send external email.
  });
  await p.goto('/user/login');const launch=p.getByRole('button',{name:'忘记密码',exact:true});await launch.click();
- const drawer=p.getByRole('dialog',{name:'忘记密码',exact:true});
- await drawer.getByLabel(translate('zh-CN','username'),{exact:true}).fill(username);await drawer.getByRole('button',{name:'发送重置邮件',exact:true}).click();
+ const recovery=p.locator('#password-recovery');await expect(recovery).toBeVisible();await expect(p.getByRole('heading',{name:'忘记密码',exact:true})).toBeVisible();
+ await expect(p.getByRole('dialog',{name:'忘记密码',exact:true})).toHaveCount(0);
+ await recovery.getByLabel(translate('zh-CN','username'),{exact:true}).fill(username);await recovery.getByRole('button',{name:'发送重置邮件',exact:true}).click();
  await expect(p.locator('.ant-message-notice')).toContainText('如果账号符合找回条件，验证邮件将进入发送队列，请查收已验证邮箱。');
- await drawer.getByLabel('邮件验证码',{exact:true}).fill(randomBytes(32).toString('base64url'));
- await drawer.getByLabel('新密码',{exact:true}).fill(password);await drawer.getByLabel('确认新密码',{exact:true}).fill(password);
- await drawer.getByRole('button',{name:'重置密码',exact:true}).click();
+ await recovery.getByLabel('邮件验证码',{exact:true}).fill(randomBytes(32).toString('base64url'));
+ await recovery.getByLabel('新密码',{exact:true}).fill(password);await recovery.getByLabel('确认新密码',{exact:true}).fill(password);
+ await recovery.getByRole('button',{name:'重置密码',exact:true}).click();
  await expect(p.locator('.ant-message-notice').filter({hasText:'验证码无效、已过期或尝试次数已用尽。'})).toBeVisible();
- await expect(drawer.getByLabel('新密码',{exact:true})).toHaveValue('');
- await drawer.getByLabel('邮件验证码',{exact:true}).fill(code);await drawer.getByLabel('新密码',{exact:true}).fill(password);await drawer.getByLabel('确认新密码',{exact:true}).fill(password);
+ await expect(recovery.getByLabel('新密码',{exact:true})).toHaveValue('');
+ await recovery.getByLabel('邮件验证码',{exact:true}).fill(code);await recovery.getByLabel('新密码',{exact:true}).fill(password);await recovery.getByLabel('确认新密码',{exact:true}).fill(password);
  await expect.poll(()=>p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- await drawer.getByRole('button',{name:'重置密码',exact:true}).click();await expect(drawer).not.toBeVisible();
+ await recovery.getByRole('button',{name:'重置密码',exact:true}).click();await expect(recovery).not.toBeVisible();
  await expect(p.locator('.ant-message-notice').filter({hasText:'密码已重置，请使用新密码登录。'})).toBeVisible();await expect(p.getByLabel(translate('zh-CN','username'),{exact:true})).toHaveValue(username);
  await p.getByLabel('密码',{exact:true}).fill(password);await p.getByRole('button',{name:translate('zh-CN','signIn'),exact:true}).click();await expect(p).toHaveURL(/\/dashboard\/home$/);
  assert.deepEqual(errors,[]);console.log('PASS: recovery request presentation, real invalid/valid proof, password clearing, mobile bounds and new-password login; no email sent');

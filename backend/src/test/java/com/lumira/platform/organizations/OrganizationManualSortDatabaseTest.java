@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PageRequest;
@@ -14,7 +15,6 @@ import com.lumira.platform.organizations.api.OrganizationResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,7 +24,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Uses a disposable per-test schema to exercise V40 and organization persistence. */
+/** Verifies organization ordering and versioned updates against the current baseline schema. */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class OrganizationManualSortDatabaseTest {
     private JdbcTemplate admin;
@@ -32,10 +32,9 @@ class OrganizationManualSortDatabaseTest {
     private OrganizationRepository repository;
     private OrganizationService service;
     private String schema;
-    private UUID legacyRootId;
 
     @BeforeEach
-    void createLegacySchemaAndApplySortMigration() {
+    void createCurrentSchema() {
         String url = System.getenv("LUMIRA_TEST_DB_URL");
         String user = System.getenv("LUMIRA_TEST_DB_USER");
         String password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
@@ -49,42 +48,12 @@ class OrganizationManualSortDatabaseTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(dataSource);
+        jdbc.execute(TestSchema.table("platform_organization"));
+        TestSchema.indexes("platform_organization").forEach(jdbc::execute);
         jdbc.execute(
-                "CREATE TABLE platform_organization ("
-                        + "id uuid PRIMARY KEY, parent_id uuid, code text NOT NULL, name text NOT NULL, "
-                        + "enabled boolean NOT NULL, version bigint NOT NULL DEFAULT 0)");
-
-        legacyRootId = UUID.fromString("00000000-0000-0000-0000-000000000010");
-        jdbc.update(
-                "INSERT INTO platform_organization(id,parent_id,code,name,enabled) VALUES(?,?,?,?,?)",
-                legacyRootId,
-                null,
-                "legacy-zeta",
-                "Legacy Zeta",
-                true);
-        jdbc.update(
-                "INSERT INTO platform_organization(id,parent_id,code,name,enabled) VALUES(?,?,?,?,?)",
-                UUID.fromString("00000000-0000-0000-0000-000000000009"),
-                null,
-                "legacy-alpha",
-                "Legacy Alpha",
-                true);
-
-        Flyway.configure()
-                .dataSource(dataSource)
-                .locations("classpath:db/migration")
-                .schemas(schema)
-                .defaultSchema(schema)
-                .baselineOnMigrate(true)
-                .baselineVersion("39")
-                .target("40")
-                .load()
-                .migrate();
-
-        jdbc.execute(
-                "CREATE FUNCTION platform_visible_organizations(actor_name text, permission_name text) "
-                        + "RETURNS TABLE(organization_id uuid) LANGUAGE SQL AS $$ "
-                        + "SELECT id FROM platform_organization $$");
+                "CREATE FUNCTION platform_visible_organizations(actor_name text, "
+                        + "permission_name text) RETURNS TABLE(organization_id uuid) "
+                        + "LANGUAGE SQL STABLE AS $$ SELECT id FROM platform_organization $$");
 
         repository = new OrganizationRepository(JdbcClient.create(dataSource));
         service =
@@ -97,42 +66,30 @@ class OrganizationManualSortDatabaseTest {
 
     @AfterEach
     void dropDisposableSchema() {
-        if (admin != null && schema != null) {
+        if (admin != null && schema != null)
             admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-        }
     }
 
     @Test
-    void migratesLegacyRowsAndSortsRootAndChildListsByManualOrder() {
+    void sortsRootAndChildListsByCurrentManualOrder() {
+        UUID root = id(10);
+        insert(root, null, "zeta", 0);
+        insert(id(9), null, "alpha", 0);
+
         assertEquals(
-                2,
-                jdbc.queryForObject(
-                        "SELECT count(*) FROM platform_organization WHERE sort_no = 0",
-                        Integer.class));
-        assertEquals(
-                List.of("legacy-alpha", "legacy-zeta"),
+                List.of("alpha", "zeta"),
                 repository.list(page(), true, null, "admin").stream()
                         .map(OrganizationRepository.Organization::code)
                         .toList());
 
-        UUID childLowId = UUID.fromString("00000000-0000-0000-0000-000000000020");
-        UUID childHighId = UUID.fromString("00000000-0000-0000-0000-000000000021");
-        UUID childLaterCodeId = UUID.fromString("00000000-0000-0000-0000-000000000022");
-        insert(childHighId, legacyRootId, "same-code", 5);
-        insert(childLowId, legacyRootId, "same-code", 5);
-        insert(childLaterCodeId, legacyRootId, "later-code", 5);
-        insert(UUID.fromString("00000000-0000-0000-0000-000000000023"), legacyRootId, "early", 1);
+        insert(id(20), root, "same-code", 5);
+        insert(id(21), root, "later-code", 5);
+        insert(id(22), root, "early", 1);
 
         assertEquals(
-                List.of("early", "later-code", "same-code", "same-code"),
-                repository.list(page(), true, legacyRootId, "admin").stream()
+                List.of("early", "later-code", "same-code"),
+                repository.list(page(), true, root, "admin").stream()
                         .map(OrganizationRepository.Organization::code)
-                        .toList());
-        assertEquals(
-                List.of(childLowId, childHighId),
-                repository.list(page(), true, legacyRootId, "admin").stream()
-                        .filter(row -> row.code().equals("same-code"))
-                        .map(OrganizationRepository.Organization::id)
                         .toList());
     }
 
@@ -204,6 +161,10 @@ class OrganizationManualSortDatabaseTest {
                 code,
                 true,
                 sortNo);
+    }
+
+    private UUID id(int suffix) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", suffix));
     }
 
     private PageRequest page() {

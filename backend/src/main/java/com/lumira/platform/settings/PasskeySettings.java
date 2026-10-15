@@ -1,10 +1,9 @@
 package com.lumira.platform.settings;
 
-import java.net.URI;
+import com.lumira.platform.identity.api.PasskeyPolicyPort;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -17,8 +16,6 @@ public record PasskeySettings(
         String rpName,
         List<String> allowedOrigins,
         Integer challengeTtlSeconds) {
-
-    private static final Pattern RP_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9.-]{0,252}");
 
     public static PasskeySettings defaults() {
         return new PasskeySettings(
@@ -49,55 +46,18 @@ public record PasskeySettings(
 
     public void validate() {
         PasskeySettings value = normalized();
-        if (value.enabled == null
-                || value.passwordlessEnabled == null
-                || value.selfBindingEnabled == null
-                || value.rpId == null
-                || value.rpId.isBlank()
-                || value.rpName == null
-                || value.rpName.isBlank()
-                || value.allowedOrigins == null
-                || value.allowedOrigins.isEmpty()
-                || value.challengeTtlSeconds == null) {
-            invalid();
-        }
-        if (value.rpId.length() > 253
-                || !RP_ID.matcher(value.rpId).matches()
-                || value.rpId.startsWith(".")
-                || value.rpId.endsWith(".")
-                || value.rpId.contains("..")) {
-            invalid();
-        }
-        if (value.rpName.length() > 255
-                || value.rpName.codePoints().anyMatch(Character::isISOControl)) {
-            invalid();
-        }
-        if (value.allowedOrigins.size() > 32) invalid();
-        for (String origin : value.allowedOrigins) validateOrigin(origin);
-        if (value.challengeTtlSeconds < 30 || value.challengeTtlSeconds > 600) invalid();
-        if (!value.enabled && (value.passwordlessEnabled || value.selfBindingEnabled)) invalid();
+        if (!toPolicy(value).validConfiguration()) invalid();
     }
 
-    private static void validateOrigin(String origin) {
-        if (origin == null
-                || origin.length() > 512
-                || origin.codePoints().anyMatch(Character::isISOControl)) invalid();
-        try {
-            URI uri = URI.create(origin);
-            if (!("http".equalsIgnoreCase(uri.getScheme())
-                            || "https".equalsIgnoreCase(uri.getScheme()))
-                    || uri.getHost() == null
-                    || uri.getUserInfo() != null
-                    || uri.getQuery() != null
-                    || uri.getFragment() != null
-                    || (uri.getPath() != null
-                            && !uri.getPath().isEmpty()
-                            && !"/".equals(uri.getPath()))) {
-                invalid();
-            }
-        } catch (IllegalArgumentException invalidOrigin) {
-            invalid();
-        }
+    private static PasskeyPolicyPort.Policy toPolicy(PasskeySettings value) {
+        return new PasskeyPolicyPort.Policy(
+                value.enabled,
+                value.passwordlessEnabled,
+                value.selfBindingEnabled,
+                value.rpId,
+                value.rpName,
+                value.allowedOrigins,
+                value.challengeTtlSeconds);
     }
 
     private static void invalid() {

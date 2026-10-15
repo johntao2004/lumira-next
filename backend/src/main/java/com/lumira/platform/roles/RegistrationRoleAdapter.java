@@ -13,8 +13,11 @@ import org.springframework.web.server.ResponseStatusException;
 /** Registration-only role allow-list, kept separate from administrator role HTTP operations. */
 @Service
 public class RegistrationRoleAdapter implements RegistrationRolePort {
-    private static final Set<String> ALLOWED_AUTHORITIES =
-            Set.of("platform:feedback:read", "platform:feedback:create");
+    static final Set<String> ALLOWED_AUTHORITIES =
+            Set.of(
+                    "platform:feedback:access",
+                    "platform:feedback:read",
+                    "platform:feedback:create");
 
     private final JdbcClient jdbc;
 
@@ -141,9 +144,13 @@ public class RegistrationRoleAdapter implements RegistrationRolePort {
         if (!enabled) return "registrationRoleDisabled";
         if ("admin".equalsIgnoreCase(code)) return "registrationRoleAdministrator";
         if (!"SELF".equals(dataScope)) return "registrationRoleScopeNotAllowed";
-        if (!ALLOWED_AUTHORITIES.containsAll(authorities))
+        if (!allowsAuthorities(authorities))
             return "registrationRolePermissionsNotAllowed";
         return null;
+    }
+
+    static boolean allowsAuthorities(Set<String> authorities) {
+        return ALLOWED_AUTHORITIES.containsAll(authorities);
     }
 
     private record LockedRole(

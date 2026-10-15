@@ -2,11 +2,9 @@ package com.lumira.platform.events;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.DurableEventConsumerPort;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +14,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
+
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class PlatformEventOutboxWorkerDatabaseTest {
@@ -45,7 +48,22 @@ class PlatformEventOutboxWorkerDatabaseTest {
         jdbc = new JdbcTemplate(ds);
         transaction = new TransactionTemplate(new DataSourceTransactionManager(ds));
         store = new PlatformEventOutboxStore(JdbcClient.create(ds), new JsonMapper());
-        jdbc.execute(TestMigration.read("V39__platform_event_outbox.sql"));
+        for (String table :
+                List.of(
+                        "platform_event_operation",
+                        "platform_event_outbox",
+                        "platform_event_trace",
+                        "platform_event_replay_approval")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
+        for (String table :
+                List.of(
+                        "platform_event_outbox",
+                        "platform_event_trace",
+                        "platform_event_replay_approval")) {
+            TestSchema.foreignKeys(table).forEach(jdbc::execute);
+        }
         jdbc.execute(
                 "CREATE TABLE event_consumer_effect(event_id uuid PRIMARY KEY,effect_count integer"
                         + " NOT NULL)");

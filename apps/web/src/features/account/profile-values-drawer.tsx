@@ -10,6 +10,7 @@ import {FormDrawer} from "@/platform/components/form-drawer";
 import {usePreferences} from "@/platform/providers";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { preserveProfileFieldValues } from "@/platform/profile-fields/values";
+import { profileFieldValueValid } from "@/platform/profile-fields/validation";
 type Field={key:string;label:string;description:string;type:'TEXT'|'TEXTAREA'|'NUMBER'|'DATE'|'SELECT';required:boolean;placeholder:string;groupKey:string;groupLabel:string;options:string[];dictionaryCode?:string|null};
 type DictionarySelection={itemId:string;label:string;enabled:boolean};
 type Snapshot={version:number;schemaVersion:number;fields:Field[];values:Record<string,string>;dictionarySelections?:Record<string,DictionarySelection>};
@@ -29,8 +30,8 @@ function ProfileValueFields({fields,values,dictionarySelections}:{fields:Field[]
  return <>{[...groups].map(([key,items])=><fieldset key={key} className="mb-4 border-0 p-0"><legend>{items[0].groupLabel}</legend>{items.map(field=>{
  const value=values[field.key];const metadata=dictionarySelections?.[field.key];
  const currentSelection=value&&dictionarySelections!==undefined?{itemId:value,label:metadata?.itemId===value?metadata.label:t('unavailable'),enabled:metadata?.itemId===value?metadata.enabled:false}:undefined;
- return <Form.Item key={field.key} name={field.key} label={field.label} extra={field.description||undefined} rules={[{required:field.required,message:t('invalidProfileValues')}]} getValueFromEvent={field.type==='NUMBER'||field.type==='SELECT'?value=>value??'':undefined}>
- {field.type==='SELECT'&&field.dictionaryCode?<DictionarySelect code={field.dictionaryCode} currentSelection={currentSelection}/>:field.type==='SELECT'?<Select allowClear placeholder={field.placeholder} options={field.options.map(value=>({value,label:value}))}/>:field.type==='NUMBER'?<InputNumber stringMode placeholder={field.placeholder}/>:field.type==='TEXTAREA'?<Input.TextArea rows={4} maxLength={2000} placeholder={field.placeholder}/>:<Input type={field.type==='DATE'?'date':'text'} maxLength={200} placeholder={field.placeholder}/>}</Form.Item>})}</fieldset>)}</>;
+ return <Form.Item key={field.key} name={field.key} label={field.label} extra={field.description||undefined} rules={[{required:field.required,message:t('invalidProfileValues')},{validator:async(_,value:unknown)=>{if(!profileFieldValueValid(field,value))throw new Error(t('invalidProfileValues'));}}]} getValueFromEvent={field.type==='NUMBER'||field.type==='SELECT'?value=>value??'':undefined}>
+ {field.type==='SELECT'&&field.dictionaryCode?<DictionarySelect code={field.dictionaryCode} currentSelection={currentSelection}/>:field.type==='SELECT'?<Select allowClear placeholder={field.placeholder} options={field.options.map(value=>({value,label:value}))}/>:field.type==='NUMBER'?<InputNumber stringMode maxLength={40} inputMode="decimal" placeholder={field.placeholder}/>:field.type==='TEXTAREA'?<Input.TextArea rows={4} maxLength={2000} placeholder={field.placeholder}/>:<Input type={field.type==='DATE'?'date':'text'} maxLength={field.type==='DATE'?10:200} placeholder={field.placeholder}/>}</Form.Item>})}</fieldset>)}</>;
 }
 export function ProfileValuesDrawer({open,onClose}:{open:boolean;onClose:()=>void}){
  const {t}=usePreferences();const client=useQueryClient();const {pending,error,setError,run}=useSubmitAction({errorKeys:["staleRecord","invalidProfileValues"]});

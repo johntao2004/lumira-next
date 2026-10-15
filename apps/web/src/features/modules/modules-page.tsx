@@ -220,11 +220,9 @@ export function ModulesPage({ canInstall, canUpdate, canUninstall }: { canInstal
       <Spin spinning={query.isFetching || plugins.query.isFetching}>
         {manageableRows.length ? <div className="modules-card-grid">
           {pageRows.map(row => {
-            const status = moduleStatus(row);
             const switchDisabled = updateBlocked || !row.hasModuleState || row.core || row.plugin !== null && !row.installed;
             const displayedEnabled = pendingSwitch?.id === row.id ? pendingSwitch.enabled : row.enabled;
             const installDisabled = lifecycleBlocked || plugins.query.isPending || plugins.query.isError;
-            const dependencies = row.dependencies.join(", ") || "—";
             return <Card key={row.id} className="modules-card" size="small">
               <button type="button" className="modules-card__details-trigger" onClick={() => setSelectedModuleId(row.id)} aria-label={`${row.moduleDisplayName} ${t("details")}`}>
                 <span className="modules-card__heading">
@@ -234,9 +232,7 @@ export function ModulesPage({ canInstall, canUpdate, canUninstall }: { canInstal
                 <span className="modules-card__id">{row.id}</span>
                 <span className="modules-card__summary">
                   <span>{t("version")} {row.version}</span>
-                  <span className="modules-card__dependency" title={dependencies}>{t("dependencies")} {dependencies}</span>
                 </span>
-                <Tag color={status.color}>{status.label}</Tag>
               </button>
               <div className="modules-card__operations">
                 <div className="modules-card__switch-label">

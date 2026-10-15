@@ -118,7 +118,9 @@ export function RoleAuthenticationEditor({ role, canWrite }: { role: Role; canWr
           { value: "REQUIRED", label: t("authenticationRequired") },
         ]} />
       </Form.Item>
-      {mfaMode === "REQUIRED" && Number.isSafeInteger(policy.data.affectedAccountCount) && <Alert className="mb-4" type="warning" showIcon title={t("roleMfaAffectedAccounts", { count: policy.data.affectedAccountCount })} />}
+      {mfaMode === "REQUIRED" && Number.isSafeInteger(policy.data.affectedAccountCount) && <Form.Item>
+        <Alert type="warning" showIcon title={t("roleMfaAffectedAccounts", { count: policy.data.affectedAccountCount })} />
+      </Form.Item>}
       {capabilities.data?.capabilities.captcha ? <Form.Item name="captchaMode" label="CAPTCHA">
         <Radio.Group options={[
           { value: "INHERIT", label: t("authenticationInherit") },

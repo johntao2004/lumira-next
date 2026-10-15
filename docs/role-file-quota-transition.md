@@ -1,18 +1,17 @@
-# Role based file quota transition
+# Role-based file quota management
 
-V12 adds nullable byte and file-count limits to `platform_role`. The two V11 columns on
-`platform_user` are deliberately retained and are not rewritten by the migration. New code
-does not read those user-level values when calculating upload or usage limits. A previous
-application version can therefore restore the old behavior without reconstructing data.
-V12 does not create quota roles, copy overrides, or change user-role assignments. After the
-new code is deployed, a retained V11 override no longer affects runtime limits: a user with
-no active role limit receives the system default. This can raise that user's effective limit
-until the override is deliberately mapped to role policy; there is no per-user fallback.
+The current global database initialization is `B52__platform_initialization.sql`. It defines
+nullable, non-negative `file_quota_bytes_limit` and `file_quota_files_limit` columns on
+`platform_role`. The nullable `file_quota_bytes_override` and
+`file_quota_files_override` columns on `platform_user` remain visible as legacy account data,
+but they do not affect runtime quota calculations. This document describes current policy
+management; it is not an upgrade or rollback procedure for historical global migration
+versions.
 
-## Review and migrate legacy values
+## Review account-level legacy values
 
-Before rollout, export users with a V11 override and keep the export with the release
-backup:
+The user list and detail pages flag accounts whose legacy override fields are non-null. To
+review those values:
 
 ```sql
 SELECT id, username, file_quota_bytes_override, file_quota_files_override
@@ -22,75 +21,54 @@ WHERE deleted_at IS NULL
 ORDER BY username, id;
 ```
 
-Before enabling the new runtime for users with non-null overrides, map those values
-deliberately:
+If the intended policy is to retain a limit for those users, represent it explicitly with
+roles. Group the reviewed accounts by their `(file_quota_bytes_override,
+file_quota_files_override)` pair and create one enabled quota-only role per distinct pair,
+with no authorities. Copy each non-null dimension to the matching role limit and leave null
+dimensions unset. Accounts with the same pair can share that role. There is no automatic
+copy or fallback from the account-level fields.
 
-1. Group exported users by their `(file_quota_bytes_override, file_quota_files_override)`
-   pair. Create one enabled quota-only role for each distinct pair, with no authorities.
-   Copy each non-null dimension to the corresponding role limit and leave null dimensions
-   unset. Users with the same pair can reuse that role.
-2. For each target user, read the current role IDs and version from
-   `GET /api/platform/users/{userId}/roles`. Keep that complete role set and append the
-   matching quota role ID.
-3. Preview the complete proposed role set before saving:
-
-   ```text
-   GET /api/platform/users/{userId}/file-quota/preview?roleIds={existingRoleId}&roleIds={quotaRoleId}
-   ```
-
-   The directory user editor shows the retained legacy values and the current/proposed
-   effective limits. Review the difference; another stricter active role can keep either
-   dimension below the old per-user value. The system default applies only when no enabled
-   assigned role sets that dimension.
-4. Only after reviewing the preview, save the complete role set and the version returned by
-   the roles read using `PUT /api/platform/users/{userId}/roles` with
-   `{"version": ..., "roleIds": [...]}`. Do not replace the user's existing roles with
-   only the quota role.
-
-Role reads/writes continue to enforce the existing role permission and user-scope checks.
-Limits are resolved independently for storage bytes and file count. Positive byte limits
-combine by minimum; an explicit `0` means unlimited and does not constrain a positive limit
-on another active role. If no active role sets a positive byte limit but at least one sets
-`0`, the effective byte limit is unlimited. A `null` byte value adds no policy; the system
-default is used only when every active role leaves that dimension null. File-count limits
-also combine by minimum, while `0` rejects new files. The configured system value is a
-fallback for a dimension only when no enabled assigned role sets that dimension; role limits
-may exceed it. The legacy
-`LUMIRA_FILES_MAXIMUM_BYTES` and
-`LUMIRA_FILES_MAXIMUM_COUNT` environment names remain accepted as aliases for the system
-fallback values. New deployments should use `LUMIRA_FILES_DEFAULT_BYTES` and
-`LUMIRA_FILES_DEFAULT_COUNT`. Quota values must remain non-negative safe integers so the
-browser can display and submit them without precision loss; this supported numeric range is
-not a product hard cap.
-
-Use the read-only preview endpoint before assignment:
+For each account, read the full current role set and version from
+`GET /api/platform/users/{userId}/roles`, then append the intended quota role. Preview the
+complete proposed set before saving:
 
 ```text
-GET /api/platform/users/{userId}/file-quota/preview?roleIds={roleId}&roleIds={existingRoleId}
+GET /api/platform/users/{userId}/file-quota/preview?roleIds={existingRoleId}&roleIds={quotaRoleId}
 ```
 
-The normal role assignment endpoint continues to replace the full role list. Read the
-current role IDs first, add the quota role, then submit the complete set with the returned
-user version. Role assignment remains subject to the existing role read/write and user
-scope checks. Do not copy a legacy value into a role without reviewing the before/after
-preview: an explicit role limit is shared by every member of that role and multiple roles
-combine by the lower limit per dimension.
+The preview reports current and proposed effective limits. Another stricter active role can
+keep either dimension below the reviewed account-level value. Save the complete role set
+with the version returned by the read using
+`PUT /api/platform/users/{userId}/roles` and
+`{"version": ..., "roleIds": [...]}`. Do not replace existing roles with only the quota
+role. Role reads and writes continue to enforce role permissions and user data scope.
 
-## Runtime behavior and recovery
+## Effective quota rules
 
-An unset role dimension adds no capacity. For file count, effective quota is the minimum of
-all non-null limits on assigned, enabled roles. For storage bytes, positive limits combine
-by minimum and `0` is an unlimited value, so a finite active role still constrains a user
-who also has an unlimited role. If no active role sets the dimension, the system default is
-used. A role limit can therefore be higher than the system default. Disabled or removed
-roles are ignored. Existing files remain readable and are not deleted when a limit is
-lowered. Usage can remain above a finite limit; uploads are rejected until usage falls
-within both limits. The aggregate byte limit does not change the separate per-file upload
-size limit. Usage reads, role previews, and upload reservations use the same resolver.
+Enabled assigned role limits combine independently for bytes and file count. For bytes,
+positive values combine by minimum. A `0` role limit means unlimited; it does not weaken a
+positive limit on another active role. If no active role sets a positive byte limit but at
+least one sets `0`, the effective byte limit is unlimited. A null value adds no role policy;
+the system default applies only when every active role leaves that dimension null. File-count
+limits combine by minimum, and `0` rejects new files. Role limits may exceed the system
+default.
 
-The V11 user columns remain the recovery source. To restore the previous application,
-roll back the code version; its existing user-level values are still present. If a database
-rollback also needs to remove quota roles, first export their role IDs and assignments,
-then remove only the migration-created role links and roles after confirming that no new
-users or policy edits depend on them. Keep the pre-rollout export and database backup as
-the authoritative record of the original per-user values.
+The system fallback uses `LUMIRA_FILES_DEFAULT_BYTES` and
+`LUMIRA_FILES_DEFAULT_COUNT`; the existing `LUMIRA_FILES_MAXIMUM_BYTES` and
+`LUMIRA_FILES_MAXIMUM_COUNT` names remain accepted as aliases. Quota values must be
+non-negative safe integers so the browser can display and submit them without precision
+loss; this supported numeric range is not a product hard cap.
+
+Disabled or removed roles do not contribute limits. Existing files remain readable and are
+not deleted when a limit is lowered. Usage can remain above a finite limit; uploads are
+rejected until usage falls within both limits. The aggregate byte limit does not change the
+separate per-file upload size limit. Usage reads, role previews, and upload reservations use
+the same resolver.
+
+## Operational checks
+
+Before assigning or changing a quota role, read the user's complete current role set and
+version, review the preview, and save the complete set with that version. A role limit is
+shared by every member of that role, and multiple roles combine by the lower limit per
+dimension. Verify both the role configuration and the effective quota shown for affected
+users after the assignment.

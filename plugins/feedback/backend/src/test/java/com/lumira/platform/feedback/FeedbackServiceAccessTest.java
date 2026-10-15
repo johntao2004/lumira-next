@@ -12,7 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.lumira.platform.TestMigration;
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.audit.AuditRepository;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.FileContentPort;
@@ -77,7 +77,7 @@ class FeedbackServiceAccessTest {
 
     @BeforeEach
     @SuppressWarnings("unchecked")
-    void setUp() throws Exception {
+    void setUp() {
         String url = System.getenv("LUMIRA_TEST_DB_URL");
         String user = System.getenv("LUMIRA_TEST_DB_USER");
         String password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
@@ -94,19 +94,47 @@ class FeedbackServiceAccessTest {
         tx = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         var client = JdbcClient.create(dataSource);
 
-        jdbc.execute(
-                "CREATE TABLE platform_user(id UUID PRIMARY KEY, username TEXT UNIQUE, display_name"
-                        + " TEXT, enabled BOOLEAN, deleted_at TIMESTAMPTZ)");
+        for (String table :
+                List.of(
+                        "platform_user",
+                        "platform_authority",
+                        "platform_user_role",
+                        "platform_role",
+                        "platform_role_authority",
+                        "platform_organization",
+                        "platform_user_organization",
+                        "platform_audit",
+                        "platform_file",
+                        "platform_feedback",
+                        "platform_feedback_file")) {
+            jdbc.execute(TestSchema.table(table));
+            TestSchema.indexes(table).forEach(jdbc::execute);
+        }
         jdbc.execute("CREATE TABLE platform_effective_authority(user_id UUID, authority TEXT)");
-        jdbc.execute("CREATE TABLE platform_authority(user_id UUID, authority TEXT)");
-        jdbc.execute("CREATE TABLE platform_user_role(user_id UUID, role_id UUID)");
         jdbc.execute(
-                "CREATE TABLE platform_role(id UUID PRIMARY KEY, enabled BOOLEAN, data_scope"
-                        + " TEXT, version BIGINT NOT NULL DEFAULT 1)");
-        jdbc.execute("CREATE TABLE platform_role_authority(role_id UUID, authority TEXT)");
+                "ALTER TABLE platform_feedback ADD CONSTRAINT qa_feedback_owner_fk "
+                        + "FOREIGN KEY (owner_id) REFERENCES platform_user(id) ON DELETE SET NULL");
         jdbc.execute(
-                "CREATE TABLE platform_organization(id UUID PRIMARY KEY, parent_id UUID, enabled BOOLEAN)");
-        jdbc.execute("CREATE TABLE platform_user_organization(user_id UUID, organization_id UUID)");
+                "ALTER TABLE platform_feedback ADD CONSTRAINT qa_feedback_handler_fk "
+                        + "FOREIGN KEY (handled_by) REFERENCES platform_user(id) ON DELETE SET NULL");
+        jdbc.execute(
+                "ALTER TABLE platform_file ADD CONSTRAINT qa_file_owner_fk "
+                        + "FOREIGN KEY (owner_id) REFERENCES platform_user(id) ON DELETE SET NULL");
+        jdbc.execute(
+                "ALTER TABLE platform_feedback_file ADD CONSTRAINT qa_feedback_file_feedback_fk "
+                        + "FOREIGN KEY (feedback_id) REFERENCES platform_feedback(id) ON DELETE CASCADE");
+        jdbc.execute(
+                "ALTER TABLE platform_feedback_file ADD CONSTRAINT qa_feedback_file_file_fk "
+                        + "FOREIGN KEY (file_id) REFERENCES platform_file(id) ON DELETE RESTRICT");
+        jdbc.execute(
+                "CREATE FUNCTION qa_track_platform_file_owner() RETURNS trigger LANGUAGE plpgsql AS $$"
+                        + " BEGIN IF NEW.owner_id IS NOT NULL THEN NEW.orphaned_at=NULL;"
+                        + " ELSIF TG_OP='INSERT' THEN NEW.orphaned_at=clock_timestamp();"
+                        + " ELSIF OLD.owner_id IS NOT NULL OR NEW.orphaned_at IS NULL THEN"
+                        + " NEW.orphaned_at=clock_timestamp(); END IF; RETURN NEW; END; $$");
+        jdbc.execute(
+                "CREATE TRIGGER qa_platform_file_track_owner BEFORE INSERT OR UPDATE OF owner_id"
+                        + " ON platform_file FOR EACH ROW EXECUTE FUNCTION qa_track_platform_file_owner()");
         jdbc.execute(
                 "CREATE TABLE platform_test_permission_scope(actor_name TEXT, permission TEXT,"
                         + " data_scope TEXT, PRIMARY KEY(actor_name, permission))");
@@ -159,16 +187,6 @@ class FeedbackServiceAccessTest {
                         + "JOIN platform_role role ON role.id=assigned.role_id "
                         + "AND role.enabled AND role.data_scope='ALL' "
                         + "JOIN platform_role_authority grants ON grants.role_id=role.id");
-        jdbc.execute(
-                "CREATE TABLE platform_audit(id UUID PRIMARY KEY, actor TEXT, action TEXT,"
-                        + " target_id UUID)");
-        jdbc.execute(
-                "CREATE TABLE platform_file(id UUID PRIMARY KEY, owner_id UUID, state TEXT,"
-                        + " media_type TEXT)");
-        jdbc.execute(TestMigration.read("V34__feedback_storage.sql"));
-        jdbc.execute("ALTER TABLE platform_feedback ADD COLUMN category VARCHAR(100)");
-        jdbc.execute(TestMigration.read("V38__feedback_file_references.sql"));
-
         addUser(alice, "alice");
         addUser(bob, "bob");
         addUser(scopedManager, "scoped-manager");
@@ -221,8 +239,9 @@ class FeedbackServiceAccessTest {
                 FeedbackService.REPLY);
 
         jdbc.update(
-                "INSERT INTO platform_organization(id,parent_id,enabled) VALUES (?,NULL,true),"
-                        + " (?, ?, true), (?,NULL,true)",
+                "INSERT INTO platform_organization(id,parent_id,code,name,enabled)"
+                        + " VALUES (?,NULL,'root','Root',true), (?,?,'child','Child',true),"
+                        + " (?,NULL,'other','Other',true)",
                 rootOrganization,
                 childOrganization,
                 rootOrganization,
@@ -279,8 +298,8 @@ class FeedbackServiceAccessTest {
 
     private void addUser(UUID id, String username) {
         jdbc.update(
-                "INSERT INTO platform_user(id, username, display_name, enabled) VALUES (?, ?, ?,"
-                        + " true)",
+                "INSERT INTO platform_user(id, username, display_name, password_hash)"
+                        + " VALUES (?, ?, ?, 'unused')",
                 id,
                 username,
                 username);
@@ -341,8 +360,9 @@ class FeedbackServiceAccessTest {
     private UUID addImageTo(FeedbackStore.Detail feedback) {
         UUID image = UUID.randomUUID();
         jdbc.update(
-                "INSERT INTO platform_file(id,owner_id,state,media_type)"
-                        + " VALUES (?,?,'READY','image/png')",
+                "INSERT INTO platform_file"
+                        + "(id,owner_id,storage_backend,original_name,state,size_bytes,sha256,media_type)"
+                        + " VALUES (?,?,'local','image.png','READY',32,repeat('c',64),'image/png')",
                 image,
                 feedback.ownerId());
         tx.executeWithoutResult(

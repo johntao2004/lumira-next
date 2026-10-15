@@ -7,6 +7,14 @@ import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
 import com.lumira.platform.dictionaries.api.DictionaryLookupPort;
 import com.lumira.platform.modules.ModuleRuntime;
+
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.text.Normalizer;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,12 +23,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SensitiveWordService {
@@ -354,9 +356,12 @@ public class SensitiveWordService {
     private Normalized normalize(Input input, String categoryValue) {
         if (input == null) fail(HttpStatus.BAD_REQUEST, "invalidSensitiveWord");
         String normalizedWord = word(input.word());
+        String matchKey = SensitiveWordMatcher.normalizeForMatch(normalizedWord);
+        if (matchKey.isBlank() || matchKey.length() > MAX_WORD_LENGTH)
+            fail(HttpStatus.BAD_REQUEST, "invalidSensitiveWord");
         return new Normalized(
                 normalizedWord,
-                SensitiveWordMatcher.normalizeForMatch(normalizedWord),
+                matchKey,
                 categoryValue,
                 severity(input.severity()),
                 action(input.action()),

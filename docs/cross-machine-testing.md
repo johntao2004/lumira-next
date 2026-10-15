@@ -62,17 +62,16 @@ pnpm test:java
 
 `pnpm plugins:build` 默认只构建 `plugins/` 下一层含 `plugin.json` 的正式插件；它不会递归纳入 `plugins/sdk/examples/`。`hotplug-probe` 是插件生命周期 smoke 使用的 fixture，需按上面的定向命令单独构建；最后一条定向命令为验收额外生成另外两个示例包。插件 `dist/`、JAR 和 ZIP 是构建输出，不作为源码提交。
 
-`pnpm test:java` 即使成功退出，也可能因缺少专用数据库环境变量而跳过迁移集成测试。当前有五组迁移测试分别受各自的 `*_TEST_DB_URL` 控制，共覆盖 21 项测试。要完成迁移验收，需按下表为每组分别设置 `*_TEST_DB_URL`、`*_TEST_DB_USER` 和 `*_TEST_DB_PASSWORD`，并将连接信息放在仅当前用户可读的私有 runtime 环境文件或测试进程环境中：
+`pnpm test:java` 即使成功退出，也可能因缺少专用数据库环境变量而跳过数据库集成测试。宿主当前结构验收使用唯一的 B52 初始化基线；独立的插件迁移测试仍按插件自己的 Flyway 历史运行。按需要为下表中的测试设置各自的 `*_TEST_DB_URL`、`*_TEST_DB_USER` 和 `*_TEST_DB_PASSWORD`，并将连接信息放在仅当前用户可读的私有 runtime 环境文件或测试进程环境中：
 
 | 环境变量前缀 | 新建数据库名必须以前缀开头 | 迁移范围 |
 | --- | --- | --- |
-| `LUMIRA_MIGRATION_TEST_DB_` | `lumira_api_docs_qa_` | 完整宿主迁移链 |
-| `LUMIRA_NAVIGATION_MIGRATION_TEST_DB_` | `lumira_navigation_qa_` | V47 导航分组升级 |
-| `LUMIRA_PERMISSION_MIGRATION_TEST_DB_` | `lumira_permission_qa_` | V50/V51 权限授权升级 |
+| `LUMIRA_DATABASE_BASELINE_TEST_DB_` | `lumira_qa_database_baseline_` | B52 首次应用、手工导入、基线登记与重复运行幂等性 |
+| `LUMIRA_MIGRATION_TEST_DB_` | `lumira_api_docs_qa_` | B52 首次应用及 API 文档、监控导航种子 |
 | `LUMIRA_FEEDBACK_PERMISSION_MIGRATION_TEST_DB_` | `lumira_feedback_permission_qa_` | feedback 插件 V2 至 V4 迁移 |
-| `LUMIRA_PLUGIN_PERMISSION_FINALIZER_TEST_DB_` | `lumira_plugin_permissions_qa_` | 宿主迁移与插件权限 finalizer |
+| `LUMIRA_PLUGIN_PERMISSION_FINALIZER_TEST_DB_` | `lumira_plugin_permissions_qa_` | 宿主 B52 上插件权限 finalizer 的独立迁移 |
 
-每组都会校验数据库名前缀，并要求全新的 `public` schema 中尚无 `flyway_schema_history` 表。必须使用五个不同的空数据库：各组应用的迁移目标不同且会写入 fixture，不能共用 `lumira_next`、带浏览器/API guard 的 QA 库或其他已经执行过迁移的库。这五组迁移测试不使用 `lumira_qa_fixture_guard`；该 marker 只属于上面的隔离 smoke 契约。五组连接 URL 和凭据都应留在仅当前用户可读的 `.runtime` 私有环境文件或进程环境中，不要提交到版本库。运行 `pnpm test:java` 后，检查 Surefire 汇总并确认 `Skipped: 0`，以证明五组测试均实际执行。
+`DatabaseBaselineMigrationTest` 还要求设置 `LUMIRA_QA_RUN_TOKEN`，并确保它与 `qa_guard.lumira_qa_fixture_guard` 中唯一的 `id=true`、`purpose='isolated-security-qa'` 标记行匹配。该测试会在开始和清理时删除并重建 `public` schema，因此目标必须是符合 `lumira_qa_database_baseline_<suffix>` 命名的专用数据库；不能使用 `lumira_next`、默认本地库或其他 QA 库。测试验证 Flyway 从空 schema 只应用 B52、`validate` 和重复 `migrate` 不改变结构或稳定种子；随后手工导入同一 B52 SQL，验证结构/种子一致、Flyway 只登记版本 52 基线而不重放 SQL，再次运行仍保持不变。其他三组也分别使用独立的新数据库，且 `public` schema 中不能已有 `flyway_schema_history`。不要将这些测试库连接信息提交到版本库；运行 `pnpm test:java` 后查看 Surefire 中对应测试类的执行与跳过状态。
 
 有些验收还要使用新建的本地数据库和正在运行的应用：
 
