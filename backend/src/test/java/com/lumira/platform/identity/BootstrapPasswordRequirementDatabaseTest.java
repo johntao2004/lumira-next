@@ -168,7 +168,8 @@ class BootstrapPasswordRequirementDatabaseTest {
                         "SELECT count(*) FROM platform_authority WHERE user_id=? AND authority='platform:custom:retained'",
                         Integer.class,
                         ADMIN_ID));
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
     }
 
     @Test
@@ -184,7 +185,8 @@ class BootstrapPasswordRequirementDatabaseTest {
 
         runBootstrap(BOOTSTRAP_PASSWORD);
 
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
         assertEquals(
                 2,
                 jdbc.queryForObject(
@@ -216,7 +218,8 @@ class BootstrapPasswordRequirementDatabaseTest {
                         "SELECT count(*) FROM platform_user_role assigned JOIN platform_role role ON role.id=assigned.role_id JOIN platform_role_authority role_grant ON role_grant.role_id=role.id WHERE assigned.user_id=? AND role.enabled AND role_grant.authority='platform:users:access'",
                         Integer.class,
                         adminId));
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_authority", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_authority", Integer.class));
     }
 
     @Test
@@ -244,7 +247,8 @@ class BootstrapPasswordRequirementDatabaseTest {
                         java.time.OffsetDateTime.class,
                         ADMIN_ID));
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM spring_session", Integer.class));
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
         assertEquals(
                 0,
                 jdbc.queryForObject(
@@ -289,7 +293,8 @@ class BootstrapPasswordRequirementDatabaseTest {
                         java.time.OffsetDateTime.class,
                         ADMIN_ID));
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM spring_session", Integer.class));
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
     }
 
     @Test
@@ -403,8 +408,6 @@ class BootstrapPasswordRequirementDatabaseTest {
 
     private void insertAuthority(UUID userId, String authority) {
         jdbc.update(
-                "INSERT INTO platform_authority(user_id,authority) VALUES(?,?)",
-                userId,
-                authority);
+                "INSERT INTO platform_authority(user_id,authority) VALUES(?,?)", userId, authority);
     }
 }

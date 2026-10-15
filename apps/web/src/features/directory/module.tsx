@@ -50,6 +50,7 @@ export const directoryFrontendModule = {
       canReadAuthenticationPolicy={hasRouteOperation("roles", "readAuthenticationPolicy")}
       canManageAuthenticationPolicy={hasRouteOperation("roles", "updateAuthenticationPolicy")}
       canReadRegistrationSettings={!readOnlyPreview && hasRouteAccess("registration")}
+      canReadFileQuota={!readOnlyPreview && hasRouteAccess("files-all")}
       readOnlyPreview={readOnlyPreview}
     />,
     users: ({ hasRouteAccess, hasRouteOperation, readOnlyPreview }) => <UserManagementTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} readOnlyPreview={readOnlyPreview} />,

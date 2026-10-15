@@ -1,10 +1,12 @@
 package com.lumira.platform.roles;
 
+import com.lumira.platform.common.FileQuotaDefaultsPort;
 import com.lumira.platform.common.FileQuotaPolicyPort;
 import com.lumira.platform.files.FileQuota;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,11 +18,16 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class RoleQuotaPolicyAdapter implements FileQuotaPolicyPort {
     private final RoleRepository roles;
-    private final FileQuota fallback;
+    private final FileQuotaDefaultsPort defaults;
 
     public RoleQuotaPolicyAdapter(RoleRepository roles, FileQuota fallback) {
+        this(roles, () -> new Limits(fallback.maximumBytes(), fallback.maximumFiles()));
+    }
+
+    @Autowired
+    public RoleQuotaPolicyAdapter(RoleRepository roles, FileQuotaDefaultsPort defaults) {
         this.roles = roles;
-        this.fallback = fallback;
+        this.defaults = defaults;
     }
 
     @Override
@@ -44,6 +51,7 @@ public class RoleQuotaPolicyAdapter implements FileQuotaPolicyPort {
     }
 
     private Limits merge(Collection<RoleRepository.QuotaLimit> rows) {
+        Limits fallback = defaults.current();
         Long roleMaximumBytes = null;
         boolean hasUnlimitedByteRole = false;
         Long roleMaximumFiles = null;

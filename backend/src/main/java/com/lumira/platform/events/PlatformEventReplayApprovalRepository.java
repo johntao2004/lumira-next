@@ -1,9 +1,8 @@
 package com.lumira.platform.events;
 
+import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-
-import java.util.UUID;
 
 /** Durable operator approval history for dead-letter recovery. */
 @Repository

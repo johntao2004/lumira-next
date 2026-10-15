@@ -1,13 +1,11 @@
 package com.lumira.platform.notifications;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
-
+import java.util.List;
+import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
-
-import java.util.List;
-import java.util.UUID;
 
 /** Writes the notification requested by a committed feedback create or handling operation. */
 public final class FeedbackNotificationEventConsumer implements DurableEventConsumerPort {

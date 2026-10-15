@@ -3,17 +3,14 @@ package com.lumira.platform.notifications;
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
-
+import java.time.OffsetDateTime;
+import java.util.*;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-
 import tools.jackson.databind.ObjectMapper;
-
-import java.time.OffsetDateTime;
-import java.util.*;
 
 /**
  * Account-scoped in-app notifications. Producers supply a stable dedupe key and localized message
@@ -367,7 +364,7 @@ public class NotificationStore {
     public long unreadCount(UUID recipientId) {
         return jdbc.sql(
                         "SELECT count(*) FROM platform_notification WHERE recipient_id=:recipient"
-                            + " AND read_at IS NULL AND (expires_at IS NULL OR expires_at>now())")
+                                + " AND read_at IS NULL AND (expires_at IS NULL OR expires_at>now())")
                 .param("recipient", recipientId)
                 .query(Long.class)
                 .single();
@@ -389,8 +386,8 @@ public class NotificationStore {
     public int markAllRead(UUID recipientId) {
         return jdbc.sql(
                         "UPDATE platform_notification SET read_at=now() WHERE"
-                            + " recipient_id=:recipient AND read_at IS NULL AND (expires_at IS NULL"
-                            + " OR expires_at>now())")
+                                + " recipient_id=:recipient AND read_at IS NULL AND (expires_at IS NULL"
+                                + " OR expires_at>now())")
                 .param("recipient", recipientId)
                 .update();
     }
@@ -408,8 +405,8 @@ public class NotificationStore {
                         Map.of(
                                 "ownerUsername",
                                 "CASE WHEN u.username IS NULL THEN '—' ELSE"
-                                    + " coalesce(u.display_name,u.username) || ' (' || u.username"
-                                    + " || ')' END",
+                                        + " coalesce(u.display_name,u.username) || ' (' || u.username"
+                                        + " || ')' END",
                                 "title",
                                 "coalesce(n.params->>'title',n.title_key)",
                                 "body",
@@ -428,10 +425,10 @@ public class NotificationStore {
         var rows =
                 jdbc.sql(
                                 "SELECT"
-                                    + " n.id,n.recipient_id,u.username,u.display_name,n.kind,n.title_key,n.body_key,n.params::text,n.href,(n.read_at"
-                                    + " IS NOT NULL) AS read,n.created_at,n.expires_at FROM"
-                                    + " platform_notification n JOIN platform_user u ON"
-                                    + " u.id=n.recipient_id"
+                                        + " n.id,n.recipient_id,u.username,u.display_name,n.kind,n.title_key,n.body_key,n.params::text,n.href,(n.read_at"
+                                        + " IS NOT NULL) AS read,n.created_at,n.expires_at FROM"
+                                        + " platform_notification n JOIN platform_user u ON"
+                                        + " u.id=n.recipient_id"
                                         + filter
                                         + fieldFilter.sql()
                                         + " ORDER BY n.created_at DESC,n.id DESC LIMIT :limit"
@@ -469,8 +466,8 @@ public class NotificationStore {
     public PageResult<RecipientOption> listRecipientOptions(PageRequest page) {
         String fromAndFilter =
                 " FROM platform_user u WHERE u.enabled=true AND u.deleted_at IS NULL AND"
-                    + " (:search='' OR strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR"
-                    + " strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
+                        + " (:search='' OR strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR"
+                        + " strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
         var parameters =
                 Map.<String, Object>of(
                         "search", page.search(), "limit", page.pageSize(), "offset", page.offset());

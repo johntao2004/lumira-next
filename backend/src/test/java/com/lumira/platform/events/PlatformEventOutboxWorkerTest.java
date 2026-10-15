@@ -4,11 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
-
-import org.junit.jupiter.api.Test;
-
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 class PlatformEventOutboxWorkerTest {
     @Test

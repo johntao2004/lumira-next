@@ -1,9 +1,8 @@
 package com.lumira.platform.monitoring;
 
+import java.time.OffsetDateTime;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-
-import java.time.OffsetDateTime;
 
 /** Read-only aggregate counters for the platform operations dashboard. */
 @Repository

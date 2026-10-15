@@ -292,6 +292,7 @@ final class PlatformPermissionCatalog {
                                 "allFiles",
                                 "content-management",
                                 10,
+                                PlatformOperation.FILES_ALL_UPDATE_QUOTA,
                                 PlatformOperation.FILE_DELETE,
                                 PlatformOperation.FILE_RESTORE,
                                 PlatformOperation.FILE_PURGE,
@@ -332,6 +333,8 @@ final class PlatformPermissionCatalog {
         if ("platform:roles:preview".equals(permission)) return "permissionPreviewRole";
         if ("platform:files-all:preview".equals(permission)) return "permissionPreviewFiles";
         if ("platform:files-all:download".equals(permission)) return "downloadFile";
+        if ("platform:files-all:update-quota".equals(permission))
+            return "permissionUpdateFileQuota";
         String action = permission.substring(permission.lastIndexOf(':') + 1);
         return switch (action) {
             case "create", "create-user" -> "permissionCreate";

@@ -2,15 +2,13 @@ package com.lumira.platform.events;
 
 import com.lumira.platform.common.*;
 import com.lumira.platform.common.AdministrationPort;
-
+import java.time.OffsetDateTime;
+import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.time.OffsetDateTime;
-import java.util.*;
 
 /**
  * Metadata-only operational view. Event payloads never leave the internal producer/consumer
@@ -82,8 +80,8 @@ public class PlatformEventOutboxQuery {
         var rows =
                 jdbc.sql(
                                 "SELECT"
-                                    + " id,source_type,event_type,event_key,status,attempts,last_error,available_at,delivered_at,created_at,updated_at"
-                                    + " FROM platform_event_outbox"
+                                        + " id,source_type,event_type,event_key,status,attempts,last_error,available_at,delivered_at,created_at,updated_at"
+                                        + " FROM platform_event_outbox"
                                         + filter
                                         + fieldFilter.sql()
                                         + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET"

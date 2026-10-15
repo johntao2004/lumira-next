@@ -2,14 +2,13 @@ package com.lumira.platform.common;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.util.Map;
-import java.util.Set;
 
 class PageFilterSqlTest {
     private static final Map<String, String> COLUMNS =
@@ -103,8 +102,8 @@ class PageFilterSqlTest {
         long count =
                 jdbc.sql(
                                 "SELECT count(*) FROM (VALUES (TIMESTAMPTZ '2026-10-15"
-                                    + " 00:00:00+00'),(TIMESTAMPTZ '2026-10-16 00:00:00+00')) AS"
-                                    + " fixture(created_at) WHERE true"
+                                        + " 00:00:00+00'),(TIMESTAMPTZ '2026-10-16 00:00:00+00')) AS"
+                                        + " fixture(created_at) WHERE true"
                                         + filter.sql())
                         .params(filter.parameters())
                         .query(Long.class)

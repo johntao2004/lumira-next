@@ -1,15 +1,13 @@
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.*;
-
+import java.time.OffsetDateTime;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.time.OffsetDateTime;
-import java.util.UUID;
 
 @Service
 public class AccountSecurityEvents {

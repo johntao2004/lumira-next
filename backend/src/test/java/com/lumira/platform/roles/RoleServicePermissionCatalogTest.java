@@ -78,8 +78,22 @@ class RoleServicePermissionCatalogTest {
                 byId.get("branding").operationPermissions().contains("platform:settings:update"));
         assertEquals("global", byId.get("audit").accessScope());
         assertEquals(
+                "global",
+                byId.get("files-all").operationScopes().get("platform:files-all:update-quota"));
+        assertEquals(
                 "scoped",
                 byId.get("ai-console").operationScopes().get("platform:ai-console:update-user"));
+
+        assertEquals(
+                "permissionUpdateFileQuota",
+                catalog.stream()
+                        .flatMap(group -> group.permissions().stream())
+                        .filter(
+                                permission ->
+                                        permission.code().equals("platform:files-all:update-quota"))
+                        .findFirst()
+                        .orElseThrow()
+                        .label());
 
         var allCodes =
                 catalog.stream()

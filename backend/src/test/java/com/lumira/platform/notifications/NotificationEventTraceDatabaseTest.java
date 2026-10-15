@@ -9,7 +9,11 @@ import com.lumira.platform.common.DurableEventPublisherPort;
 import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.events.PlatformEventOutboxStore;
 import com.lumira.platform.events.PlatformEventTraceQuery;
-
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,14 +23,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-
 import tools.jackson.databind.json.JsonMapper;
-
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
 
 /** Verifies that a real inbox consumer result is linked to its exact durable event operation. */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
@@ -223,7 +220,7 @@ class NotificationEventTraceDatabaseTest {
                 "{\"body\":\"" + PAYLOAD_SECRET + "\"}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                    + " status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED' WHERE id=?",
+                        + " status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED' WHERE id=?",
                 eventId);
 
         var result = trace.event(ACTOR, eventId, 1, 20);

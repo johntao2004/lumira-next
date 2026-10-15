@@ -31,7 +31,7 @@ import type { Role } from "./types";
 const GIB = 1024 ** 3;
 const MAX_SAFE_QUOTA = Number.MAX_SAFE_INTEGER;
 
-export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissions=false,authorities,canManageAuthenticationPolicy=false,canReadAuthenticationPolicy=false,canReadRegistrationSettings=false,readOnlyPreview=false}:{canCreate:boolean;canUpdate:boolean;canDelete:boolean;canManagePluginPermissions?:boolean;authorities:string[];canManageAuthenticationPolicy?:boolean;canReadAuthenticationPolicy?:boolean;canReadRegistrationSettings?:boolean;readOnlyPreview?:boolean}) {
+export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissions=false,authorities,canManageAuthenticationPolicy=false,canReadAuthenticationPolicy=false,canReadRegistrationSettings=false,canReadFileQuota=false,readOnlyPreview=false}:{canCreate:boolean;canUpdate:boolean;canDelete:boolean;canManagePluginPermissions?:boolean;authorities:string[];canManageAuthenticationPolicy?:boolean;canReadAuthenticationPolicy?:boolean;canReadRegistrationSettings?:boolean;canReadFileQuota?:boolean;readOnlyPreview?:boolean}) {
   const previewReadOnly = readOnlyPreview || isRolePreviewReadOnly();
   const effectiveCanCreate = canCreate && !previewReadOnly;
   const effectiveCanUpdate = canUpdate && !previewReadOnly;
@@ -104,7 +104,7 @@ export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissi
         <Form.Item name="name" label={t("name")} rules={[{required:true,whitespace:true,message:t("nameRequired")},{max:200,message:t("nameTooLong")}]}><Input maxLength={200}/></Form.Item>
         <Form.Item name="enabled" label={t("enabled")} valuePropName="checked"><Switch/></Form.Item>
         <Form.Item name="dataScope" label={t("dataScope")} extra={t("dataScopeHint")}><Select options={[{value:"SELF",label:t("scopeSelf")},{value:"ORGANIZATION",label:t("scopeOrganization")},{value:"SUBTREE",label:t("scopeSubtree")},{value:"ALL",label:t("scopeAll")}]} getPopupContainer={trigger=>trigger.parentElement ?? document.body}/></Form.Item>
-        <Card size="small" title={t("fileQuotaAllocation")} className="mb-4">
+        <Card size="small" title={t("fileQuotaAllocation")} extra={canReadFileQuota && <Button type="link" size="small" href="/dashboard/files-all#tab=file-quota">{t("fileQuotaDefaultSettings")}</Button>} className="mb-4">
           <Form.Item name="fileQuotaStorageGiB" label={t("roleMemberStorageLimit")} extra={t("roleStorageQuotaHint")} rules={[{ type: "number", min: 0, max: MAX_SAFE_QUOTA/GIB, message: t("invalidRole") }]}>
             <InputNumber min={0} max={MAX_SAFE_QUOTA/GIB} precision={3} step={0.25} suffix="GiB" style={{width:"100%"}} />
           </Form.Item>

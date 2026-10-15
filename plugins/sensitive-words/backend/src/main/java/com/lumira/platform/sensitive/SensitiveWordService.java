@@ -7,14 +7,6 @@ import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
 import com.lumira.platform.dictionaries.api.DictionaryLookupPort;
 import com.lumira.platform.modules.ModuleRuntime;
-
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.text.Normalizer;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,6 +15,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SensitiveWordService {

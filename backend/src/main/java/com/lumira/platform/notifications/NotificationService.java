@@ -2,17 +2,14 @@ package com.lumira.platform.notifications;
 
 import com.lumira.platform.common.*;
 import com.lumira.platform.notifications.api.NotificationProducerPort;
-
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
-
-import java.util.UUID;
 
 @Service
 public class NotificationService implements NotificationProducerPort {

@@ -12,7 +12,10 @@ import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.events.PlatformEventOutboxStore;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,13 +27,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
-
 import tools.jackson.databind.json.JsonMapper;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class NotificationAdminServiceDatabaseTest {

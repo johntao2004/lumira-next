@@ -51,7 +51,8 @@ class SensitiveWordCategoryBaselineDatabaseTest {
 
         var dictionaries =
                 new DictionaryLookupService(
-                        new DictionaryLookupRepository(JdbcClient.create(dataSource), new JsonMapper()));
+                        new DictionaryLookupRepository(
+                                JdbcClient.create(dataSource), new JsonMapper()));
         service =
                 new SensitiveWordService(
                         mock(SensitiveWordRepository.class),
@@ -63,7 +64,8 @@ class SensitiveWordCategoryBaselineDatabaseTest {
 
     @AfterEach
     void tearDown() {
-        if (admin != null && schema != null) admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        if (admin != null && schema != null)
+            admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
     }
 
     @Test

@@ -84,6 +84,7 @@ public class AdministrationGuard
                     "platform:navigation:update",
                     "platform:navigation:delete",
                     "platform:files-all:delete",
+                    "platform:files-all:update-quota",
                     "platform:files-all:purge",
                     "platform:files-all:restore",
                     "platform:event-outbox:replay",

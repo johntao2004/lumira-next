@@ -3418,6 +3418,7 @@ INSERT INTO public.platform_role_authority (role_id, authority) VALUES
 ('00000000-0000-0000-0000-000000000052', 'platform:files-all:preview'),
 ('00000000-0000-0000-0000-000000000052', 'platform:files-all:purge'),
 ('00000000-0000-0000-0000-000000000052', 'platform:files-all:restore'),
+('00000000-0000-0000-0000-000000000052', 'platform:files-all:update-quota'),
 ('00000000-0000-0000-0000-000000000052', 'platform:localization:access'),
 ('00000000-0000-0000-0000-000000000052', 'platform:localization:create'),
 ('00000000-0000-0000-0000-000000000052', 'platform:localization:delete'),

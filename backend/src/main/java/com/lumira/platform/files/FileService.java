@@ -2,6 +2,7 @@ package com.lumira.platform.files;
 
 import com.lumira.platform.common.AuthorizationContextBoundaryPort;
 import com.lumira.platform.common.FileContentPort;
+import com.lumira.platform.common.FileQuotaDefaultsPort;
 import com.lumira.platform.common.FileQuotaPolicyPort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
@@ -28,8 +29,8 @@ public class FileService implements FileContentPort {
     private final com.lumira.platform.common.AdministrationPort guard;
     private final TransactionTemplate transaction;
     private final FileDeleteFinalizer deleteFinalizer;
-    private final FileQuota quota;
     private final FileQuotaPolicyPort quotaPolicies;
+    private final FileQuotaDefaultsPort quotaDefaults;
     private final AuthorizationContextBoundaryPort authorizationBoundary;
 
     public FileService(
@@ -65,7 +66,6 @@ public class FileService implements FileContentPort {
         this(files, accounts, blobs, manager, audit, quota, guard, quotaPolicies, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
     public FileService(
             FileRepository files,
             AccountOwnerPort accounts,
@@ -76,16 +76,41 @@ public class FileService implements FileContentPort {
             com.lumira.platform.common.AdministrationPort guard,
             FileQuotaPolicyPort quotaPolicies,
             AuthorizationContextBoundaryPort authorizationBoundary) {
+        this(
+                files,
+                accounts,
+                blobs,
+                manager,
+                audit,
+                quota,
+                guard,
+                quotaPolicies,
+                authorizationBoundary,
+                () -> new FileQuotaPolicyPort.Limits(quota.maximumBytes(), quota.maximumFiles()));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FileService(
+            FileRepository files,
+            AccountOwnerPort accounts,
+            BlobStore blobs,
+            PlatformTransactionManager manager,
+            com.lumira.platform.common.AuditPort audit,
+            FileQuota quota,
+            com.lumira.platform.common.AdministrationPort guard,
+            FileQuotaPolicyPort quotaPolicies,
+            AuthorizationContextBoundaryPort authorizationBoundary,
+            FileQuotaDefaultsPort quotaDefaults) {
         this.files = files;
         this.accounts = accounts;
         this.blobs = blobs;
         this.transaction = new TransactionTemplate(manager);
         this.deleteFinalizer = new FileDeleteFinalizer(files, blobs, audit, manager);
         this.audit = audit;
-        this.quota = quota;
         this.guard = guard;
         this.quotaPolicies = quotaPolicies;
         this.authorizationBoundary = authorizationBoundary;
+        this.quotaDefaults = quotaDefaults;
     }
 
     private static FileQuotaPolicyPort defaultQuotaPolicies(FileQuota quota) {
@@ -528,6 +553,7 @@ public class FileService implements FileContentPort {
         var used = files.usage(userId);
         var current = effectiveQuota(userId);
         var proposedLimits = quotaPolicies.forRoles(proposedRoleIds);
+        var defaults = quotaDefaults.current();
         return new UserQuotaPreview(
                 current.maximumBytes(),
                 current.maximumFiles(),
@@ -535,8 +561,8 @@ public class FileService implements FileContentPort {
                 proposedLimits.maximumFiles(),
                 used.chargedBytes(),
                 used.fileCount(),
-                quota.maximumBytes(),
-                quota.maximumFiles(),
+                defaults.maximumBytes(),
+                defaults.maximumFiles(),
                 owner.version());
     }
 
@@ -547,6 +573,7 @@ public class FileService implements FileContentPort {
 
     private UserQuotaView quotaView(
             FileRepository.QuotaOwner owner, FileRepository.Usage used, FileQuota effective) {
+        var defaults = quotaDefaults.current();
         return new UserQuotaView(
                 owner.userId(),
                 owner.username(),
@@ -555,8 +582,8 @@ public class FileService implements FileContentPort {
                 used.fileCount(),
                 effective.maximumBytes(),
                 effective.maximumFiles(),
-                quota.maximumBytes(),
-                quota.maximumFiles(),
+                defaults.maximumBytes(),
+                defaults.maximumFiles(),
                 owner.version());
     }
 

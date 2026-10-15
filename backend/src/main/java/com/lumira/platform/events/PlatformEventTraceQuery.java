@@ -3,18 +3,15 @@ package com.lumira.platform.events;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.PageResult;
 import com.lumira.platform.common.PlatformPageId;
-
+import java.time.OffsetDateTime;
+import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
 import tools.jackson.databind.ObjectMapper;
-
-import java.time.OffsetDateTime;
-import java.util.*;
 
 /** Read-only, metadata-only event and operation trace API. */
 @Service
@@ -318,23 +315,23 @@ public class PlatformEventTraceQuery {
                                 : "DELIVERED"
                         : jdbc.sql(
                                         "WITH correlated AS (SELECT DISTINCT event_id FROM"
-                                            + " platform_event_trace WHERE"
-                                            + " audit_operation_id=:auditId) SELECT CASE WHEN"
-                                            + " EXISTS (SELECT 1 FROM platform_event_outbox e JOIN"
-                                            + " correlated c ON c.event_id=e.id WHERE"
-                                            + " e.status='DEAD_LETTER') THEN 'DEAD_LETTER' WHEN"
-                                            + " EXISTS (SELECT 1 FROM platform_event_outbox e JOIN"
-                                            + " correlated c ON c.event_id=e.id WHERE"
-                                            + " e.status='FAILED') THEN 'FAILED' WHEN EXISTS"
-                                            + " (SELECT 1 FROM platform_event_outbox e JOIN"
-                                            + " correlated c ON c.event_id=e.id WHERE"
-                                            + " e.status='PENDING' AND e.last_error='NO_CONSUMER')"
-                                            + " THEN 'NO_CONSUMER' WHEN EXISTS (SELECT 1 FROM"
-                                            + " platform_event_outbox e JOIN correlated c ON"
-                                            + " c.event_id=e.id WHERE e.status='PENDING' AND"
-                                            + " e.last_error IN"
-                                            + " ('CONSUMER_FAILED','LEASE_EXPIRED')) THEN"
-                                            + " 'RETRY_PENDING' ELSE 'EVENTS_PENDING' END")
+                                                + " platform_event_trace WHERE"
+                                                + " audit_operation_id=:auditId) SELECT CASE WHEN"
+                                                + " EXISTS (SELECT 1 FROM platform_event_outbox e JOIN"
+                                                + " correlated c ON c.event_id=e.id WHERE"
+                                                + " e.status='DEAD_LETTER') THEN 'DEAD_LETTER' WHEN"
+                                                + " EXISTS (SELECT 1 FROM platform_event_outbox e JOIN"
+                                                + " correlated c ON c.event_id=e.id WHERE"
+                                                + " e.status='FAILED') THEN 'FAILED' WHEN EXISTS"
+                                                + " (SELECT 1 FROM platform_event_outbox e JOIN"
+                                                + " correlated c ON c.event_id=e.id WHERE"
+                                                + " e.status='PENDING' AND e.last_error='NO_CONSUMER')"
+                                                + " THEN 'NO_CONSUMER' WHEN EXISTS (SELECT 1 FROM"
+                                                + " platform_event_outbox e JOIN correlated c ON"
+                                                + " c.event_id=e.id WHERE e.status='PENDING' AND"
+                                                + " e.last_error IN"
+                                                + " ('CONSUMER_FAILED','LEASE_EXPIRED')) THEN"
+                                                + " 'RETRY_PENDING' ELSE 'EVENTS_PENDING' END")
                                 .param("auditId", auditOperationId)
                                 .query(String.class)
                                 .single();

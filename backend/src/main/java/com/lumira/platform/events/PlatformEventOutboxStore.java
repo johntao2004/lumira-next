@@ -2,23 +2,36 @@ package com.lumira.platform.events;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.common.DurableEventPublisherPort;
-
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
-
-import tools.jackson.databind.ObjectMapper;
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.*;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 /** Durable, idempotent event boundary shared by platform modules and future business modules. */
 @Repository
 public class PlatformEventOutboxStore implements DurableEventPublisherPort {
     public static final int MAX_ATTEMPTS = 8;
+
+    private static final String OPERATION_OUTCOME_EVENT_PRIORITY =
+            """
+            CASE
+              WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
+                WHERE e.operation_id=o.operation_id AND e.status='DEAD_LETTER') THEN 'DEAD_LETTER'
+              WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
+                WHERE e.operation_id=o.operation_id AND e.status='FAILED') THEN 'FAILED'
+              WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
+                WHERE e.operation_id=o.operation_id AND e.status='PENDING' AND e.last_error='NO_CONSUMER') THEN 'NO_CONSUMER'
+              WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
+                WHERE e.operation_id=o.operation_id AND e.status='PENDING'
+                  AND e.last_error IN ('CONSUMER_FAILED','LEASE_EXPIRED')) THEN 'RETRY_PENDING'
+              WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
+                WHERE e.operation_id=o.operation_id AND e.status IN ('PENDING','PROCESSING')) THEN 'EVENTS_PENDING'
+            """;
 
     public record Claim(UUID id, UUID token, int attempts, int generation, UUID operationId) {
         public Claim(UUID id, UUID token, int attempts) {
@@ -148,21 +161,11 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
             throw new IllegalArgumentException("Invalid event operation outcome");
         jdbc.sql(
                         """
-                        UPDATE platform_event_operation o SET outcome_code=CASE
-                          WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                            WHERE e.operation_id=o.operation_id AND e.status='DEAD_LETTER') THEN 'DEAD_LETTER'
-                          WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                            WHERE e.operation_id=o.operation_id AND e.status='FAILED') THEN 'FAILED'
-                          WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                            WHERE e.operation_id=o.operation_id AND e.status='PENDING' AND e.last_error='NO_CONSUMER') THEN 'NO_CONSUMER'
-                          WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                            WHERE e.operation_id=o.operation_id AND e.status='PENDING'
-                              AND e.last_error IN ('CONSUMER_FAILED','LEASE_EXPIRED')) THEN 'RETRY_PENDING'
-                          WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                            WHERE e.operation_id=o.operation_id AND e.status IN ('PENDING','PROCESSING')) THEN 'EVENTS_PENDING'
+                        UPDATE platform_event_operation o SET outcome_code=%s
                           ELSE :outcome END,updated_at=now()
                         WHERE o.operation_id=:id
-                        """)
+                        """
+                                .formatted(OPERATION_OUTCOME_EVENT_PRIORITY))
                 .param("outcome", outcomeCode)
                 .param("id", operationId)
                 .update();
@@ -383,18 +386,7 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
                           inbox_created=n.created_count,
                           inbox_skipped=n.skipped_count,
                           skipped_by_reason=n.reasons,
-                          outcome_code=CASE
-                            WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                              WHERE e.operation_id=o.operation_id AND e.status='DEAD_LETTER') THEN 'DEAD_LETTER'
-                            WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                              WHERE e.operation_id=o.operation_id AND e.status='FAILED') THEN 'FAILED'
-                            WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                              WHERE e.operation_id=o.operation_id AND e.status='PENDING' AND e.last_error='NO_CONSUMER') THEN 'NO_CONSUMER'
-                            WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                              WHERE e.operation_id=o.operation_id AND e.status='PENDING'
-                                AND e.last_error IN ('CONSUMER_FAILED','LEASE_EXPIRED')) THEN 'RETRY_PENDING'
-                            WHEN EXISTS (SELECT 1 FROM platform_event_outbox e
-                              WHERE e.operation_id=o.operation_id AND e.status IN ('PENDING','PROCESSING')) THEN 'EVENTS_PENDING'
+                         outcome_code=%s
                             WHEN n.created_count>0 AND n.skipped_count>0 THEN 'PARTIAL'
                             WHEN n.created_count>0 THEN 'DELIVERED'
                             WHEN n.skipped_count>0
@@ -410,7 +402,8 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
                             THEN now() ELSE o.completed_at END,
                           updated_at=now()
                         FROM next_result n WHERE o.operation_id=n.operation_id
-                        """)
+                         """
+                                .formatted(OPERATION_OUTCOME_EVENT_PRIORITY))
                 .param("known", result.known())
                 .param("created", result.inboxCreated())
                 .param("skipped", result.inboxSkipped())

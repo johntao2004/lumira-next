@@ -59,6 +59,7 @@ public enum PlatformOperation {
     NAVIGATION_CREATE(PlatformPageId.NAVIGATION, "create"),
     NAVIGATION_UPDATE(PlatformPageId.NAVIGATION, "update"),
     NAVIGATION_DELETE(PlatformPageId.NAVIGATION, "delete"),
+    FILES_ALL_UPDATE_QUOTA(PlatformPageId.FILES_ALL, "update-quota"),
     FILE_DELETE(PlatformPageId.FILES_ALL, "delete"),
     FILE_PURGE(PlatformPageId.FILES_ALL, "purge"),
     FILE_PREVIEW(PlatformPageId.FILES_ALL, "preview"),

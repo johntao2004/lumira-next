@@ -3,14 +3,12 @@ package com.lumira.platform.files;
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
-
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
-
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
 
 /** Internal metadata access. Every user-facing lookup is constrained by its resolved owner ID. */
 @Repository
@@ -158,10 +156,10 @@ public class FileRepository {
     public Usage usage(UUID owner) {
         return jdbc.sql(
                         "SELECT coalesce(sum(coalesce(size_bytes,reserved_bytes)),0)::bigint AS"
-                            + " bytes,count(*) AS files,count(*) FILTER (WHERE state='DELETING') AS"
-                            + " pending_deleting_count,coalesce(sum(coalesce(size_bytes,reserved_bytes))"
-                            + " FILTER (WHERE state='DELETING'),0)::bigint AS"
-                            + " pending_deleting_bytes FROM platform_file WHERE owner_id=:owner")
+                                + " bytes,count(*) AS files,count(*) FILTER (WHERE state='DELETING') AS"
+                                + " pending_deleting_count,coalesce(sum(coalesce(size_bytes,reserved_bytes))"
+                                + " FILTER (WHERE state='DELETING'),0)::bigint AS"
+                                + " pending_deleting_bytes FROM platform_file WHERE owner_id=:owner")
                 .param("owner", owner)
                 .query(
                         (rs, n) ->
@@ -176,8 +174,8 @@ public class FileRepository {
     public void reserve(UUID id, UUID ownerId, String backend, String name, long bytes) {
         jdbc.sql(
                         "INSERT INTO"
-                            + " platform_file(id,owner_id,storage_backend,original_name,reserved_bytes)"
-                            + " VALUES(:id,:owner,:backend,:name,:bytes)")
+                                + " platform_file(id,owner_id,storage_backend,original_name,reserved_bytes)"
+                                + " VALUES(:id,:owner,:backend,:name,:bytes)")
                 .param("id", id)
                 .param("owner", ownerId)
                 .param("backend", backend)
@@ -245,10 +243,10 @@ public class FileRepository {
     public boolean markLegacyMigrated(UUID id, long version, long size, String digest) {
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " storage_backend='postgres',legacy_local_cleanup_pending=true"
-                                    + " WHERE id=:id AND storage_backend='local' AND state='READY'"
-                                    + " AND version=:version AND size_bytes=:size AND"
-                                    + " sha256=:digest")
+                                        + " storage_backend='postgres',legacy_local_cleanup_pending=true"
+                                        + " WHERE id=:id AND storage_backend='local' AND state='READY'"
+                                        + " AND version=:version AND size_bytes=:size AND"
+                                        + " sha256=:digest")
                         .param("id", id)
                         .param("version", version)
                         .param("size", size)
@@ -277,9 +275,9 @@ public class FileRepository {
     public Optional<Entry> findFeedbackReference(UUID feedbackId, UUID fileId, UUID ownerId) {
         return jdbc.sql(
                         "SELECT f.* FROM platform_file f JOIN platform_feedback_file r ON"
-                            + " r.file_id=f.id WHERE r.feedback_id=:feedback AND r.file_id=:file"
-                            + " AND f.owner_id=:owner AND f.state='READY' AND"
-                            + " f.media_type='image/png'")
+                                + " r.file_id=f.id WHERE r.feedback_id=:feedback AND r.file_id=:file"
+                                + " AND f.owner_id=:owner AND f.state='READY' AND"
+                                + " f.media_type='image/png'")
                 .param("feedback", feedbackId)
                 .param("file", fileId)
                 .param("owner", ownerId)
@@ -293,8 +291,8 @@ public class FileRepository {
     public Optional<Entry> findManagedFeedbackReference(UUID feedbackId, UUID fileId) {
         return jdbc.sql(
                         "SELECT f.* FROM platform_file f JOIN platform_feedback_file r ON"
-                            + " r.file_id=f.id WHERE r.feedback_id=:feedback AND r.file_id=:file"
-                            + " AND f.state='READY' AND f.media_type='image/png'")
+                                + " r.file_id=f.id WHERE r.feedback_id=:feedback AND r.file_id=:file"
+                                + " AND f.state='READY' AND f.media_type='image/png'")
                 .param("feedback", feedbackId)
                 .param("file", fileId)
                 .query(MAPPER)
@@ -406,8 +404,8 @@ public class FileRepository {
                                 "f.original_name",
                                 "ownerUsername",
                                 "CASE WHEN u.username IS NULL THEN '—' ELSE"
-                                    + " coalesce(u.display_name,u.username) || ' (' || u.username"
-                                    + " || ')' END",
+                                        + " coalesce(u.display_name,u.username) || ' (' || u.username"
+                                        + " || ')' END",
                                 "sizeBytes",
                                 "f.size_bytes",
                                 "state",
@@ -466,8 +464,8 @@ public class FileRepository {
                                 "f.original_name",
                                 "ownerUsername",
                                 "CASE WHEN u.username IS NULL THEN '—' ELSE"
-                                    + " coalesce(u.display_name,u.username) || ' (' || u.username"
-                                    + " || ')' END",
+                                        + " coalesce(u.display_name,u.username) || ' (' || u.username"
+                                        + " || ')' END",
                                 "sizeBytes",
                                 "f.size_bytes",
                                 "trashedAt",
@@ -537,13 +535,13 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='DELETING',version=version+1,updated_at=now() WHERE"
-                                    + " id=:id AND version=:version AND state='READY' AND NOT"
-                                    + " EXISTS(SELECT 1 FROM platform_account_media WHERE"
-                                    + " avatar_file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
-                                    + " platform_feedback_file WHERE file_id=:id) AND NOT"
-                                    + " EXISTS(SELECT 1 FROM platform_branding_file WHERE"
-                                    + " file_id=:id)")
+                                        + " state='DELETING',version=version+1,updated_at=now() WHERE"
+                                        + " id=:id AND version=:version AND state='READY' AND NOT"
+                                        + " EXISTS(SELECT 1 FROM platform_account_media WHERE"
+                                        + " avatar_file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
+                                        + " platform_feedback_file WHERE file_id=:id) AND NOT"
+                                        + " EXISTS(SELECT 1 FROM platform_branding_file WHERE"
+                                        + " file_id=:id)")
                         .param("id", id)
                         .param("version", version)
                         .update()
@@ -558,13 +556,13 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='TRASHED',trashed_at=clock_timestamp(),version=version+1,updated_at=now()"
-                                    + " WHERE id=:id AND version=:version AND state='READY' AND NOT"
-                                    + " EXISTS(SELECT 1 FROM platform_account_media WHERE"
-                                    + " avatar_file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
-                                    + " platform_feedback_file WHERE file_id=:id) AND NOT"
-                                    + " EXISTS(SELECT 1 FROM platform_branding_file WHERE"
-                                    + " file_id=:id)")
+                                        + " state='TRASHED',trashed_at=clock_timestamp(),version=version+1,updated_at=now()"
+                                        + " WHERE id=:id AND version=:version AND state='READY' AND NOT"
+                                        + " EXISTS(SELECT 1 FROM platform_account_media WHERE"
+                                        + " avatar_file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
+                                        + " platform_feedback_file WHERE file_id=:id) AND NOT"
+                                        + " EXISTS(SELECT 1 FROM platform_branding_file WHERE"
+                                        + " file_id=:id)")
                         .param("id", id)
                         .param("version", version)
                         .update()
@@ -595,9 +593,9 @@ public class FileRepository {
     public boolean complete(UUID id, UUID ownerId, long version, long size, String digest) {
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='READY',size_bytes=:size,sha256=:digest,version=version+1,updated_at=now()"
-                                    + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
-                                    + " state='UPLOADING'")
+                                        + " state='READY',size_bytes=:size,sha256=:digest,version=version+1,updated_at=now()"
+                                        + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
+                                        + " state='UPLOADING'")
                         .param("id", id)
                         .param("owner", ownerId)
                         .param("version", version)
@@ -617,13 +615,13 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='DELETING',version=version+1,updated_at=now() WHERE"
-                                    + " id=:id AND owner_id=:owner AND version=:version AND"
-                                    + " state='READY' AND NOT EXISTS(SELECT 1 FROM"
-                                    + " platform_account_media WHERE avatar_file_id=:id) AND NOT"
-                                    + " EXISTS(SELECT 1 FROM platform_feedback_file WHERE"
-                                    + " file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
-                                    + " platform_branding_file WHERE file_id=:id)")
+                                        + " state='DELETING',version=version+1,updated_at=now() WHERE"
+                                        + " id=:id AND owner_id=:owner AND version=:version AND"
+                                        + " state='READY' AND NOT EXISTS(SELECT 1 FROM"
+                                        + " platform_account_media WHERE avatar_file_id=:id) AND NOT"
+                                        + " EXISTS(SELECT 1 FROM platform_feedback_file WHERE"
+                                        + " file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
+                                        + " platform_branding_file WHERE file_id=:id)")
                         .param("id", id)
                         .param("owner", ownerId)
                         .param("version", version)
@@ -640,13 +638,13 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='TRASHED',trashed_at=clock_timestamp(),version=version+1,updated_at=now()"
-                                    + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
-                                    + " state='READY' AND NOT EXISTS(SELECT 1 FROM"
-                                    + " platform_account_media WHERE avatar_file_id=:id) AND NOT"
-                                    + " EXISTS(SELECT 1 FROM platform_feedback_file WHERE"
-                                    + " file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
-                                    + " platform_branding_file WHERE file_id=:id)")
+                                        + " state='TRASHED',trashed_at=clock_timestamp(),version=version+1,updated_at=now()"
+                                        + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
+                                        + " state='READY' AND NOT EXISTS(SELECT 1 FROM"
+                                        + " platform_account_media WHERE avatar_file_id=:id) AND NOT"
+                                        + " EXISTS(SELECT 1 FROM platform_feedback_file WHERE"
+                                        + " file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
+                                        + " platform_branding_file WHERE file_id=:id)")
                         .param("id", id)
                         .param("owner", ownerId)
                         .param("version", version)
@@ -663,9 +661,9 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='READY',trashed_at=NULL,version=version+1,updated_at=now()"
-                                    + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
-                                    + " state='TRASHED'")
+                                        + " state='READY',trashed_at=NULL,version=version+1,updated_at=now()"
+                                        + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
+                                        + " state='TRASHED'")
                         .param("id", id)
                         .param("owner", ownerId)
                         .param("version", version)
@@ -681,8 +679,8 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='READY',trashed_at=NULL,version=version+1,updated_at=now()"
-                                    + " WHERE id=:id AND version=:version AND state='TRASHED'")
+                                        + " state='READY',trashed_at=NULL,version=version+1,updated_at=now()"
+                                        + " WHERE id=:id AND version=:version AND state='TRASHED'")
                         .param("id", id)
                         .param("version", version)
                         .update()
@@ -698,10 +696,10 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='DELETING',trashed_at=NULL,version=version+1,updated_at=now()"
-                                    + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
-                                    + " state='TRASHED' AND NOT EXISTS(SELECT 1 FROM"
-                                    + " platform_branding_file WHERE file_id=:id)")
+                                        + " state='DELETING',trashed_at=NULL,version=version+1,updated_at=now()"
+                                        + " WHERE id=:id AND owner_id=:owner AND version=:version AND"
+                                        + " state='TRASHED' AND NOT EXISTS(SELECT 1 FROM"
+                                        + " platform_branding_file WHERE file_id=:id)")
                         .param("id", id)
                         .param("owner", ownerId)
                         .param("version", version)
@@ -717,10 +715,10 @@ public class FileRepository {
                 .isEmpty()) return false;
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='DELETING',trashed_at=NULL,version=version+1,updated_at=now()"
-                                    + " WHERE id=:id AND version=:version AND state='TRASHED' AND"
-                                    + " NOT EXISTS(SELECT 1 FROM platform_branding_file WHERE"
-                                    + " file_id=:id)")
+                                        + " state='DELETING',trashed_at=NULL,version=version+1,updated_at=now()"
+                                        + " WHERE id=:id AND version=:version AND state='TRASHED' AND"
+                                        + " NOT EXISTS(SELECT 1 FROM platform_branding_file WHERE"
+                                        + " file_id=:id)")
                         .param("id", id)
                         .param("version", version)
                         .update()
@@ -730,13 +728,13 @@ public class FileRepository {
     public java.util.List<UUID> expireTrashed(int retentionDays) {
         return jdbc.sql(
                         "WITH expired AS (SELECT f.id FROM platform_file f WHERE f.state='TRASHED'"
-                            + " AND f.storage_backend IN ('local','postgres') AND"
-                            + " f.trashed_at<=clock_timestamp()-(CAST(:days AS integer)*interval '1"
-                            + " day') AND NOT EXISTS(SELECT 1 FROM platform_branding_file r WHERE"
-                            + " r.file_id=f.id) ORDER BY f.trashed_at,f.id LIMIT 100 FOR UPDATE"
-                            + " SKIP LOCKED) UPDATE platform_file f SET"
-                            + " state='DELETING',trashed_at=NULL,version=version+1,updated_at=now()"
-                            + " FROM expired e WHERE f.id=e.id RETURNING f.id")
+                                + " AND f.storage_backend IN ('local','postgres') AND"
+                                + " f.trashed_at<=clock_timestamp()-(CAST(:days AS integer)*interval '1"
+                                + " day') AND NOT EXISTS(SELECT 1 FROM platform_branding_file r WHERE"
+                                + " r.file_id=f.id) ORDER BY f.trashed_at,f.id LIMIT 100 FOR UPDATE"
+                                + " SKIP LOCKED) UPDATE platform_file f SET"
+                                + " state='DELETING',trashed_at=NULL,version=version+1,updated_at=now()"
+                                + " FROM expired e WHERE f.id=e.id RETURNING f.id")
                 .param("days", retentionDays)
                 .query(UUID.class)
                 .list();
@@ -752,8 +750,8 @@ public class FileRepository {
     public boolean abandonUpload(UUID id) {
         return jdbc.sql(
                                 "UPDATE platform_file SET"
-                                    + " state='DELETING',version=version+1,updated_at=now() WHERE"
-                                    + " id=:id AND state='UPLOADING' AND version=0")
+                                        + " state='DELETING',version=version+1,updated_at=now() WHERE"
+                                        + " id=:id AND state='UPLOADING' AND version=0")
                         .param("id", id)
                         .update()
                 == 1;
@@ -763,9 +761,9 @@ public class FileRepository {
     public boolean finishDelete(UUID id, long version) {
         return jdbc.sql(
                                 "DELETE FROM platform_file WHERE id=:id AND version=:version AND"
-                                    + " state='DELETING' AND NOT legacy_local_cleanup_pending AND"
-                                    + " NOT EXISTS(SELECT 1 FROM platform_file_blob_chunk WHERE"
-                                    + " file_id=:id)")
+                                        + " state='DELETING' AND NOT legacy_local_cleanup_pending AND"
+                                        + " NOT EXISTS(SELECT 1 FROM platform_file_blob_chunk WHERE"
+                                        + " file_id=:id)")
                         .param("id", id)
                         .param("version", version)
                         .update()
@@ -785,8 +783,8 @@ public class FileRepository {
     public java.util.List<Entry> pendingCleanup() {
         return jdbc.sql(
                         "SELECT * FROM platform_file WHERE state='DELETING' AND storage_backend IN"
-                            + " ('local','postgres') AND updated_at<now()-interval '1 minute' ORDER"
-                            + " BY updated_at,id LIMIT 100")
+                                + " ('local','postgres') AND updated_at<now()-interval '1 minute' ORDER"
+                                + " BY updated_at,id LIMIT 100")
                 .query(MAPPER)
                 .list();
     }
@@ -794,11 +792,11 @@ public class FileRepository {
     public java.util.List<UUID> expireUploads() {
         return jdbc.sql(
                         "WITH expired AS (SELECT id FROM platform_file WHERE state='UPLOADING' AND"
-                            + " storage_backend IN ('local','postgres') AND"
-                            + " upload_expires_at<=clock_timestamp() ORDER BY upload_expires_at,id"
-                            + " LIMIT 100 FOR UPDATE SKIP LOCKED) UPDATE platform_file f SET"
-                            + " state='DELETING',version=version+1,updated_at=now() FROM expired e"
-                            + " WHERE f.id=e.id RETURNING f.id")
+                                + " storage_backend IN ('local','postgres') AND"
+                                + " upload_expires_at<=clock_timestamp() ORDER BY upload_expires_at,id"
+                                + " LIMIT 100 FOR UPDATE SKIP LOCKED) UPDATE platform_file f SET"
+                                + " state='DELETING',version=version+1,updated_at=now() FROM expired e"
+                                + " WHERE f.id=e.id RETURNING f.id")
                 .query(UUID.class)
                 .list();
     }
@@ -806,15 +804,15 @@ public class FileRepository {
     public java.util.List<UUID> expireOrphanedFiles() {
         return jdbc.sql(
                         "WITH expired AS (SELECT pf.id FROM platform_file pf WHERE pf.owner_id IS"
-                            + " NULL AND pf.state='READY' AND pf.storage_backend IN"
-                            + " ('local','postgres') AND pf.orphaned_at<=clock_timestamp()-interval"
-                            + " '7 days' AND NOT EXISTS(SELECT 1 FROM platform_feedback_file r"
-                            + " WHERE r.file_id=pf.id) AND NOT EXISTS(SELECT 1 FROM"
-                            + " platform_branding_file r WHERE r.file_id=pf.id) ORDER BY"
-                            + " pf.orphaned_at,pf.id LIMIT 100 FOR UPDATE SKIP LOCKED) UPDATE"
-                            + " public.platform_file f SET"
-                            + " state='DELETING',version=version+1,updated_at=now() FROM expired e"
-                            + " WHERE f.id=e.id RETURNING f.id")
+                                + " NULL AND pf.state='READY' AND pf.storage_backend IN"
+                                + " ('local','postgres') AND pf.orphaned_at<=clock_timestamp()-interval"
+                                + " '7 days' AND NOT EXISTS(SELECT 1 FROM platform_feedback_file r"
+                                + " WHERE r.file_id=pf.id) AND NOT EXISTS(SELECT 1 FROM"
+                                + " platform_branding_file r WHERE r.file_id=pf.id) ORDER BY"
+                                + " pf.orphaned_at,pf.id LIMIT 100 FOR UPDATE SKIP LOCKED) UPDATE"
+                                + " public.platform_file f SET"
+                                + " state='DELETING',version=version+1,updated_at=now() FROM expired e"
+                                + " WHERE f.id=e.id RETURNING f.id")
                 .query(UUID.class)
                 .list();
     }
@@ -823,13 +821,13 @@ public class FileRepository {
     public java.util.List<UUID> expirePendingBrandingImages() {
         return jdbc.sql(
                         "WITH expired AS (SELECT f.id FROM platform_file f JOIN"
-                            + " platform_branding_file r ON r.file_id=f.id WHERE f.state='READY'"
-                            + " AND r.published_at IS NULL AND"
-                            + " r.created_at<=clock_timestamp()-interval '1 day' ORDER BY"
-                            + " r.created_at,f.id LIMIT 100 FOR UPDATE OF f SKIP LOCKED) UPDATE"
-                            + " platform_file f SET"
-                            + " state='DELETING',version=version+1,updated_at=now() FROM expired e"
-                            + " WHERE f.id=e.id RETURNING f.id")
+                                + " platform_branding_file r ON r.file_id=f.id WHERE f.state='READY'"
+                                + " AND r.published_at IS NULL AND"
+                                + " r.created_at<=clock_timestamp()-interval '1 day' ORDER BY"
+                                + " r.created_at,f.id LIMIT 100 FOR UPDATE OF f SKIP LOCKED) UPDATE"
+                                + " platform_file f SET"
+                                + " state='DELETING',version=version+1,updated_at=now() FROM expired e"
+                                + " WHERE f.id=e.id RETURNING f.id")
                 .query(UUID.class)
                 .list();
     }

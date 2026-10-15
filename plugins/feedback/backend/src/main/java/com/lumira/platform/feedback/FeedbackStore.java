@@ -4,16 +4,14 @@ import com.lumira.platform.common.*;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import com.lumira.platform.notifications.api.NotificationProducerPort;
-
+import java.time.OffsetDateTime;
+import java.util.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.time.OffsetDateTime;
-import java.util.*;
 
 /** Internal persistence engine. The future API adapter must enforce grants and module state. */
 @Repository
@@ -132,8 +130,8 @@ public class FeedbackStore {
         UUID id = UUID.randomUUID();
         jdbc.sql(
                         "INSERT INTO"
-                            + " platform_feedback(id,owner_id,title,detail_html,priority,category,status)"
-                            + " VALUES(:id,:owner,:title,:html,:priority,:category,:status)")
+                                + " platform_feedback(id,owner_id,title,detail_html,priority,category,status)"
+                                + " VALUES(:id,:owner,:title,:html,:priority,:category,:status)")
                 .param("id", id)
                 .param("owner", owner)
                 .param("title", content.title())
@@ -244,9 +242,9 @@ public class FeedbackStore {
         boolean terminal = policy.statuses().get(status);
         jdbc.sql(
                         "UPDATE platform_feedback SET"
-                            + " status=:status,admin_reply=:reply,handled_by=:handler,handled_at=CASE"
-                            + " WHEN :terminal THEN clock_timestamp() ELSE NULL"
-                            + " END,version=version+1,updated_at=clock_timestamp() WHERE id=:id")
+                                + " status=:status,admin_reply=:reply,handled_by=:handler,handled_at=CASE"
+                                + " WHEN :terminal THEN clock_timestamp() ELSE NULL"
+                                + " END,version=version+1,updated_at=clock_timestamp() WHERE id=:id")
                 .param("status", status)
                 .param("reply", normalized)
                 .param("handler", handler)
@@ -393,7 +391,7 @@ public class FeedbackStore {
         var rows =
                 jdbc.sql(
                                 "SELECT f.id,f.owner_id,coalesce(u.display_name,u.username) AS"
-                                    + " owner_name,f.title,f.priority,f.category,f.status,f.version,f.created_at,f.updated_at"
+                                        + " owner_name,f.title,f.priority,f.category,f.status,f.version,f.created_at,f.updated_at"
                                         + from
                                         + filter
                                         + fieldFilter.sql()

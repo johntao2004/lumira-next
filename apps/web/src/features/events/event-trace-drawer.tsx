@@ -24,7 +24,7 @@ type DeliveryResult = {
   resultCode: string | null;
 };
 type TraceOperation = {
-  operationId: string;
+  operationId: string | null;
   operationType: string;
   auditOperationId: string | null;
   businessType: string;
@@ -129,6 +129,7 @@ function formatTime(value: string | null | undefined, locale: string) {
 
 function traceCodeText(code: string, t: (key: MessageKey) => string) {
   const keys: Record<string, MessageKey> = {
+    "event.replay": "eventReplay",
     "notification.broadcast": "eventTraceNotificationBroadcast",
     "notification.broadcast.requested": "eventTraceNotificationBroadcast",
     "feedback.notification.requested": "eventTraceFeedbackNotification",
@@ -251,7 +252,9 @@ function EventDetail({ eventId, onBack }: { eventId: string; onBack?: () => void
           <Descriptions.Item label={t("eventTraceBusinessType")}>{traceCodeText(trace.operation.businessType, t)}</Descriptions.Item>
           <Descriptions.Item label={t("eventTraceBusinessId")}><Typography.Text code copyable style={{ wordBreak: "break-all" }}>{trace.operation.businessId}</Typography.Text></Descriptions.Item>
           <Descriptions.Item label={t("eventTraceBusinessVersion")}>{trace.operation.businessVersion ?? "—"}</Descriptions.Item>
-          <Descriptions.Item label={t("eventTraceOperationId")}><Typography.Text code copyable style={{ wordBreak: "break-all" }}>{trace.operation.operationId}</Typography.Text></Descriptions.Item>
+          <Descriptions.Item label={t("eventTraceOperationId")}>{trace.operation.operationId
+            ? <Typography.Text code copyable style={{ wordBreak: "break-all" }}>{trace.operation.operationId}</Typography.Text>
+            : "—"}</Descriptions.Item>
         </Descriptions>
       </section>}
 
@@ -328,7 +331,9 @@ function OperationDetail({ auditId, onSelectEvent }: { auditId: string; onSelect
           <Descriptions.Item label={t("eventTraceBusinessType")}><TraceCodeText code={operation.businessType} /></Descriptions.Item>
           <Descriptions.Item label={t("eventTraceBusinessId")}><Typography.Text code copyable style={{ wordBreak: "break-all" }}>{operation.businessId}</Typography.Text></Descriptions.Item>
           <Descriptions.Item label={t("eventTraceBusinessVersion")}>{operation.businessVersion ?? "—"}</Descriptions.Item>
-          <Descriptions.Item label={t("eventTraceOperationId")}><Typography.Text code copyable style={{ wordBreak: "break-all" }}>{operation.operationId}</Typography.Text></Descriptions.Item>
+          <Descriptions.Item label={t("eventTraceOperationId")}>{operation.operationId
+            ? <Typography.Text code copyable style={{ wordBreak: "break-all" }}>{operation.operationId}</Typography.Text>
+            : "—"}</Descriptions.Item>
           <Descriptions.Item label={t("eventTraceAuditId")}><Typography.Text code copyable style={{ wordBreak: "break-all" }}>{auditId}</Typography.Text></Descriptions.Item>
         </Descriptions>
       </section>}

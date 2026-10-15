@@ -62,7 +62,9 @@ class BootstrapAdministratorRoleAdapterDatabaseTest {
         assertEquals(
                 BootstrapAdministratorRoleAdapter.ADMINISTRATOR_ROLE_ID,
                 jdbc.queryForObject(
-                        "SELECT role_id FROM platform_user_role WHERE user_id=?", UUID.class, userId));
+                        "SELECT role_id FROM platform_user_role WHERE user_id=?",
+                        UUID.class,
+                        userId));
         assertEquals(
                 1,
                 jdbc.queryForObject(
@@ -84,10 +86,10 @@ class BootstrapAdministratorRoleAdapterDatabaseTest {
                 "UPDATE platform_role SET code='support' WHERE id=?",
                 BootstrapAdministratorRoleAdapter.ADMINISTRATOR_ROLE_ID);
 
-        assertThrows(
-                IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
+        assertThrows(IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
 
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
     }
 
     @Test
@@ -98,10 +100,10 @@ class BootstrapAdministratorRoleAdapterDatabaseTest {
                 UUID.randomUUID(),
                 BootstrapAdministratorRoleAdapter.ADMINISTRATOR_ROLE_ID);
 
-        assertThrows(
-                IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
+        assertThrows(IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
 
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
     }
 
     @Test
@@ -111,10 +113,10 @@ class BootstrapAdministratorRoleAdapterDatabaseTest {
                 "UPDATE platform_role SET enabled=false WHERE id=?",
                 BootstrapAdministratorRoleAdapter.ADMINISTRATOR_ROLE_ID);
 
-        assertThrows(
-                IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
+        assertThrows(IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
 
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
     }
 
     @Test
@@ -124,9 +126,9 @@ class BootstrapAdministratorRoleAdapterDatabaseTest {
                 "UPDATE platform_role SET data_scope='SELF' WHERE id=?",
                 BootstrapAdministratorRoleAdapter.ADMINISTRATOR_ROLE_ID);
 
-        assertThrows(
-                IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
+        assertThrows(IllegalStateException.class, () -> roles.assignAdministratorRole(userId));
 
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
+        assertEquals(
+                0, jdbc.queryForObject("SELECT count(*) FROM platform_user_role", Integer.class));
     }
 }

@@ -18,7 +18,7 @@ import { useSubmitAction } from "../forms/use-submit-action";
 import { useSessionScope } from "../auth/use-session-scope";
 import { PlatformDrawer } from "./platform-drawer";
 
-const settingsErrorKeys = ["staleRecord", "settingRevisionNotFound", "invalidSettingRevision", "invalidChangeReason", "forbidden", "invalidBranding", "invalidAgreements", "invalidWatermark", "invalidMaintenance", "invalidSecurity", "invalidPasskeySettings", "invalidProfileFields", "invalidSmtp", "invalidSmtpCredentials", "smtpPasswordRequired", "smtpPasswordReplacementRequired", "invalidSms", "invalidSmsCredentials", "smsCredentialRequired", "smsCredentialReplacementRequired", "secretKeyUnavailable", "invalidFileRetention"] as const satisfies readonly MessageKey[];
+const settingsErrorKeys = ["staleRecord", "settingRevisionNotFound", "invalidSettingRevision", "invalidChangeReason", "forbidden", "invalidBranding", "invalidAgreements", "invalidWatermark", "invalidMaintenance", "invalidSecurity", "invalidPasskeySettings", "invalidProfileFields", "invalidSmtp", "invalidSmtpCredentials", "smtpPasswordRequired", "smtpPasswordReplacementRequired", "invalidSms", "invalidSmsCredentials", "smsCredentialRequired", "smsCredentialReplacementRequired", "secretKeyUnavailable", "invalidFileRetention", "invalidFileQuota"] as const satisfies readonly MessageKey[];
 
 export type Snapshot<T> = { data: T; version: number; [key: string]: unknown };
 type Extras<T> = { initialExtras?: Record<string, unknown>; renderExtras?: (snapshot: Snapshot<T>) => React.ReactNode };

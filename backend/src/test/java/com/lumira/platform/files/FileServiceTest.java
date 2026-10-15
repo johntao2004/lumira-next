@@ -115,6 +115,9 @@ class FileServiceTest {
         when(policies.forRoles(Set.of(roleId)))
                 .thenReturn(new com.lumira.platform.common.FileQuotaPolicyPort.Limits(0, 4));
         var manager = mock(PlatformTransactionManager.class);
+        var defaults =
+                new java.util.concurrent.atomic.AtomicReference<>(
+                        new com.lumira.platform.common.FileQuotaPolicyPort.Limits(1024, 100));
         var service =
                 new FileService(
                         repo,
@@ -124,10 +127,13 @@ class FileServiceTest {
                         mock(com.lumira.platform.common.AuditPort.class),
                         new FileQuota(1024, 100),
                         guard,
-                        policies);
+                        policies,
+                        null,
+                        defaults::get);
 
         var usage = service.usage("actor");
         var userQuota = service.userQuota("actor", owner);
+        defaults.set(new com.lumira.platform.common.FileQuotaPolicyPort.Limits(2048, 200));
         var preview = service.previewUserQuota("actor", owner, Set.of(roleId));
 
         assertEquals(chargedBytes, usage.chargedBytes());
@@ -135,9 +141,12 @@ class FileServiceTest {
         assertEquals(5, usage.maximumFiles());
         assertEquals(0, userQuota.maximumBytes());
         assertEquals(1024, userQuota.defaultMaximumBytes());
+        assertEquals(100, userQuota.defaultMaximumFiles());
         assertEquals(0, preview.currentMaximumBytes());
         assertEquals(0, preview.proposedMaximumBytes());
         assertEquals(chargedBytes, preview.chargedBytes());
+        assertEquals(2048, preview.defaultMaximumBytes());
+        assertEquals(200, preview.defaultMaximumFiles());
         verify(guard).requirePage("actor", PlatformPageId.USERS);
         verify(guard).requireUser("actor", owner, PlatformPageId.USERS.accessPermission());
         verify(guard).requireOperationUser("actor", owner, PlatformOperation.USER_ASSIGN_ROLES);

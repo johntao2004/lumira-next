@@ -1,27 +1,46 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, chmodSync, chownSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 function fixture(t, os = 'Linux') {
   const root = mkdtempSync(join(tmpdir(), 'lumira-cloud-guard-'));
+  // WSL and container test runners may execute as root. These cases exercise
+  // unprivileged cloud startup, so run their shell fixtures as nobody there.
+  const runUnprivileged = process.platform === 'linux' && process.getuid?.() === 0;
+  if (runUnprivileged) {
+    chmodSync(root, 0o755);
+    chownSync(root, 65534, 65534);
+  }
   t.after(() => rmSync(root, {recursive: true, force: true}));
   for (const dir of ['scripts', '.runtime', 'bin', 'jdk/bin']) mkdirSync(join(root, dir), {recursive: true});
   for (const name of ['cloud-env.sh', 'cloud-database.sh', 'cloud-database-user.sh', 'cloud-install.sh'])
     copyFileSync(resolve('scripts', name), join(root, 'scripts', name));
-  const executable = (name, body) => writeFileSync(join(root, name), `#!/bin/sh\n${body}\n`, {mode: 0o700});
+  const executable = (name, body) => writeFileSync(join(root, name), `#!/bin/sh\n${body}\n`, {mode: runUnprivileged ? 0o755 : 0o700});
   executable('bin/uname', `printf '%s\\n' '${os}'`);
   executable('jdk/bin/javac', "printf 'javac 25.0.1\\n'");
   for (const command of ['sudo', 'pg_ctlcluster', 'pg_createcluster', 'apt-get'])
     executable(`bin/${command}`, `printf '%s\\n' '${command}' >> '${root}/mutations'; exit 99`);
   const env = {...process.env, PATH: `${root}/bin:${process.env.PATH}`};
   // Test fixtures must not inherit the real VM's active database mode/client.
-  for (const key of Object.keys(env)) if (key.startsWith('LUMIRA_CLOUD_') || key === 'PSQL_BIN') delete env[key];
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('LUMIRA_') || /^(DATABASE_URL|DB_|PGHOST$|PGPORT$|PGUSER$|PGPASSWORD$|PGDATABASE$|PSQL_BIN$)/.test(key)) delete env[key];
+  }
+  env.HOME = root;
   writeFileSync(join(root, '.runtime/cloud.env'), `export JAVA_HOME='${root}/jdk'\n`);
   writeFileSync(join(root, '.runtime/cloud-development'), '');
-  return {root, env, executable, run: name => spawnSync('bash', [join(root, 'scripts', name)], {cwd: root, env, encoding: 'utf8'})};
+  const run = name => {
+    const script = join(root, 'scripts', name);
+    const options = {cwd: root, env, encoding: 'utf8'};
+    if (runUnprivileged) {
+      options.uid = 65534;
+      options.gid = 65534;
+    }
+    return spawnSync('bash', [script], options);
+  };
+  return {root, env, executable, run};
 }
 
 test('cloud installation refuses a local Mac before installing anything', t => {
@@ -63,11 +82,34 @@ function userDatabaseFixture(t, version = '18') {
   const f = fixture(t);
   mkdirSync(join(f.root, 'pg/bin'), {recursive: true});
   mkdirSync(join(f.root, '.runtime/cloud-postgres/data'), {recursive: true});
+  if (process.platform === 'linux' && process.getuid?.() === 0)
+    chownSync(join(f.root, '.runtime/cloud-postgres'), 65534, 65534);
   writeFileSync(join(f.root, '.runtime/cloud-postgres/data/PG_VERSION'), version);
   writeFileSync(join(f.root, '.runtime/cloud.env'), `export JAVA_HOME='${f.root}/jdk'\nexport LUMIRA_CLOUD_PG_MODE=user\nexport LUMIRA_CLOUD_PG_HOME='${f.root}/pg'\n`);
   f.executable('pg/bin/initdb', `echo initdb >> '${f.root}/mutations'; exit 99`);
   return f;
 }
+
+test('user-space startup refuses root before touching its cluster', t => {
+  const source = readFileSync(resolve('scripts/cloud-database-user.sh'), 'utf8');
+  const rootGuard = source.indexOf('[[ $EUID != 0 &&');
+  assert.notEqual(rootGuard, -1);
+  assert.ok(rootGuard < source.indexOf('mkdir -p "$socket"'));
+
+  // A non-root runner cannot elevate for this check; it still verifies the
+  // production guard stays ahead of every cluster operation. Root runners
+  // exercise the real refusal path with the isolated fixture below.
+  if (process.platform !== 'linux' || process.getuid?.() !== 0) return;
+
+  const f = userDatabaseFixture(t, '17');
+  const result = spawnSync('bash', [join(f.root, 'scripts', 'cloud-database.sh')], {
+    cwd: f.root, env: f.env, encoding: 'utf8',
+  });
+  assert.equal(result.status, 1);
+  assert.equal(readFileSync(join(f.root, '.runtime/cloud-postgres/data/PG_VERSION'), 'utf8'), '17');
+  assert.equal(existsSync(join(f.root, '.runtime/cloud-postgres/socket')), false);
+  assert.equal(existsSync(join(f.root, 'mutations')), false);
+});
 
 test('user-space startup preserves a database from another PostgreSQL major', t => {
   const f = userDatabaseFixture(t, '17');

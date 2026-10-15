@@ -3,19 +3,16 @@ package com.lumira.platform.events;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.lumira.platform.TestSchema;
-
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
-
 import tools.jackson.databind.json.JsonMapper;
-
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.*;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class PlatformEventOutboxStoreTest {
@@ -213,8 +210,8 @@ class PlatformEventOutboxStoreTest {
         store.append(id, "source", "event", "replay", "{\"ok\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                    + " status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED',delivered_at=NULL"
-                    + " WHERE id=?",
+                        + " status='DEAD_LETTER',attempts=8,last_error='CONSUMER_FAILED',delivered_at=NULL"
+                        + " WHERE id=?",
                 id);
         var replay = store.replay(id);
         assertEquals(new PlatformEventOutboxStore.Replay(id, "PENDING", 0, 1), replay);
@@ -283,8 +280,8 @@ class PlatformEventOutboxStoreTest {
         store.append(deadLetter, "source", "event", "dead", "{\"ok\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                    + " status='DEAD_LETTER',attempts=8,updated_at=now()-interval '31 days' WHERE"
-                    + " id=?",
+                        + " status='DEAD_LETTER',attempts=8,updated_at=now()-interval '31 days' WHERE"
+                        + " id=?",
                 deadLetter);
 
         assertEquals(1, store.purgeDelivered(Duration.ofDays(30), 1));
@@ -315,8 +312,8 @@ class PlatformEventOutboxStoreTest {
         store.append(referenced, "source", "event", "approved", "{\"proof\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                    + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
-                    + " WHERE id=?",
+                        + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
+                        + " WHERE id=?",
                 referenced);
         jdbc.update(
                 "INSERT INTO platform_event_replay_approval(id,event_id,approved_by,reason)"
@@ -330,8 +327,8 @@ class PlatformEventOutboxStoreTest {
         store.append(ordinary, "source", "event", "ordinary", "{\"ok\":true}");
         jdbc.update(
                 "UPDATE platform_event_outbox SET"
-                    + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
-                    + " WHERE id=?",
+                        + " status='DELIVERED',delivered_at=now(),updated_at=now()-interval '31 days'"
+                        + " WHERE id=?",
                 ordinary);
 
         assertEquals(1, store.purgeDelivered(Duration.ofDays(30), 10));

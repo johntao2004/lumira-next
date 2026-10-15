@@ -5,11 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.lumira.platform.common.FileQuotaPolicyPort;
 import com.lumira.platform.files.FileQuota;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -138,6 +140,19 @@ class RoleQuotaPolicyAdapterTest {
         assertEquals(1_000, disabled.maximumFiles());
         assertEquals(GIB, unassigned.maximumBytes());
         assertEquals(1_000, unassigned.maximumFiles());
+    }
+
+    @Test
+    void readsCurrentSystemDefaultsForEachResolution() {
+        var roles = mock(RoleRepository.class);
+        var userId = UUID.randomUUID();
+        when(roles.assignedQuotaLimits(userId)).thenReturn(List.of());
+        var defaults = new AtomicReference<>(new FileQuotaPolicyPort.Limits(GIB, 1_000));
+        var adapter = new RoleQuotaPolicyAdapter(roles, defaults::get);
+
+        assertEquals(new FileQuotaPolicyPort.Limits(GIB, 1_000), adapter.forUser(userId));
+        defaults.set(new FileQuotaPolicyPort.Limits(2 * GIB, 2_000));
+        assertEquals(new FileQuotaPolicyPort.Limits(2 * GIB, 2_000), adapter.forUser(userId));
     }
 
     @Test

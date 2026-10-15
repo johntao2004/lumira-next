@@ -1,9 +1,9 @@
 package com.lumira.platform.events;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
-
 import jakarta.annotation.PreDestroy;
-
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,9 +11,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Bounded, horizontally-safe Outbox delivery. PostgreSQL SKIP LOCKED owns the claim. Consumer

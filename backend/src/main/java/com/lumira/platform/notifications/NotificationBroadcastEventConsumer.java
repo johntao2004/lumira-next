@@ -1,15 +1,13 @@
 package com.lumira.platform.notifications;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
-
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ObjectNode;
-
 import java.time.OffsetDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Writes an administrator broadcast snapshot into the account inbox. */
 public final class NotificationBroadcastEventConsumer implements DurableEventConsumerPort {

@@ -8,7 +8,10 @@ import com.lumira.platform.ai.AiProviderService;
 import com.lumira.platform.identity.ProfileValuesService;
 import com.lumira.platform.settings.SecuritySettingsController;
 import com.lumira.platform.settings.WatermarkSettings;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.ResolvableType;
@@ -18,14 +21,8 @@ import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.*;
-
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 class RequestJsonBindingTest {
     private final JsonMapper sharedMapper = JsonMapper.builderWithJackson2Defaults().build();
@@ -113,7 +110,7 @@ class RequestJsonBindingTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"version\":1,\"schemaVersion\":1,\"values\":{\"code\":\"00123\",\"note\":\"a\\n"
-                                            + "\\tb\"}}"))
+                                                + "\\tb\"}}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("values.code").value("00123"))
                 .andExpect(jsonPath("values.note").value("a\n\tb"));

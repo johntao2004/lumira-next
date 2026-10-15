@@ -231,6 +231,7 @@ public class SettingStore {
             case "security" -> PlatformOperation.SECURITY_UPDATE;
             case "wechat" -> PlatformOperation.WECHAT_UPDATE;
             case "file-retention" -> PlatformOperation.FILE_RETENTION_UPDATE;
+            case "file-quota" -> PlatformOperation.FILES_ALL_UPDATE_QUOTA;
             default -> throw new ResponseStatusException(HttpStatus.NOT_FOUND, "settingNotFound");
         };
     }

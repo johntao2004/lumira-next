@@ -2,12 +2,10 @@ package com.lumira.platform.identity;
 
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
-
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
-
 import java.time.Instant;
 import java.util.*;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
 
 /** Read and revoke active sessions for the global online-user console. */
 @Repository

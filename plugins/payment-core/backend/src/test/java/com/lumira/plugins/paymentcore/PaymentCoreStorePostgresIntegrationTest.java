@@ -6,10 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
 
+import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.SecretStorePort;
 import com.lumira.plugin.sdk.common.PaymentGatewayPort;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -18,6 +24,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 class PaymentCoreStorePostgresIntegrationTest {
+    private static final String PAYMENT_CORE_HISTORY = "plugin_payment_core_schema_history";
+
     @Test
     void persistsProviderInstantsAsPostgresTimestamptz() {
         String url = System.getenv("LUMIRA_TEST_DB_URL");
@@ -25,23 +33,81 @@ class PaymentCoreStorePostgresIntegrationTest {
         String password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
         assumeTrue(url != null && !url.isBlank() && username != null && password != null);
 
-        var dataSource = new DriverManagerDataSource(url, username, password);
-        var jdbc = JdbcClient.create(dataSource);
-        var store =
-                new PaymentCoreStore(
-                        jdbc, JsonMapper.builder().build(), mock(SecretStorePort.class));
-        var transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        UUID orderId = UUID.randomUUID();
-        UUID idempotencyKey = UUID.randomUUID();
-        UUID refundKey = UUID.randomUUID();
-        String merchantNo =
-                "LM" + orderId.toString().replace("-", "").substring(0, 30).toUpperCase();
-        String tradeNo = "synthetic-trade-" + orderId.toString().replace("-", "");
-        Instant expiresAt = Instant.parse("2026-10-11T02:05:00Z");
-        Instant paidAt = Instant.parse("2026-10-11T02:01:00Z");
-        Instant refundedAt = Instant.parse("2026-10-11T02:03:00Z");
+        String schemaName = "qa_payment_core_" + UUID.randomUUID().toString().replace("-", "");
+        assertTrue(
+                schemaName.matches("qa_payment_core_[0-9a-f]{32}"),
+                "The isolated payment-core schema name must use the qa_ random namespace.");
 
+        var adminDataSource = new DriverManagerDataSource(url, username, password);
+        var adminJdbc = JdbcClient.create(adminDataSource);
+        boolean schemaCreated = false;
         try {
+            adminJdbc.sql("CREATE SCHEMA " + quoteSchema(schemaName)).update();
+            schemaCreated = true;
+
+            var dataSource =
+                    new DriverManagerDataSource(
+                            schemaScopedUrl(url, schemaName), username, password);
+            var jdbc = JdbcClient.create(dataSource);
+            assertEquals(
+                    List.of(schemaName),
+                    jdbc.sql("SELECT unnest(current_schemas(false))").query(String.class).list(),
+                    "The test connection must search only its owned schema, without public fallback.");
+
+            // Host tables come from the current B52 baseline; keep the published plugin migration
+            // unchanged.
+            jdbc.sql(TestSchema.table("platform_user")).update();
+            jdbc.sql(TestSchema.table("platform_authority")).update();
+            Flyway.configure()
+                    .dataSource(dataSource)
+                    .table(PAYMENT_CORE_HISTORY)
+                    .locations("filesystem:" + findPaymentCoreMigrations().toAbsolutePath())
+                    .schemas(schemaName)
+                    .defaultSchema(schemaName)
+                    .baselineOnMigrate(true)
+                    .baselineVersion("0")
+                    .target("1")
+                    .load()
+                    .migrate();
+            assertEquals(
+                    2,
+                    jdbc.sql("SELECT count(*) FROM " + PAYMENT_CORE_HISTORY)
+                            .query(Integer.class)
+                            .single(),
+                    "Only the host baseline marker and published payment-core V1 should be recorded.");
+            assertEquals(
+                    1,
+                    jdbc.sql(
+                                    "SELECT count(*) FROM "
+                                            + PAYMENT_CORE_HISTORY
+                                            + " WHERE version='0' AND type='BASELINE' AND success")
+                            .query(Integer.class)
+                            .single());
+            assertEquals(
+                    1,
+                    jdbc.sql(
+                                    "SELECT count(*) FROM "
+                                            + PAYMENT_CORE_HISTORY
+                                            + " WHERE version='1' AND type='SQL' "
+                                            + "AND script='V1__payment_orders.sql' "
+                                            + "AND checksum IS NOT NULL AND success")
+                            .query(Integer.class)
+                            .single());
+
+            var store =
+                    new PaymentCoreStore(
+                            jdbc, JsonMapper.builder().build(), mock(SecretStorePort.class));
+            var transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+            UUID orderId = UUID.randomUUID();
+            UUID idempotencyKey = UUID.randomUUID();
+            UUID refundKey = UUID.randomUUID();
+            String merchantNo =
+                    "LM" + orderId.toString().replace("-", "").substring(0, 30).toUpperCase();
+            String tradeNo = "synthetic-trade-" + orderId.toString().replace("-", "");
+            Instant expiresAt = Instant.parse("2026-10-11T02:05:00Z");
+            Instant paidAt = Instant.parse("2026-10-11T02:01:00Z");
+            Instant refundedAt = Instant.parse("2026-10-11T02:03:00Z");
+
             transaction.executeWithoutResult(
                     status -> {
                         jdbc.sql(
@@ -123,10 +189,55 @@ class PaymentCoreStorePostgresIntegrationTest {
                     store.list(null, "REFUNDED", 1, 100).items().stream()
                             .anyMatch(order -> order.orderId().equals(orderId)));
         } finally {
-            jdbc.sql("DELETE FROM plugin_payment_core_order WHERE order_id=:id")
-                    .param("id", orderId)
-                    .update();
+            if (schemaCreated) {
+                if (!schemaName.matches("qa_payment_core_[0-9a-f]{32}")) {
+                    throw new IllegalStateException(
+                            "Refusing to drop a schema outside the isolated payment-core namespace.");
+                }
+                adminJdbc
+                        .sql("DROP SCHEMA IF EXISTS " + quoteSchema(schemaName) + " CASCADE")
+                        .update();
+            }
         }
+    }
+
+    private static String schemaScopedUrl(String url, String schemaName) {
+        String[] urlParts = url.split("\\?", 2);
+        if (urlParts.length == 1) return url + "?currentSchema=" + schemaName;
+
+        String retainedParameters =
+                Arrays.stream(urlParts[1].split("&"))
+                        .filter(parameter -> !parameter.isBlank())
+                        .filter(
+                                parameter ->
+                                        !parameter.split("=", 2)[0].equalsIgnoreCase(
+                                                "currentSchema"))
+                        .collect(java.util.stream.Collectors.joining("&"));
+        return urlParts[0]
+                + "?"
+                + (retainedParameters.isEmpty() ? "" : retainedParameters + "&")
+                + "currentSchema="
+                + schemaName;
+    }
+
+    private static String quoteSchema(String schemaName) {
+        if (!schemaName.matches("qa_payment_core_[0-9a-f]{32}")) {
+            throw new IllegalArgumentException("Invalid isolated payment-core schema name.");
+        }
+        return "\"" + schemaName.replace("\"", "\"\"") + "\"";
+    }
+
+    private static Path findPaymentCoreMigrations() {
+        Path directory = Path.of("").toAbsolutePath();
+        while (directory != null) {
+            Path migrations = directory.resolve("plugins/payment-core/migrations");
+            if (Files.isRegularFile(migrations.resolve("V1__payment_orders.sql"))) {
+                return migrations;
+            }
+            directory = directory.getParent();
+        }
+        throw new IllegalStateException(
+                "Payment-core published migrations were not found from the test working directory.");
     }
 
     private record PersistedInstants(

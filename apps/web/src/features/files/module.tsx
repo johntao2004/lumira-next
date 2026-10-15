@@ -17,6 +17,8 @@ export const filesFrontendModule = {
       canDownload={hasOperation("download")}
       canReadRetention={hasRouteAccess("file-retention")}
       canUpdateRetention={hasRouteOperation("file-retention", "update")}
+      canReadQuota={hasRouteAccess("files-all")}
+      canUpdateQuota={hasRouteOperation("files-all", "update-quota")}
     />,
   },
 } satisfies FrontendModule;

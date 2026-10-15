@@ -144,8 +144,7 @@ public class RegistrationRoleAdapter implements RegistrationRolePort {
         if (!enabled) return "registrationRoleDisabled";
         if ("admin".equalsIgnoreCase(code)) return "registrationRoleAdministrator";
         if (!"SELF".equals(dataScope)) return "registrationRoleScopeNotAllowed";
-        if (!allowsAuthorities(authorities))
-            return "registrationRolePermissionsNotAllowed";
+        if (!allowsAuthorities(authorities)) return "registrationRolePermissionsNotAllowed";
         return null;
     }
 

@@ -20,6 +20,7 @@ import { useFileBatchActions } from "./use-file-batch-actions";
 import { useTabAnchor } from "@/platform/routing/use-tab-anchor";
 
 const FileRetentionPage = lazy(() => import("@/features/settings/file-retention-page").then(({ FileRetentionPage }) => ({ default: FileRetentionPage })));
+const FileQuotaSettingsPage = lazy(() => import("./file-quota-settings").then(({ FileQuotaSettingsPage }) => ({ default: FileQuotaSettingsPage })));
 
 type ManagedFile = {
   id: string;
@@ -43,6 +44,8 @@ export function AdminFilesPage({
   canDownload,
   canReadRetention,
   canUpdateRetention,
+  canReadQuota,
+  canUpdateQuota,
 }: {
   canDelete: boolean;
   canRestore: boolean;
@@ -51,10 +54,12 @@ export function AdminFilesPage({
   canDownload: boolean;
   canReadRetention: boolean;
   canUpdateRetention: boolean;
+  canReadQuota: boolean;
+  canUpdateQuota: boolean;
 }) {
   const { t, locale } = usePreferences();
   const client = useQueryClient();
-  const tabKeys = canReadRetention ? ["files", "trash", "file-retention"] as const : ["files", "trash"] as const;
+  const tabKeys = ["files", "trash", ...(canReadRetention ? ["file-retention"] : []), ...(canReadQuota ? ["file-quota"] : [])];
   const [tab, setTab] = useTabAnchor("", tabKeys, "files");
   const [previewFile, setPreviewFile] = useState<ManagedFile | null>(null);
   const [request, setRequest] = useListRequest();
@@ -136,5 +141,6 @@ export function AdminFilesPage({
     { key: "files", label: t("filesTab"), disabled: batchPending, children: filesTable },
     { key: "trash", label: t("fileTrash"), disabled: batchPending, children: trashTable },
     ...(canReadRetention ? [{ key: "file-retention", label: t("fileRetention"), disabled: batchPending, children: <FileRetentionPage canWrite={canUpdateRetention} /> }] : []),
+    ...(canReadQuota ? [{ key: "file-quota", label: t("fileQuotaDefault"), disabled: batchPending, children: <FileQuotaSettingsPage canWrite={canUpdateQuota} /> }] : []),
   ]} /><FilePreviewDrawer file={canPreview ? previewFile : null} endpoint="/platform/files" onClose={() => setPreviewFile(null)} /></>;
 }

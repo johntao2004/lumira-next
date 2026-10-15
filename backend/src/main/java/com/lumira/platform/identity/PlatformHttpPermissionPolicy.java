@@ -5,18 +5,15 @@ import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PluginAuthorizationPort;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
-
 import jakarta.servlet.http.HttpServletRequest;
-
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.util.AntPathMatcher;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
 
 /** Route-owned HTTP authorization for the host dashboard API. */
 final class PlatformHttpPermissionPolicy {
@@ -645,6 +642,13 @@ final class PlatformHttpPermissionPolicy {
 
         page(routes, HttpMethod.GET, PlatformPageId.FILES_ALL, "/api/platform/files");
         page(routes, HttpMethod.GET, PlatformPageId.FILES_ALL, "/api/platform/files/trash");
+        page(routes, HttpMethod.GET, PlatformPageId.FILES_ALL, "/api/platform/settings/file-quota");
+        action(
+                routes,
+                HttpMethod.PUT,
+                PlatformPageId.FILES_ALL,
+                PlatformOperation.FILES_ALL_UPDATE_QUOTA,
+                "/api/platform/settings/file-quota");
         action(
                 routes,
                 HttpMethod.GET,

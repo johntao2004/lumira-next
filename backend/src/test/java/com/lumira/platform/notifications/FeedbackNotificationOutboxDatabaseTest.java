@@ -9,7 +9,10 @@ import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.events.PlatformEventOutboxStore;
 import com.lumira.platform.feedback.FeedbackPolicy;
 import com.lumira.platform.feedback.FeedbackStore;
-
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,13 +22,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-
 import tools.jackson.databind.json.JsonMapper;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class FeedbackNotificationOutboxDatabaseTest {

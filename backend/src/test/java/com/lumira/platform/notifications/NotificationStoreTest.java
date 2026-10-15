@@ -4,18 +4,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.PageRequest;
-
+import java.util.*;
+import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
-
 import tools.jackson.databind.json.JsonMapper;
-
-import java.util.*;
-import java.util.concurrent.*;
 
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class NotificationStoreTest {

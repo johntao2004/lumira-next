@@ -4,18 +4,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.junit.jupiter.api.Test;
 
 class TestSchemaTest {
     private static final String ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000052";
     private static final String USER_ROLE_ID = "00000000-0000-0000-0000-000000000053";
 
     @Test
-    void extractsMultilineDefaultRoleSeedsAndAll140Authorities() {
+    void extractsMultilineDefaultRoleSeedsAndAll141Authorities() {
         List<String> roles = TestSchema.seeds("platform_role");
         assertEquals(1, roles.size());
         String roleSeed = roles.getFirst();
@@ -32,15 +31,19 @@ class TestSchemaTest {
         assertEquals(1, grants.size());
         String grantSeed = grants.getFirst();
         assertEquals(
-                140,
+                141,
                 count(
                         grantSeed,
                         Pattern.compile("(?m)^\\('00000000-0000-0000-0000-00000000005[23]'")));
         assertEquals(
-                137,
+                138,
                 count(grantSeed, Pattern.compile("(?m)^\\('" + ADMIN_ROLE_ID + "', 'platform:")));
         assertEquals(
                 3, count(grantSeed, Pattern.compile("(?m)^\\('" + USER_ROLE_ID + "', 'platform:")));
+        assertTrue(
+                grantSeed.contains("('" + ADMIN_ROLE_ID + "', 'platform:files-all:update-quota')"));
+        assertFalse(
+                grantSeed.contains("('" + USER_ROLE_ID + "', 'platform:files-all:update-quota')"));
         assertFalse(grantSeed.contains("public."));
     }
 

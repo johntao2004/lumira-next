@@ -65,6 +65,36 @@ rejected until usage falls within both limits. The aggregate byte limit does not
 separate per-file upload size limit. Usage reads, role previews, and upload reservations use
 the same resolver.
 
+## Persisted system defaults
+
+Read the defaults with `GET /api/platform/settings/file-quota` and update them with
+`PUT /api/platform/settings/file-quota`. The response is a versioned snapshot:
+
+```json
+{
+  "version": 3,
+  "data": { "maximumBytes": 1073741824, "maximumFiles": 1000 }
+}
+```
+
+For a `PUT`, send the version currently read together with both values in `data`. A successful
+save advances the version and persists the values in the `file-quota` platform setting. A stale
+version returns `409 staleRecord`; malformed, negative, fractional, or unsafe integer values
+return `400 invalidFileQuota`. When no setting has been saved yet, reads return version `0`
+with the environment-configured fallback. The first save from version `0` creates the setting;
+afterward the persisted values take precedence over environment defaults and remain in effect
+across service restarts.
+
+Reading the snapshot requires global `platform:files-all:access`. Updating requires that page
+access and the global `platform:files-all:update-quota` operation. The operation grant alone
+does not replace page access. Each successful update is recorded in setting history and audit.
+
+Quota resolution reads the saved system defaults for dimensions that no enabled assigned role
+limits. A system byte value of `0` removes the aggregate byte ceiling; a system file-count value
+of `0` blocks new file slots. Usage reads and upload reservations use the updated defaults
+immediately. Lowering a limit does not remove existing files; uploads remain blocked while
+current usage exceeds either finite limit.
+
 ## Operational checks
 
 Before assigning or changing a quota role, read the user's complete current role set and

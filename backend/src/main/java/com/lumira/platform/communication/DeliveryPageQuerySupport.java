@@ -2,7 +2,6 @@ package com.lumira.platform.communication;
 
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
-
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;

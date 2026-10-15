@@ -1,7 +1,6 @@
 package com.lumira.platform.events;
 
 import com.lumira.platform.common.*;
-
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 

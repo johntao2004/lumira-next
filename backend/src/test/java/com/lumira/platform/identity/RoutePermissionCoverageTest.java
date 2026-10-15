@@ -7,20 +7,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
+import com.lumira.platform.identity.api.AuthenticationRequestContext;
+import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.support.StaticApplicationContext;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.ClassUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,6 +45,8 @@ class RoutePermissionCoverageTest {
             Path.of("src/main/java/com/lumira/platform/identity/SecurityConfiguration.java");
     private static final String MATRIX_RESOURCE = "http-security/host-http-cases.json";
     private static final String TEST_ID = "00000000-0000-0000-0000-000000000001";
+    private static final UUID MATRIX_ACTOR_ID =
+            UUID.fromString("f9b061a0-5423-4af7-ad1a-ff8b3dc99274");
     private static final List<String> SETTING_HISTORY_SECTIONS =
             List.of(
                     "branding",
@@ -77,7 +86,8 @@ class RoutePermissionCoverageTest {
             List<Integer> bodyBytes,
             String contentType,
             List<Integer> allowedStatuses,
-            List<String> legacyPermissions) {}
+            List<String> legacyPermissions,
+            List<String> requiredPages) {}
 
     private record Endpoint(String method, String path, String source) {}
 
@@ -133,6 +143,14 @@ class RoutePermissionCoverageTest {
             assertNotNull(
                     route, "No policy route for " + httpCase.method() + " " + httpCase.path());
             assertEquals(httpCase.pageId(), route.page().id(), httpCase.path());
+            List<String> requiredPages =
+                    httpCase.requiredPages() == null
+                            ? List.of(httpCase.pageId())
+                            : httpCase.requiredPages();
+            assertEquals(
+                    route.pagesAll().stream().map(PlatformPageId::id).toList(),
+                    requiredPages,
+                    "Required page set for " + httpCase.method() + " " + httpCase.path());
             assertEquals(
                     route.page().accessPermission(), httpCase.accessPermission(), httpCase.path());
             assertEquals(route.page().scope().name(), httpCase.accessScope(), httpCase.path());
@@ -213,6 +231,101 @@ class RoutePermissionCoverageTest {
     }
 
     @Test
+    void hostHttpMatrixAuthorizesOnlyWithEveryRequiredPageAndActionAtItsDeclaredScope()
+            throws Exception {
+        for (HttpCase httpCase : loadCases()) {
+            var route =
+                    PlatformHttpPermissionPolicy.routeFor(
+                            httpCase.method(), "/api" + pathOnly(httpCase.path()));
+            assertNotNull(route, httpCase.path());
+
+            var effective = new TreeSet<String>();
+            var global = new TreeSet<String>();
+            route.pagesAll()
+                    .forEach(
+                            page ->
+                                    addGrant(
+                                            effective,
+                                            global,
+                                            page.accessPermission(),
+                                            page.scope()));
+            List<PlatformOperation> caseOperations =
+                    httpCase.operationPermission() == null
+                            ? List.of()
+                            : route.operationsAny().stream()
+                                    .filter(
+                                            operation ->
+                                                    operation
+                                                            .permission()
+                                                            .equals(httpCase.operationPermission()))
+                                    .toList();
+            if (httpCase.operationPermission() != null)
+                assertFalse(caseOperations.isEmpty(), "Missing case action for " + httpCase.path());
+            caseOperations.forEach(
+                    operation ->
+                            addGrant(effective, global, operation.permission(), operation.scope()));
+
+            assertTrue(
+                    authorizeCase(httpCase, effective, global),
+                    "Declared page/action grants should authorize " + httpCase.path());
+
+            for (PlatformPageId page : route.pagesAll()) {
+                var withoutPage = new TreeSet<>(effective);
+                var withoutPageGlobal = new TreeSet<>(global);
+                withoutPage.remove(page.accessPermission());
+                withoutPageGlobal.remove(page.accessPermission());
+                assertFalse(
+                        authorizeCase(httpCase, withoutPage, withoutPageGlobal),
+                        "Missing required page must deny "
+                                + httpCase.path()
+                                + " without "
+                                + page.id());
+
+                var wrongPageScope = new TreeSet<>(effective);
+                var wrongPageGlobalScope = new TreeSet<>(global);
+                moveGrantToWrongScope(
+                        wrongPageScope,
+                        wrongPageGlobalScope,
+                        page.accessPermission(),
+                        page.scope());
+                assertFalse(
+                        authorizeCase(httpCase, wrongPageScope, wrongPageGlobalScope),
+                        "Wrong page scope must deny " + httpCase.path() + " for " + page.id());
+            }
+
+            if (!route.operationsAny().isEmpty()) {
+                var withoutActions = new TreeSet<>(effective);
+                var withoutActionsGlobal = new TreeSet<>(global);
+                route.operationsAny()
+                        .forEach(
+                                operation -> {
+                                    withoutActions.remove(operation.permission());
+                                    withoutActionsGlobal.remove(operation.permission());
+                                });
+                assertFalse(
+                        authorizeCase(httpCase, withoutActions, withoutActionsGlobal),
+                        "Missing action grant must deny " + httpCase.path());
+            }
+
+            for (PlatformOperation operation : caseOperations) {
+                var wrongActionScope = new TreeSet<>(effective);
+                var wrongActionGlobalScope = new TreeSet<>(global);
+                moveGrantToWrongScope(
+                        wrongActionScope,
+                        wrongActionGlobalScope,
+                        operation.permission(),
+                        operation.scope());
+                assertFalse(
+                        authorizeCase(httpCase, wrongActionScope, wrongActionGlobalScope),
+                        "Wrong action scope must deny "
+                                + httpCase.path()
+                                + " for "
+                                + operation.permission());
+            }
+        }
+    }
+
+    @Test
     void auxiliaryLookupsUseTheirOwningPageAndOnlyTheirOwnReadOrWriteAction() {
         assertOperations(
                 "GET",
@@ -264,6 +377,20 @@ class RoutePermissionCoverageTest {
         assertNotNull(quotaPreview);
         assertEquals(PlatformPageId.USERS, quotaPreview.page());
         assertEquals(List.of(PlatformOperation.USER_ASSIGN_ROLES), quotaPreview.operationsAny());
+
+        var quotaSettingsRead =
+                PlatformHttpPermissionPolicy.routeFor("GET", "/api/platform/settings/file-quota");
+        assertNotNull(quotaSettingsRead);
+        assertEquals(PlatformPageId.FILES_ALL, quotaSettingsRead.page());
+        assertEquals(List.of(), quotaSettingsRead.operationsAny());
+
+        var quotaSettingsUpdate =
+                PlatformHttpPermissionPolicy.routeFor("PUT", "/api/platform/settings/file-quota");
+        assertNotNull(quotaSettingsUpdate);
+        assertEquals(PlatformPageId.FILES_ALL, quotaSettingsUpdate.page());
+        assertEquals(
+                List.of(PlatformOperation.FILES_ALL_UPDATE_QUOTA),
+                quotaSettingsUpdate.operationsAny());
     }
 
     @Test
@@ -366,6 +493,64 @@ class RoutePermissionCoverageTest {
                         .getResourceAsStream(MATRIX_RESOURCE)) {
             assertNotNull(stream, "Missing " + MATRIX_RESOURCE);
             return new ObjectMapper().readValue(stream, new TypeReference<>() {});
+        }
+    }
+
+    private static void addGrant(
+            Set<String> effective,
+            Set<String> global,
+            String permission,
+            PlatformOperation.Scope scope) {
+        effective.add(permission);
+        if (scope == PlatformOperation.Scope.GLOBAL) global.add(permission);
+    }
+
+    private static void addWrongScopeGrant(
+            Set<String> effective,
+            Set<String> global,
+            String permission,
+            PlatformOperation.Scope scope) {
+        if (scope == PlatformOperation.Scope.GLOBAL) effective.add(permission);
+        else global.add(permission);
+    }
+
+    private static void moveGrantToWrongScope(
+            Set<String> effective,
+            Set<String> global,
+            String permission,
+            PlatformOperation.Scope scope) {
+        effective.remove(permission);
+        global.remove(permission);
+        addWrongScopeGrant(effective, global, permission, scope);
+    }
+
+    private static boolean authorizeCase(
+            HttpCase httpCase, Set<String> effective, Set<String> global) {
+        String path = "/api" + pathOnly(httpCase.path());
+        var request = new MockHttpServletRequest(httpCase.method(), path);
+        var authorities = effective.stream().map(SimpleGrantedAuthority::new).toList();
+        var authentication =
+                UsernamePasswordAuthenticationToken.authenticated("matrix-actor", "", authorities);
+        var context =
+                new RequestAuthorizationContext(
+                        "matrix-actor",
+                        MATRIX_ACTOR_ID,
+                        "matrix-session",
+                        effective,
+                        global,
+                        Map.of(),
+                        effective,
+                        global,
+                        Map.of(),
+                        "revision",
+                        "revision",
+                        true,
+                        null);
+        try (var ignored =
+                AuthenticationRequestContext.bind(
+                        new AuthenticationRequestContext.Snapshot(
+                                "matrix-actor", MATRIX_ACTOR_ID, null, context))) {
+            return PlatformHttpPermissionPolicy.authorize(authentication, request, null);
         }
     }
 

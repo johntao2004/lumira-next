@@ -16,7 +16,8 @@
         <configuration>
           <java>
             <includes>
-              <include>**/*.java</include>
+              <include>*/backend/src/**/*.java</include>
+              <include>sdk/examples/*/backend/src/**/*.java</include>
             </includes>
             <excludes>
               <exclude>**/target/**</exclude>

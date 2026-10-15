@@ -94,8 +94,7 @@ class RegistrationRoleAdapterDatabaseTest {
         assertEquals("registrationRoleAdministrator", candidate.reason());
         assertFalse(roles.isDefaultRole(ADMIN_ROLE_ID));
         assertThrows(
-                ResponseStatusException.class,
-                () -> roles.lockAndRequireEligible(ADMIN_ROLE_ID));
+                ResponseStatusException.class, () -> roles.lockAndRequireEligible(ADMIN_ROLE_ID));
     }
 
     @Test

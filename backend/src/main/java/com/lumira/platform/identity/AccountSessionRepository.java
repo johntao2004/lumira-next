@@ -2,12 +2,10 @@ package com.lumira.platform.identity;
 
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
-
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
-
 import java.time.Instant;
 import java.util.*;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
 
 @Repository
 public class AccountSessionRepository {
@@ -62,9 +60,9 @@ public class AccountSessionRepository {
         parameters.putAll(filter.parameters());
         return jdbc.sql(
                         "SELECT"
-                            + " primary_id,creation_time,last_access_time,expiry_time,session_id=:current"
-                            + " AS current FROM spring_session WHERE principal_name=:name AND"
-                            + " expiry_time>:now"
+                                + " primary_id,creation_time,last_access_time,expiry_time,session_id=:current"
+                                + " AS current FROM spring_session WHERE principal_name=:name AND"
+                                + " expiry_time>:now"
                                 + filter.sql()
                                 + " ORDER BY (session_id=:current) DESC,last_access_time"
                                 + " DESC,primary_id LIMIT :limit OFFSET :offset")

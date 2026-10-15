@@ -17,8 +17,7 @@ public interface PasskeyPolicyPort {
             String rpName,
             List<String> allowedOrigins,
             Integer challengeTtlSeconds) {
-        private static final Pattern RP_ID =
-                Pattern.compile("[A-Za-z0-9][A-Za-z0-9.-]{0,252}");
+        private static final Pattern RP_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9.-]{0,252}");
 
         public Policy {
             allowedOrigins = allowedOrigins == null ? List.of() : List.copyOf(allowedOrigins);
@@ -44,7 +43,8 @@ public interface PasskeyPolicyPort {
                     || normalizedRpId.contains("..")) return false;
             if (normalizedRpName.isBlank()
                     || normalizedRpName.length() > 255
-                    || normalizedRpName.codePoints().anyMatch(Character::isISOControl)) return false;
+                    || normalizedRpName.codePoints().anyMatch(Character::isISOControl))
+                return false;
             if (allowedOrigins.size() > 32) return false;
             for (String origin : allowedOrigins) {
                 if (!validOrigin(origin)) return false;

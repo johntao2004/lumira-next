@@ -2,13 +2,11 @@ package com.lumira.platform.events;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.PlatformOperation;
-
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.util.UUID;
 
 /** Administrative adapter for durable event recovery; payloads never enter this API. */
 @Service

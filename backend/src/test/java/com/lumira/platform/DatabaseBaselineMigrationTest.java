@@ -7,14 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
-
-import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.configuration.FluentConfiguration;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +15,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 /** Verifies B52 initialization and manual baseline behavior in a dedicated QA database. */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_DATABASE_BASELINE_TEST_DB_URL", matches = ".+")
@@ -57,44 +55,44 @@ class DatabaseBaselineMigrationTest {
                     Map.entry(
                             "platform_module_revision",
                             "SELECT jsonb_build_object('module_id',s.module_id,'version',r.version,"
-                                + "'enabled',r.enabled,'changed_by',r.changed_by,'change_reason',r.change_reason)::text"
-                                + " FROM public.platform_module_revision r JOIN"
-                                + " public.platform_module_state s ON s.id=r.module_state_id ORDER"
-                                + " BY s.module_id,r.version"),
+                                    + "'enabled',r.enabled,'changed_by',r.changed_by,'change_reason',r.change_reason)::text"
+                                    + " FROM public.platform_module_revision r JOIN"
+                                    + " public.platform_module_state s ON s.id=r.module_state_id ORDER"
+                                    + " BY s.module_id,r.version"),
                     Map.entry(
                             "platform_dictionary",
                             "SELECT"
-                                + " jsonb_build_object('code',code,'name',name,'enabled',enabled,'structure',structure,'remark',remark,'version',version)::text"
-                                + " FROM public.platform_dictionary ORDER BY code"),
+                                    + " jsonb_build_object('code',code,'name',name,'enabled',enabled,'structure',structure,'remark',remark,'version',version)::text"
+                                    + " FROM public.platform_dictionary ORDER BY code"),
                     Map.entry(
                             "platform_dictionary_item",
                             "SELECT"
-                                + " jsonb_build_object('dictionary_code',d.code,'parent_value',p.value,"
-                                + "'value',i.value,'label',i.label,'sort_order',i.sort_order,'enabled',i.enabled,'remark',i.remark,'version',i.version)::text"
-                                + " FROM public.platform_dictionary_item i JOIN"
-                                + " public.platform_dictionary d ON d.id=i.dictionary_id LEFT JOIN"
-                                + " public.platform_dictionary_item p ON p.id=i.parent_id ORDER BY"
-                                + " d.code,p.value,i.value"),
+                                    + " jsonb_build_object('dictionary_code',d.code,'parent_value',p.value,"
+                                    + "'value',i.value,'label',i.label,'sort_order',i.sort_order,'enabled',i.enabled,'remark',i.remark,'version',i.version)::text"
+                                    + " FROM public.platform_dictionary_item i JOIN"
+                                    + " public.platform_dictionary d ON d.id=i.dictionary_id LEFT JOIN"
+                                    + " public.platform_dictionary_item p ON p.id=i.parent_id ORDER BY"
+                                    + " d.code,p.value,i.value"),
                     Map.entry(
                             "platform_navigation_menu",
                             "SELECT"
-                                + " jsonb_build_object('menu_code',m.menu_code,'parent_code',p.menu_code,"
-                                + "'label_key',m.label_key,'label_default',m.label_default,"
-                                + "'menu_type',m.menu_type,'section_key',m.section_key,'path',m.path,"
-                                + "'icon',m.icon,'permission_key',m.permission_key,"
-                                + "'global_only',m.global_only,'module_id',m.module_id,"
-                                + "'sort_order',m.sort_order,'enabled',m.enabled,"
-                                + "'built_in',m.built_in,'deleted',m.deleted,'version',m.version,'component_key',m.component_key)::text"
-                                + " FROM public.platform_navigation_menu m LEFT JOIN"
-                                + " public.platform_navigation_menu p ON p.id=m.parent_id ORDER BY"
-                                + " m.menu_code"),
+                                    + " jsonb_build_object('menu_code',m.menu_code,'parent_code',p.menu_code,"
+                                    + "'label_key',m.label_key,'label_default',m.label_default,"
+                                    + "'menu_type',m.menu_type,'section_key',m.section_key,'path',m.path,"
+                                    + "'icon',m.icon,'permission_key',m.permission_key,"
+                                    + "'global_only',m.global_only,'module_id',m.module_id,"
+                                    + "'sort_order',m.sort_order,'enabled',m.enabled,"
+                                    + "'built_in',m.built_in,'deleted',m.deleted,'version',m.version,'component_key',m.component_key)::text"
+                                    + " FROM public.platform_navigation_menu m LEFT JOIN"
+                                    + " public.platform_navigation_menu p ON p.id=m.parent_id ORDER BY"
+                                    + " m.menu_code"),
                     Map.entry(
                             "platform_localization_locale",
                             "SELECT jsonb_build_object('locale_code',locale_code,"
-                                + "'display_name',display_name,'source_locale',source_locale,"
-                                + "'fallback_locale',fallback_locale,'built_in',built_in,"
-                                + "'enabled',enabled,'version',version,'created_by',created_by,'updated_by',updated_by)::text"
-                                + " FROM public.platform_localization_locale ORDER BY locale_code"),
+                                    + "'display_name',display_name,'source_locale',source_locale,"
+                                    + "'fallback_locale',fallback_locale,'built_in',built_in,"
+                                    + "'enabled',enabled,'version',version,'created_by',created_by,'updated_by',updated_by)::text"
+                                    + " FROM public.platform_localization_locale ORDER BY locale_code"),
                     Map.entry(
                             "platform_authentication_policy_lock",
                             "SELECT jsonb_build_object('id',id)::text FROM"
@@ -102,13 +100,13 @@ class DatabaseBaselineMigrationTest {
                     Map.entry(
                             "platform_global_authentication_policy",
                             "SELECT jsonb_build_object('id',id,'version',version,"
-                                + "'enabled_methods',enabled_methods,'mfa_required',mfa_required,'updated_by',updated_by,'change_reason',change_reason)::text"
-                                + " FROM public.platform_global_authentication_policy ORDER BY id"),
+                                    + "'enabled_methods',enabled_methods,'mfa_required',mfa_required,'updated_by',updated_by,'change_reason',change_reason)::text"
+                                    + " FROM public.platform_global_authentication_policy ORDER BY id"),
                     Map.entry(
                             "platform_registration_policy",
                             "SELECT jsonb_build_object('id',id,'version',version,'enabled',enabled,"
-                                + "'channels',channels,'default_role_id',default_role_id,'updated_by',updated_by,'change_reason',change_reason)::text"
-                                + " FROM public.platform_registration_policy ORDER BY id"),
+                                    + "'channels',channels,'default_role_id',default_role_id,'updated_by',updated_by,'change_reason',change_reason)::text"
+                                    + " FROM public.platform_registration_policy ORDER BY id"),
                     Map.entry(
                             "platform_role",
                             "SELECT jsonb_build_object('id',id,'code',code,'name',name,"
@@ -119,22 +117,22 @@ class DatabaseBaselineMigrationTest {
                     Map.entry(
                             "platform_role_authority",
                             "SELECT"
-                                + " jsonb_build_object('role_id',role_id,'authority',authority)::text"
-                                + " FROM public.platform_role_authority ORDER BY"
-                                + " role_id,authority"),
+                                    + " jsonb_build_object('role_id',role_id,'authority',authority)::text"
+                                    + " FROM public.platform_role_authority ORDER BY"
+                                    + " role_id,authority"),
                     Map.entry(
                             "platform_captcha_settings",
                             "SELECT jsonb_build_object('id',id,'version',version,'enabled',enabled,"
-                                + "'challenge_type',challenge_type,'access_key_id',access_key_id,"
-                                + "'primary_app_id',primary_app_id,'accessible_app_id',accessible_app_id,"
-                                + "'timeout_seconds',timeout_seconds,'actions',actions,'updated_by',updated_by,'change_reason',change_reason)::text"
-                                + " FROM public.platform_captcha_settings ORDER BY id"),
+                                    + "'challenge_type',challenge_type,'access_key_id',access_key_id,"
+                                    + "'primary_app_id',primary_app_id,'accessible_app_id',accessible_app_id,"
+                                    + "'timeout_seconds',timeout_seconds,'actions',actions,'updated_by',updated_by,'change_reason',change_reason)::text"
+                                    + " FROM public.platform_captcha_settings ORDER BY id"),
                     Map.entry(
                             "platform_sensitive_word_revision",
                             "SELECT"
-                                + " jsonb_build_object('singleton',singleton,'revision',revision)::text"
-                                + " FROM public.platform_sensitive_word_revision ORDER BY"
-                                + " singleton"),
+                                    + " jsonb_build_object('singleton',singleton,'revision',revision)::text"
+                                    + " FROM public.platform_sensitive_word_revision ORDER BY"
+                                    + " singleton"),
                     Map.entry(
                             "platform_permission_legacy_mapping",
                             "SELECT jsonb_build_object('old_authority',old_authority,"
@@ -286,10 +284,10 @@ class DatabaseBaselineMigrationTest {
                 new HashSet<>(
                         jdbc.queryForList(
                                 "SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON"
-                                    + " n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname"
-                                    + " IN ('platform_role_logical_authorities',"
-                                    + "'platform_role_preview_visible_organizations','platform_role_preview_visible_users')"
-                                    + " ORDER BY p.proname",
+                                        + " n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname"
+                                        + " IN ('platform_role_logical_authorities',"
+                                        + "'platform_role_preview_visible_organizations','platform_role_preview_visible_users')"
+                                        + " ORDER BY p.proname",
                                 String.class)),
                 "Current permission functions must be installed.");
         assertEquals(
@@ -346,8 +344,8 @@ class DatabaseBaselineMigrationTest {
                         "00000000-0000-0000-0000-000000000053|user|普通用户|true|SELF|0"),
                 jdbc.queryForList(
                         "SELECT"
-                            + " concat_ws('|',id::text,code,name,enabled::text,data_scope,version::text)"
-                            + " FROM public.platform_role ORDER BY code,id",
+                                + " concat_ws('|',id::text,code,name,enabled::text,data_scope,version::text)"
+                                + " FROM public.platform_role ORDER BY code,id",
                         String.class),
                 "The baseline must seed only the stable administrator and ordinary roles.");
 
@@ -403,7 +401,7 @@ class DatabaseBaselineMigrationTest {
     private static List<String> historyRows(JdbcTemplate jdbc) {
         return jdbc.queryForList(
                 "SELECT concat_ws('|', COALESCE(version,''), description, type, script,"
-                    + " success::text) FROM public.flyway_schema_history ORDER BY installed_rank",
+                        + " success::text) FROM public.flyway_schema_history ORDER BY installed_rank",
                 String.class);
     }
 
@@ -413,21 +411,21 @@ class DatabaseBaselineMigrationTest {
                 "relations",
                 jdbc.queryForList(
                         "SELECT"
-                            + " concat_ws('|',c.relname,c.relkind,c.relpersistence,c.relrowsecurity::text,c.relforcerowsecurity::text)"
-                            + " FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE"
-                            + " n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f') AND"
-                            + " c.relname<>'flyway_schema_history' ORDER BY c.relname",
+                                + " concat_ws('|',c.relname,c.relkind,c.relpersistence,c.relrowsecurity::text,c.relforcerowsecurity::text)"
+                                + " FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE"
+                                + " n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f') AND"
+                                + " c.relname<>'flyway_schema_history' ORDER BY c.relname",
                         String.class));
         snapshot.put(
                 "columns",
                 jdbc.queryForList(
                         "SELECT concat_ws('|',table_name,ordinal_position::text,column_name,"
-                            + "data_type,udt_name,is_nullable,"
-                            + "COALESCE(character_maximum_length::text,''),"
-                            + "COALESCE(numeric_precision::text,''),COALESCE(numeric_scale::text,''),COALESCE(column_default,''))"
-                            + " FROM information_schema.columns WHERE table_schema='public' AND"
-                            + " table_name<>'flyway_schema_history' ORDER BY"
-                            + " table_name,ordinal_position",
+                                + "data_type,udt_name,is_nullable,"
+                                + "COALESCE(character_maximum_length::text,''),"
+                                + "COALESCE(numeric_precision::text,''),COALESCE(numeric_scale::text,''),COALESCE(column_default,''))"
+                                + " FROM information_schema.columns WHERE table_schema='public' AND"
+                                + " table_name<>'flyway_schema_history' ORDER BY"
+                                + " table_name,ordinal_position",
                         String.class));
         snapshot.put(
                 "constraints",
@@ -443,32 +441,32 @@ class DatabaseBaselineMigrationTest {
                 "indexes",
                 jdbc.queryForList(
                         "SELECT concat_ws('|',tablename,indexname,indexdef) FROM pg_indexes WHERE"
-                            + " schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY"
-                            + " tablename,indexname",
+                                + " schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY"
+                                + " tablename,indexname",
                         String.class));
         snapshot.put(
                 "views",
                 jdbc.queryForList(
                         "SELECT concat_ws('|',c.relname,pg_get_viewdef(c.oid,true)) FROM pg_class c"
-                            + " JOIN pg_namespace n ON n.oid=c.relnamespace WHERE"
-                            + " n.nspname='public' AND c.relkind IN ('v','m') ORDER BY c.relname",
+                                + " JOIN pg_namespace n ON n.oid=c.relnamespace WHERE"
+                                + " n.nspname='public' AND c.relkind IN ('v','m') ORDER BY c.relname",
                         String.class));
         snapshot.put(
                 "functions",
                 jdbc.queryForList(
                         "SELECT"
-                            + " concat_ws('|',p.proname,pg_get_function_identity_arguments(p.oid),pg_get_function_result(p.oid),pg_get_functiondef(p.oid))"
-                            + " FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE"
-                            + " n.nspname='public' ORDER BY"
-                            + " p.proname,pg_get_function_identity_arguments(p.oid)",
+                                + " concat_ws('|',p.proname,pg_get_function_identity_arguments(p.oid),pg_get_function_result(p.oid),pg_get_functiondef(p.oid))"
+                                + " FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE"
+                                + " n.nspname='public' ORDER BY"
+                                + " p.proname,pg_get_function_identity_arguments(p.oid)",
                         String.class));
         snapshot.put(
                 "triggers",
                 jdbc.queryForList(
                         "SELECT concat_ws('|',c.relname,t.tgname,pg_get_triggerdef(t.oid,true))"
-                            + " FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN"
-                            + " pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND"
-                            + " NOT t.tgisinternal ORDER BY c.relname,t.tgname",
+                                + " FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN"
+                                + " pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND"
+                                + " NOT t.tgisinternal ORDER BY c.relname,t.tgname",
                         String.class));
         return snapshot;
     }
