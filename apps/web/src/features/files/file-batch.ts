@@ -3,9 +3,27 @@ export type FileBatchOperation = "trash" | "restore" | "purge";
 export type FileBatchEndpoint = "/account/files" | "/platform/files";
 export type BatchFile = { id: string; originalName: string; version: number; state: string; protectedByReference?: boolean };
 
-export function fileBatchOperations(scope: FileBatchScope, selectedCount: number): FileBatchOperation[] {
-  if (selectedCount === 0) return [];
+export type FileBatchPermissions = { canDelete?: boolean; canRestore?: boolean };
+
+function fileBatchOperationsForScope(scope: FileBatchScope): FileBatchOperation[] {
   return scope === "files" ? ["trash"] : ["restore", "purge"];
+}
+
+export function fileBatchOperations(scope: FileBatchScope, selectedCount: number): FileBatchOperation[] {
+  return selectedCount === 0 ? [] : fileBatchOperationsForScope(scope);
+}
+
+/** Operations available in the current scope, independent of the current selection. */
+export function permittedFileBatchOperations(scope: FileBatchScope, { canDelete = true, canRestore = true }: FileBatchPermissions = {}): FileBatchOperation[] {
+  return fileBatchOperationsForScope(scope).filter(operation => operation === "restore" ? canRestore : canDelete);
+}
+
+/** Rows can be selected when their state and at least one permitted bulk action allow it. */
+export function canSelectFileForBatch(file: BatchFile, scope: FileBatchScope, permissions: FileBatchPermissions = {}): boolean {
+  const eligibleState = scope === "files" ? "READY" : "TRASHED";
+  return permittedFileBatchOperations(scope, permissions).length > 0
+    && file.state === eligibleState
+    && !(scope === "files" && file.protectedByReference === true);
 }
 
 export function selectBatchFiles<T extends BatchFile>(items: T[] | undefined, ids: string[], scope: FileBatchScope): T[] {

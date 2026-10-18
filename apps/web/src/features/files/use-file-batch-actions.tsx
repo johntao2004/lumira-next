@@ -6,7 +6,7 @@ import { mutate } from "@/platform/api/client";
 import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
-import { fileBatchOperations, runFileBatch, selectBatchFiles, type BatchFile, type FileBatchEndpoint, type FileBatchOperation, type FileBatchScope } from "./file-batch";
+import { canSelectFileForBatch, fileBatchOperations, permittedFileBatchOperations, runFileBatch, selectBatchFiles, type BatchFile, type FileBatchEndpoint, type FileBatchOperation, type FileBatchScope } from "./file-batch";
 import { useSessionScope } from "@/platform/auth/use-session-scope";
 
 type BatchActionOptions = {
@@ -34,7 +34,8 @@ export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined,
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const eligibleState = scope === "files" ? "READY" : "TRASHED";
   const selected = selectBatchFiles(items, selectedIds, scope);
-  const operations = fileBatchOperations(scope, selected.length).filter(operation => operation === "restore" ? canRestore : canDelete);
+  const permittedOperations = permittedFileBatchOperations(scope, { canDelete, canRestore });
+  const operations = fileBatchOperations(scope, selected.length).filter(operation => permittedOperations.includes(operation));
 
   useEffect(() => {
     const available = new Set((items ?? []).filter(file => file.state === eligibleState && !(scope === "files" && file.protectedByReference)).map(file => file.id));
@@ -99,7 +100,7 @@ export function useFileBatchActions<T extends BatchFile>(items: T[] | undefined,
     selectedRowKeys: selected.map(file => file.id),
     preserveSelectedRowKeys: false,
     onChange: keys => { if (!busy.current) setSelectedIds(keys.map(String)); },
-    getCheckboxProps: file => ({ disabled: pending || operations.length === 0 || file.state !== eligibleState || (scope === "files" && file.protectedByReference === true) }),
+    getCheckboxProps: file => ({ disabled: pending || !canSelectFileForBatch(file, scope, { canDelete, canRestore }) }),
   };
 
   const actions = operations.length > 0 ? <Space wrap className="file-batch-actions">

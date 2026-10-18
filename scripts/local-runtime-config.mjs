@@ -958,6 +958,15 @@ export function backupAndWriteRuntimeConfig(root, config, pin) {
 export function parseArguments(argv) {
   const [command, ...rest] = argv;
   const options = {};
+  const supportedOptions = new Set([
+    "pid",
+    "target-config",
+    "psql-docker-container",
+    "accept-changes",
+    "activity-audit-docker-admin",
+    "jar",
+    "sha256",
+  ]);
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (!arg.startsWith("--")) {
@@ -970,10 +979,24 @@ export function parseArguments(argv) {
     if (!inlineValue) index += 1;
     if (!value || value.startsWith("--"))
       throw new LocalRuntimeConfigError(`Missing value for --${name}.`, "INVALID_ARGUMENT");
-    if (!new Set(["pid", "target-config", "psql-docker-container", "accept-changes", "jar", "sha256"]).has(name))
+    if (!supportedOptions.has(name))
       throw new LocalRuntimeConfigError(`Unknown option --${name}.`, "INVALID_ARGUMENT");
+    if (name === "activity-audit-docker-admin") {
+      if (value !== "true")
+        throw new LocalRuntimeConfigError(
+          "--activity-audit-docker-admin accepts only the value true.",
+          "INVALID_ARGUMENT",
+        );
+      options.activityauditdockeradmin = true;
+      continue;
+    }
     options[name.replaceAll("-", "")] = name === "pid" ? Number(value) : value;
   }
+  if (options.activityauditdockeradmin && command !== "switch")
+    throw new LocalRuntimeConfigError(
+      "--activity-audit-docker-admin is available only with the switch command.",
+      "INVALID_ARGUMENT",
+    );
   return { command, options };
 }
 

@@ -1,6 +1,7 @@
 node_modules
 .next/
 apps/web/dist/
+apps/web/public/pdfjs/
 apps/web/src/.umi/
 apps/web/src/.umi-production/
 .runtime/

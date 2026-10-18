@@ -80,9 +80,8 @@ function requestSearchValues<T>(columns: ProColumns<T>[], request: ListRequest):
   return values;
 }
 
-export function ResourceTable<T extends { id: string }>({ result, loading, error, request, onChange, onRetry, columns, actions, onSearch, searchInitialValues, rowSelection, tableAlertOptionRender, expandable, searchable = true, embedded = false, scroll = { x: "max-content" } }: {
+export function ResourceTable<T extends { id: string }>({ result, loading, error, request, onChange, onRetry, columns, actions, onSearch, searchInitialValues, rowSelection, expandable, searchable = true, embedded = false, scroll = { x: "max-content" } }: {
   searchable?: boolean; rowSelection?: TableProps<T>["rowSelection"]; actions?: React.ReactNode;
-  tableAlertOptionRender?: false;
   expandable?: TableProps<T>["expandable"];
   embedded?: boolean; scroll?: TableProps<T>["scroll"];
   onSearch?: (search: ResourceSearch) => void;
@@ -130,7 +129,7 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
       className="resource-data"
       formRef={searchFormRef}
       rowSelection={rowSelection}
-      tableAlertOptionRender={tableAlertOptionRender}
+      tableAlertRender={false}
       expandable={expandable}
       rowKey="id"
       loading={loading}

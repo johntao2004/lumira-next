@@ -156,6 +156,7 @@ public class AiAssistantService {
         int attachmentCount = 0;
         int attachmentText = 0;
         int imageCount = 0;
+        var supportedFormats = providers.supportedFileFormats(provider, modelName);
         for (ChatMessage item : history) {
             if (item == null
                     || !("user".equals(item.role()) || "assistant".equals(item.role()))
@@ -173,6 +174,11 @@ public class AiAssistantService {
             var images = new ArrayList<Map<String, Object>>();
             for (UUID id : ids) {
                 var content = resolved.computeIfAbsent(id, key -> readAttachment(actor, key));
+                if (!supportedFormats.contains(AiModelInputPolicy.extension(content.name())))
+                    throw attachmentError(
+                            content.image() && !AiModelInputPolicy.vision(supportedFormats)
+                                    ? "aiAttachmentVisionRequired"
+                                    : "aiAttachmentModelUnsupported");
                 if (content.image()) {
                     imageCount++;
                     if (imageCount > 4) throw attachmentError("aiAttachmentContextTooLarge");
@@ -208,13 +214,6 @@ public class AiAssistantService {
                 modelMessages.add(Map.of("role", item.role(), "content", parts));
             }
         }
-        if (imageCount > 0
-                && connections.probe(provider).models().stream()
-                        .noneMatch(
-                                model ->
-                                        model.id().equals(modelName)
-                                                && model.inputModalities().contains("image")))
-            throw attachmentError("aiAttachmentVisionRequired");
         var writableOperations = new HashSet<String>();
         if (canCreateUsers) writableOperations.add("create");
         if (canReadUsers && canUpdateUsers) writableOperations.add("update");

@@ -53,6 +53,8 @@ jobs:
           distribution: temurin
           java-version: 25
           cache: maven
+      - name: Install PDFBox Chinese fallback font
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends fontconfig fonts-wqy-zenhei
       - run: pnpm check:java-format
       # Includes the integration tests that need PostgreSQL (enabled by LUMIRA_TEST_DB_URL)
       # and ArchitectureTest, which freezes the module dependency graph.

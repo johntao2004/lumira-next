@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const paymentCoreManifest = {
   id: "payment-core",
-  version: "1.0.5",
+  version: "1.0.6",
   required: false,
   dependencies: ["platform"],
   routes: [

@@ -380,10 +380,8 @@ function AuthenticationEditor({ initial, canWrite, hasRouteAccess, hasRouteOpera
           />
         </Form.Item>
       </section>
-      <section className="auth-settings-section">
-        <Typography.Title level={5}>{t("globalMfaRequired")}</Typography.Title>
-        <Typography.Paragraph type="secondary">{t("globalMfaRequiredHint")}</Typography.Paragraph>
-        <Form.Item name="mfaRequired" label={t("globalMfaRequired")} valuePropName="checked" className="auth-settings-switch-row">
+      <section className="auth-settings-section auth-settings-mfa-section">
+        <Form.Item name="mfaRequired" label={t("globalMfaRequired")} extra={t("globalMfaRequiredHint")} valuePropName="checked" className="auth-settings-switch-row auth-settings-mfa-row">
           <Switch />
         </Form.Item>
         {mfaRequired === true && Number.isSafeInteger(initial.affectedAccountCount) && <Alert type="warning" showIcon title={t("globalMfaAffectedAccounts", { count: initial.affectedAccountCount })} />}

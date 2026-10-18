@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatHistoryStorageKey, decodeChatHistory, formatChatTranscript, loadChatHistory, saveChatHistory, type ChatHistory, type ChatSession } from "./chat-history.ts";
+import { archiveChatConversation, chatHistoryStorageKey, decodeChatHistory, formatChatTranscript, loadChatHistory, saveChatHistory, type ChatHistory, type ChatSession } from "./chat-history.ts";
 
 const legacyHistory = {
   version: 1,
@@ -21,6 +21,38 @@ test("decodes existing v1 histories without archive metadata as active conversat
   assert.equal(decoded?.sessions[0].archived, false);
   assert.equal(decoded?.sessions[0].label, "Earlier chat");
   assert.equal(decodeChatHistory(legacyHistory, "another-owner"), null);
+});
+
+test("keeps a conversation's share link across reloads within its owner history", () => {
+  const share = { id: "618c71d5-ad36-486f-ac0f-24e78d87adb1", path: `/share/ai/${"a".repeat(43)}` };
+  const history = decodeChatHistory(legacyHistory, "alice")!;
+  history.sessions[0].share = share;
+  const records = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => records.get(key) ?? null,
+    setItem: (key: string, value: string) => records.set(key, value),
+  };
+
+  saveChatHistory("alice", history, storage);
+  assert.deepEqual(loadChatHistory("alice", storage)?.sessions[0].share, share);
+  assert.equal(loadChatHistory("bob", storage), null);
+  const reloaded = loadChatHistory("alice", storage)!;
+  reloaded.sessions[0].share = undefined;
+  saveChatHistory("alice", reloaded, storage);
+  assert.equal(loadChatHistory("alice", storage)?.sessions[0].share, undefined);
+  assert.equal(loadChatHistory("alice", storage)?.sessions[0].label, "Earlier chat");
+});
+
+test("drops malformed share references without discarding the saved conversation", () => {
+  for (const share of [
+    { id: "not-a-uuid", path: `/share/ai/${"a".repeat(43)}` },
+    { id: "618c71d5-ad36-486f-ac0f-24e78d87adb1", path: `https://example.com/share/ai/${"a".repeat(43)}` },
+    { id: "618c71d5-ad36-486f-ac0f-24e78d87adb1", path: `/share/ai/${"a".repeat(43)}?redirect=elsewhere` },
+  ]) {
+    const history = decodeChatHistory({ ...legacyHistory, sessions: [{ ...legacyHistory.sessions[0], share }] }, "alice");
+    assert.equal(history?.sessions[0].label, "Earlier chat");
+    assert.equal(history?.sessions[0].share, undefined);
+  }
 });
 
 test("round-trips operation metadata while keeping old v1 execution steps readable", () => {
@@ -149,6 +181,75 @@ test("round-trips archive state in the owner-scoped v1 history format", () => {
   assert.equal(saved.version, 1);
   assert.equal(saved.owner, "alice");
   assert.equal(loadChatHistory("alice", storage)?.sessions[0].archived, true);
+});
+
+test("archiving the active conversation selects another active chat and preserves the archived record", () => {
+  const archived: ChatSession = {
+    key: "chat-current",
+    label: "Current",
+    transcript: [{
+      key: 1,
+      role: "user",
+      content: "Keep this history",
+      attachments: [{ id: "01234567-89ab-cdef-0123-456789abcdef", name: "brief.txt", sizeBytes: 42, image: false, truncated: false }],
+    }],
+    users: null,
+    draft: "Keep this draft",
+    archived: false,
+    providerId: "provider-one",
+    modelName: "model-one",
+    draftAttachments: [{ id: "11234567-89ab-cdef-0123-456789abcdef", name: "draft.txt", sizeBytes: 12, image: false, truncated: false }],
+  };
+  const other: ChatSession = { key: "chat-other", label: "Other", transcript: [], users: null, draft: "", archived: false };
+  const history: ChatHistory = { sessions: [archived, other], activeSessionKey: archived.key };
+
+  const next = archiveChatConversation(history, archived.key, "chat-unused-replacement");
+
+  assert.equal(next.activeSessionKey, other.key);
+  assert.equal(next.sessions.find((session) => session.key === archived.key)?.archived, true);
+  assert.deepEqual(next.sessions.find((session) => session.key === archived.key), { ...archived, archived: true });
+  assert.equal(history.activeSessionKey, archived.key, "the input history remains unchanged");
+});
+
+test("archiving a non-active conversation leaves the active selection unchanged", () => {
+  const active: ChatSession = { key: "chat-active", label: "Active", transcript: [], users: null, draft: "", archived: false };
+  const archived: ChatSession = { key: "chat-other", label: "Other", transcript: [], users: null, draft: "", archived: false };
+  const history: ChatHistory = { sessions: [active, archived], activeSessionKey: active.key };
+
+  const next = archiveChatConversation(history, archived.key, "chat-unused-replacement");
+
+  assert.equal(next.activeSessionKey, active.key);
+  assert.deepEqual(next.sessions, [active, { ...archived, archived: true }]);
+});
+
+test("archiving the last active conversation creates a blank one with the same provider and model", () => {
+  const archived: ChatSession = {
+    key: "chat-last",
+    label: "Last active",
+    transcript: [{ key: 1, role: "assistant", content: "Retain me" }],
+    users: null,
+    draft: "Retain my draft",
+    archived: false,
+    providerId: "provider-two",
+    modelName: "model-two",
+    draftAttachments: [{ id: "21234567-89ab-cdef-0123-456789abcdef", name: "notes.txt", sizeBytes: 9, image: false, truncated: false }],
+  };
+  const history: ChatHistory = { sessions: [archived], activeSessionKey: archived.key };
+
+  const next = archiveChatConversation(history, archived.key, "chat-replacement");
+
+  assert.equal(next.activeSessionKey, "chat-replacement");
+  assert.deepEqual(next.sessions[0], {
+    key: "chat-replacement",
+    label: "",
+    transcript: [],
+    users: null,
+    draft: "",
+    archived: false,
+    providerId: "provider-two",
+    modelName: "model-two",
+  });
+  assert.deepEqual(next.sessions[1], { ...archived, archived: true }, "the original history, draft, and attachment metadata stay archived");
 });
 
 test("formats a readable transcript with role names and attachment filenames", () => {

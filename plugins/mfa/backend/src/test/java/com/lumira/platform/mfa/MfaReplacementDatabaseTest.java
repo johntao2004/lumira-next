@@ -311,17 +311,11 @@ class MfaReplacementDatabaseTest {
     }
 
     private void applyPluginMigrations() throws IOException {
-        for (String migration :
-                List.of(
-                        "V1__authenticator.sql",
-                        "V2__bind_setup_to_session_challenge.sql",
-                        "V3__atomic_authenticator_replacement.sql",
-                        "V4__bind_replacement_to_policy_revision.sql",
-                        "V5__replacement_totp_step.sql")) {
-            jdbc.execute(
-                    Files.readString(
-                            repositoryRoot().resolve("plugins/mfa/migrations").resolve(migration)));
-        }
+        String initialization =
+                Files.readString(
+                        repositoryRoot()
+                                .resolve("plugins/mfa/migrations/V7__plugin_initialization.sql"));
+        jdbc.execute(initialization.split("-- BEGIN HOST PERMISSION ADOPTION", 2)[0]);
     }
 
     private Path repositoryRoot() {

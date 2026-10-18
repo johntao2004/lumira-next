@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "pluginId": "verification-debugger",
+  "version": "1",
+  "script": "V1__plugin_initialization.sql",
+  "publishedMigrations": [
+    {
+      "version": "1",
+      "description": "verification debugger navigation",
+      "script": "V1__verification_debugger_navigation.sql",
+      "checksum": -622047490
+    }
+  ]
+}

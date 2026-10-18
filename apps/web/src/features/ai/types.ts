@@ -13,6 +13,7 @@ export type Provider = {
   enabled: boolean;
   version: number;
   credentialConfigured: boolean;
+  modelFileFormats?: Record<string, string[]>;
 };
 export type ChatAttachment = { id: string; name: string; sizeBytes: number; image: boolean; truncated: boolean };
 export type ChatMessage = { role: "user" | "assistant"; content: string; attachmentIds?: string[] };
@@ -36,6 +37,7 @@ export type ModelOption = {
   id: string;
   name: string;
   inputModalities: string[];
+  supportedFileFormats?: string[];
   outputModalities: string[];
   capabilityCodes?: CapabilityCode[];
 };

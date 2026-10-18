@@ -2,7 +2,7 @@
   "formatVersion": 2,
   "id": "mfa",
   "name": "二次认证与验证器",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "sdkVersion": "1",
   "entryClass": "com.lumira.platform.mfa.LumiraPlugin",
   "backend": "backend/plugin.jar",

@@ -80,7 +80,8 @@ class AiProviderConsoleLookupTest {
         assertEquals(1, result.models().size());
         assertEquals("deepseek-flash", result.models().getFirst().id());
         assertEquals(List.of("CHAT", "TOOL_CALLING"), result.models().getFirst().capabilityCodes());
-        assertEquals(List.of(), result.models().getFirst().inputModalities());
+        assertEquals(List.of("text", "image"), result.models().getFirst().inputModalities());
+        assertTrue(result.models().getFirst().supportedFileFormats().contains("png"));
         verify(guard).requirePage("actor", PlatformPageId.AI_CONSOLE);
         verifyNoInteractions(connections);
     }
@@ -126,6 +127,8 @@ class AiProviderConsoleLookupTest {
                 mock(SecretStorePort.class),
                 guard,
                 mock(AuditPort.class),
-                new ObjectMapper());
+                new ObjectMapper(),
+                org.mockito.Mockito.mock(
+                        com.lumira.platform.common.AiModelInputSettingsPort.class));
     }
 }

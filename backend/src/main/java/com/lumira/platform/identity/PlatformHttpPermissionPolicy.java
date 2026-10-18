@@ -166,7 +166,47 @@ final class PlatformHttpPermissionPolicy {
                 HttpMethod.GET,
                 PlatformPageId.USERS,
                 PlatformOperation.USER_EXPORT,
-                "/api/platform/users/export");
+                "/api/platform/users/export/fields");
+        action(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.USERS,
+                PlatformOperation.USER_EXPORT,
+                "/api/platform/users/export.xlsx");
+        action(
+                routes,
+                HttpMethod.GET,
+                PlatformPageId.USERS,
+                PlatformOperation.USER_IMPORT,
+                "/api/platform/users/import/fields",
+                "/api/platform/users/import/template.xlsx",
+                "/api/platform/users/import/*/errors.xlsx");
+        action(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.USERS,
+                PlatformOperation.USER_IMPORT,
+                "/api/platform/users/import/columns",
+                "/api/platform/users/import/preview");
+        action(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.USERS,
+                PlatformOperation.USER_IMPORT,
+                "/api/platform/users/import/*/commit");
+        action(
+                routes,
+                HttpMethod.GET,
+                PlatformPageId.USERS,
+                PlatformOperation.USER_IMPORT,
+                "/api/platform/users/import/tasks/*");
+        routes.add(
+                new Route(
+                        HttpMethod.POST.name(),
+                        "/api/platform/users/template-print",
+                        PlatformPageId.USERS,
+                        List.of(PlatformOperation.USER_PRINT),
+                        List.of(PlatformPageId.USERS, PlatformPageId.PRINT_TEMPLATES)));
         page(routes, HttpMethod.GET, PlatformPageId.USERS, "/api/platform/users/*");
         page(routes, HttpMethod.GET, PlatformPageId.USERS, "/api/platform/users/*/profile-values");
         page(routes, HttpMethod.GET, PlatformPageId.USERS, "/api/platform/users/*/file-quota");
@@ -242,6 +282,52 @@ final class PlatformHttpPermissionPolicy {
                 PlatformPageId.USERS,
                 PlatformOperation.USER_DELETE,
                 "/api/platform/users/*");
+
+        page(routes, HttpMethod.GET, PlatformPageId.PRINT_TEMPLATES, "/api/platform/templates");
+        page(
+                routes,
+                HttpMethod.GET,
+                PlatformPageId.PRINT_TEMPLATES,
+                "/api/platform/templates/fields",
+                "/api/platform/templates/*",
+                "/api/platform/templates/*/versions");
+        action(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.PRINT_TEMPLATES,
+                PlatformOperation.TEMPLATE_CREATE,
+                "/api/platform/templates");
+        action(
+                routes,
+                HttpMethod.PUT,
+                PlatformPageId.PRINT_TEMPLATES,
+                PlatformOperation.TEMPLATE_UPDATE,
+                "/api/platform/templates/*");
+        action(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.PRINT_TEMPLATES,
+                PlatformOperation.TEMPLATE_UPDATE,
+                "/api/platform/templates/*/versions/draft/source",
+                "/api/platform/templates/*/deactivate");
+        action(
+                routes,
+                HttpMethod.PUT,
+                PlatformPageId.PRINT_TEMPLATES,
+                PlatformOperation.TEMPLATE_UPDATE,
+                "/api/platform/templates/*/versions/draft");
+        action(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.PRINT_TEMPLATES,
+                PlatformOperation.TEMPLATE_PUBLISH,
+                "/api/platform/templates/*/publish");
+        action(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.PRINT_TEMPLATES,
+                PlatformOperation.TEMPLATE_USE,
+                "/api/platform/templates/*/preview");
 
         page(routes, HttpMethod.GET, PlatformPageId.ONLINE_USERS, "/api/platform/online-users");
         action(
@@ -544,6 +630,46 @@ final class PlatformHttpPermissionPolicy {
                         PlatformOperation.AI_CONSOLE_UPDATE_USER,
                         PlatformOperation.AI_CONSOLE_DELETE_USER),
                 "/api/platform/ai/chat");
+        any(
+                routes,
+                HttpMethod.POST,
+                PlatformPageId.AI_CONSOLE,
+                List.of(
+                        PlatformOperation.AI_CONSOLE_READ_USERS,
+                        PlatformOperation.AI_CONSOLE_CREATE_USER,
+                        PlatformOperation.AI_CONSOLE_UPDATE_USER,
+                        PlatformOperation.AI_CONSOLE_DELETE_USER),
+                "/api/platform/ai/shares");
+        any(
+                routes,
+                HttpMethod.GET,
+                PlatformPageId.AI_CONSOLE,
+                List.of(
+                        PlatformOperation.AI_CONSOLE_READ_USERS,
+                        PlatformOperation.AI_CONSOLE_CREATE_USER,
+                        PlatformOperation.AI_CONSOLE_UPDATE_USER,
+                        PlatformOperation.AI_CONSOLE_DELETE_USER),
+                "/api/platform/ai/shares");
+        any(
+                routes,
+                HttpMethod.DELETE,
+                PlatformPageId.AI_CONSOLE,
+                List.of(
+                        PlatformOperation.AI_CONSOLE_READ_USERS,
+                        PlatformOperation.AI_CONSOLE_CREATE_USER,
+                        PlatformOperation.AI_CONSOLE_UPDATE_USER,
+                        PlatformOperation.AI_CONSOLE_DELETE_USER),
+                "/api/platform/ai/shares/*");
+        any(
+                routes,
+                HttpMethod.PUT,
+                PlatformPageId.AI_CONSOLE,
+                List.of(
+                        PlatformOperation.AI_CONSOLE_READ_USERS,
+                        PlatformOperation.AI_CONSOLE_CREATE_USER,
+                        PlatformOperation.AI_CONSOLE_UPDATE_USER,
+                        PlatformOperation.AI_CONSOLE_DELETE_USER),
+                "/api/platform/ai/shares/*");
         any(
                 routes,
                 HttpMethod.POST,

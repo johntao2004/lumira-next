@@ -1,0 +1,39 @@
+.user-print-drawer {
+  display: grid;
+  gap: 16px;
+  min-height: 72vh;
+}
+
+.user-print-drawer__field {
+  display: grid;
+  gap: 8px;
+  max-width: 680px;
+}
+
+.user-print-drawer__pdf {
+  width: 100%;
+  min-height: 60vh;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 6px;
+  background: var(--ant-color-fill-quaternary);
+}
+
+.user-print-drawer__empty {
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--ant-color-border-secondary);
+  border-radius: 6px;
+  background: var(--ant-color-fill-quaternary);
+}
+
+@media (max-width: 767px) {
+  .user-print-drawer {
+    min-height: 60vh;
+  }
+
+  .user-print-drawer__pdf,
+  .user-print-drawer__empty {
+    min-height: 54vh;
+  }
+}

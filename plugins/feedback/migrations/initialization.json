@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "pluginId": "feedback",
+  "version": "4",
+  "script": "V4__plugin_initialization.sql",
+  "publishedMigrations": [
+    {
+      "version": "1",
+      "description": "adopt existing schema",
+      "script": "V1__adopt_existing_schema.sql",
+      "checksum": -1149437222
+    },
+    {
+      "version": "2",
+      "description": "independent page operations",
+      "script": "V2__independent_page_operations.sql",
+      "checksum": -280182048
+    },
+    {
+      "version": "3",
+      "description": "finalize platform permission migration",
+      "script": "V3__finalize_platform_permission_migration.sql",
+      "checksum": 1404900123
+    },
+    {
+      "version": "4",
+      "description": "unify feedback data scope",
+      "script": "V4__unify_feedback_data_scope.sql",
+      "checksum": -134443426
+    }
+  ]
+}

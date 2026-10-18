@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { routes, navigationGroups, availableNavigation, canAccessSection, canOperateSection, collapseTabbedNavigation, navigationPageIdForRoute, isSection, isDashboardSection, mergeRuntimeNavigation, runtimeBreadcrumbLabels, runtimeNavigationPageNode, runtimeNavigationTrail } from '../apps/web/src/platform/shell/routes.ts';
 import { frontendModuleManifests, frontendRoutes, frontendTabGroups } from '../apps/web/src/platform/modules/catalog.ts';
 import { createFrontendPageRegistry } from '../apps/web/src/platform/modules/contracts.ts';
@@ -103,7 +104,7 @@ test('navigation groups own the intended routes while hidden account pages stay 
   assert.deepEqual(availableNavigation([]).find(group => group.id === 'overview').pages.map(page => page.id), ['home', 'files']);
 });
 
-test('static manifest ordering matches the built-in V47 navigation order', () => {
+test('static manifest ordering matches the current built-in navigation order', () => {
   const expectedStaticSections = {
     overview: ['home', 'files'],
     'ai-management': ['ai-console', 'ai-models'],
@@ -111,14 +112,14 @@ test('static manifest ordering matches the built-in V47 navigation order', () =>
       'users', 'online-users', 'roles', 'organizations', 'profile-fields', 'security',
       'authentication', 'passkey', 'wechat', 'captcha', 'registration', 'mfa-management',
     ],
-    'content-management': ['files-all', 'dictionaries', 'sensitive-words', 'localization'],
+    'content-management': ['files-all', 'dictionaries', 'sensitive-words', 'print-templates', 'localization'],
     communication: ['notifications', 'smtp', 'sms', 'mail-deliveries', 'sms-deliveries', 'feedback'],
     payments: [],
     operations: ['monitoring', 'api-docs', 'audit', 'event-outbox'],
     administration: ['modules', 'branding', 'watermark', 'agreements', 'maintenance', 'navigation'],
   };
   for (const [groupId, expected] of Object.entries(expectedStaticSections)) {
-    assert.deepEqual(navigationGroups.find(group => group.id === groupId).sections, expected, `${groupId} follows V47 order`);
+    assert.deepEqual(navigationGroups.find(group => group.id === groupId).sections, expected, `${groupId} follows the built-in order`);
   }
   assert.deepEqual(paymentCoreManifest.routes.map(route => route.order), [10]);
   assert.deepEqual(wechatPayManifest.routes.map(route => route.order), [20, 40]);
@@ -280,6 +281,70 @@ test('breadcrumbs follow runtime ancestry and path-first tab deep links', () => 
   assert.deepEqual(runtimeBreadcrumbLabels(tabTrail, '备用标题', label), ['用户管理', '在线用户']);
   assert.equal(runtimeNavigationPageNode(tree, 'wrong-section', '/dashboard/online-users').sectionKey, 'online-users');
   assert.deepEqual(runtimeBreadcrumbLabels(null, '当前页面', label), ['当前页面']);
+});
+
+test('print templates resolves through its registered section when runtime navigation is correctly seeded', () => {
+  const baseline = readFileSync(new URL('../backend/src/main/resources/db/migration/B52__platform_initialization.sql', import.meta.url), 'utf8');
+  const tableDefinition = baseline.match(/CREATE TABLE public\.platform_navigation_menu \(([\s\S]*?)^\);/m)?.[1];
+  assert.ok(tableDefinition, 'B52 defines platform_navigation_menu');
+  const columns = tableDefinition.split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('CONSTRAINT'))
+    .map(line => line.match(/^([a-z_][a-z0-9_]*)\s+/)?.[1])
+    .filter(Boolean);
+  const insert = baseline.split(/\r?\n/).find(line => line.startsWith('INSERT INTO public.platform_navigation_menu VALUES ')
+    && line.includes("'print-templates'"));
+  assert.ok(insert, 'B52 seeds the print-templates navigation page');
+  const tuple = insert.match(/ VALUES \((.*)\);$/)?.[1];
+  assert.ok(tuple, 'print-templates seed is a VALUES tuple');
+  const values = [];
+  let start = 0;
+  let quoted = false;
+  for (let index = 0; index < tuple.length; index++) {
+    if (tuple[index] === "'") {
+      if (quoted && tuple[index + 1] === "'") index++;
+      else quoted = !quoted;
+    } else if (tuple[index] === ',' && !quoted) {
+      values.push(tuple.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  values.push(tuple.slice(start).trim());
+  assert.equal(values.length, columns.length, 'B52 row values align with the declared table columns');
+  const row = Object.fromEntries(columns.map((column, index) => [
+    column,
+    values[index] === 'NULL'
+      ? null
+      : values[index].startsWith("'") && values[index].endsWith("'")
+        ? values[index].slice(1, -1).replace(/''/g, "'")
+        : values[index],
+  ]));
+  const page = {
+    id: row.id,
+    menuCode: row.menu_code,
+    menuType: row.menu_type,
+    sectionKey: row.section_key,
+    path: row.path,
+    componentKey: row.component_key,
+    routable: true,
+    children: [],
+  };
+  const target = runtimeNavigationPageNode([page], 'print-templates', '/dashboard/print-templates');
+  const trail = runtimeNavigationTrail([page], 'print-templates', '/dashboard/print-templates');
+  const navigation = mergeRuntimeNavigation(
+    availableNavigation(['platform:print-templates:access'], [], ['platform:print-templates:access']),
+    [page],
+  );
+
+  assert.equal(row.menu_code, 'print-templates');
+  assert.equal(row.menu_type, 'PAGE');
+  assert.equal(row.section_key, 'print-templates');
+  assert.equal(row.path, '/dashboard/print-templates');
+  assert.equal(isSection('print-templates'), true);
+  assert.equal(frontendRoutes().some(route => route.id === 'print-templates'), true);
+  assert.equal(target, page);
+  assert.deepEqual(trail, [page]);
+  assert.equal(navigation.flatMap(group => group.pages).some(item => item.id === 'print-templates'), true);
 });
 
 test('runtime breadcrumbs preserve same-named ancestors and titles', () => {

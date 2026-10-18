@@ -22,6 +22,7 @@ import {
   configFingerprint,
   createPinMetadata,
   environmentDrift,
+  parseArguments,
   readLocalRuntime,
   readProcEnvironment,
   resolveLocalBackendPort,
@@ -70,6 +71,31 @@ function configFor(root, overrides = {}) {
 
 test.after(() => {
   for (const root of temporaryRoots) rmSync(root, { recursive: true, force: true });
+});
+
+test("local runtime switch accepts only an explicit true Docker activity audit opt-in", () => {
+  assert.deepEqual(
+    parseArguments(["switch", "--target-config", "target.json"]),
+    { command: "switch", options: { targetconfig: "target.json" } },
+  );
+  assert.deepEqual(
+    parseArguments(["switch", "--target-config", "target.json", "--activity-audit-docker-admin", "true"]),
+    { command: "switch", options: { targetconfig: "target.json", activityauditdockeradmin: true } },
+  );
+  assert.deepEqual(
+    parseArguments(["switch", "--target-config=target.json", "--activity-audit-docker-admin=true"]),
+    { command: "switch", options: { targetconfig: "target.json", activityauditdockeradmin: true } },
+  );
+  for (const value of ["false", "TRUE", "yes", "1"]) {
+    assert.throws(
+      () => parseArguments(["switch", "--target-config", "target.json", "--activity-audit-docker-admin", value]),
+      { code: "INVALID_ARGUMENT" },
+    );
+  }
+  assert.throws(
+    () => parseArguments(["capture", "--activity-audit-docker-admin", "true"]),
+    { code: "INVALID_ARGUMENT" },
+  );
 });
 
 test("adoption takes active runtime identity while preserving unrelated canonical fields", () => {

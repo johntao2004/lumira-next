@@ -9,6 +9,6 @@ import org.springframework.context.annotation.Configuration;
 public class VerificationDebuggerModuleConfiguration {
     @Bean
     PlatformModule verificationDebuggerModule() {
-        return new PlatformModule("verification-debugger", "验证调试器", "1.0.3", List.of("platform"));
+        return new PlatformModule("verification-debugger", "验证调试器", "1.0.5", List.of("platform"));
     }
 }

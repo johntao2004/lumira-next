@@ -1,6 +1,7 @@
 package com.lumira.platform.common;
 
 import java.util.ArrayDeque;
+import java.util.List;
 import tools.jackson.core.JsonParser;
 import tools.jackson.core.JsonToken;
 import tools.jackson.core.json.JsonFactory;
@@ -17,25 +18,23 @@ final class OfficeWorkerResponseGuard {
         boolean rootStarted = false;
         boolean rootEnded = false;
         int tokens = 0;
+        int workbookCells = 0;
         try (JsonParser parser = JSON.createParser(bytes)) {
             for (JsonToken token; (token = parser.nextToken()) != null; ) {
-                if (++tokens > MAX_TOKENS)
-                    throw new IllegalArgumentException("Office response has too many fields");
+                if (++tokens > MAX_TOKENS) throw invalid("Office response has too many fields");
                 if (token == JsonToken.START_OBJECT) {
                     String path;
                     if (!rootStarted) {
                         rootStarted = true;
                         path = "";
                     } else {
-                        if (rootEnded) throw new IllegalArgumentException("Trailing JSON value");
+                        if (rootEnded) throw invalid("Trailing JSON value");
                         Frame parent = frames.peek();
-                        if (parent == null)
-                            throw new IllegalArgumentException("Invalid response nesting");
+                        if (parent == null) throw invalid("Invalid response nesting");
                         if (parent.array) {
                             parent.count++;
                             if (parent.count > arrayLimit(parent.path))
-                                throw new IllegalArgumentException(
-                                        "Office response array exceeds its bound");
+                                throw invalid("Office response array exceeds its bound");
                             path = parent.path + "[]";
                         } else {
                             path = valuePath(parent);
@@ -43,60 +42,75 @@ final class OfficeWorkerResponseGuard {
                         }
                     }
                     if (!objectPath(path) || frames.size() >= 5)
-                        throw new IllegalArgumentException("Invalid Office response object");
+                        throw invalid("Invalid Office response object");
                     frames.push(new Frame(path, false));
                     continue;
                 }
                 if (token == JsonToken.END_OBJECT) {
                     Frame frame = frames.poll();
-                    if (frame == null || frame.array || frame.seen != requiredFields(frame.path))
-                        throw new IllegalArgumentException("Incomplete Office response object");
+                    if (frame == null || frame.array || !completeObject(frame.path, frame.seen))
+                        throw invalid("Incomplete Office response object");
                     if (frames.isEmpty()) rootEnded = true;
                     continue;
                 }
                 if (token == JsonToken.PROPERTY_NAME) {
                     Frame frame = frames.peek();
                     if (frame == null || frame.array || parser.getTextLength() > 32)
-                        throw new IllegalArgumentException("Invalid Office response property");
+                        throw invalid("Invalid Office response property");
                     String name = parser.getText();
                     int index = fieldIndex(frame.path, name);
                     if (index < 0 || (frame.seen & (1L << index)) != 0)
-                        throw new IllegalArgumentException("Unexpected Office response property");
+                        throw invalid("Unexpected Office response property");
                     frame.seen |= 1L << index;
                     frame.field = name;
                     continue;
                 }
                 if (token == JsonToken.START_ARRAY) {
                     Frame parent = frames.peek();
-                    if (parent == null || parent.array)
-                        throw new IllegalArgumentException("Invalid Office response array");
-                    String path = valuePath(parent);
-                    parent.field = null;
-                    if (!"dictionary.items".equals(path) && !"issues".equals(path))
-                        throw new IllegalArgumentException("Unexpected Office response array");
+                    if (parent == null) throw invalid("Invalid Office response array");
+                    String path;
+                    if (parent.array) {
+                        parent.count++;
+                        if (parent.count > arrayLimit(parent.path))
+                            throw invalid("Office response array exceeds its bound");
+                        path = parent.path + "[]";
+                    } else {
+                        path = valuePath(parent);
+                        parent.field = null;
+                    }
+                    if (!arrayPath(path)) throw invalid("Unexpected Office response array");
                     frames.push(new Frame(path, true));
                     continue;
                 }
                 if (token == JsonToken.END_ARRAY) {
                     Frame frame = frames.poll();
                     if (frame == null || !frame.array)
-                        throw new IllegalArgumentException("Invalid Office response array");
+                        throw invalid("Invalid Office response array");
                     continue;
                 }
-                if (rootEnded) throw new IllegalArgumentException("Trailing JSON value");
+                if (rootEnded) throw invalid("Trailing JSON value");
                 Frame parent = frames.peek();
-                if (parent == null || parent.array)
-                    throw new IllegalArgumentException(
-                            "Office response array item must be an object");
-                String path = valuePath(parent);
+                if (parent == null) throw invalid("Invalid response value");
+                String path;
+                if (parent.array) {
+                    parent.count++;
+                    if (parent.count > arrayLimit(parent.path))
+                        throw invalid("Office response array exceeds its bound");
+                    path = parent.path + "[]";
+                } else {
+                    path = valuePath(parent);
+                    parent.field = null;
+                }
                 validateScalar(parser, token, path);
+                if ("workbook.rows[][]".equals(path)
+                        && ++workbookCells > DocumentTemplateProcessor.MAX_WORKBOOK_CELLS)
+                    throw invalid("Workbook response has too many cells");
                 if ("kind".equals(path) && !operation.equals(parser.getText()))
-                    throw new IllegalArgumentException("Office response operation mismatch");
-                parent.field = null;
+                    throw invalid("Office response operation mismatch");
             }
         }
         if (!rootStarted || !rootEnded || !frames.isEmpty())
-            throw new IllegalArgumentException("Incomplete Office response JSON");
+            throw invalid("Incomplete Office response JSON");
     }
 
     private static void validateScalar(JsonParser parser, JsonToken token, String path)
@@ -113,50 +127,73 @@ final class OfficeWorkerResponseGuard {
                                 "dictionary.items[].parentValue" ->
                                 200;
                         case "dictionary.items[].remark" -> 1000;
-                        default ->
-                                throw new IllegalArgumentException(
-                                        "Unexpected Office response text");
+                        case "inspection.slots[].key" -> 256;
+                        case "inspection.slots[].label" -> 200;
+                        case "inspection.slots[].text" -> 1000;
+                        case "inspection.placeholders[]" -> 64;
+                        case "documentPdf" ->
+                                (DocumentTemplateProcessor.MAX_RESPONSE_PDF_BYTES * 4 / 3) + 8;
+                        case "workbookFile" -> (20 * 1024 * 1024 * 4 / 3) + 8;
+                        case "workbook.rows[][]" -> DocumentTemplateProcessor.MAX_CELL_CHARACTERS;
+                        default -> throw invalid("Unexpected Office response text");
                     };
             if (parser.getTextLength() > maximum)
-                throw new IllegalArgumentException("Office response text exceeds its bound");
+                throw invalid("Office response text exceeds its bound");
             return;
         }
         if (token == JsonToken.VALUE_NULL) {
-            if (!nullablePath(path))
-                throw new IllegalArgumentException("Unexpected null in Office response");
+            if (!nullablePath(path)) throw invalid("Unexpected null in Office response");
             return;
         }
         if (token == JsonToken.VALUE_NUMBER_INT) {
             if (!integerPath(path) || parser.getTextLength() > 11)
-                throw new IllegalArgumentException("Invalid Office response number");
+                throw invalid("Invalid Office response number");
             return;
         }
         if (token == JsonToken.VALUE_TRUE || token == JsonToken.VALUE_FALSE) {
-            if (!booleanPath(path))
-                throw new IllegalArgumentException("Invalid Office response flag");
+            if (!booleanPath(path)) throw invalid("Invalid Office response flag");
             return;
         }
-        throw new IllegalArgumentException("Unsupported Office response value");
+        throw invalid("Unsupported Office response value");
     }
 
     private static String valuePath(Frame parent) {
-        if (parent.field == null)
-            throw new IllegalArgumentException("Missing Office response field");
+        if (parent.field == null) throw invalid("Missing Office response field");
         return parent.path.isEmpty() ? parent.field : parent.path + "." + parent.field;
     }
 
     private static boolean objectPath(String path) {
-        return path.isEmpty()
-                || "preview".equals(path)
-                || "dictionary".equals(path)
-                || "dictionary.items[]".equals(path)
-                || "issues[]".equals(path);
+        return List.of(
+                        "",
+                        "preview",
+                        "dictionary",
+                        "dictionary.items[]",
+                        "issues[]",
+                        "inspection",
+                        "inspection.slots[]",
+                        "workbook")
+                .contains(path);
+    }
+
+    private static boolean arrayPath(String path) {
+        return List.of(
+                        "dictionary.items",
+                        "issues",
+                        "inspection.slots",
+                        "inspection.placeholders",
+                        "workbook.rows",
+                        "workbook.rows[]")
+                .contains(path);
     }
 
     private static int arrayLimit(String path) {
         return switch (path) {
             case "dictionary.items" -> 20_000;
             case "issues" -> 100;
+            case "inspection.slots", "inspection.placeholders" ->
+                    DocumentTemplateProcessor.MAX_SLOTS;
+            case "workbook.rows" -> DocumentTemplateProcessor.MAX_WORKBOOK_ROWS;
+            case "workbook.rows[]" -> DocumentTemplateProcessor.MAX_WORKBOOK_COLUMNS;
             default -> 0;
         };
     }
@@ -168,9 +205,13 @@ final class OfficeWorkerResponseGuard {
                         case "kind" -> 0;
                         case "preview" -> 1;
                         case "dictionary" -> 2;
-                        case "status" -> 3;
-                        case "reason" -> 4;
-                        case "issues" -> 5;
+                        case "inspection" -> 3;
+                        case "documentPdf" -> 4;
+                        case "workbook" -> 5;
+                        case "workbookFile" -> 6;
+                        case "status" -> 7;
+                        case "reason" -> 8;
+                        case "issues" -> 9;
                         default -> -1;
                     };
             case "preview" ->
@@ -202,15 +243,35 @@ final class OfficeWorkerResponseGuard {
                         case "reason" -> 2;
                         default -> -1;
                     };
+            case "inspection" ->
+                    switch (field) {
+                        case "slots" -> 0;
+                        case "placeholders" -> 1;
+                        default -> -1;
+                    };
+            case "inspection.slots[]" ->
+                    switch (field) {
+                        case "key" -> 0;
+                        case "label" -> 1;
+                        case "text" -> 2;
+                        default -> -1;
+                    };
+            case "workbook" -> "rows".equals(field) ? 0 : -1;
             default -> -1;
         };
     }
 
     private static boolean nullablePath(String path) {
-        return "preview".equals(path)
-                || "dictionary".equals(path)
-                || "reason".equals(path)
-                || "dictionary.items[].parentValue".equals(path);
+        return List.of(
+                        "preview",
+                        "dictionary",
+                        "inspection",
+                        "documentPdf",
+                        "workbook",
+                        "workbookFile",
+                        "reason",
+                        "dictionary.items[].parentValue")
+                .contains(path);
     }
 
     private static boolean integerPath(String path) {
@@ -225,12 +286,23 @@ final class OfficeWorkerResponseGuard {
 
     private static long requiredFields(String path) {
         return switch (path) {
-            case "" -> 0b11_1111L;
-            case "preview", "dictionary" -> 0b11L;
+            case "" -> 0b11_1000_0111L;
+            case "preview", "dictionary", "inspection" -> 0b11L;
             case "dictionary.items[]" -> 0b11_1111L;
             case "issues[]" -> 0b111L;
+            case "inspection.slots[]" -> 0b111L;
+            case "workbook" -> 1L;
             default -> -1L;
         };
+    }
+
+    private static boolean completeObject(String path, long seen) {
+        long required = requiredFields(path);
+        return path.isEmpty() ? (seen & required) == required : seen == required;
+    }
+
+    private static IllegalArgumentException invalid(String message) {
+        return new IllegalArgumentException(message);
     }
 
     private static final class Frame {

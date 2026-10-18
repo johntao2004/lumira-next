@@ -9,6 +9,6 @@ import org.springframework.context.annotation.Configuration;
 public class RuntimeObserverModuleConfiguration {
     @Bean
     PlatformModule runtimeObserverModule() {
-        return new PlatformModule("runtime-observer", "运行展示屏", "1.0.0", List.of("platform"));
+        return new PlatformModule("runtime-observer", "运行展示屏", "1.0.2", List.of("platform"));
     }
 }

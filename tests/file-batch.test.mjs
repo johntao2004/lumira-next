@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fileBatchOperations, selectBatchFiles, runFileBatch } from '../apps/web/src/features/files/file-batch.ts';
+import { canSelectFileForBatch, fileBatchOperations, permittedFileBatchOperations, selectBatchFiles, runFileBatch } from '../apps/web/src/features/files/file-batch.ts';
 import { ApiError, clearAuthorizationContext, mutate } from '../apps/web/src/platform/api/client.ts';
 
 const file = (id, state = 'TRASHED', version = 7) => ({ id, state, version, originalName: `${id}.txt` });
@@ -17,6 +17,33 @@ test('selection is restricted to eligible records on the current page and tab', 
   assert.deepEqual(fileBatchOperations('trash', 0), []);
   assert.deepEqual(fileBatchOperations('files', 1), ['trash']);
   assert.deepEqual(fileBatchOperations('trash', 1), ['restore', 'purge']);
+});
+
+test('a permitted READY file remains selectable before toolbar operations appear', () => {
+  const ready = file('ready', 'READY');
+  assert.deepEqual(fileBatchOperations('files', 0), []);
+  assert.deepEqual(permittedFileBatchOperations('files', { canDelete: true }), ['trash']);
+  assert.equal(canSelectFileForBatch(ready, 'files', { canDelete: true }), true);
+});
+
+test('file selection keeps delete permission, state, and reference protections', () => {
+  const ready = file('ready', 'READY');
+  const referenced = { ...ready, protectedByReference: true };
+  assert.equal(canSelectFileForBatch(ready, 'files', { canDelete: false }), false);
+  assert.equal(canSelectFileForBatch(referenced, 'files', { canDelete: true }), false);
+  assert.equal(canSelectFileForBatch(file('uploading', 'UPLOADING'), 'files', { canDelete: true }), false);
+  assert.equal(canSelectFileForBatch(file('trash', 'TRASHED'), 'files', { canDelete: true }), false);
+});
+
+test('trash selection requires an eligible row and at least one permitted restore or purge action', () => {
+  const trashed = file('trashed', 'TRASHED');
+  assert.deepEqual(permittedFileBatchOperations('trash', { canDelete: false, canRestore: true }), ['restore']);
+  assert.equal(canSelectFileForBatch(trashed, 'trash', { canDelete: false, canRestore: true }), true);
+  assert.deepEqual(permittedFileBatchOperations('trash', { canDelete: true, canRestore: false }), ['purge']);
+  assert.equal(canSelectFileForBatch(trashed, 'trash', { canDelete: true, canRestore: false }), true);
+  assert.deepEqual(permittedFileBatchOperations('trash', { canDelete: false, canRestore: false }), []);
+  assert.equal(canSelectFileForBatch(trashed, 'trash', { canDelete: false, canRestore: false }), false);
+  assert.equal(canSelectFileForBatch(file('ready', 'READY'), 'trash', { canDelete: true, canRestore: true }), false);
 });
 
 test('batch transport uses per-file versions and fresh CSRF for every operation', async t => {

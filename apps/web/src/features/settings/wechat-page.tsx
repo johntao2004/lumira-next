@@ -91,47 +91,37 @@ export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?:
 
   return <>
     <Form form={form} name="settings-wechat" className="settings-form auth-config-form wechat-settings-form" layout="vertical" initialValues={{ enabled: query.data.enabled, appId: query.data.appId, publicOrigin: query.data.publicOrigin, timeoutSeconds: query.data.timeoutSeconds, appSecretAction: "KEEP" }} disabled={!canWrite || submit.pending} onValuesChange={() => setSaved(false)} onFinish={save}>
-      <Form.Item name="enabled" label={t("wechatEnableLogin")} valuePropName="checked" className="auth-config-toggle"><Switch /></Form.Item>
+      <Form.Item name="enabled" label={t("wechatEnableLogin")} valuePropName="checked" className="auth-settings-switch-row wechat-enable-row"><Switch /></Form.Item>
       <SettingsEnabledControls name="enabled">
-        <div className="auth-config-panels">
-          <section className="auth-config-panel">
-            <Typography.Title level={5}>{t("wechatSettings")}</Typography.Title>
-            {query.data.ready && <Alert className="wechat-ready" type="success" showIcon message={t("wechatReady")} />}
-            {!query.data.publicOrigin && <Alert type="warning" showIcon message={t("wechatOriginUnavailable")} />}
-            <div className="auth-config-fields">
-              <Form.Item name="appId" label="AppID" rules={[{ required: enabled === true, whitespace: true, message: t("invalidWechatSettings") }, { max: 128, message: t("invalidWechatSettings") }]}>
-                <Input autoComplete="off" maxLength={128} />
-              </Form.Item>
-              <Form.Item name="timeoutSeconds" label={t("smsTimeout")} rules={[{ required: true, type: "integer", min: 1, max: 30, message: t("invalidWechatSettings") }]}>
-                <InputNumber className="wechat-timeout-input" precision={0} min={1} max={30} style={{ width: "100%" }} />
-              </Form.Item>
-              <Form.Item name="publicOrigin" label={t("wechatPublicOrigin")} rules={[{ required: enabled === true, whitespace: true, message: t(query.data.publicOrigin ? "invalidWechatSettings" : "wechatOriginUnavailable") }, { validator: async (_rule: unknown, value: string) => {
-                if (enabled === true && !query.data.publicOrigin) throw new Error(t("wechatOriginUnavailable"));
-                if (!value || isPublicOrigin(value)) return;
-                throw new Error(t("invalidWechatSettings"));
-              } }]} extra={<Typography.Paragraph className="auth-config-note" type="secondary">{t("wechatOriginHint")}</Typography.Paragraph>}>
-                <Input autoComplete="url" maxLength={253} disabled={!query.data.publicOrigin} />
-              </Form.Item>
-            </div>
-          </section>
-          <section className="auth-config-panel">
-            <Typography.Title level={5}>{t("smsAccessSecret")}</Typography.Title>
-            <div className="auth-config-fields">
-              <Form.Item label={t("smsAccessSecret")}>
-                <Tag className="wechat-secret-status" color={query.data.appSecretConfigured ? "success" : "default"}>{t(query.data.appSecretConfigured ? "wechatSecretConfigured" : "wechatSecretNotConfigured")}</Tag>
-              </Form.Item>
-              <Form.Item name="appSecretAction" label={t("secretAction")}>
-                <Select options={[
-                  { value: "KEEP", label: t("keepExistingSecret") },
-                  { value: "REPLACE", label: t("replaceSecret") },
-                  { value: "CLEAR", label: t("clearSecret") },
-                ]} />
-              </Form.Item>
-              {secretAction === "REPLACE" && <Form.Item name="appSecretValue" label={t("smsAccessSecret")} rules={[{ required: true, whitespace: true, message: t("invalidWechatSettings") }, { max: 4096, message: t("invalidWechatSettings") }]}>
-                <Input.Password autoComplete="new-password" maxLength={4096} />
-              </Form.Item>}
-            </div>
-          </section>
+        <div className="auth-config-fields">
+          {query.data.ready && <Alert className="wechat-ready" type="success" showIcon message={t("wechatReady")} />}
+          {!query.data.publicOrigin && <Alert type="warning" showIcon message={t("wechatOriginUnavailable")} />}
+          <Form.Item name="appId" label="AppID" rules={[{ required: enabled === true, whitespace: true, message: t("invalidWechatSettings") }, { max: 128, message: t("invalidWechatSettings") }]}>
+            <Input autoComplete="off" maxLength={128} />
+          </Form.Item>
+          <Form.Item name="timeoutSeconds" label={t("smsTimeout")} rules={[{ required: true, type: "integer", min: 1, max: 30, message: t("invalidWechatSettings") }]}>
+            <InputNumber precision={0} min={1} max={30} />
+          </Form.Item>
+          <Form.Item name="publicOrigin" label={t("wechatPublicOrigin")} rules={[{ required: enabled === true, whitespace: true, message: t(query.data.publicOrigin ? "invalidWechatSettings" : "wechatOriginUnavailable") }, { validator: async (_rule: unknown, value: string) => {
+            if (enabled === true && !query.data.publicOrigin) throw new Error(t("wechatOriginUnavailable"));
+            if (!value || isPublicOrigin(value)) return;
+            throw new Error(t("invalidWechatSettings"));
+          } }]} extra={<Typography.Paragraph className="auth-config-note" type="secondary">{t("wechatOriginHint")}</Typography.Paragraph>}>
+            <Input autoComplete="url" maxLength={253} disabled={!query.data.publicOrigin} />
+          </Form.Item>
+          <Form.Item label={t("smsAccessSecret")}>
+            <Tag className="wechat-secret-status" color={query.data.appSecretConfigured ? "success" : "default"}>{t(query.data.appSecretConfigured ? "wechatSecretConfigured" : "wechatSecretNotConfigured")}</Tag>
+          </Form.Item>
+          <Form.Item name="appSecretAction" label={t("secretAction")}>
+            <Select options={[
+              { value: "KEEP", label: t("keepExistingSecret") },
+              { value: "REPLACE", label: t("replaceSecret") },
+              { value: "CLEAR", label: t("clearSecret") },
+            ]} />
+          </Form.Item>
+          {secretAction === "REPLACE" && <Form.Item name="appSecretValue" label={t("smsAccessSecret")} rules={[{ required: true, whitespace: true, message: t("invalidWechatSettings") }, { max: 4096, message: t("invalidWechatSettings") }]}>
+            <Input.Password autoComplete="new-password" maxLength={4096} />
+          </Form.Item>}
         </div>
       </SettingsEnabledControls>
       <FeedbackBubble id="settings-wechat-error" content={submit.error ? t(submit.error) : undefined} />

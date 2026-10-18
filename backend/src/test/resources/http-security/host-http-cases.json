@@ -311,37 +311,6 @@
     "accessPermission": "platform:users:access",
     "accessScope": "SCOPED",
     "method": "GET",
-    "path": "/platform/users/export",
-    "allowedStatuses": [
-      200
-    ],
-    "legacyPermissions": [
-      "platform:settings:read",
-      "platform:settings:update",
-      "platform:audit:read",
-      "platform:users:read",
-      "platform:users:update",
-      "platform:users:delete",
-      "platform:roles:read",
-      "platform:organizations:read",
-      "platform:dictionaries:read",
-      "platform:files:read",
-      "platform:files:delete",
-      "platform:ai:read",
-      "platform:modules:read",
-      "platform:notifications:read"
-    ],
-    "operationPermission": "platform:users:export",
-    "operationScope": "SCOPED",
-    "allowedOperationPermissions": [
-      "platform:users:export"
-    ]
-  },
-  {
-    "pageId": "users",
-    "accessPermission": "platform:users:access",
-    "accessScope": "SCOPED",
-    "method": "GET",
     "path": "/platform/users/00000000-0000-0000-0000-000000000001",
     "allowedStatuses": [
       200
@@ -4587,6 +4556,138 @@
     "accessPermission": "platform:ai-console:access",
     "accessScope": "SCOPED",
     "method": "POST",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [400],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:read-users",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [400],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:create-user",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [400],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:update-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [400],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:delete-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
     "path": "/platform/ai/chat",
     "allowedStatuses": [
       400
@@ -6017,6 +6118,1073 @@
     "operationScope": "GLOBAL",
     "allowedOperationPermissions": [
       "platform:notifications:create"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/users/export/fields",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:export",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:export"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/users/export.xlsx",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:export",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:export"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/users/import/fields",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:import",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:import"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/users/import/template.xlsx",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:import",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:import"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/users/import/columns",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:import",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:import"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/users/import/preview",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:import",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:import"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/users/import/00000000-0000-0000-0000-000000000001/commit",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:import",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:import"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/users/import/00000000-0000-0000-0000-000000000001/errors.xlsx",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:import",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:import"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/users/import/tasks/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:import",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:import"
+    ]
+  },
+  {
+    "pageId": "users",
+    "accessPermission": "platform:users:access",
+    "accessScope": "SCOPED",
+    "method": "POST",
+    "path": "/platform/users/template-print",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:users:print",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:users:print"
+    ],
+    "requiredPages": [
+      "users",
+      "print-templates"
+    ]
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/templates",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/templates/fields",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001/versions",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/templates",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:print-templates:create",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:print-templates:create"
+    ]
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:print-templates:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:print-templates:update"
+    ]
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001/versions/draft/source",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:print-templates:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:print-templates:update"
+    ]
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001/versions/draft",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:print-templates:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:print-templates:update"
+    ]
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001/deactivate",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:print-templates:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:print-templates:update"
+    ]
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001/publish",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:print-templates:publish",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:print-templates:publish"
+    ]
+  },
+  {
+    "pageId": "print-templates",
+    "accessPermission": "platform:print-templates:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/templates/00000000-0000-0000-0000-000000000001/preview",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:print-templates:use",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:print-templates:use"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:read-users",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:create-user",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:update-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "GET",
+    "path": "/platform/ai/shares",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:delete-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "DELETE",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      204
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:read-users",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "DELETE",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      204
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:create-user",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "DELETE",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      204
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:update-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "DELETE",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      204
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:delete-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "PUT",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      400
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:read-users",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "PUT",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      400
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:create-user",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "PUT",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      400
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:update-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
+    ]
+  },
+  {
+    "pageId": "ai-console",
+    "accessPermission": "platform:ai-console:access",
+    "accessScope": "SCOPED",
+    "method": "PUT",
+    "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      400
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "payload": {},
+    "operationPermission": "platform:ai-console:delete-user",
+    "operationScope": "SCOPED",
+    "allowedOperationPermissions": [
+      "platform:ai-console:read-users",
+      "platform:ai-console:create-user",
+      "platform:ai-console:update-user",
+      "platform:ai-console:delete-user"
     ]
   }
 ]

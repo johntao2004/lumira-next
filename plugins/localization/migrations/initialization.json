@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "pluginId": "localization",
+  "version": "3",
+  "script": "V3__plugin_initialization.sql",
+  "publishedMigrations": [
+    {
+      "version": "1",
+      "description": "adopt existing schema",
+      "script": "V1__adopt_existing_schema.sql",
+      "checksum": -1149437222
+    },
+    {
+      "version": "2",
+      "description": "independent page operations",
+      "script": "V2__independent_page_operations.sql",
+      "checksum": -1151681167
+    },
+    {
+      "version": "3",
+      "description": "finalize platform permission migration",
+      "script": "V3__finalize_platform_permission_migration.sql",
+      "checksum": -987031578
+    }
+  ]
+}

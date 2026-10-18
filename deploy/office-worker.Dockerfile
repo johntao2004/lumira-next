@@ -13,7 +13,12 @@ RUN node --version && ./backend/mvnw -f backend/pom.xml -B -Dmaven.test.skip=tru
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 # The Ubuntu 26.04 base includes Canonical Pebble, which this JVM service does not use.
-RUN rm -f /usr/bin/pebble
+RUN rm -f /usr/bin/pebble \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+       libreoffice-writer libreoffice-calc fonts-noto-cjk fontconfig \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /workspace/backend/target/platform-server-0.1.0-SNAPSHOT.jar /app/app.jar
 RUN mkdir -p /tmp/lumira-office && chown -R 10001:10001 /tmp/lumira-office
 USER 10001:10001

@@ -58,6 +58,125 @@ function run(command, args, options = {}) {
   return result.stdout?.trim() ?? "";
 }
 
+function verifyWorkerContainers({
+  compose,
+  env,
+  project,
+  profile,
+  ownerId,
+  names,
+  requireProfileLabel = false,
+  expectedNetworks,
+}) {
+  const ids = run("docker", [...compose, "ps", "-aq"], { env, stdio: "pipe" })
+    .split(/\s+/)
+    .filter(Boolean);
+  const expected = new Map([
+    ["office-worker", names.worker],
+    ["office-worker-ingress", names.ingress],
+  ]);
+  const found = new Map();
+  for (const id of ids) {
+    const actual = run(
+      "docker",
+      [
+        "inspect",
+        "--format",
+        '{{.Name}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.lumira.office-worker.owner"}}|{{index .Config.Labels "com.lumira.office-worker.profile"}}|{{.State.Running}}|{{json .NetworkSettings.Networks}}',
+        id,
+      ],
+      { stdio: "pipe" },
+    );
+    const [name, actualProject, service, actualOwner, actualProfile, running, networksJson] = actual
+      .replace(/^\//, "")
+      .replaceAll("<no value>", "")
+      .split("|");
+    const containerNetworks = Object.keys(JSON.parse(networksJson || "{}"));
+    const expectedContainerNetworks = expectedNetworks?.[service];
+    if (
+      expected.get(service) !== name ||
+      actualProject !== project ||
+      actualOwner !== ownerId ||
+      (actualProfile && actualProfile !== profile) ||
+      (requireProfileLabel && actualProfile !== profile) ||
+      found.has(service) ||
+      (running === "true" &&
+        expectedContainerNetworks &&
+        (containerNetworks.length !== expectedContainerNetworks.length ||
+          containerNetworks.some((network) => !expectedContainerNetworks.includes(network))))
+    )
+      throw new Error("Office worker container ownership did not match; nothing was changed.");
+    found.set(service, { id, name });
+  }
+  return {
+    services: [...found.keys()],
+    allowedEndpoints: Object.fromEntries(
+      [...found.values()].map(({ id, name }) => [id, name]),
+    ),
+  };
+}
+
+function verifyManagedNetwork({
+  name,
+  project,
+  networkKey,
+  ownerId,
+  profile,
+  external,
+  env,
+  requireOwnerProfile = false,
+  internal,
+  allowedEndpoints,
+}) {
+  const listed = run("docker", ["network", "ls", "--format", "{{.Name}}"], {
+    env,
+    stdio: "pipe",
+  })
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!listed.includes(name)) {
+    if (external) throw new Error(`Required external Office worker network ${name} was not found.`);
+    return;
+  }
+  if (external) return;
+  const actual = run(
+    "docker",
+    [
+      "network",
+      "inspect",
+      "--format",
+      '{{.Name}}|{{.Internal}}|{{index .Labels "com.docker.compose.project"}}|{{index .Labels "com.docker.compose.network"}}|{{index .Labels "com.lumira.office-worker.owner"}}|{{index .Labels "com.lumira.office-worker.profile"}}',
+      name,
+    ],
+    { env, stdio: "pipe" },
+  );
+  const [actualName, actualInternal, actualProject, actualNetworkKey, actualOwner, actualProfile] = actual
+    .replaceAll("<no value>", "")
+    .split("|");
+  if (
+    actualName !== name ||
+    actualProject !== project ||
+    actualNetworkKey !== networkKey ||
+    (actualOwner && actualOwner !== ownerId) ||
+    (actualProfile && actualProfile !== profile) ||
+    (requireOwnerProfile && (actualOwner !== ownerId || actualProfile !== profile)) ||
+    (internal !== undefined && actualInternal !== String(internal))
+  )
+    throw new Error("Office worker network ownership did not match; nothing was changed.");
+  if (allowedEndpoints) {
+    const endpoints = JSON.parse(
+      run(
+        "docker",
+        ["network", "inspect", "--format", "{{json .Containers}}", name],
+        { env, stdio: "pipe" },
+      ) || "{}",
+    );
+    for (const [id, endpoint] of Object.entries(endpoints))
+      if (allowedEndpoints[id] !== endpoint.Name)
+        throw new Error("Office worker network has an unowned endpoint; nothing was changed.");
+  }
+}
+
 function requireDocker() {
   try {
     run("docker", ["compose", "version"]);
@@ -92,6 +211,7 @@ export async function startOfficeWorker({
   networkName = `lumira-office-${ownerId}-${profile}-private`,
   image = `lumira-office-worker:${ownerId}-${profile}`,
   externalNetwork = false,
+  buildImage = true,
 } = {}) {
   requireDocker();
   const { project } = paths(profile);
@@ -100,12 +220,26 @@ export async function startOfficeWorker({
     url: `http://127.0.0.1:${hostPort}`,
     testMode,
     containerName,
+    ingressContainerName: `${containerName}-ingress`,
     networkName,
+    ingressNetworkName: `${networkName}-ingress`,
     image,
     externalNetwork,
   });
   const { token } = privateConfig;
   const url = privateConfig.url;
+  if (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65535)
+    throw new Error("Office worker host port must be an integer from 1 to 65535.");
+  const networkOverrideFile = path.join(privateDir, `${profile}-network.compose.yml`);
+  const networkOverride = externalNetwork
+    ? "    external: true\n"
+    : `    internal: true\n    labels:\n      com.lumira.office-worker.owner: "${ownerId}"\n      com.lumira.office-worker.profile: "${profile}"\n`;
+  writeFileSync(
+    networkOverrideFile,
+    `networks:\n  office-worker:\n${networkOverride}`,
+    { mode: 0o600 },
+  );
+  chmodSync(networkOverrideFile, 0o600);
   const env = {
     ...process.env,
     LUMIRA_OFFICE_WORKER_TOKEN: token,
@@ -113,15 +247,101 @@ export async function startOfficeWorker({
     LUMIRA_OFFICE_WORKER_HOST_PORT: String(hostPort),
     LUMIRA_OFFICE_WORKER_CONTAINER_NAME: containerName,
     LUMIRA_OFFICE_WORKER_NETWORK: networkName,
+    LUMIRA_OFFICE_WORKER_INGRESS_CONTAINER_NAME: privateConfig.ingressContainerName,
+    LUMIRA_OFFICE_WORKER_INGRESS_NETWORK: privateConfig.ingressNetworkName,
     LUMIRA_OFFICE_WORKER_IMAGE: image,
     LUMIRA_OFFICE_WORKER_NETWORK_EXTERNAL: externalNetwork ? "true" : "false",
     LUMIRA_OFFICE_WORKER_OWNER: ownerId,
+    LUMIRA_OFFICE_WORKER_PROFILE: profile,
   };
+  const compose = ["compose", "-p", project, "-f", composeFile, "-f", networkOverrideFile];
+  const existingContainers = verifyWorkerContainers({
+    compose,
+    env,
+    project,
+    profile,
+    ownerId,
+    names: {
+      worker: containerName,
+      ingress: privateConfig.ingressContainerName,
+    },
+    expectedNetworks: {
+      "office-worker": [networkName],
+      "office-worker-ingress": [networkName, privateConfig.ingressNetworkName],
+    },
+  });
+  verifyManagedNetwork({
+    name: networkName,
+    project,
+    networkKey: "office-worker",
+    ownerId,
+    profile,
+    external: externalNetwork,
+    env,
+    allowedEndpoints: existingContainers.allowedEndpoints,
+  });
+  verifyManagedNetwork({
+    name: privateConfig.ingressNetworkName,
+    project,
+    networkKey: "office-worker-ingress",
+    ownerId,
+    profile,
+    external: false,
+    env,
+    allowedEndpoints: existingContainers.allowedEndpoints,
+  });
   run(
     "docker",
-    ["compose", "-p", project, "-f", composeFile, "up", "-d", "--build", "office-worker"],
+    [
+      ...compose,
+      "up",
+      "-d",
+      ...(buildImage ? ["--build"] : ["--no-build"]),
+      "office-worker",
+      "office-worker-ingress",
+    ],
     { env, stdio: "inherit" },
   );
+  const startedContainers = verifyWorkerContainers({
+    compose,
+    env,
+    project,
+    profile,
+    ownerId,
+    names: {
+      worker: containerName,
+      ingress: privateConfig.ingressContainerName,
+    },
+    requireProfileLabel: true,
+    expectedNetworks: {
+      "office-worker": [networkName],
+      "office-worker-ingress": [networkName, privateConfig.ingressNetworkName],
+    },
+  });
+  verifyManagedNetwork({
+    name: networkName,
+    project,
+    networkKey: "office-worker",
+    ownerId,
+    profile,
+    external: externalNetwork,
+    env,
+    requireOwnerProfile: !externalNetwork,
+    internal: externalNetwork ? undefined : true,
+    allowedEndpoints: startedContainers.allowedEndpoints,
+  });
+  verifyManagedNetwork({
+    name: privateConfig.ingressNetworkName,
+    project,
+    networkKey: "office-worker-ingress",
+    ownerId,
+    profile,
+    external: false,
+    env,
+    requireOwnerProfile: true,
+    internal: false,
+    allowedEndpoints: startedContainers.allowedEndpoints,
+  });
   await waitForHealth(url);
   return { url, token };
 }
@@ -136,50 +356,64 @@ export async function stopOfficeWorker(profile = "local") {
     throw new Error("Invalid private Office worker configuration; nothing was stopped.");
   const { token } = value;
   requireDocker();
+  const containerName = value.containerName ?? `lumira-next-office-worker-${profile}`;
+  const networkName = value.networkName ?? `lumira-office-${ownerId}-${profile}-private`;
+  const ingressContainerName = value.ingressContainerName ?? `${containerName}-ingress`;
+  const ingressNetworkName = value.ingressNetworkName ?? `${networkName}-ingress`;
   const composeEnv = {
     ...process.env,
     LUMIRA_OFFICE_WORKER_TOKEN: token,
     LUMIRA_OFFICE_WORKER_TEST_MODE: value.testMode ? "true" : "false",
     LUMIRA_OFFICE_WORKER_HOST_PORT: String(value.hostPort ?? 18091),
-    LUMIRA_OFFICE_WORKER_CONTAINER_NAME:
-      value.containerName ?? `lumira-next-office-worker-${profile}`,
-    LUMIRA_OFFICE_WORKER_NETWORK:
-      value.networkName ?? `lumira-office-${ownerId}-${profile}-private`,
+    LUMIRA_OFFICE_WORKER_CONTAINER_NAME: containerName,
+    LUMIRA_OFFICE_WORKER_INGRESS_CONTAINER_NAME: ingressContainerName,
+    LUMIRA_OFFICE_WORKER_NETWORK: networkName,
+    LUMIRA_OFFICE_WORKER_INGRESS_NETWORK: ingressNetworkName,
     LUMIRA_OFFICE_WORKER_IMAGE:
       value.image ?? `lumira-office-worker:${ownerId}-${profile}`,
     LUMIRA_OFFICE_WORKER_NETWORK_EXTERNAL: value.externalNetwork ? "true" : "false",
     LUMIRA_OFFICE_WORKER_OWNER: ownerId,
+    LUMIRA_OFFICE_WORKER_PROFILE: profile,
   };
+  const networkOverrideFile = path.join(privateDir, `${profile}-network.compose.yml`);
   const compose = ["compose", "-p", project, "-f", composeFile];
-  const ids = run("docker", [...compose, "ps", "-aq", "office-worker"], {
+  if (existsSync(networkOverrideFile)) compose.push("-f", networkOverrideFile);
+  const existingContainers = verifyWorkerContainers({
+    compose,
     env: composeEnv,
-    stdio: "pipe",
-  })
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!ids.length) return;
-  if (ids.length !== 1) throw new Error("Office worker Compose ownership is ambiguous; nothing was stopped.");
-  const actual = run(
-    "docker",
-    [
-      "inspect",
-      "--format",
-      '{{.Name}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.lumira.office-worker.owner"}}',
-      ids[0],
-    ],
-    { stdio: "pipe" },
-  );
-  const [name, actualProject, service, actualOwner] = actual.replace(/^\//, "").split("|");
-  if (
-    name !== composeEnv.LUMIRA_OFFICE_WORKER_CONTAINER_NAME ||
-    actualProject !== project ||
-    service !== "office-worker" ||
-    actualOwner !== ownerId
-  )
-    throw new Error("Office worker Compose ownership did not match; nothing was stopped.");
-  run(
-    "docker",
-    [...compose, "stop", "--timeout", "10", "office-worker"],
-    { env: composeEnv, stdio: "inherit" },
-  );
+    project,
+    profile,
+    ownerId,
+    names: { worker: containerName, ingress: ingressContainerName },
+    expectedNetworks: {
+      "office-worker": [networkName],
+      "office-worker-ingress": [networkName, ingressNetworkName],
+    },
+  });
+  verifyManagedNetwork({
+    name: networkName,
+    project,
+    networkKey: "office-worker",
+    ownerId,
+    profile,
+    external: value.externalNetwork === true,
+    env: composeEnv,
+    allowedEndpoints: existingContainers.allowedEndpoints,
+  });
+  verifyManagedNetwork({
+    name: ingressNetworkName,
+    project,
+    networkKey: "office-worker-ingress",
+    ownerId,
+    profile,
+    external: false,
+    env: composeEnv,
+    allowedEndpoints: existingContainers.allowedEndpoints,
+  });
+  if (existingContainers.services.length)
+    run(
+      "docker",
+      [...compose, "stop", "--timeout", "10", ...existingContainers.services],
+      { env: composeEnv, stdio: "inherit" },
+    );
 }

@@ -1,49 +1,49 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 const plugins = [
   {
     id: 'feedback',
-    version: '1.0.14',
+    version: '1.0.15',
     backend: 'plugins/feedback/backend/src/main/java/com/lumira/platform/feedback/FeedbackModuleConfiguration.java',
-    migration: 'plugins/feedback/migrations/V3__finalize_platform_permission_migration.sql',
+    migration: 'plugins/feedback/migrations/V4__plugin_initialization.sql',
   },
   {
     id: 'localization',
-    version: '1.0.11',
+    version: '1.0.12',
     backend: 'plugins/localization/backend/src/main/java/com/lumira/platform/localization/LocalizationModuleConfiguration.java',
-    migration: 'plugins/localization/migrations/V3__finalize_platform_permission_migration.sql',
+    migration: 'plugins/localization/migrations/V3__plugin_initialization.sql',
   },
   {
     id: 'sensitive-words',
-    version: '1.0.9',
+    version: '1.0.10',
     backend: 'plugins/sensitive-words/backend/src/main/java/com/lumira/platform/sensitive/SensitiveWordsModuleConfiguration.java',
-    migration: 'plugins/sensitive-words/migrations/V3__finalize_platform_permission_migration.sql',
+    migration: 'plugins/sensitive-words/migrations/V3__plugin_initialization.sql',
   },
   {
     id: 'mfa',
-    version: '1.0.9',
+    version: '1.0.10',
     backend: 'plugins/mfa/backend/src/main/java/com/lumira/platform/mfa/MfaModuleConfiguration.java',
-    migration: 'plugins/mfa/migrations/V7__finalize_legacy_mfa_permissions.sql',
+    migration: 'plugins/mfa/migrations/V7__plugin_initialization.sql',
   },
   {
     id: 'payment-core',
-    version: '1.0.5',
+    version: '1.0.6',
     backend: 'plugins/payment-core/backend/src/main/java/com/lumira/plugins/paymentcore/PaymentCoreModuleConfiguration.java',
-    migration: 'plugins/payment-core/migrations/V4__finalize_legacy_payment_permissions.sql',
+    migration: 'plugins/payment-core/migrations/V4__plugin_initialization.sql',
   },
   {
     id: 'wechat-pay',
-    version: '1.0.5',
+    version: '1.0.6',
     backend: 'plugins/wechat-pay/backend/src/main/java/com/lumira/plugins/wechatpay/WechatPayPlugin.java',
-    migration: 'plugins/wechat-pay/migrations/V2__finalize_legacy_payment_permissions.sql',
+    migration: 'plugins/wechat-pay/migrations/V2__plugin_initialization.sql',
   },
   {
     id: 'alipay-pay',
-    version: '1.0.5',
+    version: '1.0.6',
     backend: 'plugins/alipay-pay/backend/src/main/java/com/lumira/plugins/alipaypay/AlipayModuleConfiguration.java',
-    migration: 'plugins/alipay-pay/migrations/V2__finalize_legacy_payment_permissions.sql',
+    migration: 'plugins/alipay-pay/migrations/V2__plugin_initialization.sql',
   },
 ];
 
@@ -51,13 +51,25 @@ function read(path) {
   return readFileSync(path, 'utf8');
 }
 
-test('plugin permission finalizers are appended and fail closed without host V51', () => {
+test('plugin initialization keeps one final SQL and the published migration identities', () => {
   for (const plugin of plugins) {
-    assert.ok(existsSync(plugin.migration), `${plugin.id} has an append-only finalizer`);
+    assert.ok(existsSync(plugin.migration), `${plugin.id} has final-state initialization`);
     const sql = read(plugin.migration);
-    assert.match(sql, /to_regprocedure\('public\.platform_normalize_legacy_permission_projections\(\)'\)/);
-    assert.match(sql, /RAISE EXCEPTION .*requires platform migration V51/);
     assert.match(sql, /(?:PERFORM|SELECT) public\.platform_normalize_legacy_permission_projections\(\)/);
+    const directory = `plugins/${plugin.id}/migrations`;
+    const catalog = JSON.parse(read(`${directory}/initialization.json`));
+    assert.equal(catalog.pluginId, plugin.id);
+    assert.equal(catalog.formatVersion, 1);
+    assert.equal(`${directory}/${catalog.script}`, plugin.migration);
+    assert.deepEqual(readdirSync(directory).filter(name => name.endsWith('.sql')), [catalog.script]);
+    assert.equal(catalog.publishedMigrations.length, Number(catalog.version));
+    catalog.publishedMigrations.forEach((entry, index) => {
+      assert.equal(entry.version, String(index + 1));
+      assert.match(entry.script, new RegExp(`^V${entry.version}__[a-z0-9_]+\\.sql$`));
+      assert.ok(Number.isInteger(entry.checksum));
+      assert.ok(entry.description.length > 0);
+      assert.equal(existsSync(`${directory}/${entry.script}`), false);
+    });
 
     const manifest = JSON.parse(read(`plugins/${plugin.id}/plugin.json`));
     const frontend = read(`plugins/${plugin.id}/frontend/manifest.ts`);
@@ -71,14 +83,14 @@ test('plugin permission finalizers are appended and fail closed without host V51
     const manifest = JSON.parse(read(`plugins/${id}/plugin.json`));
     assert.equal(
       manifest.dependencies.find(({ id: dependencyId }) => dependencyId === 'payment-core')?.version,
-      '1.0.5',
+      '1.0.6',
       `${id} pins the finalized payment-core package`,
     );
   }
 });
 
 test('MFA finalizer preserves legacy reset as the V50 global AND target-scope components', () => {
-  const sql = read('plugins/mfa/migrations/V7__finalize_legacy_mfa_permissions.sql');
+  const sql = read('plugins/mfa/migrations/V7__plugin_initialization.sql');
 
   assert.match(sql, /'platform:mfa:read'.*'platform:mfa:management-access'/s);
   assert.match(sql, /'platform:mfa:read'.*'platform:mfa:management-read'/s);
@@ -120,14 +132,15 @@ test('post-V51 installs keep published permission-only migrations inert by exact
     ['localization', 'platform:localization:write', 'platform:localization:update'],
     ['sensitive-words', 'platform:sensitive-words:write', 'platform:sensitive-words:update'],
   ]) {
-    const sql = read(`plugins/${id}/migrations/V3__finalize_platform_permission_migration.sql`);
+    const catalog = JSON.parse(read(`plugins/${id}/migrations/initialization.json`));
+    const sql = read(`plugins/${id}/migrations/${catalog.script}`);
     assert.ok(sql.includes(`'${retired}'`), `${id} finalizer handles its distinct obsolete aggregate`);
     assert.ok(sql.includes(`'${current}'`), `${id} preserves current independent operation codes`);
   }
 });
 
 test('payment-core finalizer preserves provider grants before retiring shared payment authorities', () => {
-  const sql = read('plugins/payment-core/migrations/V4__finalize_legacy_payment_permissions.sql');
+  const sql = read('plugins/payment-core/migrations/V4__plugin_initialization.sql');
   const callsNormalizer = sql.indexOf('SELECT public.platform_normalize_legacy_permission_projections()');
   assert.ok(callsNormalizer > 0);
 

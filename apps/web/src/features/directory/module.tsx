@@ -9,6 +9,7 @@ const OnlineUsersPage = lazy(() => import("@/features/users/online-users-page").
 const OrganizationsPage = lazy(() => import("@/features/organizations/organizations-page").then(({ OrganizationsPage }) => ({ default: OrganizationsPage })));
 const RolesPage = lazy(() => import("@/features/roles/roles-page").then(({ RolesPage }) => ({ default: RolesPage })));
 const UsersPage = lazy(() => import("@/features/users/users-page").then(({ UsersPage }) => ({ default: UsersPage })));
+const PrintTemplatesPage = lazy(() => import("@/features/print-templates/print-templates-page").then(({ PrintTemplatesPage }) => ({ default: PrintTemplatesPage })));
 
 function UserManagementTabs({ hasRouteAccess, hasRouteOperation, readOnlyPreview = false }: { hasRouteAccess: (routeId: string) => boolean; hasRouteOperation: (routeId: string, actionId: string) => boolean; readOnlyPreview?: boolean }) {
   const previewReadOnly = readOnlyPreview || isRolePreviewReadOnly();
@@ -24,6 +25,9 @@ function UserManagementTabs({ hasRouteAccess, hasRouteOperation, readOnlyPreview
         canAssignRoles={hasRouteOperation("users", "assignRoles")}
         canReadRoles={hasRouteOperation("users", "readRoles") || hasRouteOperation("users", "assignRoles")}
         canExport={hasRouteOperation("users", "export")}
+        canImport={hasRouteOperation("users", "import")}
+        canPrint={hasRouteOperation("users", "print")}
+        canUseTemplates={hasRouteAccess("print-templates") && hasRouteOperation("print-templates", "use")}
       />;
   }
   if (!previewReadOnly && hasRouteAccess("online-users")) {
@@ -55,5 +59,13 @@ export const directoryFrontendModule = {
     />,
     users: ({ hasRouteAccess, hasRouteOperation, readOnlyPreview }) => <UserManagementTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} readOnlyPreview={readOnlyPreview} />,
     "online-users": ({ hasRouteAccess, hasRouteOperation, readOnlyPreview }) => <UserManagementTabs hasRouteAccess={hasRouteAccess} hasRouteOperation={hasRouteOperation} readOnlyPreview={readOnlyPreview} />,
+    "print-templates": ({ hasRouteAccess, hasRouteOperation, readOnlyPreview }) => <PrintTemplatesPage
+      canCreate={hasRouteOperation("print-templates", "create")}
+      canUpdate={hasRouteOperation("print-templates", "update")}
+      canPublish={hasRouteOperation("print-templates", "publish")}
+      canUse={hasRouteOperation("print-templates", "use")}
+      canReadExampleUsers={hasRouteAccess("users")}
+      readOnlyPreview={readOnlyPreview}
+    />,
   },
 } satisfies FrontendModule;

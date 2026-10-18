@@ -96,4 +96,17 @@ class OfficeWorkerResponseGuardTest {
                         OfficeWorkerResponseGuard.validate(
                                 wrongOperation.getBytes(StandardCharsets.UTF_8), "preview"));
     }
+
+    @Test
+    void acceptsBoundedTwoDimensionalWorkbookRows() {
+        var workbook =
+                "{\"kind\":\"workbook-read\",\"preview\":null,\"dictionary\":null,"
+                        + "\"inspection\":null,\"documentPdf\":null,"
+                        + "\"workbook\":{\"rows\":[[\"姓名\",\"城市\"],[\"林\"]]},"
+                        + "\"workbookFile\":null,\"status\":0,\"reason\":null,\"issues\":[]}";
+        assertDoesNotThrow(
+                () ->
+                        OfficeWorkerResponseGuard.validate(
+                                workbook.getBytes(StandardCharsets.UTF_8), "workbook-read"));
+    }
 }

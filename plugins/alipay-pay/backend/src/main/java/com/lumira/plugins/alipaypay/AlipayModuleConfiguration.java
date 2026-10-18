@@ -10,6 +10,6 @@ public class AlipayModuleConfiguration {
     @Bean
     PlatformModule alipayPayModule() {
         return new PlatformModule(
-                "alipay-pay", "支付宝扫码支付", "1.0.5", List.of("platform", "payment-core"));
+                "alipay-pay", "支付宝扫码支付", "1.0.6", List.of("platform", "payment-core"));
     }
 }

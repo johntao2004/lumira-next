@@ -335,28 +335,25 @@ public final class PostgresBlobStore implements BlobStore {
         }
     }
 
+    /**
+     * Immediately removes chunks for a fenced PostgreSQL object or an orphan key. Existing file
+     * metadata must be DELETING. Readers load chunks lazily, so a download already in progress can
+     * fail after permanent deletion removes bytes it has not loaded yet.
+     */
     @Override
     public void delete(UUID key) {
         jdbc.update(
                 """
-            UPDATE platform_file_blob_chunk c
-               SET retire_after = CASE
-                   WHEN EXISTS (
-                       SELECT 1 FROM platform_file f
-                        WHERE f.id=c.file_id AND f.storage_backend='postgres' AND f.size_bytes IS NOT NULL
-                   ) THEN coalesce(c.retire_after,clock_timestamp()+interval '24 hours')
-                   ELSE clock_timestamp()
-               END
+            DELETE FROM platform_file_blob_chunk c
              WHERE c.file_id=?
-               AND (c.retire_after IS NULL OR NOT EXISTS (
-                   SELECT 1 FROM platform_file f
-                    WHERE f.id=c.file_id AND f.storage_backend='postgres' AND f.size_bytes IS NOT NULL
-               ))
+               AND (
+                   NOT EXISTS (SELECT 1 FROM platform_file f WHERE f.id=c.file_id)
+                   OR EXISTS (
+                       SELECT 1 FROM platform_file f
+                        WHERE f.id=c.file_id AND f.storage_backend='postgres' AND f.state='DELETING'
+                   )
+               )
             """,
-                key);
-        // Incomplete uploads and orphan chunks have no published metadata or downloadable object.
-        jdbc.update(
-                "DELETE FROM platform_file_blob_chunk c WHERE c.file_id=? AND c.retire_after<=clock_timestamp()",
                 key);
     }
 

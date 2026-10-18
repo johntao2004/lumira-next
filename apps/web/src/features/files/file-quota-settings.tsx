@@ -41,7 +41,7 @@ function CapacityUnitSelector({ unit, onChange, disabled }: { unit: CapacityUnit
       { value: "mb", label: t("fileQuotaMBUnit") },
       { value: "gb", label: t("fileQuotaGBUnit") },
     ]}
-    style={{ width: 104 }}
+    style={{ width: 104, flexShrink: 0 }}
   />;
 }
 
@@ -94,7 +94,7 @@ function CapacityInput({ value, onChange, unit, onUnitChange, onEdited, onToggle
         }}
         style={{ ...style, flex: 1, minWidth: 0, width: 0 }}
       />
-      <CapacityUnitSelector unit={unit} disabled={disabled || unlimited ? true : undefined} onChange={onUnitChange} />
+      <CapacityUnitSelector unit={unit} disabled={disabled ? true : undefined} onChange={onUnitChange} />
     </Space.Compact>
   </div>;
 }
@@ -186,7 +186,7 @@ function FileQuotaFields() {
     <Form.Item
       name={["data", "maximumBytes"]}
       label={t("fileQuotaStorageLimit")}
-      extra={t("fileQuotaCapacityHint")}
+      extra={t("fileQuotaCapacityInputHint")}
       rules={[{
         validator: (_, value) => nonNegativeInteger(value) === null
           ? Promise.reject(new Error(t("invalidFileQuota")))
@@ -200,7 +200,7 @@ function FileQuotaFields() {
         onToggleUnlimited={toggleCapacityUnlimited}
       />
     </Form.Item>
-    <Form.Item name={["data", "maximumFiles"]} label={t("fileQuotaFileCountLimit")} extra={t("fileQuotaMaximumFilesHint")} rules={[{
+    <Form.Item name={["data", "maximumFiles"]} label={t("fileQuotaFileCountLimit")} extra={t("fileQuotaFileCountInputHint")} rules={[{
       validator: (_, value) => nonNegativeInteger(value) === null
         ? Promise.reject(new Error(t("invalidFileQuota")))
         : Promise.resolve(),
@@ -238,7 +238,7 @@ export function FileQuotaSettingsPage({ canWrite }: { canWrite: boolean }) {
       return { data: normalized };
     }}
   >
-    <Typography.Paragraph type="secondary">{t("fileQuotaSystemDefaultHint")}</Typography.Paragraph>
+    <Typography.Paragraph type="secondary">{t("fileQuotaDefaultSummary")}</Typography.Paragraph>
     <FileQuotaFields />
   </SettingsSection>;
 }

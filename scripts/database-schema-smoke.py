@@ -157,7 +157,7 @@ expected_builtin_sections = {
     'security', 'passkey', 'audit', 'mail-deliveries', 'sms-deliveries',
     'event-outbox', 'feedback', 'navigation', 'sensitive-words', 'localization',
     'ai-console', 'ai-models', 'api-docs', 'captcha', 'authentication', 'wechat',
-    'registration',
+    'registration', 'print-templates',
 }
 actual_builtin_sections = set(filter(None, sql("SELECT section_key FROM platform_navigation_menu WHERE built_in AND NOT deleted AND menu_type='PAGE' ORDER BY section_key").splitlines()))
 assert actual_builtin_sections == expected_builtin_sections, (expected_builtin_sections - actual_builtin_sections, actual_builtin_sections - expected_builtin_sections)
@@ -167,11 +167,11 @@ expected_builtin_catalogs = {
 }
 actual_builtin_catalogs = set(filter(None, sql("SELECT menu_code FROM platform_navigation_menu WHERE built_in AND NOT deleted AND menu_type='CATALOG' ORDER BY menu_code").splitlines()))
 assert actual_builtin_catalogs == expected_builtin_catalogs, (expected_builtin_catalogs - actual_builtin_catalogs, actual_builtin_catalogs - expected_builtin_catalogs)
-assert len(expected_builtin_sections) == 35
+assert len(expected_builtin_sections) == 36
 assert len(expected_builtin_catalogs) == 8
-assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted AND menu_type='PAGE'")) == 35
+assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted AND menu_type='PAGE'")) == 36
 assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted AND menu_type='CATALOG'")) == 8
-assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted")) == 43
+assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted")) == 44
 assert int(sql("SELECT count(*) FROM platform_navigation_menu WHERE built_in AND NOT deleted AND menu_type NOT IN ('PAGE','CATALOG')")) == 0
 assert int(sql("SELECT count(*) FROM platform_dictionary_item")) >= 18
 assert int(sql("SELECT count(*) FROM platform_dictionary_item i JOIN platform_dictionary d ON d.id=i.dictionary_id WHERE d.code='work_order_feedback_category' AND d.enabled AND i.enabled AND i.value IN ('QUESTION','BUG','FEATURE','ACCOUNT','OTHER')")) == 5

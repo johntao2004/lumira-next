@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "pluginId": "payment-core",
+  "version": "4",
+  "script": "V4__plugin_initialization.sql",
+  "publishedMigrations": [
+    {
+      "version": "1",
+      "description": "payment orders",
+      "script": "V1__payment_orders.sql",
+      "checksum": -1311818323
+    },
+    {
+      "version": "2",
+      "description": "fine grained permissions",
+      "script": "V2__fine_grained_permissions.sql",
+      "checksum": 829629333
+    },
+    {
+      "version": "3",
+      "description": "independent orders page operations",
+      "script": "V3__independent_orders_page_operations.sql",
+      "checksum": 1427688032
+    },
+    {
+      "version": "4",
+      "description": "finalize legacy payment permissions",
+      "script": "V4__finalize_legacy_payment_permissions.sql",
+      "checksum": -1536523737
+    }
+  ]
+}

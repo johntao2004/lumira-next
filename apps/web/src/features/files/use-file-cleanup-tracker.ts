@@ -7,9 +7,10 @@ import { api, ApiError } from "@/platform/api/client";
 type CleanupState = { state: string };
 
 /**
- * Poll only file IDs whose purge has been accepted, so list and usage queries
- * refresh when metadata cleanup releases the file's quota. PostgreSQL blob
- * chunks may remain retired for 24 hours after this point.
+ * Poll only file IDs whose purge has been accepted. The server remains the
+ * source of charged usage while a file is DELETING; once cleanup succeeds (or
+ * the file is gone), refresh file and usage queries. Failed requests retain
+ * the ID and retry with bounded backoff.
  */
 export function useFileCleanupTracker() {
   const client = useQueryClient();

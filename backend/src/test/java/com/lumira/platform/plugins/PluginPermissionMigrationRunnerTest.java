@@ -46,14 +46,13 @@ class PluginPermissionMigrationRunnerTest {
     }
 
     @Test
-    void onlyPackagesContainingAnAppendedFinalizerRequireHostV51() {
+    void consolidatedPackagesUseOneInitializationInsteadOfPublishedFinalizerFiles() {
         Path pluginRoot = findRepositoryRoot().resolve("plugins");
         assertTrue(
-                PluginPermissionMigrationRunner.requiresV51(
-                        "feedback", pluginRoot.resolve("feedback/migrations")));
+                PluginInitializationMigrationRunner.supports(
+                        pluginRoot.resolve("feedback/migrations")));
         assertTrue(
-                PluginPermissionMigrationRunner.requiresV51(
-                        "mfa", pluginRoot.resolve("mfa/migrations")));
+                PluginInitializationMigrationRunner.supports(pluginRoot.resolve("mfa/migrations")));
         assertFalse(
                 PluginPermissionMigrationRunner.requiresV51(
                         "diffuse-avatar", pluginRoot.resolve("diffuse-avatar/migrations")));

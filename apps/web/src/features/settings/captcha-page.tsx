@@ -111,11 +111,10 @@ export function CaptchaPage({ canWrite }: { canWrite: boolean }) {
       initialValues={{ data: query.data.data }}
       onValuesChange={() => setSaved(false)} onFinish={save}>
       <div className="auth-config-stack">
-        <section className="auth-config-panel captcha-service-panel">
-          <Typography.Title level={5}>{t("captchaSettingsTitle")}</Typography.Title>
+        <section className="captcha-service-section">
           <Typography.Paragraph className="auth-config-note" type="secondary">{t("captchaSettingsHint")}</Typography.Paragraph>
           <Form.Item
-            className="auth-config-toggle"
+            className="auth-settings-switch-row"
             name={["data", "enabled"]}
             label={t("captchaEnableService")}
             valuePropName="checked"
@@ -141,13 +140,13 @@ export function CaptchaPage({ canWrite }: { canWrite: boolean }) {
           </div>
         </section>
 
-        <section className="auth-config-panel captcha-policies-panel">
+        <section className="captcha-policies-section">
           <Typography.Title level={5}>{t("captchaActionPolicies")}</Typography.Title>
           <Typography.Paragraph className="auth-config-note" type="secondary">{t("captchaActionPoliciesHint")}</Typography.Paragraph>
           <SettingsEnabledControls>
             <div role="group" aria-label={t("captchaActionPolicies")} className="captcha-policy-groups">
-              {policyGroups.map(group => <section key={group.title} role="group" aria-label={t(group.title)} className="captcha-policy-card">
-                <Typography.Text strong className="captcha-policy-card-title">{t(group.title)}</Typography.Text>
+              {policyGroups.map(group => <section key={group.title} role="group" aria-label={t(group.title)} className="captcha-policy-group">
+                {group.actions.length > 1 && <Typography.Text strong className="captcha-policy-group-title">{t(group.title)}</Typography.Text>}
                 <div className="captcha-policy-actions">
                   {group.actions.map(name => <Form.Item key={name} name={["data", "actions", name]} noStyle>
                     <CaptchaActionPolicyControl

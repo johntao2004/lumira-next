@@ -234,7 +234,11 @@ function runtimeLockFixture({ createLock = false } = {}) {
   return { root, lockFile, configFile: path.join(runtimeDirectory, "local.json") };
 }
 
-function runSwitch(fixtureData, { failRenameDestination, failRenameDestinations = [] } = {}) {
+function runSwitch(fixtureData, {
+  failRenameDestination,
+  failRenameDestinations = [],
+  activityAuditDockerAdmin,
+} = {}) {
   const args = [
     "--import",
     fixtureData.importShim,
@@ -243,6 +247,8 @@ function runSwitch(fixtureData, { failRenameDestination, failRenameDestinations 
     "--target-config",
     ".runtime/target.json",
   ];
+  if (activityAuditDockerAdmin !== undefined)
+    args.push("--activity-audit-docker-admin", activityAuditDockerAdmin);
   const env = {
     PATH: process.env.PATH ?? "",
     LOCAL_RUNTIME_TEST_DATABASES: fixtureData.databasesFile,
@@ -354,6 +360,27 @@ test("actual local-runtime switch rejects a target with another database client 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /no other client connections/);
   assert.deepEqual(readTrackedBytes(data.root), before);
+});
+
+test("switch CLI passes the explicit Docker activity audit opt-in into inventory verification", (t) => {
+  if (process.platform === "win32") return t.skip("isolated executable fake psql requires WSL/Linux");
+  const data = fixture();
+  const before = readTrackedBytes(data.root);
+  const result = runSwitch(data, { activityAuditDockerAdmin: "true" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Docker admin activity audit requires source and target to use the same configured local PostgreSQL container/);
+  assert.deepEqual(readTrackedBytes(data.root), before);
+});
+
+test("switch CLI rejects a non-true Docker activity audit value before runtime mutation", (t) => {
+  if (process.platform === "win32") return t.skip("isolated executable fake psql requires WSL/Linux");
+  const data = fixture();
+  const before = readTrackedBytes(data.root);
+  const result = runSwitch(data, { activityAuditDockerAdmin: "false" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /accepts only the value true/);
+  assert.deepEqual(readTrackedBytes(data.root), before);
+  assert.equal(existsSync(path.join(data.root, ".runtime", "local-runtime.lock")), false);
 });
 
 test("actual local-runtime switch attempts every restore and reports a partial rollback", (t) => {

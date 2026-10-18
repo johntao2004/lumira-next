@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 public class PaymentCoreModuleConfiguration {
     @Bean
     PlatformModule paymentCoreModule() {
-        return new PlatformModule("payment-core", "支付核心与订单", "1.0.5", List.of("platform"));
+        return new PlatformModule("payment-core", "支付核心与订单", "1.0.6", List.of("platform"));
     }
 
     @Bean

@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const runtimeObserverManifest = {
   id: "runtime-observer",
-  version: "1.0.1",
+  version: "1.0.2",
   required: false,
   dependencies: ["platform"],
   routes: [

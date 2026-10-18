@@ -1,8 +1,11 @@
 package com.lumira.platform;
 
+import com.lumira.platform.common.DocumentTemplateProcessor;
+import com.lumira.platform.common.DocumentWorkerRequestGuard;
 import com.lumira.platform.common.ImportValidationException;
 import com.lumira.platform.common.OfficeArchiveBudget;
 import com.lumira.platform.common.OfficeDocumentProcessor;
+import com.lumira.platform.common.OfficeWorkerFailureReasons;
 import com.lumira.platform.common.OfficeWorkerProtocol;
 import com.lumira.platform.dictionaries.DictionaryFileParser;
 import java.nio.file.Files;
@@ -31,14 +34,16 @@ public final class OfficeParserChild {
                 var pressure = new java.util.ArrayList<byte[]>();
                 while (true) pressure.add(new byte[8 * 1024 * 1024]);
             }
-            if (!OfficeWorkerProtocol.PREVIEW.equals(request.operation())
-                    && !OfficeWorkerProtocol.DICTIONARY.equals(request.operation())) {
+            if (!supportedOperation(request.operation())) {
                 write(
                         responsePath,
                         error(request.operation(), 404, "officeOperationUnsupported", List.of()));
                 return 0;
             }
-            var bytes = Files.readAllBytes(Path.of(request.inputFile()));
+            var bytes =
+                    request.inputFile() == null || request.inputFile().isBlank()
+                            ? new byte[0]
+                            : Files.readAllBytes(Path.of(request.inputFile()));
             if (OfficeWorkerProtocol.PREVIEW.equals(request.operation())) {
                 try {
                     write(
@@ -106,6 +111,87 @@ public final class OfficeParserChild {
                 }
                 return 0;
             }
+            try {
+                switch (request.operation()) {
+                    case OfficeWorkerProtocol.DOCUMENT_INSPECT ->
+                            write(
+                                    responsePath,
+                                    OfficeWorkerProtocol.Response.inspection(
+                                            DocumentTemplateProcessor.inspect(
+                                                    request.filename(), bytes)));
+                    case OfficeWorkerProtocol.DOCUMENT_PDF -> {
+                        byte[] metadataBytes = Files.readAllBytes(Path.of(request.metadataFile()));
+                        DocumentWorkerRequestGuard.validate(
+                                metadataBytes, OfficeWorkerProtocol.DOCUMENT_PDF);
+                        var metadata =
+                                JSON.readValue(
+                                        metadataBytes, OfficeWorkerProtocol.DocumentMetadata.class);
+                        write(
+                                responsePath,
+                                OfficeWorkerProtocol.Response.documentPdf(
+                                        DocumentTemplateProcessor.fillAndConvert(
+                                                request.filename(),
+                                                bytes,
+                                                metadata.bindings(),
+                                                metadata.values(),
+                                                requestPath.getParent())));
+                    }
+                    case OfficeWorkerProtocol.WORKBOOK_READ ->
+                            write(
+                                    responsePath,
+                                    OfficeWorkerProtocol.Response.workbook(
+                                            DocumentTemplateProcessor.readWorkbook(bytes)));
+                    case OfficeWorkerProtocol.WORKBOOK_WRITE -> {
+                        byte[] metadataBytes = Files.readAllBytes(Path.of(request.metadataFile()));
+                        DocumentWorkerRequestGuard.validate(
+                                metadataBytes, OfficeWorkerProtocol.WORKBOOK_WRITE);
+                        var metadata =
+                                JSON.readValue(
+                                        metadataBytes,
+                                        OfficeWorkerProtocol.WorkbookWriteMetadata.class);
+                        write(
+                                responsePath,
+                                OfficeWorkerProtocol.Response.workbookFile(
+                                        DocumentTemplateProcessor.writeWorkbook(metadata.rows())));
+                    }
+                    default ->
+                            write(
+                                    responsePath,
+                                    error(
+                                            request.operation(),
+                                            404,
+                                            "officeOperationUnsupported",
+                                            List.of()));
+                }
+            } catch (OfficeArchiveBudget.Exceeded tooLarge) {
+                write(
+                        responsePath,
+                        error(
+                                request.operation(),
+                                413,
+                                OfficeWorkerFailureReasons.tooLarge(request.operation()),
+                                List.of()));
+            } catch (DocumentTemplateProcessor.InvalidTemplate invalid) {
+                write(
+                        responsePath,
+                        error(
+                                request.operation(),
+                                400,
+                                OfficeWorkerFailureReasons.invalid(request.operation()),
+                                List.of()));
+            } catch (DocumentTemplateProcessor.ConversionUnavailable unavailable) {
+                write(
+                        responsePath,
+                        error(request.operation(), 503, "officeWorkerUnavailable", List.of()));
+            } catch (Exception invalid) {
+                write(
+                        responsePath,
+                        error(
+                                request.operation(),
+                                400,
+                                OfficeWorkerFailureReasons.invalid(request.operation()),
+                                List.of()));
+            }
             return 0;
         } catch (Throwable error) {
             if ("true".equalsIgnoreCase(System.getenv("LUMIRA_OFFICE_WORKER_CHILD_DIAGNOSTICS"))) {
@@ -131,14 +217,20 @@ public final class OfficeParserChild {
         return "true".equalsIgnoreCase(System.getenv("LUMIRA_OFFICE_WORKER_TEST_MODE"));
     }
 
+    private static boolean supportedOperation(String operation) {
+        return OfficeWorkerProtocol.PREVIEW.equals(operation)
+                || OfficeWorkerProtocol.DICTIONARY.equals(operation)
+                || OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
+                || OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation)
+                || OfficeWorkerProtocol.WORKBOOK_READ.equals(operation)
+                || OfficeWorkerProtocol.WORKBOOK_WRITE.equals(operation);
+    }
+
     private static void write(Path outputPath, OfficeWorkerProtocol.Response response)
             throws Exception {
         byte[] bytes = JSON.writeValueAsBytes(response);
         if (bytes.length > OfficeWorkerProtocol.MAX_RESPONSE_BYTES) {
-            String reason =
-                    OfficeWorkerProtocol.PREVIEW.equals(response.kind())
-                            ? "filePreviewTooLarge"
-                            : "dictionaryDatasetTooLarge";
+            String reason = OfficeWorkerFailureReasons.tooLarge(response.kind());
             bytes =
                     JSON.writeValueAsBytes(
                             OfficeWorkerProtocol.Response.error(

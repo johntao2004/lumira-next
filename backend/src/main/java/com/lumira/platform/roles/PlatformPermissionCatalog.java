@@ -93,7 +93,9 @@ final class PlatformPermissionCatalog {
                                 PlatformOperation.USER_ASSIGN_ROLES,
                                 PlatformOperation.USER_ASSIGN_ORGANIZATIONS,
                                 PlatformOperation.USER_READ_ROLES,
-                                PlatformOperation.USER_EXPORT),
+                                PlatformOperation.USER_EXPORT,
+                                PlatformOperation.USER_IMPORT,
+                                PlatformOperation.USER_PRINT),
                         page(
                                 PlatformPageId.ONLINE_USERS,
                                 "onlineUsers",
@@ -152,6 +154,18 @@ final class PlatformPermissionCatalog {
                                 PlatformOperation.DICTIONARY_DELETE,
                                 PlatformOperation.DICTIONARY_IMPORT,
                                 PlatformOperation.DICTIONARY_EXPORT)),
+                group(
+                        "print-templates",
+                        "printTemplates",
+                        page(
+                                PlatformPageId.PRINT_TEMPLATES,
+                                "printTemplates",
+                                "content-management",
+                                30,
+                                PlatformOperation.TEMPLATE_CREATE,
+                                PlatformOperation.TEMPLATE_UPDATE,
+                                PlatformOperation.TEMPLATE_PUBLISH,
+                                PlatformOperation.TEMPLATE_USE)),
                 group(
                         "settings",
                         "settings",

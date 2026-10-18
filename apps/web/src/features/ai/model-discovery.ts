@@ -59,10 +59,9 @@ export function modelSelectionsAreValid(savedModels: readonly string[], value: r
     (discovery.status === "idle" || discovery.status === "error");
 }
 
-/** Modalities are displayed only when the provider included them in its model response. */
+/** Keep capability metadata separate from the model's display name. */
 export function modelOptionLabel(model: ModelOption): string {
-  const identity = model.name && model.name !== model.id ? `${model.name} (${model.id})` : model.id;
-  return model.inputModalities.length ? `${identity} · ${model.inputModalities.join(", ")}` : identity;
+  return model.name || model.id;
 }
 
 /** Convert stable, sanitized API error codes to localized UI keys. */

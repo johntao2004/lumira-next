@@ -157,15 +157,6 @@ class FeedbackPermissionMigrationDatabaseTest {
 
         Path repositoryRoot = findRepositoryRoot();
         feedbackMigrations = repositoryRoot.resolve("plugins/feedback/migrations");
-        Flyway.configure()
-                .dataSource(dataSource)
-                .locations("filesystem:" + feedbackMigrations.toAbsolutePath())
-                .table("plugin_feedback_schema_history")
-                .baselineOnMigrate(true)
-                .baselineVersion("0")
-                .target("2")
-                .load()
-                .migrate();
 
         // Exercise the plugin migration against current host tables and permissions.
         grantDirect(ACTION_ONLY_USER, UPDATE);
@@ -176,7 +167,8 @@ class FeedbackPermissionMigrationDatabaseTest {
         assignOrganization(CROSS_ROLE_USER, feedbackOrganization);
         grantDirect(CROSS_ROLE_USER, UPDATE);
 
-        // Exercise V4's handling of historical grants that still exist in plugin data.
+        // Exercise the final initialization handling of historical grants that still exist in
+        // plugin data.
         grantRole(scopedActionRole, READ_ALL);
         grantRole(scopedActionRole, UPDATE);
         grantRole(scopedActionRole, REPLY);
@@ -345,7 +337,7 @@ class FeedbackPermissionMigrationDatabaseTest {
         long archiveCountBeforeReplay = archiveCount();
         long broadVersionBeforeReplay = roleVersion(broadReadRole);
         long readUserVersionBeforeReplay = userVersion(DIRECT_READ_USER);
-        runSqlMigrationAgain(feedbackMigrations.resolve("V4__unify_feedback_data_scope.sql"));
+        runSqlMigrationAgain(feedbackMigrations.resolve("V4__plugin_initialization.sql"));
         assertEquals(roleCountBeforeReplay, migrationRoleCount());
         assertEquals(archiveCountBeforeReplay, archiveCount());
         assertEquals(broadVersionBeforeReplay, roleVersion(broadReadRole));
@@ -385,7 +377,7 @@ class FeedbackPermissionMigrationDatabaseTest {
 
     private static void grantRole(UUID roleId, String authority) {
         jdbc.update(
-                "INSERT INTO platform_role_authority(role_id,authority) VALUES (?,?)",
+                "INSERT INTO platform_role_authority(role_id,authority) VALUES (?,?) ON CONFLICT DO NOTHING",
                 roleId,
                 authority);
     }

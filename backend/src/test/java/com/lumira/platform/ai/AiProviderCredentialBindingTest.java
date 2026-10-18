@@ -339,7 +339,14 @@ class AiProviderCredentialBindingTest {
                 .thenReturn(new SecretStorePort.State(secretVersion, credentialConfigured));
         var service =
                 new AiProviderService(
-                        repository, connections, secrets, guard, audit, new ObjectMapper());
+                        repository,
+                        connections,
+                        secrets,
+                        guard,
+                        audit,
+                        new ObjectMapper(),
+                        org.mockito.Mockito.mock(
+                                com.lumira.platform.common.AiModelInputSettingsPort.class));
         return new Fixture(repository, connections, secrets, guard, audit, service);
     }
 

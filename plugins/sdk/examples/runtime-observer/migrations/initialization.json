@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "pluginId": "runtime-observer",
+  "version": "1",
+  "script": "V1__plugin_initialization.sql",
+  "publishedMigrations": [
+    {
+      "version": "1",
+      "description": "runtime observer navigation",
+      "script": "V1__runtime_observer_navigation.sql",
+      "checksum": -56307456
+    }
+  ]
+}

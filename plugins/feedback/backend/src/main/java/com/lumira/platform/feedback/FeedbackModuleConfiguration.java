@@ -13,7 +13,7 @@ public class FeedbackModuleConfiguration {
         return new PlatformModule(
                 "feedback",
                 "工单反馈",
-                "1.0.14",
+                "1.0.15",
                 List.of("platform", "identity", "files", "dictionaries", "notifications"));
     }
 }

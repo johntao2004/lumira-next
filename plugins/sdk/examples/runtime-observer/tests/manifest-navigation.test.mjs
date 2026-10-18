@@ -6,12 +6,12 @@ const root = new URL("../", import.meta.url);
 const plugin = JSON.parse(readFileSync(new URL("plugin.json", root), "utf8"));
 const frontend = readFileSync(new URL("frontend/manifest.ts", root), "utf8");
 const backend = readFileSync(new URL("backend/src/main/java/com/lumira/plugins/runtimeobserver/RuntimeObserverModuleConfiguration.java", root), "utf8");
-const migration = readFileSync(new URL("migrations/V1__runtime_observer_navigation.sql", root), "utf8");
+const migration = readFileSync(new URL("migrations/V1__plugin_initialization.sql", root), "utf8");
 
 test("runtime observer owns its page access and read operation", () => {
   assert.equal(plugin.id, "runtime-observer");
   assert.equal(plugin.name, "运行展示屏");
-  assert.equal(plugin.version, "1.0.0");
+  assert.match(plugin.version, /^1\.0\.\d+$/);
   assert.deepEqual(plugin.dependencies, [{ id: "platform", version: "1.0.0" }]);
   assert.deepEqual(plugin.permissions, [
     "platform:runtime-observer:access",
@@ -30,7 +30,7 @@ test("runtime observer owns its page access and read operation", () => {
 
   const frontendDescriptor = frontend.match(/export const runtimeObserverManifest = \{\s*id:\s*"([^"]+)",\s*version:\s*"([^"]+)"/);
   const frontendRoute = frontend.match(/routes:\s*\[\s*\{\s*id:\s*"runtime-observer",\s*label:\s*"([^"]+)"/);
-  const backendDescriptor = backend.match(/new PlatformModule\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*List\.of\("([^"]+)"\)\)/);
+  const backendDescriptor = backend.match(/new PlatformModule\(\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*List\.of\("([^"]+)"\)\)/);
   assert.ok(frontendDescriptor);
   assert.ok(frontendRoute);
   assert.ok(backendDescriptor);

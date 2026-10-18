@@ -151,13 +151,24 @@ function createInventoryFixture({ sourcePlugins, targetPlugins = sourcePlugins, 
         inventory: databaseSnapshot('lumira_qa_source', '41001', emptySource ? [] : sourcePlugins.map(item => item.row)),
         canInspectAll: true,
         otherClients: 0,
+        activityIdentity: { database: 'lumira_qa_source', oid: '41001', postmasterStartEpoch: '1792200123.125' },
+        adminActivity: {
+          database: 'lumira_qa_source', oid: '41001', postmasterStartEpoch: '1792200123.125',
+          canInspectAll: true, otherClients: 0,
+        },
       },
       lumira_qa_target: {
         inventory: databaseSnapshot('lumira_qa_target', '41002', targetPlugins.map(item => item.row)),
         canInspectAll: true,
         otherClients: 0,
+        activityIdentity: { database: 'lumira_qa_target', oid: '41002', postmasterStartEpoch: '1792200123.125' },
+        adminActivity: {
+          database: 'lumira_qa_target', oid: '41002', postmasterStartEpoch: '1792200123.125',
+          canInspectAll: true, otherClients: 0,
+        },
       },
     },
+    dockerAuditCalls: [],
     processFile,
     parentPid: process.pid,
   };
@@ -170,6 +181,7 @@ const statement = args[args.indexOf('-c') + 1] ?? '';
 const fixture = fixtures.databases[database];
 if (!fixture) process.exit(3);
 if (statement.includes('to_regclass')) process.stdout.write('[]');
+else if (statement.includes('pg_postmaster_start_time')) process.stdout.write(JSON.stringify(fixture.activityIdentity));
 else if (statement.includes('pg_stat_activity')) {
   if (fixture.activateProcessOnCheck) writeFileSync(fixtures.processFile, JSON.stringify([{ name: 'backend', pid: fixtures.parentPid }]));
   process.stdout.write(JSON.stringify({ canInspectAll: fixture.canInspectAll, otherClients: fixture.otherClients }));
@@ -179,12 +191,46 @@ else if (statement.includes('pg_stat_activity')) {
   writeFileSync(psql, `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(mockClient)} "$@"\n`, { mode: 0o700 });
   chmodSync(psql, 0o700);
 
-  const config = databaseName => ({
+  const mockDocker = path.join(root, '.runtime', 'fake-docker.mjs');
+  const docker = path.join(root, '.runtime', 'docker');
+  const mockDockerSource = `import { readFileSync, writeFileSync } from 'node:fs';
+const fixtures = JSON.parse(readFileSync(${JSON.stringify(fixtureFile)}, 'utf8'));
+const args = process.argv.slice(2);
+const database = args[args.indexOf('--dbname') + 1];
+const statement = args[args.lastIndexOf('-c') + 1] ?? '';
+const fixture = fixtures.databases[database];
+if (!fixture) process.exit(3);
+if (statement.includes('BEGIN READ ONLY')) {
+  if (!args.includes('-q') || !statement.includes('ROLLBACK') || !statement.includes('pg_stat_activity')
+      || !statement.includes('pg_postmaster_start_time') || process.env.PGPASSWORD) process.exit(4);
+  fixtures.dockerAuditCalls.push({
+    database,
+    statement,
+    user: args[args.indexOf('--user') + 1],
+    shellCommand: args[args.indexOf('-c') + 1],
+  });
+} else {
+  fixtures.applicationQueryCalls ??= [];
+  fixtures.applicationQueryCalls.push({ database, statement, user: args[args.indexOf('--username') + 1] });
+}
+writeFileSync(${JSON.stringify(fixtureFile)}, JSON.stringify(fixtures));
+if (statement.includes('BEGIN READ ONLY')) process.stdout.write(JSON.stringify(fixture.adminActivity));
+else if (statement.includes('to_regclass')) process.stdout.write('[]');
+else if (statement.includes('pg_postmaster_start_time')) process.stdout.write(JSON.stringify(fixture.activityIdentity));
+else if (statement.includes('pg_stat_activity')) process.stdout.write(JSON.stringify({ canInspectAll: fixture.canInspectAll, otherClients: fixture.otherClients }));
+else process.stdout.write(JSON.stringify(fixture.inventory));
+`;
+  writeFileSync(mockDocker, mockDockerSource);
+  writeFileSync(docker, `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(mockDocker)} "$@"\n`, { mode: 0o700 });
+  chmodSync(docker, 0o700);
+
+  const config = (databaseName, dockerAdmin = false) => ({
     LUMIRA_DB_URL: `jdbc:postgresql://127.0.0.1:5432/${databaseName}`,
     LUMIRA_DB_USER: 'inventory_user',
     LUMIRA_DB_PASSWORD: 'fixture-only-secret',
     LUMIRA_PLUGINS_PATH: path.join(root, '.runtime', 'plugins'),
     PSQL_BIN: psql,
+    ...(dockerAdmin ? { LUMIRA_PSQL_DOCKER_CONTAINER: 'lumira-qa-postgres' } : {}),
   });
   const writeFixtures = value => writeFileSync(fixtureFile, JSON.stringify(value));
   return {
@@ -193,7 +239,21 @@ else if (statement.includes('pg_stat_activity')) {
     writeFixtures,
     sourceConfig: config('lumira_qa_source'),
     targetConfig: config('lumira_qa_target'),
+    dockerAdminSourceConfig: config('lumira_qa_source', true),
+    dockerAdminTargetConfig: config('lumira_qa_target', true),
+    docker,
   };
+}
+
+function withFixtureDocker(fixture, operation) {
+  const previousPath = process.env.PATH;
+  process.env.PATH = [path.dirname(fixture.docker), previousPath].filter(Boolean).join(path.delimiter);
+  try {
+    return operation();
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+  }
 }
 
 test('exact four-plugin inventory passes with database identity and all plugin states', () => {
@@ -380,6 +440,81 @@ test('isolated transfer rejects empty inventory, missing plugins, state drift, a
     /pg_read_all_stats visibility/,
   );
   assert.deepEqual(readFileSync(pinnedFile), pinnedBytes);
+});
+
+test('Docker admin opt-in uses only a read-only activity audit and still reads inventory as the app role', { skip: process.platform === 'win32' }, () => {
+  const plugins = [artifact('diffuse-avatar', 'g'), artifact('feedback', 'h')];
+  const fixture = createInventoryFixture({ sourcePlugins: plugins });
+  captureLocalPluginInventory({ root: fixture.root, config: fixture.sourceConfig });
+  fixture.fixtureData.databases.lumira_qa_source.canInspectAll = false;
+  fixture.fixtureData.databases.lumira_qa_target.canInspectAll = false;
+  fixture.writeFixtures(fixture.fixtureData);
+
+  const transfer = withFixtureDocker(fixture, () => verifyLocalPluginInventoryTransfer({
+    root: fixture.root,
+    sourceConfig: fixture.dockerAdminSourceConfig,
+    targetConfig: fixture.dockerAdminTargetConfig,
+    activityAuditDockerAdmin: true,
+  }));
+
+  assert.equal(transfer.verified, true);
+  const persistedFixtures = JSON.parse(readFileSync(path.join(fixture.root, '.runtime', 'postgres-fixtures.json'), 'utf8'));
+  assert.equal(persistedFixtures.dockerAuditCalls.length, 2);
+  assert.deepEqual(persistedFixtures.dockerAuditCalls.map(call => call.database).sort(), ['lumira_qa_source', 'lumira_qa_target']);
+  assert.ok(persistedFixtures.applicationQueryCalls.some(call => call.statement.includes('platform_plugin_artifact') && call.user === 'inventory_user'));
+  assert.ok(persistedFixtures.applicationQueryCalls.some(call => call.statement.includes('pg_postmaster_start_time') && call.user === 'inventory_user'));
+  for (const call of persistedFixtures.dockerAuditCalls) {
+    assert.equal(call.user, 'postgres');
+    assert.match(call.statement, /^BEGIN READ ONLY;/);
+    assert.match(call.statement, /ROLLBACK;$/);
+    assert.match(call.statement, /pg_stat_activity/);
+    assert.match(call.statement, /pg_postmaster_start_time/);
+    assert.doesNotMatch(call.statement, /platform_plugin_(?:artifact|installation)|INSERT\s|UPDATE\s|DELETE\s/i);
+    assert.match(call.shellCommand, /\$POSTGRES_USER/);
+    assert.doesNotMatch(call.shellCommand, /PASSWORD/i);
+  }
+});
+
+test('Docker admin activity audit rejects active clients, instance mismatch, and missing container opt-in', { skip: process.platform === 'win32' }, () => {
+  const plugins = [artifact('diffuse-avatar', 'i'), artifact('feedback', 'j')];
+  const fixture = createInventoryFixture({ sourcePlugins: plugins });
+  captureLocalPluginInventory({ root: fixture.root, config: fixture.sourceConfig });
+
+  fixture.fixtureData.databases.lumira_qa_source.adminActivity.otherClients = 1;
+  fixture.writeFixtures(fixture.fixtureData);
+  assert.throws(() => withFixtureDocker(fixture, () => verifyLocalPluginInventoryTransfer({
+    root: fixture.root,
+    sourceConfig: fixture.dockerAdminSourceConfig,
+    targetConfig: fixture.dockerAdminTargetConfig,
+    activityAuditDockerAdmin: true,
+  })), /no other client connections/);
+
+  fixture.fixtureData.databases.lumira_qa_source.adminActivity.otherClients = 0;
+  fixture.fixtureData.databases.lumira_qa_source.adminActivity.oid = '41099';
+  fixture.writeFixtures(fixture.fixtureData);
+  assert.throws(() => withFixtureDocker(fixture, () => verifyLocalPluginInventoryTransfer({
+    root: fixture.root,
+    sourceConfig: fixture.dockerAdminSourceConfig,
+    targetConfig: fixture.dockerAdminTargetConfig,
+    activityAuditDockerAdmin: true,
+  })), /different PostgreSQL database instance/);
+
+  fixture.fixtureData.databases.lumira_qa_source.adminActivity.oid = '41001';
+  fixture.fixtureData.databases.lumira_qa_source.adminActivity.postmasterStartEpoch = '1792200124.125';
+  fixture.writeFixtures(fixture.fixtureData);
+  assert.throws(() => withFixtureDocker(fixture, () => verifyLocalPluginInventoryTransfer({
+    root: fixture.root,
+    sourceConfig: fixture.dockerAdminSourceConfig,
+    targetConfig: fixture.dockerAdminTargetConfig,
+    activityAuditDockerAdmin: true,
+  })), /different PostgreSQL database instance/);
+
+  assert.throws(() => verifyLocalPluginInventoryTransfer({
+    root: fixture.root,
+    sourceConfig: fixture.sourceConfig,
+    targetConfig: fixture.targetConfig,
+    activityAuditDockerAdmin: true,
+  }), /same configured local PostgreSQL container/);
 });
 
 test('isolated matching transfer promotes only its verified target snapshot', { skip: process.platform === 'win32' }, () => {

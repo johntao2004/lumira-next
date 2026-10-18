@@ -2,7 +2,7 @@
   "formatVersion": 2,
   "id": "payment-core",
   "name": "支付核心与订单",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "sdkVersion": "1",
   "entryClass": "com.lumira.plugins.paymentcore.PaymentCorePlugin",
   "backend": "backend/plugin.jar",

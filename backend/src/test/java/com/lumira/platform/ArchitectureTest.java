@@ -32,7 +32,8 @@ class ArchitectureTest {
                     Map.entry("communication", Set.of()),
                     Map.entry("content", Set.of()),
                     Map.entry("dictionaries", Set.of("identity")),
-                    Map.entry("directory", Set.of()),
+                    // Template operations use identity.api to enforce role preview restrictions.
+                    Map.entry("directory", Set.of("identity")),
                     Map.entry("events", Set.of()),
                     Map.entry(
                             "feedback",
@@ -52,7 +53,7 @@ class ArchitectureTest {
                     Map.entry("sensitive", Set.of("dictionaries")),
                     Map.entry("settings", Set.of("dictionaries", "identity")),
                     Map.entry("sms", Set.of("communication")),
-                    Map.entry("users", Set.of("identity", "organizations", "roles")));
+                    Map.entry("users", Set.of("directory", "identity", "organizations", "roles")));
 
     private static final Set<String> KERNEL = Set.of("common", "modules");
     private static JavaClasses production;

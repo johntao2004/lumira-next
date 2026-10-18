@@ -366,7 +366,7 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
               <Typography.Paragraph>{t("selectedRoles", { count: selectedRoleIds.length })}</Typography.Paragraph>
               {canAssignRoles && <Typography.Paragraph type="secondary">{t("roleAssignmentHint")}</Typography.Paragraph>}
               <RoleAssignmentSearch userId={user.id} request={rolesRequest} onChange={setRolesRequest} codeLabel={t("roleCode")} nameLabel={t("name")} statusLabel={t("status")} />
-              <ResourceTable<LinkedRole> result={rolesList.data} loading={rolesList.isFetching} error={rolesList.error} request={rolesRequest} onChange={setRolesRequest} onRetry={() => void rolesList.refetch()} searchable={false} embedded scroll={{ x: 640 }} tableAlertOptionRender={canAssignRoles ? undefined : false}
+              <ResourceTable<LinkedRole> result={rolesList.data} loading={rolesList.isFetching} error={rolesList.error} request={rolesRequest} onChange={setRolesRequest} onRetry={() => void rolesList.refetch()} searchable={false} scroll={{ x: 640 }}
                 rowSelection={{ columnWidth: 40, selectedRowKeys: selectedRoleIds, preserveSelectedRowKeys: true, onChange: keys => setRoleSelection(keys.map(String)), getCheckboxProps: role => ({ disabled: pending || committed || !canAssignRoles || !role.assignable }) }}
                 columns={[{ title: t("roleCode"), dataIndex: "code", width: 104, ellipsis: { showTitle: true }, search: true }, { title: t("name"), dataIndex: "name", width: 120, ellipsis: { showTitle: true }, search: true },
                   { title: t("roleFileStorageLimit"), dataIndex: "fileQuotaBytesLimit", width: 152, search: false, render: (_, role) => formatQuotaLimitBytes(role.fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) },
@@ -374,13 +374,10 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
                   { title: t("status"), dataIndex: "enabled", width: 72, search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, role) => <Tag color={role.enabled ? "success" : "default"}>{t(role.enabled ? "enabled" : "disabled")}</Tag> }]}
               />
               {quotaPreview.error ? <QueryFailure title={t("unavailable")} pending={quotaPreview.isFetching} onRetry={() => void quotaPreview.refetch()} /> : !quotaPreview.data || quotaPreview.isFetching ? <Spin /> : <div className="mt-4 flex flex-col gap-4">
-                <Typography.Text strong>{t("userEffectiveQuotaPreview", { storage: formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}), files: formatQuotaLimitCount(quotaPreview.data.proposedMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) })}</Typography.Text>
-                <Typography.Text type="secondary">{t("roleFileStorageLimit")}: {formatQuotaLimitBytes(quotaPreview.data.currentMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → {formatQuotaLimitBytes(quotaPreview.data.proposedMaximumBytes,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} · {t("roleFileCountLimit")}: {formatQuotaLimitCount(quotaPreview.data.currentMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})} → {formatQuotaLimitCount(quotaPreview.data.proposedMaximumFiles,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")})}</Typography.Text>
                 <div className="grid gap-4 md:grid-cols-2">
                   <CapacityMeter label={t("fileStorageUsage")} used={quotaPreview.data.chargedBytes} limit={quotaPreview.data.proposedMaximumBytes} format={value => formatQuotaBytes(value, locale)} unlimitedWhenZero unlimitedLabel={t("roleQuotaUnlimited")} />
                   <CapacityMeter label={t("fileCountUsage")} used={quotaPreview.data.fileCount} limit={quotaPreview.data.proposedMaximumFiles} format={value => formatCount(value, locale)} unlimitedWhenZero unlimitedLabel={t("roleQuotaUnlimited")} />
                 </div>
-                <Typography.Paragraph type="secondary" className="mb-0">{t("roleQuotaImpactHint")}</Typography.Paragraph>
               </div>}
             </>}
           </> }] : []),
@@ -390,7 +387,7 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
               <Typography.Paragraph>{t("selectedOrganizations", { count: selectedOrganizationIds.length })}</Typography.Paragraph>
               <Typography.Paragraph type="secondary">{t("organizationAssignmentHint")}</Typography.Paragraph>
               <AssignmentSearch request={organizationsRequest} onChange={setOrganizationsRequest} codeLabel={t("organizationCode")} nameLabel={t("name")} statusLabel={t("status")} />
-              <ResourceTable<LinkedOrganization> result={organizationsList.data} loading={organizationsList.isFetching} error={organizationsList.error} request={organizationsRequest} onChange={setOrganizationsRequest} onRetry={() => void organizationsList.refetch()} searchable={false} embedded scroll={{ x: 480 }}
+              <ResourceTable<LinkedOrganization> result={organizationsList.data} loading={organizationsList.isFetching} error={organizationsList.error} request={organizationsRequest} onChange={setOrganizationsRequest} onRetry={() => void organizationsList.refetch()} searchable={false} scroll={{ x: 480 }}
                 rowSelection={{ columnWidth: 40, selectedRowKeys: selectedOrganizationIds, preserveSelectedRowKeys: true, onChange: keys => setOrganizationSelection(keys.map(String)), getCheckboxProps: () => ({ disabled: pending || committed }) }}
                 columns={[{ title: t("organizationCode"), dataIndex: "code", width: 160, ellipsis: { showTitle: true }, search: true }, { title: t("name"), dataIndex: "name", ellipsis: { showTitle: true }, search: true }, { title: t("status"), dataIndex: "enabled", width: 88, search: true, valueEnum: { true: { text: t("enabled") }, false: { text: t("disabled") } }, render: (_, organization) => <Tag color={organization.enabled ? "success" : "default"}>{t(organization.enabled ? "enabled" : "disabled")}</Tag> }]}
               />

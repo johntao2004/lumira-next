@@ -142,5 +142,5 @@ export function AdminFilesPage({
     { key: "trash", label: t("fileTrash"), disabled: batchPending, children: trashTable },
     ...(canReadRetention ? [{ key: "file-retention", label: t("fileRetention"), disabled: batchPending, children: <FileRetentionPage canWrite={canUpdateRetention} /> }] : []),
     ...(canReadQuota ? [{ key: "file-quota", label: t("fileQuotaDefault"), disabled: batchPending, children: <FileQuotaSettingsPage canWrite={canUpdateQuota} /> }] : []),
-  ]} /><FilePreviewDrawer file={canPreview ? previewFile : null} endpoint="/platform/files" onClose={() => setPreviewFile(null)} /></>;
+  ]} /><FilePreviewDrawer file={canPreview ? previewFile : null} endpoint="/platform/files" canReadOriginal={canDownload} onClose={() => setPreviewFile(null)} /></>;
 }

@@ -3,6 +3,7 @@ package com.lumira.platform.common;
 /** Stable IDs for host dashboard pages that participate in platform authorization. */
 public enum PlatformPageId {
     USERS("users", PlatformOperation.Scope.SCOPED),
+    PRINT_TEMPLATES("print-templates"),
     ONLINE_USERS("online-users"),
     ROLES("roles"),
     ORGANIZATIONS("organizations", PlatformOperation.Scope.SCOPED),

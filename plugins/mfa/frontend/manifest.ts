@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const mfaManifest = {
   id: "mfa",
-  version: "1.0.9",
+  version: "1.0.10",
   required: false,
   dependencies: ["identity"],
   routes: [

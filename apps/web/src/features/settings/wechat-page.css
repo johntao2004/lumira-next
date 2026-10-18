@@ -1,15 +1,11 @@
-@container auth-settings (min-width: 768px) {
-  .authentication-security-workspace .auth-config-form.wechat-settings-form .auth-config-panels {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  }
-}
-
-.authentication-security-workspace .auth-config-form.wechat-settings-form .wechat-timeout-input.ant-input-number {
-  max-width: 160px;
+.authentication-security-workspace .auth-config-form.wechat-settings-form .wechat-enable-row.ant-form-item {
+  width: 100%;
+  max-width: none;
+  margin-block-end: 16px;
 }
 
 .authentication-security-workspace .auth-config-form.wechat-settings-form .wechat-ready {
-  margin-block-end: 16px;
+  margin-block-end: 0;
 }
 
 .authentication-security-workspace .auth-config-form.wechat-settings-form .wechat-secret-status {
@@ -17,16 +13,4 @@
   margin-inline-end: 0;
   white-space: normal;
   overflow-wrap: anywhere;
-}
-
-@container auth-settings (max-width: 767px) {
-  .authentication-security-workspace .auth-config-form.wechat-settings-form .auth-config-panels {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 767px) {
-  .authentication-security-workspace .auth-config-form.wechat-settings-form .auth-config-panels {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

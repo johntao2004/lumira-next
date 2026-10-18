@@ -1,5 +1,7 @@
 package com.lumira.platform;
 
+import com.lumira.platform.common.DocumentWorkerRequestGuard;
+import com.lumira.platform.common.OfficeWorkerFailureReasons;
 import com.lumira.platform.common.OfficeWorkerProtocol;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -28,9 +30,12 @@ import java.util.concurrent.TimeoutException;
 /** Small HTTP process which launches one disposable parser JVM per Office operation. */
 public final class OfficeWorkerServer {
     public static final int MAX_INPUT_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_METADATA_BYTES = 4 * 1024 * 1024;
+    private static final int MAX_FRAMED_REQUEST_BYTES = MAX_INPUT_BYTES + MAX_METADATA_BYTES + 8;
     public static final int MAX_RESPONSE_BYTES = OfficeWorkerProtocol.MAX_RESPONSE_BYTES;
     private static final int PORT = 18091;
     private static final long HARD_MEMORY_LIMIT_BYTES = 1024L * 1024 * 1024;
+    static final long MAX_PROCESS_LIMIT = 128;
     private static final long DEFAULT_DEADLINE_MILLIS = 20_000;
     private static final long MAX_REQUEST_MILLIS = 35_000;
     private static final Semaphore PARSER = new Semaphore(1);
@@ -173,7 +178,11 @@ public final class OfficeWorkerServer {
             if (period == 0 || quota <= 0 || quota > period)
                 throw new IllegalStateException("Office worker CPU cap exceeds one core");
         }
-        if (memory != HARD_MEMORY_LIMIT_BYTES || swap != 0 || pids > 64 || pids < 16)
+        validateResourceLimits(memory, swap, pids);
+    }
+
+    static void validateResourceLimits(long memory, long swap, long pids) {
+        if (memory != HARD_MEMORY_LIMIT_BYTES || swap != 0 || pids > MAX_PROCESS_LIMIT || pids < 16)
             throw new IllegalStateException(
                     "Office worker cgroup memory, swap, or process cap is invalid");
     }
@@ -239,7 +248,7 @@ public final class OfficeWorkerServer {
         }
     }
 
-    private static long finiteLimit(String value) {
+    static long finiteLimit(String value) {
         try {
             long limit = Long.parseLong(value);
             if (limit <= 0) throw new NumberFormatException();
@@ -270,8 +279,7 @@ public final class OfficeWorkerServer {
             reply(exchange, 401, "officeWorkerUnauthorized");
             return;
         }
-        if (!OfficeWorkerProtocol.PREVIEW.equals(operation)
-                && !OfficeWorkerProtocol.DICTIONARY.equals(operation)) {
+        if (!supportedOperation(operation)) {
             reply(exchange, 404, "officeOperationUnsupported");
             return;
         }
@@ -304,11 +312,11 @@ public final class OfficeWorkerServer {
                     || (OfficeWorkerProtocol.DICTIONARY.equals(operation)
                             && !"TREE".equals(structure)
                             && !"FLAT".equals(structure))) {
-                reply(exchange, operation, 400, invalidReason(operation));
+                reply(exchange, operation, 400, OfficeWorkerFailureReasons.invalid(operation));
                 return;
             }
-            if (tooManyBytes(exchange)) {
-                reply(exchange, operation, 413, tooLargeReason(operation));
+            if (tooManyBytes(exchange, operation)) {
+                reply(exchange, operation, 413, OfficeWorkerFailureReasons.tooLarge(operation));
                 return;
             }
             ScheduledExecutorService timer = CLOSER;
@@ -321,10 +329,23 @@ public final class OfficeWorkerServer {
                 Path directory = null;
                 try {
                     directory = privateDirectory();
-                    Path input = writeInput(exchange.getRequestBody(), directory);
+                    Path input;
+                    Path metadata = null;
+                    if (requiresMetadata(operation)) {
+                        var payload =
+                                writeFramedRequest(exchange.getRequestBody(), directory, operation);
+                        input = payload.input();
+                        metadata = payload.metadata();
+                    } else {
+                        input = writeInput(exchange.getRequestBody(), directory);
+                    }
                     var childRequest =
                             new OfficeWorkerProtocol.ChildRequest(
-                                    operation, filename, structure, input.toString());
+                                    operation,
+                                    filename,
+                                    structure,
+                                    input == null ? "" : input.toString(),
+                                    metadata == null ? "" : metadata.toString());
                     var requestFile = privateFile(directory.resolve("request.json"));
                     Files.write(requestFile, JSON.writeValueAsBytes(childRequest));
                     var outputFile =
@@ -341,11 +362,17 @@ public final class OfficeWorkerServer {
                 } catch (TooLargeInputException exception) {
                     response =
                             OfficeWorkerProtocol.Response.error(
-                                    operation, 413, tooLargeReason(operation), List.of());
+                                    operation,
+                                    413,
+                                    OfficeWorkerFailureReasons.tooLarge(operation),
+                                    List.of());
                 } catch (EmptyInputException exception) {
                     response =
                             OfficeWorkerProtocol.Response.error(
-                                    operation, 400, invalidReason(operation), List.of());
+                                    operation,
+                                    400,
+                                    OfficeWorkerFailureReasons.invalid(operation),
+                                    List.of());
                 } catch (TimeoutException exception) {
                     response =
                             OfficeWorkerProtocol.Response.error(
@@ -404,7 +431,7 @@ public final class OfficeWorkerServer {
             Files.write(
                     requestFile,
                     JSON.writeValueAsBytes(
-                            new OfficeWorkerProtocol.ChildRequest(operation, "", "", "")));
+                            new OfficeWorkerProtocol.ChildRequest(operation, "", "", "", "")));
             var outputFile =
                     privateFile(directory.resolve(OfficeWorkerProtocol.CHILD_RESPONSE_FILE));
             var response =
@@ -501,7 +528,7 @@ public final class OfficeWorkerServer {
         long outputSize = Files.size(outputFile);
         if (outputSize > MAX_RESPONSE_BYTES) {
             return OfficeWorkerProtocol.Response.error(
-                    operation, 413, tooLargeReason(operation), List.of());
+                    operation, 413, OfficeWorkerFailureReasons.tooLarge(operation), List.of());
         }
         OfficeWorkerProtocol.Response response;
         try {
@@ -586,14 +613,30 @@ public final class OfficeWorkerServer {
         return path;
     }
 
-    private static boolean tooManyBytes(HttpExchange exchange) throws IOException {
+    private static boolean tooManyBytes(HttpExchange exchange, String operation)
+            throws IOException {
         String contentLength = exchange.getRequestHeaders().getFirst("Content-Length");
         if (contentLength == null) return false;
         try {
-            return Long.parseLong(contentLength) > MAX_INPUT_BYTES;
+            long maximum = requiresMetadata(operation) ? MAX_FRAMED_REQUEST_BYTES : MAX_INPUT_BYTES;
+            return Long.parseLong(contentLength) > maximum;
         } catch (NumberFormatException exception) {
             return true;
         }
+    }
+
+    private static boolean supportedOperation(String operation) {
+        return OfficeWorkerProtocol.PREVIEW.equals(operation)
+                || OfficeWorkerProtocol.DICTIONARY.equals(operation)
+                || OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
+                || OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation)
+                || OfficeWorkerProtocol.WORKBOOK_READ.equals(operation)
+                || OfficeWorkerProtocol.WORKBOOK_WRITE.equals(operation);
+    }
+
+    private static boolean requiresMetadata(String operation) {
+        return OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation)
+                || OfficeWorkerProtocol.WORKBOOK_WRITE.equals(operation);
     }
 
     private static boolean supported(String operation, String filename) {
@@ -601,8 +644,47 @@ public final class OfficeWorkerServer {
                 filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
         if (OfficeWorkerProtocol.PREVIEW.equals(operation))
             return "doc".equals(extension) || "docx".equals(extension);
-        return "xls".equals(extension) || "xlsx".equals(extension);
+        if (OfficeWorkerProtocol.DICTIONARY.equals(operation))
+            return "xls".equals(extension) || "xlsx".equals(extension);
+        if (OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
+                || OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation))
+            return "docx".equals(extension) || "xlsx".equals(extension);
+        if (OfficeWorkerProtocol.WORKBOOK_READ.equals(operation)
+                || OfficeWorkerProtocol.WORKBOOK_WRITE.equals(operation))
+            return "xlsx".equals(extension);
+        return false;
     }
+
+    private static FramedPayload writeFramedRequest(
+            InputStream input, Path directory, String operation) throws IOException {
+        byte[] prefix = input.readNBytes(8);
+        if (prefix.length != 8
+                || !OfficeWorkerProtocol.REQUEST_FRAME_MAGIC.equals(
+                        new String(
+                                prefix,
+                                0,
+                                OfficeWorkerProtocol.REQUEST_FRAME_MAGIC.length(),
+                                StandardCharsets.US_ASCII))) throw new EmptyInputException();
+        int metadataLength = java.nio.ByteBuffer.wrap(prefix, 4, 4).getInt();
+        if (metadataLength < 1 || metadataLength > MAX_METADATA_BYTES)
+            throw new TooLargeInputException();
+        byte[] metadataBytes = input.readNBytes(metadataLength);
+        if (metadataBytes.length != metadataLength) throw new EmptyInputException();
+        try {
+            DocumentWorkerRequestGuard.validate(metadataBytes, operation);
+        } catch (IOException invalid) {
+            throw new EmptyInputException();
+        }
+        Path metadata = privateFile(directory.resolve(OfficeWorkerProtocol.CHILD_METADATA_FILE));
+        Files.write(metadata, metadataBytes);
+        if (OfficeWorkerProtocol.WORKBOOK_WRITE.equals(operation)) {
+            if (input.read() != -1) throw new EmptyInputException();
+            return new FramedPayload(null, metadata);
+        }
+        return new FramedPayload(writeInput(input, directory), metadata);
+    }
+
+    private record FramedPayload(Path input, Path metadata) {}
 
     private static String filename(String header) throws IOException {
         if (header == null || header.length() > 1400) throw new IOException("Invalid filename");
@@ -673,7 +755,7 @@ public final class OfficeWorkerServer {
                             OfficeWorkerProtocol.Response.error(
                                     response.kind(),
                                     413,
-                                    tooLargeReason(response.kind()),
+                                    OfficeWorkerFailureReasons.tooLarge(response.kind()),
                                     List.of()));
         }
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
@@ -696,18 +778,6 @@ public final class OfficeWorkerServer {
         try (var output = exchange.getResponseBody()) {
             output.write(bytes);
         }
-    }
-
-    private static String tooLargeReason(String operation) {
-        return OfficeWorkerProtocol.PREVIEW.equals(operation)
-                ? "filePreviewTooLarge"
-                : "dictionaryDatasetTooLarge";
-    }
-
-    private static String invalidReason(String operation) {
-        return OfficeWorkerProtocol.PREVIEW.equals(operation)
-                ? "filePreviewInvalid"
-                : "invalidDictionaryDataset";
     }
 
     private static byte[] sha256(byte[] input) {

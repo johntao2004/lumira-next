@@ -1,7 +1,6 @@
 package com.lumira.platform.users;
 
 import com.lumira.platform.common.AuditPort;
-import com.lumira.platform.common.CsvWriter;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
 import com.lumira.platform.common.PlatformOperation;
@@ -9,7 +8,6 @@ import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.PasswordContract;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import com.lumira.platform.identity.api.SecurityPolicyPort;
-import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -17,7 +15,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class UserService {
-    private static final int MAX_SYNCHRONOUS_EXPORT_ROWS = 50_000;
+    private static final java.security.SecureRandom IMPORT_CREDENTIAL_RANDOM =
+            new java.security.SecureRandom();
+    private static final char[] IMPORT_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ".toCharArray();
+    private static final char[] IMPORT_LOWER = "abcdefghijkmnopqrstuvwxyz".toCharArray();
+    private static final char[] IMPORT_DIGITS = "23456789".toCharArray();
+    private static final char[] IMPORT_SPECIAL = "!@#$%^&*-_+".toCharArray();
+    private static final char[] IMPORT_ALPHABET =
+            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_+".toCharArray();
     private final com.lumira.platform.common.AdministrationPort guard;
     private final UserRepository repository;
     private final org.springframework.security.crypto.password.PasswordEncoder encoder;
@@ -60,6 +65,53 @@ public class UserService {
     @Transactional
     public UserSummary create(CreateUser input, String actor) {
         return create(input, actor, PlatformOperation.USER_CREATE);
+    }
+
+    /**
+     * Create an account with an undisclosed random credential; admins issue a normal reset later.
+     */
+    @Transactional
+    public UserSummary createImported(String username, String displayName, String actor) {
+        SecurityPolicyPort.Policy policy =
+                security == null ? SecurityPolicyPort.Policy.defaults() : security.currentPolicy();
+        String transientCredential = generateImportedCredential(policy, IMPORT_CREDENTIAL_RANDOM);
+        return create(new CreateUser(username, displayName, transientCredential), actor);
+    }
+
+    static String generateImportedCredential(
+            SecurityPolicyPort.Policy policy, java.security.SecureRandom random) {
+        if (policy == null) policy = SecurityPolicyPort.Policy.defaults();
+        int minimum = policy.passwordMinLength() == null ? 12 : policy.passwordMinLength();
+        int length = Math.max(32, minimum);
+        if (length > PasswordContract.MAX_PASSWORD_BYTES)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "passwordPolicyUnavailable");
+        for (int attempt = 0; attempt < 256; attempt++) {
+            char[] candidate = new char[length];
+            candidate[0] = pick(IMPORT_UPPER, random);
+            candidate[1] = pick(IMPORT_LOWER, random);
+            candidate[2] = pick(IMPORT_DIGITS, random);
+            candidate[3] = pick(IMPORT_SPECIAL, random);
+            for (int index = 4; index < candidate.length; index++)
+                candidate[index] = IMPORT_ALPHABET[random.nextInt(IMPORT_ALPHABET.length)];
+            for (int index = candidate.length - 1; index > 0; index--) {
+                int other = random.nextInt(index + 1);
+                char value = candidate[index];
+                candidate[index] = candidate[other];
+                candidate[other] = value;
+            }
+            String value = new String(candidate);
+            java.util.Arrays.fill(candidate, '\0');
+            if (PasswordContract.withinMaximum(value) && policy.passwordValid(value)) return value;
+        }
+        throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                "passwordPolicyUnavailable");
+    }
+
+    private static char pick(char[] alphabet, java.security.SecureRandom random) {
+        return alphabet[random.nextInt(alphabet.length)];
     }
 
     @Transactional
@@ -122,6 +174,55 @@ public class UserService {
     /** Apply the same user-scope authorization before a profile-value-only edit. */
     public void requireUpdate(java.util.UUID id, String actor) {
         guard.requireOperationUser(actor, id, PlatformOperation.USER_UPDATE);
+    }
+
+    /** Update the built-in profile columns through the same scoped user-update permission. */
+    @Transactional
+    public UserSummary updateBasicProfileFields(
+            java.util.UUID id,
+            long expectedVersion,
+            java.util.Map<String, String> values,
+            String actor) {
+        if (values == null
+                || values.isEmpty()
+                || values.keySet().stream()
+                        .anyMatch(
+                                key ->
+                                        !java.util.Set.of("realName", "birthDate", "region")
+                                                .contains(key)))
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "invalidProfileValues");
+        guard.requireOperationUser(actor, id, PlatformOperation.USER_UPDATE);
+        var current = repository.find(id);
+        if (current.version() != expectedVersion)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "staleRecord");
+        String realName = values.get("realName");
+        String birthMonth = values.get("birthDate");
+        String region = values.get("region");
+        if ((realName != null && realName.length() > 200)
+                || (region != null && region.length() > 200)
+                || (birthMonth != null
+                        && !birthMonth.isBlank()
+                        && !birthMonth.matches("[0-9]{4}-(0[1-9]|1[0-2])")))
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "invalidProfileValues");
+        if (birthMonth != null && !birthMonth.isBlank()) {
+            try {
+                if (java.time.YearMonth.parse(birthMonth).isAfter(java.time.YearMonth.now()))
+                    throw new IllegalArgumentException();
+            } catch (RuntimeException invalid) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "invalidProfileValues",
+                        invalid);
+            }
+        }
+        if (repository.updateBasicProfile(id, realName, birthMonth, region, expectedVersion) != 1)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "staleRecord");
+        audit.append(actor, "user.profile", id);
+        return repository.findSnapshot(id);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -214,57 +315,5 @@ public class UserService {
                 total,
                 request.page(),
                 request.pageSize());
-    }
-
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public byte[] exportCsv(PageRequest request, String actor) {
-        return exportCsv(request, actor, null);
-    }
-
-    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public byte[] exportCsv(
-            PageRequest request, String actor, RequestAuthorizationContext authorization) {
-        guard.requireOperation(actor, PlatformOperation.USER_EXPORT);
-        var users =
-                repository.findExport(
-                        request,
-                        actor,
-                        MAX_SYNCHRONOUS_EXPORT_ROWS + 1,
-                        authorization,
-                        PlatformOperation.USER_EXPORT.permission(),
-                        PlatformPageId.USERS.accessPermission());
-        if (users.size() > MAX_SYNCHRONOUS_EXPORT_ROWS) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.PAYLOAD_TOO_LARGE,
-                    "Export is too large; narrow the search");
-        }
-        var csv = new StringBuilder(Math.max(128, users.size() * 96));
-        CsvWriter.row(
-                csv,
-                List.of(
-                        "id",
-                        "username",
-                        "display_name",
-                        "enabled",
-                        "version",
-                        "file_quota_bytes_override",
-                        "file_quota_files_override"));
-        for (var user : users) {
-            CsvWriter.row(
-                    csv,
-                    java.util.Arrays.asList(
-                            user.id(),
-                            user.username(),
-                            user.displayName(),
-                            user.enabled(),
-                            user.version(),
-                            user.fileQuotaBytesOverride(),
-                            user.fileQuotaFilesOverride()));
-        }
-        return CsvWriter.utf8(csv);
-    }
-
-    public byte[] exportCsv(String search, String actor) {
-        return exportCsv(new PageRequest(1, 1, search), actor);
     }
 }

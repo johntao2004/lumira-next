@@ -12,12 +12,13 @@ services:
       LUMIRA_OFFICE_WORKER_TEST_MODE: ${LUMIRA_OFFICE_WORKER_TEST_MODE:-false}
     labels:
       com.lumira.office-worker.owner: ${LUMIRA_OFFICE_WORKER_OWNER:?Set a checkout-specific worker owner}
-    ports:
-      - 127.0.0.1:${LUMIRA_OFFICE_WORKER_HOST_PORT:-18091}:18091
+      com.lumira.office-worker.profile: ${LUMIRA_OFFICE_WORKER_PROFILE:?Set a checkout-specific worker profile}
+    expose:
+      - 18091
     mem_limit: 1g
     memswap_limit: 1g
     cpus: "1.0"
-    pids_limit: 64
+    pids_limit: 128
     read_only: true
     tmpfs:
       - /tmp:size=128m,mode=1777
@@ -33,7 +34,68 @@ services:
       start_period: 20s
     networks:
       - office-worker
+  office-worker-ingress:
+    container_name: ${LUMIRA_OFFICE_WORKER_INGRESS_CONTAINER_NAME:-lumira-next-office-worker-ingress}
+    restart: unless-stopped
+    image: node:24-bookworm-slim
+    command:
+      - node
+      - -e
+      - |
+        const net = require("node:net");
+        const port = Number(process.env.LUMIRA_OFFICE_WORKER_HOST_PORT);
+        const server = net.createServer((client) => {
+          const upstream = net.createConnection({ host: "office-worker", port: 18091 });
+          client.on("error", () => upstream.destroy());
+          client.on("close", () => upstream.destroy());
+          upstream.on("error", () => client.destroy());
+          upstream.on("close", () => client.destroy());
+          client.pipe(upstream);
+          upstream.pipe(client);
+        });
+        server.maxConnections = 32;
+        server.listen(port, "0.0.0.0");
+    environment:
+      LUMIRA_OFFICE_WORKER_HOST_PORT: ${LUMIRA_OFFICE_WORKER_HOST_PORT:-18091}
+    labels:
+      com.lumira.office-worker.owner: ${LUMIRA_OFFICE_WORKER_OWNER:?Set a checkout-specific worker owner}
+      com.lumira.office-worker.profile: ${LUMIRA_OFFICE_WORKER_PROFILE:?Set a checkout-specific worker profile}
+    ports:
+      - 127.0.0.1:${LUMIRA_OFFICE_WORKER_HOST_PORT:-18091}:${LUMIRA_OFFICE_WORKER_HOST_PORT:-18091}
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: "0.25"
+    pids_limit: 32
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      office-worker:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const http=require("node:http");const request=http.get("http://127.0.0.1:"+process.env.LUMIRA_OFFICE_WORKER_HOST_PORT+"/health",response=>{let body="";response.setEncoding("utf8");response.on("data",chunk=>body+=chunk);response.on("end",()=>process.exit(response.statusCode===200&&body==="ok"?0:1))});request.setTimeout(1000,()=>request.destroy());request.on("error",()=>process.exit(1))
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - office-worker
+      - office-worker-ingress
 networks:
   office-worker:
     name: ${LUMIRA_OFFICE_WORKER_NETWORK:-lumira-next-office-worker-private}
     external: ${LUMIRA_OFFICE_WORKER_NETWORK_EXTERNAL:-false}
+  office-worker-ingress:
+    name: ${LUMIRA_OFFICE_WORKER_INGRESS_NETWORK:-lumira-next-office-worker-ingress}
+    labels:
+      com.lumira.office-worker.owner: ${LUMIRA_OFFICE_WORKER_OWNER:?Set a checkout-specific worker owner}
+      com.lumira.office-worker.profile: ${LUMIRA_OFFICE_WORKER_PROFILE:?Set a checkout-specific worker profile}

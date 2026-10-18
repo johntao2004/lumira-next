@@ -11,6 +11,6 @@ public class SensitiveWordsModuleConfiguration {
     @Bean
     PlatformModule sensitiveWordsModule() {
         return new PlatformModule(
-                "sensitive-words", "敏感词策略", "1.0.9", List.of("platform", "dictionaries"));
+                "sensitive-words", "敏感词策略", "1.0.10", List.of("platform", "dictionaries"));
     }
 }

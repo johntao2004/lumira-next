@@ -594,7 +594,7 @@ function Workbench({
           onRetry={() => void monitoring.refetch()}
         />
       ) : (
-        <FileUsage refreshInterval={60_000} pendingDeletionRefreshInterval={60_000} />
+        <FileUsage />
       )}
     </div>
   );

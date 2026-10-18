@@ -3,7 +3,7 @@ import { messageKeyFor } from "@/platform/api/errors";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, ConfigProvider, Form, Input, Popconfirm, Select, Space, Spin, Switch, Table, Tag } from "antd";
+import { App, Button, Card, Checkbox, ConfigProvider, Form, Input, Popconfirm, Select, Space, Spin, Switch, Table, Tag } from "antd";
 import { TableActions, tableActionColumn } from "@/platform/components/table-actions";
 import { PlatformDrawer } from "@/platform/components/platform-drawer";
 import { DrawerFormActions } from "@/platform/components/drawer-actions";
@@ -15,7 +15,9 @@ import type { ConnectionResult, ModelOption, Provider, ProviderKind } from "./ty
 import { providerDefaultBaseUrl, providerKindLabel, providerModelNames, providerRequiresCredential } from "./types";
 import { discoveryErrorKey, modelNamesAfterManualEdit, modelNamesForSave, modelOptionLabel, modelSelectionsAreValid, selectDiscoveredModels, type DiscoveryErrorKey } from "./model-discovery";
 
-type FormValues = { name: string; providerKind: ProviderKind; baseUrl?: string; modelNames?: string[]; modelName?: string; enabled: boolean; credentialValue?: string };
+import { attachmentFormats, defaultFileFormats } from "./model-input-formats";
+
+type FormValues = { modelFileFormats?: Record<string, string[]>; name: string; providerKind: ProviderKind; baseUrl?: string; modelNames?: string[]; modelName?: string; enabled: boolean; credentialValue?: string };
 type DiscoveryState = { models: ModelOption[]; status: "idle" | "success" | "empty" | "error"; error?: DiscoveryErrorKey; invalidated: boolean };
 const initialDiscoveryState: DiscoveryState = { models: [], status: "idle", invalidated: false };
 const providerPath = "/platform/ai/providers";
@@ -34,6 +36,8 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
   const discoveryAbort = useRef<AbortController | null>(null);
   const [form] = Form.useForm<FormValues>();
   const kind: ProviderKind | undefined = Form.useWatch("providerKind", form) ?? selected?.providerKind;
+  const watchedModels: string[] = Form.useWatch("modelNames", form) ?? [];
+  const watchedModel: string | undefined = Form.useWatch("modelName", form);
   const baseUrl = Form.useWatch("baseUrl", form) ?? selected?.baseUrl;
   const enabled = Form.useWatch("enabled", form) ?? selected?.enabled ?? true;
   const credentialValue: string | undefined = Form.useWatch("credentialValue", form);
@@ -56,9 +60,9 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
     form.setFieldsValue(selected ? {
       name: selected.name, providerKind: selected.providerKind, baseUrl: selected.baseUrl,
       modelNames: providerModelNames(selected), modelName: selected.modelName,
-      enabled: selected.enabled,
+      enabled: selected.enabled, modelFileFormats: selected.modelFileFormats ?? {},
       credentialValue: "",
-    } : { name: "", providerKind: undefined, baseUrl: "", modelNames: [], modelName: "", enabled: true, credentialValue: "" });
+    } : { name: "", providerKind: undefined, baseUrl: "", modelNames: [], modelName: "", enabled: true, credentialValue: "", modelFileFormats: {} });
     form.setFields((["name", "providerKind", "modelNames", "modelName", "baseUrl", "credentialValue"] as const).map(name => ({ name, errors: [] })));
     setDiscovery(initialDiscoveryState);
   }, [selected, form, cancelDiscovery]);
@@ -80,6 +84,7 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
       : modelNamesForSave(canTest, editableSavedModels, values.modelNames, values.modelName);
     const body = { name: values.name, providerKind: values.providerKind, baseUrl: values.providerKind === "TYPESAFE_JEV" ? providerDefaultBaseUrl.TYPESAFE_JEV : values.baseUrl,
       modelNames, modelName: modelNames[0] ?? "",
+      modelFileFormats: Object.fromEntries(modelNames.map(model => [model, values.modelFileFormats?.[model] ?? defaultFileFormats(values.providerKind, discovery.models.find(item => item.id === model) ?? model)])),
       enabled: values.enabled, version: selected?.version, credential };
     try {
       await mutate(selected ? `${providerPath}/${selected.id}` : providerPath, selected ? "PUT" : "POST", body);
@@ -165,7 +170,7 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
   if (keepSavedModels) {
     for (const model of savedModels) {
       if (!modelOptions.some((option) => option.value === model)) {
-        modelOptions.unshift({ value: model, label: t("aiModelSavedSelection", { model }) });
+        modelOptions.unshift({ value: model, label: model });
       }
     }
   }
@@ -198,12 +203,14 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
       <Form<FormValues> id="ai-provider-editor" className="platform-form ai-provider-form" form={form} layout="vertical" disabled={saving || !canSave} onValuesChange={(changed) => {
         if (changed.providerKind !== undefined) {
           cancelDiscovery();
+          form.setFieldValue("modelFileFormats", {});
         }
         if (changed.enabled === false) {
           cancelDiscovery();
         }
         if (changed.baseUrl !== undefined || changed.credentialValue !== undefined) {
           cancelDiscovery();
+          if (changed.baseUrl !== undefined) form.setFieldValue("modelFileFormats", {});
           setDiscovery({ models: [], status: "idle", invalidated: true });
           form.setFieldsValue({ modelNames: [], modelName: "" });
           form.setFields([{ name: "modelNames", errors: [] }, { name: "modelName", errors: [] }]);
@@ -226,7 +233,7 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
         {kind === "TYPESAFE_JEV" && <Form.Item label={t("aiBaseUrl")}><Input value={providerDefaultBaseUrl.TYPESAFE_JEV} disabled /></Form.Item>}
         <Form.Item name="name" label={t("aiProviderName")} rules={[{ required: true, max: 120 }]}><Input maxLength={120} /></Form.Item>
         <Form.Item name="credentialValue" label={t("aiCredential")} rules={[{ required: Boolean(kind && providerRequiresCredential(kind)) && !selectedCredentialReusable, whitespace: true, message: t("aiProviderCredentialRequired") }, { max: 8192 }]} preserve={false}>
-          <Input.Password disabled={!kind || !enabled} autoComplete="new-password" maxLength={8192} placeholder={selectedCredentialReusable ? t("aiCredentialKeepIfEmpty") : t("aiCredentialPlaceholder")} />
+          <Input.Password disabled={!kind || !enabled} autoComplete="new-password" maxLength={8192} placeholder={selectedCredentialReusable ? "••••••••" : t("aiCredentialPlaceholder")} />
         </Form.Item>
         {kind !== "TYPESAFE_JEV" ? <Form.Item name={canTest ? "modelNames" : "modelName"} label={t("aiModelName")} extra={modelDiscoveryDescription} required rules={canTest ? [{ validator: async (_, value: string[] | undefined) => {
           if (value && value.join(",").length > 256) throw new Error(t("aiModelSelectionTooLong"));
@@ -251,6 +258,12 @@ export function AiModelsPage({ canCreate, canUpdate, canDelete, canTest }: { can
           /> : <Input disabled={!kind || !enabled} placeholder={t("aiModelNamePlaceholder")} />}
         </Form.Item> : <Form.Item name="modelName" label={t("aiModelName")}><Input disabled /></Form.Item>}
 
+        {kind && kind !== "TYPESAFE_JEV" && (canTest ? watchedModels : [watchedModel].filter((model): model is string => !!model)).map(model => <Form.Item
+          key={`${kind}:${model}`}
+          name={["modelFileFormats", model]}
+          label={t("aiModelFileFormats", { model })}
+          initialValue={selected?.providerKind === kind && selected.baseUrl === baseUrl ? selected?.modelFileFormats?.[model] ?? defaultFileFormats(kind, discovery.models.find(item => item.id === model) ?? model) : defaultFileFormats(kind, discovery.models.find(item => item.id === model) ?? model)}
+        ><Checkbox.Group disabled={!enabled} options={attachmentFormats.map(format => ({ label: format.toUpperCase(), value: format }))} /></Form.Item>)}
         </ConfigProvider>
       </Form>
     </PlatformDrawer>

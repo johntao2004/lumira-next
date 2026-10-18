@@ -9,7 +9,7 @@ import { messageKeyFor } from "@/platform/api/errors";
 import { usePreferences } from "@/platform/providers";
 import type { ChatAttachment, ModelOption, Provider } from "./types";
 
-const accept = ".txt,.md,.markdown,.doc,.docx,.pdf,.csv,.json,.log,.png,.jpg,.jpeg";
+import { acceptsFile, modelFileFormats } from "./model-input-formats";
 type PendingFile = { uid: string; name: string; size: number; status: "uploading" | "error" };
 export type AiChatComposerRef = { focus: () => void };
 type Props = {
@@ -36,8 +36,11 @@ export function AiChatComposer(props: Props) {
   const reservedCount = useRef(props.files.length);
   reservedCount.current = props.files.length + pending.filter(file => file.status === "uploading").length;
   const uploading = pending.some(file => file.status === "uploading");
+  const formats = modelFileFormats(props.models.find(model => model.id === props.modelName));
+  const accept = formats.map(format => `.${format}`).join(",");
+  const unsupportedFile = props.files.some(file => !acceptsFile(formats, file.name)) && !props.modelLoading && !!props.modelName;
   const visionRequired = props.files.some(file => file.image) && !props.supportsVision && !props.modelLoading && !!props.modelName;
-  const canSend = !props.busy && !props.disabled && pending.length === 0 && !visionRequired && (!!props.draft.trim() || props.files.length > 0);
+  const canSend = !props.busy && !props.disabled && pending.length === 0 && !unsupportedFile && (!!props.draft.trim() || props.files.length > 0);
   const imageFileKey = props.files.filter(file => file.image).map(file => file.id).join("\0");
 
   useEffect(() => {
@@ -73,9 +76,9 @@ export function AiChatComposer(props: Props) {
   }, [imageFileKey, sessionScope]);
 
   async function attach(file: File) {
-    if (props.uploadDisabled) return;
-    if (!/\.(txt|md|markdown|docx?|pdf|csv|json|log|png|jpe?g)$/i.test(file.name)) {
-      void message.error(t("aiAttachmentUnsupported")); return;
+    if (props.uploadDisabled || props.modelLoading || !props.modelName) return;
+    if (!acceptsFile(formats, file.name)) {
+      void message.error(t("aiAttachmentModelUnsupported")); return;
     }
     if (file.size > 5 * 1024 * 1024) { void message.error(t("aiAttachmentTooLarge")); return; }
     if (reservedCount.current >= 4) { void message.error(t("aiAttachmentLimit")); return; }
@@ -136,7 +139,7 @@ export function AiChatComposer(props: Props) {
           })),
         ]}
         overflow="scrollX"
-        getDropContainer={() => props.uploadDisabled ? null : sender.current?.nativeElement}
+        getDropContainer={() => props.uploadDisabled || props.modelLoading || formats.length === 0 ? null : sender.current?.nativeElement}
         beforeUpload={file => { void attach(file); return Upload.LIST_IGNORE; }}
         onRemove={file => {
           if (file.status === "uploading") return false;
@@ -145,12 +148,12 @@ export function AiChatComposer(props: Props) {
           return false;
         }}
       />
-      {visionRequired && <Alert type="warning" showIcon title={t("aiAttachmentVisionRequired")} />}
+      {unsupportedFile && <Alert type="warning" showIcon title={t(visionRequired ? "aiAttachmentVisionRequired" : "aiAttachmentModelUnsupported")} />}
     </Sender.Header>}
     footer={(_, { components: { SendButton, LoadingButton } }) => <>
       <div className="ai-chat-composer-tools">
-        <Tooltip title={t("aiUploadAttachment")}>
-          <Button type="text" icon={<PaperClipOutlined />} aria-label={t("aiUploadAttachment")} disabled={props.uploadDisabled || uploading}
+        <Tooltip title={formats.length ? `${formats.map(format => format.toUpperCase()).join(", ")} · ${t("aiAttachmentLimits")}` : t("aiAttachmentModelUnsupported")}>
+          <Button type="text" icon={<PaperClipOutlined />} aria-label={t("aiUploadAttachment")} disabled={props.uploadDisabled || uploading || props.modelLoading || formats.length === 0}
             onClick={() => {
               if (reservedCount.current >= 4) { void message.error(t("aiAttachmentLimit")); return; }
               attachments.current?.select({ accept, multiple: true });

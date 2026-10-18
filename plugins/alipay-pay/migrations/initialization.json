@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "pluginId": "alipay-pay",
+  "version": "2",
+  "script": "V2__plugin_initialization.sql",
+  "publishedMigrations": [
+    {
+      "version": "1",
+      "description": "independent provider operations",
+      "script": "V1__independent_provider_operations.sql",
+      "checksum": 1745067591
+    },
+    {
+      "version": "2",
+      "description": "finalize legacy payment permissions",
+      "script": "V2__finalize_legacy_payment_permissions.sql",
+      "checksum": 67297010
+    }
+  ]
+}

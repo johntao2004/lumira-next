@@ -9,7 +9,7 @@
 | `overview` | `overview` | 工作空间：工作台、我的文件 |
 | `ai-management` | `aiManagement` | AI 中心 |
 | `user-management` | `userManagement` | 用户、组织、角色、资料字段、认证与安全、MFA 策略 |
-| `content-management` | `contentManagement` | 全部文件、字典、敏感词、本地化 |
+| `content-management` | `contentManagement` | 全部文件、字典、敏感词、打印模板、本地化 |
 | `communication` | `communicationCenter` | 通知、邮件/短信渠道与投递、工单反馈 |
 | `payments` | `paymentManagement` | 支付订单与支付渠道设置 |
 | `operations` | `operationsCenter` | 监控、API 文档、审计、事件 Outbox |

@@ -16,6 +16,13 @@ public class PlatformApplication {
             try {
                 OfficeWorkerServer.run();
             } catch (Exception error) {
+                String message = error.getMessage();
+                if (message != null && message.startsWith("Office worker ")) {
+                    System.err.println("Office worker startup failed: " + message);
+                } else {
+                    System.err.println(
+                            "Office worker startup failed: " + error.getClass().getSimpleName());
+                }
                 System.exit(1);
             }
             return;

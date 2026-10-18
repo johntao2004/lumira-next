@@ -1,21 +1,27 @@
+import { acceptsFile, modelFileFormats } from "./model-input-formats";
 "use client";
 import { messageKeyFor } from "@/platform/api/errors";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Actions, Bubble, Conversations, Prompts, Think, ThoughtChain, type PromptsProps } from "@ant-design/x";
-import { BulbOutlined, CopyOutlined, DeleteOutlined, DownOutlined, EditOutlined, EllipsisOutlined, HistoryOutlined, InboxOutlined, PlusOutlined, ReloadOutlined, RollbackOutlined, SearchOutlined, ShareAltOutlined } from "@ant-design/icons";
-import { Alert, App, Avatar, Button, Descriptions, Input, Modal, Popover, Space, Spin, Table, Tag, Tooltip, Typography, type MenuProps } from "antd";
-import { api, isRolePreviewReadOnly, mutate } from "@/platform/api/client";
+import { BulbOutlined, CopyOutlined, DeleteOutlined, DownOutlined, EditOutlined, EllipsisOutlined, HistoryOutlined, InboxOutlined, LinkOutlined, PlusOutlined, ReloadOutlined, RollbackOutlined, SearchOutlined, ShareAltOutlined } from "@ant-design/icons";
+import { Alert, App, Button, Descriptions, Empty, Input, Modal, Popover, Space, Spin, Table, Tag, Tooltip, Typography, type InputRef, type MenuProps } from "antd";
+import { ApiError, api, isRolePreviewReadOnly, mutate } from "@/platform/api/client";
 import { usePreferences } from "@/platform/providers";
+import type { MessageKey } from "@/platform/i18n/messages";
 import { useSessionScope } from "@/platform/auth/use-session-scope";
-import { DEFAULT_TABLE_PAGE_SIZE, TABLE_PAGE_SIZE_OPTIONS } from "@/platform/api/pagination";
+import { DEFAULT_TABLE_PAGE_SIZE, TABLE_PAGE_SIZE_OPTIONS, type PageResult } from "@/platform/api/pagination";
+import { formatDateTime } from "@/platform/i18n/format";
 import { AccountAvatar } from "@/platform/components/account-avatar";
 import type { CurrentUser } from "@/platform/auth/api-types";
-import { createChatHistory, createChatSession, formatChatTranscript, loadChatHistory, saveChatHistory, type ChatSession, type TranscriptItem } from "./chat-history";
+import { archiveChatConversation, createChatHistory, createChatSession, decodeChatShareReference, loadChatHistory, saveChatHistory, type ChatSession, type ChatShareReference, type TranscriptItem } from "./chat-history";
 import type { ActionProposal, ChatAttachment, ChatMessage, ChatResponse, ConnectionResult, ExecutionStep, Provider } from "./types";
+import { createAiChatShareSnapshot, validateAiChatShareSnapshot, type AiChatShareSnapshot, type AiChatShareValidationError } from "./chat-share";
+import { createChatShareSyncQueue } from "./chat-share-sync";
 import { AiChatComposer, type AiChatComposerRef } from "./ai-chat-composer";
 import { AiChatMarkdown } from "./ai-chat-markdown";
+import { AiAssistantAvatar } from "./ai-assistant-avatar";
 import { FileDownloadAction } from "@/features/files/file-download-action";
 
 type AiConsoleProps = { canReadUsers: boolean; canCreateUsers: boolean; canUpdateUsers: boolean; canDeleteUsers: boolean };
@@ -31,6 +37,28 @@ type ActiveChatRequest = {
 };
 const path = "/platform/ai";
 type ConsoleProvider = Pick<Provider, "id" | "name" | "providerKind" | "modelName" | "capabilityCodes" | "enabled">;
+type ShareDialogState = {
+  id: string;
+  sessionKey: string;
+  existingShare?: ChatShareReference;
+  shareId: string | null;
+  snapshot: AiChatShareSnapshot;
+  url: string | null;
+  validationError: AiChatShareValidationError | null;
+  createError: boolean;
+  copyFallback: boolean;
+  revoked: boolean;
+};
+type AiShareListItem = { id: string; title: string; createdAt: string };
+type AiShareListResult = PageResult<AiShareListItem>;
+
+const shareValidationMessage: Record<AiChatShareValidationError, MessageKey> = {
+  empty: "aiShareEmpty",
+  "title-too-long": "aiShareTitleTooLong",
+  "too-many-messages": "aiShareTooManyMessages",
+  "message-too-large": "aiShareMessageTooLarge",
+  "total-too-large": "aiShareTotalTooLarge",
+};
 
 export function AiConsolePage(props: AiConsoleProps) {
   const { t } = usePreferences();
@@ -40,7 +68,7 @@ export function AiConsolePage(props: AiConsoleProps) {
 }
 
 function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, canDeleteUsers }: AiConsoleProps & { owner: string }) {
-  const { t, dark } = usePreferences();
+  const { t, dark, locale } = usePreferences();
   const sessionScope = useSessionScope();
   const { message, modal } = App.useApp();
   const client = useQueryClient();
@@ -68,6 +96,17 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
   const [proposal, setProposal] = useState<ActionProposal | null>(null);
   const [password, setPassword] = useState("");
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [shareDialog, setShareDialog] = useState<ShareDialogState | null>(null);
+  const [shareCreatePending, setShareCreatePending] = useState(false);
+  const [shareManagementOpen, setShareManagementOpen] = useState(false);
+  const [shareListPage, setShareListPage] = useState(1);
+  const [shareListPageSize, setShareListPageSize] = useState(20);
+  const [shareRevokePending, setShareRevokePending] = useState<string | null>(null);
+  const shareCreateInFlight = useRef(false);
+  const shareRevokeInFlight = useRef(false);
+  const shareUrlInput = useRef<InputRef>(null);
+  const shareSyncQueue = useRef<ReturnType<typeof createChatShareSyncQueue> | null>(null);
+  const [shareSyncFailures, setShareSyncFailures] = useState<string[]>([]);
   const composer = useRef<AiChatComposerRef>(null);
   const confirming = useRef(false);
   const activeChatRequest = useRef<ActiveChatRequest | null>(null);
@@ -125,8 +164,44 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
   const canConfirmProposal = proposal?.kind === "CREATE_USER" ? canCreateUsers
     : proposal?.kind === "UPDATE_USER" ? canUpdateUsers
       : proposal?.kind === "DELETE_USER" ? canDeleteUsers : false;
+  const shareList = useQuery<AiShareListResult>({
+    queryKey: ["ai-chat-shares", owner, shareListPage, shareListPageSize],
+    queryFn: ({ signal }) => api<AiShareListResult>(`${path}/shares?page=${shareListPage}&pageSize=${shareListPageSize}`, { signal }),
+    enabled: shareManagementOpen && canUseChat,
+    staleTime: 0,
+    refetchOnMount: "always",
+    retry: false,
+  });
 
   useEffect(() => () => { activeChatRequest.current?.controller.abort(); }, []);
+
+  useEffect(() => {
+    const queue = createChatShareSyncQueue({
+      write: async (entry, signal) => {
+        if (isRolePreviewReadOnly()) throw new Error("Read-only preview");
+        if (validateAiChatShareSnapshot(entry.snapshot)) throw new Error("Share exceeds content limits");
+        await mutate<void>(`${path}/shares/${encodeURIComponent(entry.share.id)}`, "PUT", entry.snapshot, AbortSignal.any([signal, sessionScope()]));
+      },
+      onSuccess: (entry) => setShareSyncFailures(current => current.filter(id => id !== entry.share.id)),
+      onFailure: (entry, error) => {
+        if (error instanceof ApiError && error.status === 404) {
+          setHistory(current => ({ ...current, sessions: current.sessions.map(session => session.share?.id === entry.share.id ? { ...session, share: undefined } : session) }));
+          setShareDialog(current => current?.shareId === entry.share.id ? { ...current, existingShare: undefined, shareId: null, url: null, revoked: true } : current);
+          setShareSyncFailures(current => current.filter(id => id !== entry.share.id));
+        } else setShareSyncFailures(current => current.includes(entry.share.id) ? current : [...current, entry.share.id]);
+      },
+    });
+    shareSyncQueue.current = queue;
+    return () => { queue.dispose(); shareSyncQueue.current = null; };
+  }, [owner, sessionScope]);
+
+  useEffect(() => {
+    if (!canUseChat || isRolePreviewReadOnly()) return;
+    const entries = history.sessions.flatMap(session => session.share ? [{ sessionKey: session.key, share: session.share, snapshot: createAiChatShareSnapshot(session, t("aiUntitledConversation")) }] : []);
+    shareSyncQueue.current?.reconcile(entries);
+    const ids = new Set(entries.map(entry => entry.share.id));
+    setShareSyncFailures(current => current.filter(id => ids.has(id)));
+  }, [history, canUseChat, t]);
 
   useEffect(() => {
     if (savedHistory.current === history) return;
@@ -192,37 +267,126 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
     void message.success(t("aiConversationRenamed"));
   };
 
-  const shareConversation = async (session: ChatSession) => {
-    if (conversationActionsDisabled) return;
-    const title = session.label.trim() || t("aiUntitledConversation");
-    const text = formatChatTranscript(session, {
-      untitledConversation: t("aiUntitledConversation"),
-      user: t("aiTranscriptUser"),
-      assistant: t("aiTranscriptAssistant"),
-      attachments: t("aiTranscriptAttachments"),
-    });
-    if (typeof navigator.share === "function") {
-      try {
-        await navigator.share({ title, text });
-        void message.success(t("aiConversationShared"));
+  const createShareLink = async (id: string, sessionKey: string, snapshot: AiChatShareSnapshot, existingShare?: ChatShareReference) => {
+    if (isRolePreviewReadOnly() || shareCreateInFlight.current) return;
+    shareCreateInFlight.current = true;
+    setShareCreatePending(true);
+    setShareDialog((current) => current?.id === id ? { ...current, createError: false, copyFallback: false } : current);
+    try {
+      if (existingShare) {
+        try {
+          await api(`/public/ai/shares/${existingShare.path.slice("/share/ai/".length)}`, { cache: "no-store" });
+          setShareDialog((current) => current?.id === id ? { ...current, shareId: existingShare.id, url: new URL(existingShare.path, window.location.origin).toString(), createError: false, revoked: false } : current);
+        } catch (error) {
+          if (!(error instanceof ApiError && error.status === 404)) throw error;
+          updateSession(sessionKey, (session) => session.share?.id === existingShare.id ? { ...session, share: undefined } : session);
+          setShareDialog((current) => current?.id === id ? { ...current, existingShare: undefined, shareId: null, url: null, revoked: true } : current);
+        }
         return;
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") return;
       }
+      const validationError = validateAiChatShareSnapshot(snapshot);
+      if (validationError) {
+        setShareDialog((current) => current?.id === id ? { ...current, validationError } : current);
+        return;
+      }
+      const result = await mutate<{ id: string; path: string }>(`${path}/shares`, "POST", snapshot);
+      const share = decodeChatShareReference(result);
+      if (!share) throw new Error("Invalid AI share reference");
+      shareSyncQueue.current?.acknowledge({ sessionKey, share, snapshot });
+      updateSession(sessionKey, (session) => ({ ...session, share }));
+      setShareDialog((current) => current?.id === id ? { ...current, existingShare: share, shareId: share.id, url: new URL(share.path, window.location.origin).toString(), createError: false, revoked: false } : current);
+      void client.invalidateQueries({ queryKey: ["ai-chat-shares", owner] });
+    } catch {
+      setShareDialog((current) => current?.id === id ? { ...current, createError: true } : current);
+    } finally {
+      shareCreateInFlight.current = false;
+      setShareCreatePending(false);
+    }
+  };
+
+  const shareConversation = (session: ChatSession) => {
+    if (conversationActionsDisabled || isRolePreviewReadOnly() || shareCreateInFlight.current) return;
+    const snapshot = createAiChatShareSnapshot(session, t("aiUntitledConversation"));
+    const existingShare = decodeChatShareReference(session.share);
+    const validationError = existingShare ? null : validateAiChatShareSnapshot(snapshot);
+    const id = crypto.randomUUID();
+    setShareDialog({ id, sessionKey: session.key, existingShare, shareId: null, snapshot, url: null, validationError, createError: false, copyFallback: false, revoked: false });
+    if (!validationError) void createShareLink(id, session.key, snapshot, existingShare);
+  };
+
+  const retryCreateShareLink = () => {
+    if (!shareDialog || shareDialog.validationError || shareDialog.url || shareCreatePending || isRolePreviewReadOnly()) return;
+    void createShareLink(shareDialog.id, shareDialog.sessionKey, shareDialog.snapshot, shareDialog.existingShare);
+  };
+
+  const createNewShareLink = () => {
+    const current = shareDialog;
+    if (!current?.revoked || isRolePreviewReadOnly() || shareCreateInFlight.current) return;
+    setShareDialog((value) => value?.id === current.id ? { ...value, revoked: false } : value);
+    void createShareLink(current.id, current.sessionKey, current.snapshot);
+  };
+
+  const revokeShare = async (shareId: string) => {
+    if (!shareId || isRolePreviewReadOnly() || shareRevokeInFlight.current) return false;
+    shareRevokeInFlight.current = true;
+    setShareRevokePending(shareId);
+    try {
+      try {
+        await mutate<void>(`${path}/shares/${encodeURIComponent(shareId)}`, "DELETE");
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 404)) throw error;
+      }
+      client.removeQueries({ queryKey: ["public-ai-share"] });
+      setHistory((current) => ({ ...current, sessions: current.sessions.map((session) => session.share?.id === shareId ? { ...session, share: undefined } : session) }));
+      setShareDialog((current) => current?.shareId === shareId ? { ...current, existingShare: undefined, shareId: null, url: null, copyFallback: false, revoked: true } : current);
+      const currentItems = shareList.data?.items ?? [];
+      client.setQueriesData<AiShareListResult>({ queryKey: ["ai-chat-shares", owner] }, (current) => current
+        ? { ...current, items: current.items.filter((item) => item.id !== shareId), total: Math.max(0, current.total - (current.items.some((item) => item.id === shareId) ? 1 : 0)) }
+        : current);
+      if (shareManagementOpen && shareListPage > 1 && currentItems.length === 1 && currentItems[0]?.id === shareId) {
+        setShareListPage((page) => Math.max(1, page - 1));
+      }
+      void client.invalidateQueries({ queryKey: ["ai-chat-shares", owner] }).catch(() => undefined);
+      void message.success(t("aiShareRevoked"));
+      return true;
+    } catch {
+      void message.error(t("aiShareRevokeFailed"));
+      return false;
+    } finally {
+      shareRevokeInFlight.current = false;
+      setShareRevokePending(null);
+    }
+  };
+
+  const openShareManagement = () => {
+    if (!canUseChat) return;
+    setShareListPage(1);
+    setShareManagementOpen(true);
+  };
+
+  const copyShareLink = async () => {
+    if (!shareDialog?.url || !shareDialog.shareId || shareRevokePending === shareDialog.shareId) return;
+    if (!navigator.clipboard?.writeText) {
+      shareUrlInput.current?.focus();
+      shareUrlInput.current?.select();
+      setShareDialog((current) => current?.id === shareDialog.id ? { ...current, copyFallback: true } : current);
+      return;
     }
     try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
-      await navigator.clipboard.writeText(text);
-      void message.success(t("aiTranscriptCopied"));
+      await navigator.clipboard.writeText(shareDialog.url);
+      setShareDialog((current) => current?.id === shareDialog.id ? { ...current, copyFallback: false } : current);
+      void message.success(t("aiShareLinkCopied"));
     } catch {
-      void message.error(t("aiTranscriptCopyFailed"));
+      shareUrlInput.current?.focus();
+      shareUrlInput.current?.select();
+      setShareDialog((current) => current?.id === shareDialog.id ? { ...current, copyFallback: true } : current);
     }
   };
 
   const archiveConversation = (sessionKey: string) => {
     if (conversationActionsDisabled || !sessions.some((session) => session.key === sessionKey)) return;
-    updateSession(sessionKey, (session) => ({ ...session, archived: true }));
-    if (sessionKey === activeSessionKey) setShowArchived(true);
+    const replacementSessionKey = createChatSession().key;
+    setHistory((current) => archiveChatConversation(current, sessionKey, replacementSessionKey));
     void message.success(t("aiConversationArchived"));
   };
 
@@ -272,7 +436,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
   const submit = async (text: string, history = transcript, attachments = activeSession.draftAttachments ?? []) => {
     const content = text.trim() || (attachments.length ? t("aiAttachmentPrompt") : "");
     if (!content || !providerId || !modelName || busy || attachmentBusy || activeChatRequest.current || proposal || !activeSession) return;
-    if (attachments.some(file => file.image) && !supportsVision) { void message.error(t("aiAttachmentVisionRequired")); return; }
+    if (attachments.some(file => !acceptsFile(modelFileFormats(availableModels.find(model => model.id === modelName)), file.name))) { void message.error(t("aiAttachmentModelUnsupported")); return; }
     const sessionKey = activeSession.key;
     const next = [...history, { key: Date.now(), role: "user" as const, content, attachments }];
     const controller = new AbortController();
@@ -315,7 +479,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
             key: Date.now() + 1,
             role: "assistant",
             failed: true,
-            content: t(messageKeyFor(error,["aiProviderCredentialRequired", "aiAttachmentVisionRequired", "aiAttachmentContextTooLarge", "aiAttachmentInvalid", "aiAttachmentEmpty", "aiAttachmentTooLarge"],"aiProviderUnavailable")),
+            content: t(messageKeyFor(error,["aiProviderCredentialRequired", "aiAttachmentModelUnsupported", "aiAttachmentVisionRequired", "aiAttachmentContextTooLarge", "aiAttachmentInvalid", "aiAttachmentEmpty", "aiAttachmentTooLarge"],"aiProviderUnavailable")),
           }],
           users: null,
         }));
@@ -463,6 +627,16 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
     onClick={newConversation}
     disabled={busy || attachmentBusy || !!proposal}
   >{t("aiNewConversation")}</Button>;
+  const shareManagementButton = <Button
+    className="ai-chat-manage-shares-button"
+    type="text"
+    size="small"
+    icon={<LinkOutlined />}
+    aria-label={t("aiManageShares")}
+    title={t("aiManageShares")}
+    disabled={!canUseChat}
+    onClick={openShareManagement}
+  />;
   const historyToolbar = <div className="ai-chat-history-toolbar">{historyViewButton}</div>;
   const desktopHistoryToolbar = <div className="ai-chat-history-toolbar">
     {newConversationButton}
@@ -494,7 +668,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
       if (!session) return {};
       const actionItems: NonNullable<MenuProps["items"]> = [
         { key: "rename", icon: <EditOutlined />, label: t("aiRenameConversation") },
-        { key: "share", icon: <ShareAltOutlined />, label: t("aiShareConversation") },
+        { key: "share", icon: <ShareAltOutlined />, label: t("aiShareConversation"), disabled: session.transcript.length === 0 || isRolePreviewReadOnly() },
         { type: "divider" },
         session.archived
           ? { key: "restore", icon: <RollbackOutlined />, label: t("aiUnarchiveConversation") }
@@ -554,13 +728,17 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
   return <div ref={consolePage} className="w-full ai-console-page">
     {!canReadUsers && <Typography.Text type="secondary" className="ai-console-permission">{t("forbidden")}</Typography.Text>}
     {historySaveFailed && <Alert type="warning" showIcon title={t("aiHistorySaveFailed")} />}
+    {shareSyncFailures.length > 0 && <Alert type="warning" showIcon title={t("aiShareSyncFailed")} action={<Button size="small" disabled={isRolePreviewReadOnly()} onClick={() => shareSyncQueue.current?.retry()}>{t("retry")}</Button>} />}
 
     <div className="ai-chat-workspace">
       <aside className="ai-chat-sidebar" aria-label={t("aiSessions")} data-sessions-open={sessionsOpen}>
         <div className="ai-chat-sidebar-heading">
           <Typography.Text strong role="heading" aria-level={2}>{t("aiSessions")}</Typography.Text>
-          {compactSessions && sessionsPicker}
-          {compactSessions && newConversationButton}
+          <Space size={4} className="ai-chat-sidebar-heading-actions">
+            {shareManagementButton}
+            {compactSessions && sessionsPicker}
+            {compactSessions && newConversationButton}
+          </Space>
         </div>
         {compactSessions ? null : desktopHistoryToolbar}
         {compactSessions ? null : sessionList}
@@ -570,9 +748,6 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
         <header className="ai-chat-header">
           <div className="ai-chat-heading">
             <Typography.Text className="ai-chat-session-title" strong ellipsis>{activeSession.label || t("aiUntitledConversation")}</Typography.Text>
-            <Typography.Text className="ai-chat-model-caption" type="secondary">
-              {selected && modelName ? `${selected.name} · ${modelName}` : t("aiChooseModelHint")}
-            </Typography.Text>
           </div>
         </header>
 
@@ -613,7 +788,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
               autoScroll
               role={{
                 user: { placement: "end", avatar: <AccountAvatar /> },
-                assistant: { placement: "start", avatar: <Avatar className="ai-chat-assistant-avatar" icon={<svg className="ai-chat-assistant-mark" viewBox="0 0 24 24" role="img" aria-label="AI" focusable="false"><path d="M12 2.5 14.55 9.45 21.5 12 14.55 14.55 12 21.5 9.45 14.55 2.5 12 9.45 9.45 12 2.5Z" fill="currentColor" /></svg>} />, footerPlacement: "outer-end" },
+                assistant: { placement: "start", avatar: <AiAssistantAvatar />, footerPlacement: "outer-end" },
               }}
             />}
           {busy && <Think className="ai-chat-loading" title={t("aiThinking")} loading blink aria-live="polite" />}
@@ -718,6 +893,92 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
         onChange={(event) => setRenameValue(event.target.value)}
         onPressEnter={saveConversationName}
       />
+    </Modal>
+
+    <Modal
+      open={shareDialog !== null}
+      title={t("aiShareConversation")}
+      footer={shareDialog?.createError
+        ? <Space>
+          <Button onClick={() => setShareDialog(null)}>{t("cancel")}</Button>
+          <Button type="primary" loading={shareCreatePending} disabled={isRolePreviewReadOnly()} onClick={retryCreateShareLink}>{t("retry")}</Button>
+        </Space>
+        : <Button onClick={() => setShareDialog(null)}>{t("close")}</Button>}
+      onCancel={() => setShareDialog(null)}
+      destroyOnHidden
+    >
+      {shareDialog?.validationError
+        ? <Alert type="warning" showIcon title={t(shareValidationMessage[shareDialog.validationError])} />
+        : shareDialog?.createError
+          ? <Alert type="error" showIcon title={t("aiShareLinkFailed")} />
+          : shareDialog?.revoked
+            ? <Space orientation="vertical" className="w-full" size={12}>
+              <Alert type="success" showIcon title={t("aiShareRevokedNotice")} />
+              <Button type="primary" loading={shareCreatePending} disabled={isRolePreviewReadOnly()} onClick={createNewShareLink}>{t("aiShareCreateNewLink")}</Button>
+            </Space>
+          : shareDialog?.url && shareDialog.shareId
+            ? <Space orientation="vertical" className="w-full" size={12}>
+              <Alert type="info" showIcon title={t("aiSharePublicNotice")} />
+              {isRolePreviewReadOnly() && <Alert type="warning" showIcon title={t("aiShareReadOnlyPreview")} />}
+              <Space.Compact className="ai-share-link-control">
+                <Input ref={shareUrlInput} aria-label={t("aiShareCopyLink")} readOnly value={shareDialog.url} onFocus={(event) => event.currentTarget.select()} />
+                <Button type="primary" disabled={shareRevokePending === shareDialog.shareId} onClick={() => void copyShareLink()}>{t("aiShareCopyLink")}</Button>
+              </Space.Compact>
+              {shareDialog.copyFallback && <Alert type="warning" showIcon title={t("aiShareLinkCopyManual")} />}
+            </Space>
+            : <Space><Spin size="small" /><Typography.Text>{t("loading")}</Typography.Text></Space>}
+    </Modal>
+
+    <Modal
+      open={shareManagementOpen}
+      width={720}
+      title={t("aiManageShares")}
+      footer={<Button onClick={() => setShareManagementOpen(false)}>{t("close")}</Button>}
+      onCancel={() => setShareManagementOpen(false)}
+      destroyOnHidden
+    >
+      <Space orientation="vertical" className="w-full" size={12}>
+        <Alert type="info" showIcon title={t("aiShareRevokeDescription")} />
+        {isRolePreviewReadOnly() && <Alert type="warning" showIcon title={t("aiShareReadOnlyPreview")} />}
+        {shareList.error
+          ? <Alert
+            type="error"
+            showIcon
+            title={t("aiShareManageFailed")}
+            action={<Button size="small" disabled={shareList.isFetching} onClick={() => void shareList.refetch()}>{t("retry")}</Button>}
+          />
+          : <Table<AiShareListItem>
+            rowKey="id"
+            size="small"
+            loading={shareList.isPending}
+            dataSource={shareList.data?.items ?? []}
+            scroll={{ x: 520 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("aiShareManageEmpty")} /> }}
+            pagination={{
+              current: shareListPage,
+              pageSize: shareListPageSize,
+              total: shareList.data?.total ?? 0,
+              showSizeChanger: true,
+              pageSizeOptions: [...TABLE_PAGE_SIZE_OPTIONS].map(String),
+              onChange: (page, pageSize) => {
+                setShareListPage(pageSize === shareListPageSize ? page : 1);
+                setShareListPageSize(pageSize);
+              },
+            }}
+            columns={[
+              { title: t("aiConversationTitle"), dataIndex: "title", key: "title", ellipsis: true, render: (title: string) => title.trim() || t("aiUntitledConversation") },
+              { title: t("aiShareCreatedAt"), dataIndex: "createdAt", key: "createdAt", width: 170, render: (createdAt: string) => formatDateTime(createdAt, locale) },
+              { title: t("aiShareRevoke"), key: "actions", align: "right", width: 130, render: (_value: unknown, item: AiShareListItem) => <Button
+                type="link"
+                size="small"
+                danger
+                disabled={isRolePreviewReadOnly() || shareRevokePending !== null}
+                loading={shareRevokePending === item.id}
+                onClick={() => void revokeShare(item.id)}
+              >{t("aiShareRevoke")}</Button> },
+            ]}
+          />}
+      </Space>
     </Modal>
   </div>;
 }

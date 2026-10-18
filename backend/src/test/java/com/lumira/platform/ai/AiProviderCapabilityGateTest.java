@@ -42,7 +42,14 @@ class AiProviderCapabilityGateTest {
         when(repository.find(id)).thenReturn(Optional.of(jev));
         var service =
                 new AiProviderService(
-                        repository, connections, secrets, guard, audit, new ObjectMapper());
+                        repository,
+                        connections,
+                        secrets,
+                        guard,
+                        audit,
+                        new ObjectMapper(),
+                        org.mockito.Mockito.mock(
+                                com.lumira.platform.common.AiModelInputSettingsPort.class));
 
         ResponseStatusException failure =
                 assertThrows(ResponseStatusException.class, () -> service.models(id, "actor"));
@@ -75,7 +82,14 @@ class AiProviderCapabilityGateTest {
         when(connections.probe(deepSeek)).thenReturn(result);
         var service =
                 new AiProviderService(
-                        repository, connections, secrets, guard, audit, new ObjectMapper());
+                        repository,
+                        connections,
+                        secrets,
+                        guard,
+                        audit,
+                        new ObjectMapper(),
+                        org.mockito.Mockito.mock(
+                                com.lumira.platform.common.AiModelInputSettingsPort.class));
 
         assertEquals(result, service.models(id, "actor"));
         verify(connections).probe(deepSeek);

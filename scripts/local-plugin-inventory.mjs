@@ -249,6 +249,95 @@ function assertNoOtherClientConnections(config) {
     throw new Error('Plugin database transfer requires source and target databases to have no other client connections; stop local services and database clients first.');
 }
 
+const activityAuditIdentitySql = `SELECT json_build_object(
+  'database', current_database(),
+  'oid', (SELECT oid::text FROM pg_database WHERE datname = current_database()),
+  'postmasterStartEpoch', extract(epoch FROM pg_postmaster_start_time())::text
+)::text`;
+
+function parseActivityAuditIdentity(raw, label) {
+  let result;
+  try {
+    result = JSON.parse(raw);
+  } catch {
+    throw new Error(`PostgreSQL returned an invalid ${label} database identity for the Docker activity audit.`);
+  }
+  if (!result || typeof result.database !== 'string' || typeof result.oid !== 'string'
+      || !/^\d+$/.test(result.oid) || typeof result.postmasterStartEpoch !== 'string'
+      || !/^\d+(?:\.\d+)?$/.test(result.postmasterStartEpoch))
+    throw new Error(`PostgreSQL returned an incomplete ${label} database identity for the Docker activity audit.`);
+  return result;
+}
+
+function queryDockerAdminActivityAudit(connection, sql) {
+  if (!connection.dockerContainer)
+    throw new Error('Docker admin activity audit requires a configured local PostgreSQL container.');
+  const shellCommand = 'test -n "${POSTGRES_USER:-}" || exit 90; exec psql --username "$POSTGRES_USER" "$@"';
+  const args = [
+    'exec', '-i', '--user', 'postgres', connection.dockerContainer,
+    'sh', '-c', shellCommand, 'psql',
+    '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1',
+    '--dbname', connection.databaseName,
+    '-c', sql,
+  ];
+  const env = { ...process.env };
+  for (const name of ['PGPASSWORD', 'PGUSER', 'PGDATABASE', 'PGHOST', 'PGPORT', 'PGSSLMODE']) delete env[name];
+  const result = spawnSync('docker', args, {
+    encoding: 'utf8',
+    env,
+    timeout: 30_000,
+    maxBuffer: 4 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0)
+    throw new Error('Docker-local PostgreSQL admin activity audit failed; no inventory or runtime files were changed.');
+  return result.stdout.trim();
+}
+
+function assertNoOtherClientConnectionsWithDockerAdmin(config, snapshotDatabase) {
+  const connection = parseLocalPluginDatabaseConfig(config);
+  let appIdentity;
+  try {
+    appIdentity = parseActivityAuditIdentity(queryPostgres(connection, activityAuditIdentitySql), 'application');
+  } catch (error) {
+    throw new Error(`Cannot verify the application database identity for Docker activity audit: ${error.message}`);
+  }
+  if (appIdentity.database !== connection.databaseName || appIdentity.database !== snapshotDatabase.name
+      || appIdentity.oid !== String(snapshotDatabase.oid))
+    throw new Error('The application database identity changed before the Docker activity audit.');
+
+  const adminSql = `BEGIN READ ONLY;
+SELECT json_build_object(
+  'database', current_database(),
+  'oid', (SELECT oid::text FROM pg_database WHERE datname = current_database()),
+  'postmasterStartEpoch', extract(epoch FROM pg_postmaster_start_time())::text,
+  'canInspectAll', COALESCE((SELECT rolsuper FROM pg_roles WHERE rolname = current_user), false)
+    OR pg_has_role(current_user, 'pg_read_all_stats', 'USAGE'),
+  'otherClients', (SELECT count(*)::integer FROM pg_stat_activity
+    WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend')
+)::text;
+ROLLBACK;`;
+  let admin;
+  try {
+    admin = JSON.parse(queryDockerAdminActivityAudit(connection, adminSql));
+  } catch (error) {
+    throw new Error(`Cannot verify local database activity with the Docker admin identity: ${error.message}`);
+  }
+  if (!admin || typeof admin.database !== 'string' || typeof admin.oid !== 'string'
+      || !/^\d+$/.test(admin.oid) || typeof admin.postmasterStartEpoch !== 'string'
+      || !/^\d+(?:\.\d+)?$/.test(admin.postmasterStartEpoch)
+      || typeof admin.canInspectAll !== 'boolean'
+      || !Number.isInteger(admin.otherClients) || admin.otherClients < 0)
+    throw new Error('PostgreSQL returned an invalid Docker admin activity audit result.');
+  if (admin.database !== appIdentity.database || admin.oid !== appIdentity.oid
+      || admin.postmasterStartEpoch !== appIdentity.postmasterStartEpoch)
+    throw new Error('Docker admin activity audit connected to a different PostgreSQL database instance.');
+  if (!admin.canInspectAll)
+    throw new Error('Docker admin activity audit requires a superuser or pg_read_all_stats visibility.');
+  if (admin.otherClients > 0)
+    throw new Error('Plugin database transfer requires source and target databases to have no other client connections; stop local services and database clients first.');
+}
+
 function pluginRootFor(root, config) {
   const value = config.LUMIRA_PLUGINS_PATH;
   const resolved = typeof value === 'string' && value.trim()
@@ -630,17 +719,28 @@ function sameDatabase(left, right) {
   return localPluginDatabaseIdentityDifferences(left, right).length === 0;
 }
 
-export function verifyLocalPluginInventoryTransfer({ root = projectRoot, sourceConfig, targetConfig, snapshotPath } = {}) {
+export function verifyLocalPluginInventoryTransfer({ root = projectRoot, sourceConfig, targetConfig, snapshotPath, activityAuditDockerAdmin = false } = {}) {
+  if (typeof activityAuditDockerAdmin !== 'boolean')
+    throw new Error('Docker admin activity audit must be explicitly enabled with a boolean option.');
+  if (activityAuditDockerAdmin) {
+    const sourceConnection = parseLocalPluginDatabaseConfig(sourceConfig);
+    const targetConnection = parseLocalPluginDatabaseConfig(targetConfig);
+    if (!sourceConnection.dockerContainer || sourceConnection.dockerContainer !== targetConnection.dockerContainer
+        || sourceConnection.host !== targetConnection.host || sourceConnection.port !== targetConnection.port)
+      throw new Error('Docker admin activity audit requires source and target to use the same configured local PostgreSQL container and server.');
+  }
   const pinned = readPinnedSnapshot(root, snapshotPath);
   const pinDigest = snapshotDigest(pinned);
   const source = readSnapshotFromDatabase(root, sourceConfig);
   const sourceDifferences = compareLocalPluginInventory(pinned, source);
   if (sourceDifferences.length)
     throw new Error(`Source database does not match the pinned plugin inventory:\n${sourceDifferences.map(item => `- ${item}`).join('\n')}`);
-  assertNoOtherClientConnections(sourceConfig);
+  if (activityAuditDockerAdmin) assertNoOtherClientConnectionsWithDockerAdmin(sourceConfig, source.database);
+  else assertNoOtherClientConnections(sourceConfig);
 
   const target = readSnapshotFromDatabase(root, targetConfig);
-  assertNoOtherClientConnections(targetConfig);
+  if (activityAuditDockerAdmin) assertNoOtherClientConnectionsWithDockerAdmin(targetConfig, target.database);
+  else assertNoOtherClientConnections(targetConfig);
   if (sameDatabase(source.database, target.database))
     throw new Error(`Target database ${target.database.name} is the same database as the source.`);
   const sourcePlugins = { ...source, database: pinned.database };

@@ -45,6 +45,9 @@ class AiChatAttachmentsTest {
 
     private AiAssistantService.ChatRequest input(List<AiAssistantService.ChatMessage> messages) {
         when(providers.requireEnabledForConsole(provider.id(), "actor")).thenReturn(provider);
+        when(providers.supportedFileFormats(provider, "vision-model"))
+                .thenReturn(
+                        AiModelInputPolicy.defaults(provider.providerKind(), "vision-model", true));
         when(connections.chat(eq(provider), anyString(), anyList(), anyList()))
                 .thenReturn(new ModelConnectionService.ChatReply("done", List.of()));
         return new AiAssistantService.ChatRequest(provider.id(), "vision-model", messages);
@@ -120,23 +123,13 @@ class AiChatAttachmentsTest {
     }
 
     @Test
-    void imagesUseMultimodalPartsOnlyWhenSelectedModelMetadataAllowsThem() {
+    void imagesUseMultimodalPartsOnlyWhenSelectedModelConfigurationAllowsThem() {
         var id = UUID.randomUUID();
         when(attachments.read("actor", id))
                 .thenReturn(
                         new AiAttachmentPort.Content(
                                 id, "image.png", 100, null, "data:image/png;base64,AAAA", false));
         var request = input(List.of(new AiAssistantService.ChatMessage("user", "", List.of(id))));
-        when(connections.probe(provider))
-                .thenReturn(
-                        new ModelConnectionService.ConnectionResult(
-                                List.of(
-                                        new ModelConnectionService.ModelOption(
-                                                "vision-model",
-                                                "Vision",
-                                                List.of("text", "image"),
-                                                List.of("text"))),
-                                true));
         service.chat(request, "actor");
         verify(connections)
                 .chat(
@@ -152,21 +145,28 @@ class AiChatAttachmentsTest {
                                 }),
                         eq(List.of()));
         clearInvocations(connections);
-        when(connections.probe(provider))
-                .thenReturn(
-                        new ModelConnectionService.ConnectionResult(
-                                List.of(
-                                        new ModelConnectionService.ModelOption(
-                                                "vision-model",
-                                                "Text",
-                                                List.of("text"),
-                                                List.of("text"))),
-                                true));
+        when(providers.supportedFileFormats(provider, "vision-model")).thenReturn(List.of("pdf"));
         assertEquals(
                 "aiAttachmentVisionRequired",
                 assertThrows(ResponseStatusException.class, () -> service.chat(request, "actor"))
                         .getReason());
         verify(connections, never()).chat(any(), anyString(), anyList(), anyList());
+    }
+
+    @Test
+    void excludedDocumentFormatCannotReachTheProviderEvenWithForgedAttachmentIds() {
+        var id = UUID.randomUUID();
+        var request =
+                input(List.of(new AiAssistantService.ChatMessage("user", "Read", List.of(id))));
+        when(providers.supportedFileFormats(provider, "vision-model")).thenReturn(List.of("png"));
+        when(attachments.read("actor", id))
+                .thenReturn(
+                        new AiAttachmentPort.Content(id, "report.pdf", 100, "text", null, false));
+        assertEquals(
+                "aiAttachmentModelUnsupported",
+                assertThrows(ResponseStatusException.class, () -> service.chat(request, "actor"))
+                        .getReason());
+        verifyNoInteractions(connections);
     }
 
     @Test

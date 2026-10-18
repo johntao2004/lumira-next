@@ -124,9 +124,10 @@ export function AdminNotificationsPage({ canCreate, canTraceEvents = false, canT
       onRetry={() => void list.refetch()}
       actions={canCreate ? <Button type="primary" onClick={() => { form.resetFields(); form.setFieldsValue({ scope: "ALL" }); setOpen(true); }}>{t("publishNotification")}</Button> : undefined}
       columns={[
+        { title: t("serialNumber"), key: "serialNumber", width: 80, search: false, render: (_, __, index) => (request.page - 1) * request.pageSize + index + 1 },
         { title: t("notificationRecipients"), dataIndex: "ownerUsername", search: true, render: (_: unknown, item: AdminNotification) => `${item.ownerDisplayName || item.ownerUsername} (${item.ownerUsername})` },
         { title: t("notificationTitle"), dataIndex: "title", search: true, render: (_: unknown, item: AdminNotification) => <Typography.Text strong>{String(notificationParams(item.params).title ?? item.titleKey)}</Typography.Text> },
-        { title: t("notificationBody"), dataIndex: "body", render: (_: unknown, item: AdminNotification) => <Typography.Text ellipsis={{ tooltip: true }}>{String(notificationParams(item.params).body ?? item.bodyKey)}</Typography.Text> },
+        { title: t("notificationBody"), dataIndex: "body", width: 360, ellipsis: { showTitle: false }, render: (_: unknown, item: AdminNotification) => <Typography.Text ellipsis={{ tooltip: true }} style={{ display: "block", maxWidth: 340 }}>{String(notificationParams(item.params).body ?? item.bodyKey)}</Typography.Text> },
         { title: t("status"), dataIndex: "read", search: true, valueEnum: { true: { text: t("read") }, false: { text: t("unread") } }, render: (_: unknown, item: AdminNotification) => item.read ? t("read") : t("unread") },
         { title: t("eventTime"), dataIndex: "createdAt", valueType: "dateTimeRange", render: (_: unknown, item: AdminNotification) => formatDateTime(item.createdAt, locale, { dateStyle: "medium", timeStyle: "short" }) },
         { title: t("actions"), key: "actions", valueType: "option", render: (_, item) => <Button type="link" size="small" onClick={() => setPreview(item)}>{t("notificationPreview")}</Button> },

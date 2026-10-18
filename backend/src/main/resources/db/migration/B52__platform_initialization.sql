@@ -970,6 +970,23 @@ CREATE TABLE public.platform_agreement_snapshot (
 
 
 --
+-- Name: platform_ai_conversation_share; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.platform_ai_conversation_share (
+    id uuid NOT NULL,
+    token_hash character varying(64) NOT NULL,
+    title character varying(200) NOT NULL,
+    messages jsonb NOT NULL,
+    created_by character varying(100) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT platform_ai_conversation_share_token_hash_check CHECK (((token_hash)::text ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT platform_ai_conversation_share_title_check CHECK (((length(btrim((title)::text)) >= 1) AND (length(btrim((title)::text)) <= 200))),
+    CONSTRAINT platform_ai_conversation_share_messages_check CHECK ((CASE WHEN (jsonb_typeof(messages) = 'array'::text) THEN ((jsonb_array_length(messages) >= 1) AND (jsonb_array_length(messages) <= 200)) ELSE false END))
+);
+
+
+--
 -- Name: platform_ai_pending_action; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2638,6 +2655,91 @@ CREATE TABLE public.spring_session_attributes (
 );
 
 
+-- User-owned template definitions and immutable source snapshots.
+CREATE TABLE public.platform_print_template (
+    id uuid NOT NULL,
+    name character varying(160) NOT NULL,
+    category character varying(80),
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL,
+    status character varying(16) DEFAULT 'DRAFT'::character varying NOT NULL,
+    draft_version integer,
+    published_version integer,
+    version bigint DEFAULT 1 NOT NULL,
+    created_by character varying(100) NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT platform_print_template_pkey PRIMARY KEY (id),
+    CONSTRAINT platform_print_template_name_check CHECK ((length(TRIM(BOTH FROM name)) BETWEEN 1 AND 160)),
+    CONSTRAINT platform_print_template_category_check CHECK ((category IS NULL) OR (length(TRIM(BOTH FROM category)) <= 80)),
+    CONSTRAINT platform_print_template_tags_check CHECK ((jsonb_typeof(tags) = 'array'::text) AND (jsonb_array_length(tags) <= 30)),
+    CONSTRAINT platform_print_template_status_check CHECK (((status)::text = ANY (ARRAY['DRAFT'::character varying, 'PUBLISHED'::character varying, 'INACTIVE'::character varying]::text[]))),
+    CONSTRAINT platform_print_template_version_check CHECK ((version > 0) AND ((draft_version IS NULL) OR (draft_version > 0)) AND ((published_version IS NULL) OR (published_version > 0)))
+);
+
+CREATE TABLE public.platform_print_template_version (
+    template_id uuid NOT NULL,
+    version integer NOT NULL,
+    state character varying(16) DEFAULT 'DRAFT'::character varying NOT NULL,
+    source_filename character varying(255) NOT NULL,
+    source_sha256 character(64) NOT NULL,
+    source_bytes bytea NOT NULL,
+    inspection jsonb DEFAULT '{}'::jsonb NOT NULL,
+    bindings jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_by character varying(100) NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    published_at timestamp with time zone,
+    CONSTRAINT platform_print_template_version_pkey PRIMARY KEY (template_id, version),
+    CONSTRAINT platform_print_template_version_template_fkey FOREIGN KEY (template_id) REFERENCES public.platform_print_template(id) ON DELETE CASCADE,
+    CONSTRAINT platform_print_template_version_state_check CHECK (((state)::text = ANY (ARRAY['DRAFT'::character varying, 'PUBLISHED'::character varying, 'SUPERSEDED'::character varying]::text[]))),
+    CONSTRAINT platform_print_template_version_source_check CHECK ((length(TRIM(BOTH FROM source_filename)) BETWEEN 1 AND 255) AND (source_sha256 ~ '^[a-f0-9]{64}$'::text) AND (octet_length(source_bytes) BETWEEN 1 AND 10485760)),
+    CONSTRAINT platform_print_template_version_inspection_check CHECK ((jsonb_typeof(inspection) = 'object'::text) AND (jsonb_typeof(bindings) = 'object'::text)),
+    CONSTRAINT platform_print_template_version_number_check CHECK ((version > 0) AND (((state)::text = 'PUBLISHED'::text) = (published_at IS NOT NULL)))
+);
+
+CREATE TABLE public.platform_user_import_preview (
+    id uuid NOT NULL,
+    actor character varying(100) NOT NULL,
+    file_sha256 character(64) NOT NULL,
+    mode character varying(8) NOT NULL,
+    preview_version bigint DEFAULT 1 NOT NULL,
+    profile_schema_version bigint NOT NULL,
+    rows jsonb NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT platform_user_import_preview_pkey PRIMARY KEY (id),
+    CONSTRAINT platform_user_import_preview_sha_check CHECK ((file_sha256 ~ '^[a-f0-9]{64}$'::text)),
+    CONSTRAINT platform_user_import_preview_mode_check CHECK (((mode)::text = ANY (ARRAY['create'::character varying, 'update'::character varying, 'upsert'::character varying]::text[]))),
+    CONSTRAINT platform_user_import_preview_rows_check CHECK ((jsonb_typeof(rows) = 'array'::text) AND (jsonb_array_length(rows) BETWEEN 1 AND 500)),
+    CONSTRAINT platform_user_import_preview_version_check CHECK ((preview_version > 0) AND (profile_schema_version >= 0))
+);
+
+CREATE TABLE public.platform_user_import_task (
+    id uuid NOT NULL,
+    preview_id uuid NOT NULL,
+    actor character varying(100) NOT NULL,
+    idempotency_key character varying(128) NOT NULL,
+    preview_version bigint NOT NULL,
+    status character varying(16) DEFAULT 'RUNNING'::character varying NOT NULL,
+    result jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    completed_at timestamp with time zone,
+    CONSTRAINT platform_user_import_task_pkey PRIMARY KEY (id),
+    CONSTRAINT platform_user_import_task_preview_fkey FOREIGN KEY (preview_id) REFERENCES public.platform_user_import_preview(id) ON DELETE RESTRICT,
+    CONSTRAINT platform_user_import_task_key_uq UNIQUE (actor, idempotency_key),
+    CONSTRAINT platform_user_import_task_idempotency_check CHECK ((length(TRIM(BOTH FROM idempotency_key)) BETWEEN 1 AND 128)),
+    CONSTRAINT platform_user_import_task_status_check CHECK (((status)::text = ANY (ARRAY['RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying]::text[])) AND (((status)::text = 'RUNNING'::text) = (completed_at IS NULL))),
+    CONSTRAINT platform_user_import_task_result_check CHECK (jsonb_typeof(result) = 'object'::text),
+    CONSTRAINT platform_user_import_task_version_check CHECK (preview_version > 0)
+);
+
+CREATE UNIQUE INDEX platform_print_template_name_uq ON public.platform_print_template USING btree (lower((name)::text));
+CREATE INDEX platform_print_template_search_idx ON public.platform_print_template USING btree (status, category, updated_at DESC);
+CREATE UNIQUE INDEX platform_print_template_single_draft_uq ON public.platform_print_template_version USING btree (template_id) WHERE ((state)::text = 'DRAFT'::text);
+CREATE INDEX platform_print_template_version_history_idx ON public.platform_print_template_version USING btree (template_id, version DESC);
+CREATE INDEX platform_user_import_preview_expiry_idx ON public.platform_user_import_preview USING btree (expires_at);
+CREATE INDEX platform_user_import_task_actor_idx ON public.platform_user_import_task USING btree (actor, created_at DESC);
+
+
 --
 -- PostgreSQL database dump complete
 --
@@ -2709,6 +2811,12 @@ SET row_security = off;
 
 --
 -- Data for Name: platform_account_phone; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+
+
+--
+-- Data for Name: platform_ai_conversation_share; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 
@@ -2950,6 +3058,7 @@ INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000
 INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000000000038', '00000000-0000-0000-0000-000000000054', 'sensitive-words', 'sensitiveWords', '敏感词策略', 'PAGE', 'sensitive-words', '/dashboard/sensitive-words', NULL, 'platform:sensitive-words:read', true, 'sensitive-words', 30, true, true, false, 2, '2000-01-01 00:00:00+00', '2000-01-01 00:00:00+00', NULL);
 INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'system-settings', 'systemSettings', '系统设置', 'CATALOG', NULL, NULL, NULL, NULL, false, NULL, 20, true, true, true, 3, '2000-01-01 00:00:00+00', '2000-01-01 00:00:00+00', NULL);
 INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000053', 'users', 'userList', '用户列表', 'PAGE', 'users', '/dashboard/users', NULL, 'platform:users:access', false, NULL, 10, true, true, false, 2, '2000-01-01 00:00:00+00', '2000-01-01 00:00:00+00', NULL);
+INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000000000064', '00000000-0000-0000-0000-000000000054', 'print-templates', 'printTemplates', '打印模板', 'PAGE', 'print-templates', '/dashboard/print-templates', 'file-word', 'platform:print-templates:access', false, 'directory', 30, true, true, false, 1, '2000-01-01 00:00:00+00', '2000-01-01 00:00:00+00', NULL);
 INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000000000001', NULL, 'overview', 'overview', '工作空间', 'CATALOG', NULL, NULL, NULL, NULL, false, NULL, 10, true, true, false, 2, '2000-01-01 00:00:00+00', '2000-01-01 00:00:00+00', NULL);
 INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000000000053', NULL, 'user-management', 'userManagement', '用户与权限', 'CATALOG', NULL, NULL, NULL, NULL, false, NULL, 30, true, true, false, 2, '2000-01-01 00:00:00+00', '2000-01-01 00:00:00+00', NULL);
 INSERT INTO public.platform_navigation_menu VALUES ('00000000-0000-0000-0000-000000000054', NULL, 'content-management', 'contentManagement', '内容与资源', 'CATALOG', NULL, NULL, NULL, NULL, false, NULL, 40, true, true, false, 2, '2000-01-01 00:00:00+00', '2000-01-01 00:00:00+00', NULL);
@@ -3456,6 +3565,11 @@ INSERT INTO public.platform_role_authority (role_id, authority) VALUES
 ('00000000-0000-0000-0000-000000000052', 'platform:payment-core:orders-manage'),
 ('00000000-0000-0000-0000-000000000052', 'platform:payment-core:orders-read'),
 ('00000000-0000-0000-0000-000000000052', 'platform:payment-core:orders-refund'),
+('00000000-0000-0000-0000-000000000052', 'platform:print-templates:access'),
+('00000000-0000-0000-0000-000000000052', 'platform:print-templates:create'),
+('00000000-0000-0000-0000-000000000052', 'platform:print-templates:publish'),
+('00000000-0000-0000-0000-000000000052', 'platform:print-templates:update'),
+('00000000-0000-0000-0000-000000000052', 'platform:print-templates:use'),
 ('00000000-0000-0000-0000-000000000052', 'platform:profile-fields:access'),
 ('00000000-0000-0000-0000-000000000052', 'platform:profile-fields:read-dictionaries'),
 ('00000000-0000-0000-0000-000000000052', 'platform:profile-fields:update'),
@@ -3492,6 +3606,8 @@ INSERT INTO public.platform_role_authority (role_id, authority) VALUES
 ('00000000-0000-0000-0000-000000000052', 'platform:users:create'),
 ('00000000-0000-0000-0000-000000000052', 'platform:users:delete'),
 ('00000000-0000-0000-0000-000000000052', 'platform:users:export'),
+('00000000-0000-0000-0000-000000000052', 'platform:users:import'),
+('00000000-0000-0000-0000-000000000052', 'platform:users:print'),
 ('00000000-0000-0000-0000-000000000052', 'platform:users:read-roles'),
 ('00000000-0000-0000-0000-000000000052', 'platform:users:reset-password'),
 ('00000000-0000-0000-0000-000000000052', 'platform:users:update'),
@@ -3721,6 +3837,22 @@ ALTER TABLE ONLY public.platform_agreement_snapshot
 
 ALTER TABLE ONLY public.platform_agreement_snapshot
     ADD CONSTRAINT platform_agreement_snapshot_version_key UNIQUE (version);
+
+
+--
+-- Name: platform_ai_conversation_share platform_ai_conversation_share_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.platform_ai_conversation_share
+    ADD CONSTRAINT platform_ai_conversation_share_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: platform_ai_conversation_share platform_ai_conversation_share_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.platform_ai_conversation_share
+    ADD CONSTRAINT platform_ai_conversation_share_token_hash_key UNIQUE (token_hash);
 
 
 --

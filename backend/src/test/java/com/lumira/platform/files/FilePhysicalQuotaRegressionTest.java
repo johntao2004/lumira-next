@@ -8,7 +8,6 @@ import com.lumira.platform.common.AuditPort;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -52,6 +51,9 @@ class FilePhysicalQuotaRegressionTest {
         TestSchema.indexes("platform_file").forEach(jdbc::execute);
         jdbc.execute(TestSchema.table("platform_file_blob_chunk"));
         TestSchema.indexes("platform_file_blob_chunk").forEach(jdbc::execute);
+        jdbc.execute(TestSchema.table("platform_branding_file"));
+        TestSchema.indexes("platform_branding_file").forEach(jdbc::execute);
+        TestSchema.foreignKeys("platform_branding_file").forEach(jdbc::execute);
         jdbc.execute(TestSchema.table("platform_feedback_file"));
         jdbc.execute(
                 "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text,display_name text,version bigint,deleted_at timestamptz)");
@@ -105,16 +107,17 @@ class FilePhysicalQuotaRegressionTest {
     }
 
     @Test
-    void quotaRemainsChargedUntilPhysicalDeletionAndOpenDownloadKeepsGrace() throws Exception {
+    void permanentDeletionImmediatelyRemovesRetiredChunksAndCancelsUnreadDownload()
+            throws Exception {
         byte[] content = "synthetic quota data".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         UUID id = completed(content);
+        jdbc.update(
+                "UPDATE platform_file_blob_chunk SET retire_after=now()+interval '24 hours' WHERE file_id=?",
+                id);
         try (var download = blobs.open(id)) {
-            assertEquals(content[0], download.read());
-            sweep();
             assertEquals(
                     new FileRepository.Usage(content.length, 1, 1, content.length),
                     files.usage(owner));
-            assertEquals(1, chunks(id));
             assertThrows(
                     ResponseStatusException.class,
                     () ->
@@ -123,67 +126,98 @@ class FilePhysicalQuotaRegressionTest {
                                             files.usage(owner).chargedBytes(),
                                             files.usage(owner).fileCount(),
                                             1));
-            assertArrayEquals(
-                    Arrays.copyOfRange(content, 1, content.length), download.readAllBytes());
+
+            sweep();
+            assertEquals(new FileRepository.Usage(0, 0), files.usage(owner));
+            assertEquals(0, chunks(id));
+            assertTrue(files.storageBackend(id).isEmpty());
+
+            // PostgreSQL download streams load chunks lazily. Permanent deletion can therefore
+            // terminate an already-open stream that has not read its bytes yet.
+            assertThrows(IOException.class, download::readAllBytes);
         }
-        var originalRetirement =
-                jdbc.queryForObject(
-                        "SELECT retire_after FROM platform_file_blob_chunk WHERE file_id=?",
-                        java.time.OffsetDateTime.class,
-                        id);
-        assertTrue(originalRetirement.isAfter(java.time.OffsetDateTime.now().plusHours(23)));
-        retryNow(id);
-        sweep();
-        assertEquals(
-                originalRetirement,
-                jdbc.queryForObject(
-                        "SELECT retire_after FROM platform_file_blob_chunk WHERE file_id=?",
-                        java.time.OffsetDateTime.class,
-                        id));
-        verify(audit, never()).append("system:file-cleanup", "file.cleanup", id);
-        jdbc.update(
-                "UPDATE platform_file_blob_chunk SET retire_after=now()-interval '1 second' WHERE file_id=?",
-                id);
-        blobs.purgeRetiredChunks();
-        retryNow(id);
-        sweep();
-        sweep();
-        assertEquals(new FileRepository.Usage(0, 0), files.usage(owner));
         verify(audit, times(1)).append("system:file-cleanup", "file.cleanup", id);
         assertDoesNotThrow(() -> new FileQuota(content.length, 1).requireCapacity(0, 0, 1));
     }
 
     @Test
-    void finalMetadataGuardRejectsRemainingChunksAndPartialRetirement() throws Exception {
+    void directDeleteLeavesReadyAndTrashedChunksUntouched() throws Exception {
+        UUID ready = completed(new byte[] {1});
+        UUID trashed = completed(new byte[] {2});
+        jdbc.update("UPDATE platform_file SET state='READY' WHERE id=?", ready);
+        jdbc.update(
+                "UPDATE platform_file SET state='TRASHED',trashed_at=now() WHERE id=?", trashed);
+
+        blobs.delete(ready);
+        blobs.delete(trashed);
+
+        assertEquals(1, chunks(ready));
+        assertEquals(1, chunks(trashed));
+        assertNull(
+                jdbc.queryForObject(
+                        "SELECT retire_after FROM platform_file_blob_chunk WHERE file_id=?",
+                        java.time.OffsetDateTime.class,
+                        ready));
+        assertNull(
+                jdbc.queryForObject(
+                        "SELECT retire_after FROM platform_file_blob_chunk WHERE file_id=?",
+                        java.time.OffsetDateTime.class,
+                        trashed));
+    }
+
+    @Test
+    void fileServicePurgeRemovesRealPostgresChunksAndReleasesQuotaBeforeReturning()
+            throws Exception {
+        byte[] content = "real postgres purge".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        UUID id = completed(content);
+        jdbc.update(
+                "UPDATE platform_file SET state='TRASHED',version=3,trashed_at=now(),updated_at=now() WHERE id=?",
+                id);
+        var accounts = mock(com.lumira.platform.identity.api.AccountOwnerPort.class);
+        when(accounts.id("actor", true)).thenReturn(owner);
+        var service =
+                new FileService(
+                        files,
+                        accounts,
+                        blobs,
+                        manager,
+                        audit,
+                        new FileQuota(Long.MAX_VALUE, 1000));
+
+        assertEquals(new FileRepository.Usage(content.length, 1), files.usage(owner));
+        service.purge("actor", id, 3);
+
+        assertEquals(new FileRepository.Usage(0, 0), files.usage(owner));
+        assertEquals(0, chunks(id));
+        assertTrue(files.findOwned(id, owner).isEmpty());
+    }
+
+    @Test
+    void finalMetadataGuardRejectsAnyRemainingChunk() throws Exception {
         UUID id = completed(new byte[] {1});
         jdbc.update(
-                "INSERT INTO platform_file_blob_chunk(file_id,chunk_index,payload,retire_after) VALUES(?,1,?,now()+interval '24 hours')",
+                "INSERT INTO platform_file_blob_chunk(file_id,chunk_index,payload) VALUES(?,1,?)",
                 id,
                 new byte[] {2});
-        jdbc.update(
-                "UPDATE platform_file_blob_chunk SET retire_after=now()-interval '1 second' WHERE file_id=? AND chunk_index=0",
-                id);
-        blobs.purgeRetiredChunks();
-        assertEquals(1, chunks(id));
+        assertEquals(2, chunks(id));
         assertFalse(files.finishDelete(id, 2));
         assertEquals(1, files.usage(owner).fileCount());
         assertFalse(files.finishDelete(id, 1));
     }
 
     @Test
-    void aHundredGracePeriodRowsCannotStarveLaterDeletion() throws Exception {
+    void cleanupImmediatelyRemovesMoreThanOneHundredLegacyPendingFiles() throws Exception {
         for (int i = 0; i < 100; i++) completed(new byte[] {1});
         UUID last = completed(new byte[] {2});
+        jdbc.update("UPDATE platform_file_blob_chunk SET retire_after=now()+interval '24 hours'");
         jdbc.update(
                 "UPDATE platform_file SET updated_at=now()-interval '90 seconds' WHERE id=?", last);
+
         sweep();
+        assertEquals(1, files.usage(owner).fileCount());
         sweep();
-        assertEquals(101, files.usage(owner).fileCount());
-        assertNotNull(
-                jdbc.queryForObject(
-                        "SELECT retire_after FROM platform_file_blob_chunk WHERE file_id=?",
-                        java.time.OffsetDateTime.class,
-                        last));
+        assertEquals(new FileRepository.Usage(0, 0), files.usage(owner));
+        assertEquals(0, chunks(last));
     }
 
     @Test
@@ -234,10 +268,7 @@ class FilePhysicalQuotaRegressionTest {
         var routed = new RoutedBlobStore(files, local, blobs);
         new FileCleanup(files, routed, audit, manager).sweep();
         assertEquals(1, files.usage(owner).fileCount());
-        jdbc.update(
-                "UPDATE platform_file_blob_chunk SET retire_after=now()-interval '1 second' WHERE file_id=?",
-                id);
-        blobs.purgeRetiredChunks();
+        assertEquals(0, chunks(id));
         assertFalse(files.finishDelete(id, 2));
         retryNow(id);
         new FileCleanup(files, routed, audit, manager).sweep();

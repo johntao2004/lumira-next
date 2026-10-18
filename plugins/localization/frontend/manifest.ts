@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const localizationManifest = {
   id: "localization",
-  version: "1.0.11",
+  version: "1.0.12",
   required: false,
   dependencies: ["platform"],
   routes: [

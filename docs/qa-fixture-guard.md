@@ -21,7 +21,7 @@ The marker belongs to the disposable QA workspace; it is not an application migr
 
 The Python functions in `scripts/smoke_support.py` also enforce the private-config, loopback, database-namespace, and marker checks before their SQL/HTTP operations. This applies to scripts that use the shared helper; it does not imply that every historical smoke script is guarded. Keep the config owner-only and do not copy the token into reports or source control.
 
-These nine browser entry points in the current candidate use the shared guard:
+These ten browser entry points in the current candidate use the shared guard:
 
 - `scripts/admin-files-browser-smoke.mjs`
 - `scripts/admin-notifications-browser-smoke.mjs`
@@ -32,6 +32,7 @@ These nine browser entry points in the current candidate use the shared guard:
 - `scripts/provider-form-defaults-browser-smoke.mjs` (authenticated, read-only UI check)
 - `scripts/session-security-browser-smoke.mjs`
 - `scripts/shell-responsive-browser-smoke.mjs`
+- `scripts/users-browser-smoke.mjs`
 
 This list describes only the candidate scripts covered by the shared Node guard. Other historical smoke scripts are outside this guard and must not be assumed safe to run against a business database.
 

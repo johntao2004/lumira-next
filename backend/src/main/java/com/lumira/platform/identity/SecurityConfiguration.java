@@ -244,6 +244,10 @@ public class SecurityConfiguration {
                                                 "/api/public/localization/bundle/*",
                                                 "/api/public/localization/locales")
                                         .permitAll()
+                                        .requestMatchers(
+                                                org.springframework.http.HttpMethod.GET,
+                                                "/api/public/ai/shares/*")
+                                        .permitAll()
                                         .dispatcherTypeMatchers(
                                                 jakarta.servlet.DispatcherType.ERROR)
                                         .permitAll()

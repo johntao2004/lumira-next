@@ -39,11 +39,28 @@ public class ModelConnectionService {
             String name,
             List<String> inputModalities,
             List<String> outputModalities,
-            List<String> capabilityCodes) {
+            List<String> capabilityCodes,
+            List<String> supportedFileFormats) {
         public ModelOption {
+            supportedFileFormats = List.copyOf(supportedFileFormats);
             inputModalities = List.copyOf(inputModalities);
             outputModalities = List.copyOf(outputModalities);
             capabilityCodes = List.copyOf(capabilityCodes);
+        }
+
+        public ModelOption(
+                String id,
+                String name,
+                List<String> inputModalities,
+                List<String> outputModalities,
+                List<String> capabilityCodes) {
+            this(
+                    id,
+                    name,
+                    inputModalities,
+                    outputModalities,
+                    capabilityCodes,
+                    AiModelInputPolicy.defaults(null, id, inputModalities.contains("image")));
         }
 
         public ModelOption(
@@ -135,19 +152,28 @@ public class ModelConnectionService {
                 if (!id.isBlank() && models.size() < 1000) {
                     String name = entry.path("name").asText("").strip();
                     if (name.isBlank()) name = id;
+                    var advertisedInputs =
+                            stringValues(
+                                    entry.has("input_modalities")
+                                            ? entry.path("input_modalities")
+                                            : entry.path("architecture").path("input_modalities"));
+                    var formats =
+                            AiModelInputPolicy.defaults(
+                                    provider.providerKind(),
+                                    id,
+                                    advertisedInputs.contains("image"));
                     models.add(
                             new ModelOption(
                                     id,
                                     name,
-                                    stringValues(
-                                            entry.has("input_modalities")
-                                                    ? entry.path("input_modalities")
-                                                    : entry.path("architecture")
-                                                            .path("input_modalities")),
+                                    AiModelInputPolicy.vision(formats)
+                                            ? List.of("text", "image")
+                                            : advertisedInputs,
                                     stringValues(entry.path("output_modalities")),
                                     provider.supportsUserTools(id)
                                             ? List.of("CHAT", "TOOL_CALLING")
-                                            : provider.providerCapabilityCodes()));
+                                            : provider.providerCapabilityCodes(),
+                                    formats));
                 }
             }
         }

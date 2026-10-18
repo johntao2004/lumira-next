@@ -14,7 +14,7 @@ class TestSchemaTest {
     private static final String USER_ROLE_ID = "00000000-0000-0000-0000-000000000053";
 
     @Test
-    void extractsMultilineDefaultRoleSeedsAndAll141Authorities() {
+    void extractsMultilineDefaultRoleSeedsAndCurrentAuthorities() {
         List<String> roles = TestSchema.seeds("platform_role");
         assertEquals(1, roles.size());
         String roleSeed = roles.getFirst();
@@ -31,12 +31,12 @@ class TestSchemaTest {
         assertEquals(1, grants.size());
         String grantSeed = grants.getFirst();
         assertEquals(
-                141,
+                148,
                 count(
                         grantSeed,
                         Pattern.compile("(?m)^\\('00000000-0000-0000-0000-00000000005[23]'")));
         assertEquals(
-                138,
+                145,
                 count(grantSeed, Pattern.compile("(?m)^\\('" + ADMIN_ROLE_ID + "', 'platform:")));
         assertEquals(
                 3, count(grantSeed, Pattern.compile("(?m)^\\('" + USER_ROLE_ID + "', 'platform:")));

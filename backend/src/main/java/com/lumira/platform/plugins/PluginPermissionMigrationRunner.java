@@ -70,6 +70,10 @@ final class PluginPermissionMigrationRunner {
     }
 
     static void migrate(DataSource dataSource, String pluginId, Path migrations) {
+        if (PluginInitializationMigrationRunner.supports(migrations)) {
+            PluginInitializationMigrationRunner.migrate(dataSource, pluginId, migrations);
+            return;
+        }
         String historyTable = "plugin_" + pluginId.replace('-', '_') + "_schema_history";
         String location = "filesystem:" + migrations.toAbsolutePath();
         boolean hostV51 =

@@ -1,9 +1,26 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, chmodSync, chownSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+
+let unprivilegedNodeDirectory;
+function nodeDirectoryForFixture() {
+  if (!unprivilegedNodeDirectory) {
+    // A root-only local runtime cannot be reached after dropping to nobody.
+    // Copy the current executable once into a traversable, disposable fixture.
+    unprivilegedNodeDirectory = mkdtempSync(join(tmpdir(), 'lumira-cloud-test-node-'));
+    chmodSync(unprivilegedNodeDirectory, 0o755);
+    const executable = join(unprivilegedNodeDirectory, 'node');
+    copyFileSync(process.execPath, executable);
+    chmodSync(executable, 0o755);
+  }
+  return unprivilegedNodeDirectory;
+}
+after(() => {
+  if (unprivilegedNodeDirectory) rmSync(unprivilegedNodeDirectory, {recursive: true, force: true});
+});
 
 function fixture(t, os = 'Linux') {
   const root = mkdtempSync(join(tmpdir(), 'lumira-cloud-guard-'));
@@ -16,14 +33,19 @@ function fixture(t, os = 'Linux') {
   }
   t.after(() => rmSync(root, {recursive: true, force: true}));
   for (const dir of ['scripts', '.runtime', 'bin', 'jdk/bin']) mkdirSync(join(root, dir), {recursive: true});
-  for (const name of ['cloud-env.sh', 'cloud-database.sh', 'cloud-database-user.sh', 'cloud-install.sh'])
-    copyFileSync(resolve('scripts', name), join(root, 'scripts', name));
+  for (const name of ['cloud-env.sh', 'cloud-database.sh', 'cloud-database-user.sh', 'cloud-install.sh']) {
+    const target = join(root, 'scripts', name);
+    copyFileSync(resolve('scripts', name), target);
+    // Source files on a Windows mount may be owner-only; the nobody fixture must read them.
+    if (runUnprivileged) chmodSync(target, 0o644);
+  }
   const executable = (name, body) => writeFileSync(join(root, name), `#!/bin/sh\n${body}\n`, {mode: runUnprivileged ? 0o755 : 0o700});
   executable('bin/uname', `printf '%s\\n' '${os}'`);
   executable('jdk/bin/javac', "printf 'javac 25.0.1\\n'");
   for (const command of ['sudo', 'pg_ctlcluster', 'pg_createcluster', 'apt-get'])
     executable(`bin/${command}`, `printf '%s\\n' '${command}' >> '${root}/mutations'; exit 99`);
-  const env = {...process.env, PATH: `${root}/bin:${process.env.PATH}`};
+  const nodePath = runUnprivileged ? `${nodeDirectoryForFixture()}:` : '';
+  const env = {...process.env, PATH: `${root}/bin:${nodePath}${process.env.PATH}`};
   // Test fixtures must not inherit the real VM's active database mode/client.
   for (const key of Object.keys(env)) {
     if (key.startsWith('LUMIRA_') || /^(DATABASE_URL|DB_|PGHOST$|PGPORT$|PGUSER$|PGPASSWORD$|PGDATABASE$|PSQL_BIN$)/.test(key)) delete env[key];

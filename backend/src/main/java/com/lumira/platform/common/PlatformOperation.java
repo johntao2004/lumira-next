@@ -9,6 +9,8 @@ public enum PlatformOperation {
     USER_ASSIGN_ROLES(PlatformPageId.USERS, "assign-roles", Scope.SCOPED),
     USER_ASSIGN_ORGANIZATIONS(PlatformPageId.USERS, "assign-organizations", Scope.SCOPED),
     USER_EXPORT(PlatformPageId.USERS, "export", Scope.SCOPED),
+    USER_IMPORT(PlatformPageId.USERS, "import", Scope.SCOPED),
+    USER_PRINT(PlatformPageId.USERS, "print", Scope.SCOPED),
     USER_READ_ROLES(PlatformPageId.USERS, "read-roles"),
     ONLINE_USER_TERMINATE_SESSION(PlatformPageId.ONLINE_USERS, "terminate-session"),
     ROLE_CREATE(PlatformPageId.ROLES, "create"),
@@ -65,7 +67,11 @@ public enum PlatformOperation {
     FILE_PREVIEW(PlatformPageId.FILES_ALL, "preview"),
     FILE_DOWNLOAD(PlatformPageId.FILES_ALL, "download"),
     FILE_RESTORE(PlatformPageId.FILES_ALL, "restore"),
-    NOTIFICATION_CREATE(PlatformPageId.NOTIFICATIONS, "create");
+    NOTIFICATION_CREATE(PlatformPageId.NOTIFICATIONS, "create"),
+    TEMPLATE_CREATE(PlatformPageId.PRINT_TEMPLATES, "create"),
+    TEMPLATE_UPDATE(PlatformPageId.PRINT_TEMPLATES, "update"),
+    TEMPLATE_PUBLISH(PlatformPageId.PRINT_TEMPLATES, "publish"),
+    TEMPLATE_USE(PlatformPageId.PRINT_TEMPLATES, "use");
 
     private final PlatformPageId page;
     private final String action;

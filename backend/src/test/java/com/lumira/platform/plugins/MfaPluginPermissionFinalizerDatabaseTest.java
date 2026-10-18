@@ -44,8 +44,8 @@ class MfaPluginPermissionFinalizerDatabaseTest {
     private static final UUID MFA_BOOTSTRAP_ADMIN = id("20000000-0000-0000-0000-000000000008");
 
     private static JdbcTemplate jdbc;
-    private static Integer feedbackV2Checksum;
-    private static Integer mfaV6Checksum;
+    private static Integer feedbackInitializationChecksum;
+    private static Integer mfaInitializationChecksum;
 
     @BeforeAll
     static void migrateFreshHostAndPluginDatabase() {
@@ -77,7 +77,7 @@ class MfaPluginPermissionFinalizerDatabaseTest {
 
         insertUser(FEEDBACK_ACTION_ACTOR, "plugin-feedback-update-only");
         grantDirect(FEEDBACK_ACTION_ACTOR, FEEDBACK_UPDATE);
-        feedbackV2Checksum = resolvedChecksum(dataSource, "feedback", "2");
+        feedbackInitializationChecksum = resolvedChecksum(dataSource, "feedback", "4");
         PluginPermissionMigrationRunner.migrate(
                 dataSource,
                 "feedback",
@@ -121,7 +121,7 @@ class MfaPluginPermissionFinalizerDatabaseTest {
         grantDirect(READ_MANAGE_ACTOR, USERS_UPDATE);
 
         Path migrations = findRepositoryRoot().resolve("plugins/mfa/migrations");
-        mfaV6Checksum = resolvedChecksum(dataSource, "mfa", "6");
+        mfaInitializationChecksum = resolvedChecksum(dataSource, "mfa", "7");
         PluginPermissionMigrationRunner.migrate(dataSource, "mfa", migrations);
     }
 
@@ -162,13 +162,13 @@ class MfaPluginPermissionFinalizerDatabaseTest {
         assertFalse(hasEffective(MFA_BOOTSTRAP_ADMIN, MFA_RESET));
 
         assertEquals(
-                feedbackV2Checksum,
-                migrationChecksum("plugin_feedback_schema_history", "2"),
-                "Skipped feedback V2 must retain the immutable source checksum in history.");
+                feedbackInitializationChecksum,
+                migrationChecksum("plugin_feedback_schema_history", "4"),
+                "Feedback initialization must retain its source checksum in history.");
         assertEquals(
-                mfaV6Checksum,
-                migrationChecksum("plugin_mfa_schema_history", "6"),
-                "Skipped MFA V6 must retain the immutable source checksum in history.");
+                mfaInitializationChecksum,
+                migrationChecksum("plugin_mfa_schema_history", "7"),
+                "MFA initialization must retain its source checksum in history.");
 
         Flyway.configure()
                 .dataSource(jdbc.getDataSource())

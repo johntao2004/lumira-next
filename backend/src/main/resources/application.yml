@@ -13,6 +13,11 @@ spring:
     timeout: 30m
     jdbc:
       initialize-schema: never
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+      file-size-threshold: 1MB
   flyway:
     locations: classpath:db/migration
     baseline-on-migrate: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:false}

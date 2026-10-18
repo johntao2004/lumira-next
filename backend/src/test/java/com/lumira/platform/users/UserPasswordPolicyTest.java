@@ -2,6 +2,7 @@ package com.lumira.platform.users;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -37,5 +38,19 @@ class UserPasswordPolicyTest {
                                         "admin"));
         assertEquals(400, error.getStatusCode().value());
         verifyNoInteractions(repository, encoder, guard, audit);
+    }
+
+    @Test
+    void importedCredentialHonorsLongCurrentPasswordPolicyWithoutDisclosure() {
+        var policy =
+                new SecurityPolicyPort.Policy(
+                        64, true, true, true, false, 30, 120, 10, 60, 600, 60, 10, 10, 5);
+
+        String credential =
+                UserService.generateImportedCredential(policy, new java.security.SecureRandom());
+
+        assertEquals(64, credential.codePointCount(0, credential.length()));
+        assertTrue(com.lumira.platform.identity.api.PasswordContract.withinMaximum(credential));
+        assertTrue(policy.passwordValid(credential));
     }
 }

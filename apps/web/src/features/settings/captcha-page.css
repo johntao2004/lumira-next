@@ -6,8 +6,13 @@
   margin-block-end: 16px;
 }
 
-:root .authentication-security-workspace .captcha-settings-form .captcha-policies-panel > h5.ant-typography {
-  margin-block-end: 12px;
+.captcha-settings-form .captcha-service-section,
+.captcha-settings-form .captcha-policies-section {
+  min-width: 0;
+}
+
+.captcha-settings-form .captcha-policies-section > h5.ant-typography {
+  margin: 0 0 8px;
 }
 
 .captcha-settings-form .captcha-service-fields {
@@ -33,22 +38,17 @@
   display: grid;
   min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 20px 24px;
 }
 
-.captcha-settings-form .captcha-policy-card {
-  box-sizing: border-box;
+.captcha-settings-form .captcha-policy-group {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--ant-color-border-secondary);
-  border-radius: var(--ant-border-radius);
-  background: var(--ant-color-bg-container);
+  gap: 8px;
 }
 
-.captcha-settings-form .captcha-policy-card-title {
+.captcha-settings-form .captcha-policy-group-title {
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -56,7 +56,7 @@
 .captcha-settings-form .captcha-policy-actions {
   display: grid;
   min-width: 0;
-  gap: 8px;
+  gap: 6px;
 }
 
 .captcha-settings-form .captcha-action-policy-row {
@@ -64,8 +64,7 @@
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) 150px;
   align-items: center;
-  gap: 8px 12px;
-  padding-block: 3px;
+  gap: 6px 12px;
 }
 
 .captcha-settings-form .captcha-action-policy-row > :first-child {
@@ -85,10 +84,6 @@
   .captcha-settings-form .captcha-policy-groups {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .captcha-settings-form .captcha-action-policy-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 767px) {
@@ -96,8 +91,24 @@
   .captcha-settings-form .captcha-policy-groups {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 
+@container auth-settings (max-width: 360px) {
   .captcha-settings-form .captcha-action-policy-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .captcha-settings-form .captcha-action-policy-row .ant-select {
+    width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .captcha-settings-form .captcha-action-policy-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .captcha-settings-form .captcha-action-policy-row .ant-select {
+    width: 100%;
   }
 }

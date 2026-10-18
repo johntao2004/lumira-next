@@ -6,8 +6,10 @@ PostgreSQL 18. The global database uses only
 `backend/src/main/resources/db/migration/B52__platform_initialization.sql`.
 Do not restore historical global migrations, upgrade directories, or SQL test
 archives. Derive current-schema test fixtures from the initialization SQL.
-Plugin migrations remain independently managed; never rewrite published plugin
-migrations.
+Plugin initialization remains independently managed. Each bundled plugin with
+database setup keeps one final initialization SQL. Preserve published migration
+identities/checksums in initialization.json and existing database history; never
+rewrite applied history or use repair to conceal incompatibility.
 
 ## Cloud development
 

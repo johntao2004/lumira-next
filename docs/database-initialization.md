@@ -87,7 +87,7 @@ pin、canonical 中的本机路径和 `.runtime/local-plugin-inventory.json` 仅
 
 首次接管后及有意安装、升级或启停插件后，先核对数据库与包目录，再运行 `node scripts/local-runtime.mjs capture`。已有清单发生插件变化时，更新必须带非空原因，例如 `node scripts/local-runtime.mjs capture --accept-changes "批准升级头像插件"`；旧清单会先备份。数据库 endpoint、名称、OID 或角色变化不能用 capture 重新认领，必须走换库流程。若只更新后端 JAR，使用 `node scripts/local-runtime.mjs refresh-artifact --jar <JAR路径> --sha256 <SHA256>` 显式刷新 artifact pin。
 
-换库前停止当前服务并确保源、目标数据库没有其他客户端连接。先恢复目标库，再用一个 JSON 配置文件描述目标连接与当前工作区的 files/plugins 路径；该文件仅作为命令输入，不会替代 canonical。运行 `node scripts/local-runtime.mjs switch --target-config <目标配置>`。流程会确认源插件快照仍与 pin 精确匹配、目标数据库身份不同、目标插件 ID/版本/摘要/installed/explicitInstall/enabled 与源完全一致且双方制品完整；随后先备份，再逐个原子写入 canonical 配置、运行时 pin 和插件快照，最后重新验证。异常时会逐个尝试恢复所有原文件，并报告无法恢复的文件。该锁会串行化 `adopt`、`capture`、`switch`、`refresh-artifact`、启动及 `db:prepare`，阻止这些命令在更新期间交错；它不能让多个文件的更新具备断电原子性。进程在更新中断后，保留的 `.runtime/local-runtime.lock` 会让受锁命令失败关闭；先确认没有操作仍在运行并检查配置、pin、清单和备份，再移除该锁。启动和清单校验遇到不一致时会拒绝信任当前运行时。连接检查要求用于本地清单查询的数据库角色拥有 `pg_read_all_stats` 可见性，以便确认没有其他角色的连接；缺少权限时流程会拒绝切换。护栏只读检查数据库，不会写插件状态或自动安装插件。若无法使用原生 `psql`，可在 canonical 本机配置中设置 `PSQL_BIN` 或 `LUMIRA_PSQL_DOCKER_CONTAINER`；这些工具选择不会固定在源码中。
+换库前停止当前服务并确保源、目标数据库没有其他客户端连接。先恢复目标库，再用一个 JSON 配置文件描述目标连接与当前工作区的 files/plugins 路径；该文件仅作为命令输入，不会替代 canonical。运行 `node scripts/local-runtime.mjs switch --target-config <目标配置>`。流程会确认源插件快照仍与 pin 精确匹配、目标数据库身份不同、目标插件 ID/版本/摘要/installed/explicitInstall/enabled 与源完全一致且双方制品完整；随后先备份，再逐个原子写入 canonical 配置、运行时 pin 和插件快照，最后重新验证。异常时会逐个尝试恢复所有原文件，并报告无法恢复的文件。该锁会串行化 `adopt`、`capture`、`switch`、`refresh-artifact`、启动及 `db:prepare`，阻止这些命令在更新期间交错；它不能让多个文件的更新具备断电原子性。进程在更新中断后，保留的 `.runtime/local-runtime.lock` 会让受锁命令失败关闭；先确认没有操作仍在运行并检查配置、pin、清单和备份，再移除该锁。启动和清单校验遇到不一致时会拒绝信任当前运行时。默认连接检查要求本地清单查询角色拥有 `pg_read_all_stats` 可见性；缺少权限时会拒绝切换。若 source 与 target 使用同一个本地 PostgreSQL Docker 容器，可显式增加 `--activity-audit-docker-admin true`，让容器的 `POSTGRES_USER` 仅以 `BEGIN READ ONLY`/`ROLLBACK` 查询连接活动；插件清单和数据库身份读取仍使用 canonical app role，app role 权限及 inventory identity 不变。该参数只接受小写 `true`，且只用于 source/target 的连接审计。护栏只读检查数据库，不会写插件状态或自动安装插件。若无法使用原生 `psql`，可在 canonical 本机配置中设置 `PSQL_BIN` 或 `LUMIRA_PSQL_DOCKER_CONTAINER`；这些工具选择不会固定在源码中。
 
 ## 后期维护规则
 
@@ -101,3 +101,5 @@ pin、canonical 中的本机路径和 `.runtime/local-plugin-inventory.json` 仅
 当前发布只保留 B52 这一份初始化 SQL。数据库结构、模块归属、当前结构测试和初始化文档应保持一致。本次清理不重置本地业务数据库、不复制当前业务数据；重建必须使用上述备份和显式重置命令。
 
 `pnpm db:schema-smoke` 会按脚本当前定义检查 SQL 文件、平台表、内置导航、稳定种子、关键唯一索引、密码摘要字段和数据不变量；具体覆盖范围以脚本实现为准。它不替代生产备份恢复演练、容量压测或故障切换验收。
+
+插件数据库采用[单文件初始化契约](plugin-initialization.md)：每个内置插件只保留一份最终 SQL，旧记录按原身份和校验和验证，现有数据及历史不重放、不改写。

@@ -72,7 +72,9 @@ class AiConnectionSnapshotTest {
                         secrets,
                         mock(AdministrationPort.class),
                         mock(AuditPort.class),
-                        new ObjectMapper());
+                        new ObjectMapper(),
+                        org.mockito.Mockito.mock(
+                                com.lumira.platform.common.AiModelInputSettingsPort.class));
         var input =
                 new AiProviderService.ProviderWrite(
                         "Local fixture",

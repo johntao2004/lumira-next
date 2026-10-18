@@ -1,0 +1,50 @@
+{
+  "formatVersion": 1,
+  "pluginId": "mfa",
+  "version": "7",
+  "script": "V7__plugin_initialization.sql",
+  "publishedMigrations": [
+    {
+      "version": "1",
+      "description": "authenticator",
+      "script": "V1__authenticator.sql",
+      "checksum": 44265396
+    },
+    {
+      "version": "2",
+      "description": "bind setup to session challenge",
+      "script": "V2__bind_setup_to_session_challenge.sql",
+      "checksum": -866574070
+    },
+    {
+      "version": "3",
+      "description": "atomic authenticator replacement",
+      "script": "V3__atomic_authenticator_replacement.sql",
+      "checksum": -525632895
+    },
+    {
+      "version": "4",
+      "description": "bind replacement to policy revision",
+      "script": "V4__bind_replacement_to_policy_revision.sql",
+      "checksum": 2014017082
+    },
+    {
+      "version": "5",
+      "description": "replacement totp step",
+      "script": "V5__replacement_totp_step.sql",
+      "checksum": -517162168
+    },
+    {
+      "version": "6",
+      "description": "fine grained admin permissions",
+      "script": "V6__fine_grained_admin_permissions.sql",
+      "checksum": -2063047677
+    },
+    {
+      "version": "7",
+      "description": "finalize legacy mfa permissions",
+      "script": "V7__finalize_legacy_mfa_permissions.sql",
+      "checksum": -1819772122
+    }
+  ]
+}

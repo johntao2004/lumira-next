@@ -20,6 +20,68 @@ done
 case $(uname -m) in x86_64) arch=x64 ;; aarch64|arm64) arch=aarch64 ;; *) exit 1 ;; esac
 work=$(mktemp -d "$tools/install.XXXXXX")
 trap 'rm -rf "$work"' EXIT
+# PDFBox does not scan XDG's user font directory. Fetch the font from the
+# distribution's signed repository and place a uniquely named copy in ~/.fonts.
+apt_dir="$tools/apt"
+mkdir -p "$apt_dir/lists/partial" "$apt_dir/cache/archives/partial" "$apt_dir/state" "$work/font-deb"
+touch "$apt_dir/state/status"
+if [[ $ID == debian ]]; then
+  key=/usr/share/keyrings/debian-archive-keyring.gpg
+  mirror=https://deb.debian.org/debian
+  components=main
+else
+  key=/usr/share/keyrings/ubuntu-archive-keyring.gpg
+  mirror=https://archive.ubuntu.com/ubuntu
+  [[ $arch != aarch64 ]] || mirror=https://ports.ubuntu.com/ubuntu-ports
+  components='main universe'
+fi
+[[ -r $key ]] || { echo 'Official distribution archive signing key is unavailable.' >&2; exit 1; }
+apt_arch=$(dpkg --print-architecture)
+printf 'deb [arch=%s signed-by=%s] %s %s %s\n' "$apt_arch" "$key" "$mirror" "$VERSION_CODENAME" "$components" > "$apt_dir/sources.list"
+cat > "$apt_dir/apt.conf" <<APT
+Dir::Etc::main "-";
+Dir::Etc::parts "-";
+Dir::Etc::sourcelist "$apt_dir/sources.list";
+Dir::Etc::sourceparts "-";
+Dir::State "$apt_dir/state";
+Dir::State::lists "$apt_dir/lists";
+Dir::State::status "$apt_dir/state/status";
+Dir::Cache "$apt_dir/cache";
+Dir::Cache::archives "$apt_dir/cache/archives";
+APT::Sandbox::User "$(id -un)";
+APT::Get::AllowUnauthenticated "false";
+Acquire::AllowInsecureRepositories "false";
+APT
+APT_CONFIG="$apt_dir/apt.conf" apt-get update
+(cd "$work/font-deb" && APT_CONFIG="$apt_dir/apt.conf" apt-get download fonts-wqy-zenhei)
+font_package=$(find "$work/font-deb" -maxdepth 1 -type f -name 'fonts-wqy-zenhei_*.deb' -print -quit)
+[[ -n $font_package ]] || { echo 'Signed fonts-wqy-zenhei package was not downloaded.' >&2; exit 1; }
+font_package_root="$tools/font-packages/fonts-wqy-zenhei"
+mkdir -p "$font_package_root"
+dpkg-deb -x "$font_package" "$font_package_root"
+source_font="$font_package_root/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
+[[ -s $source_font && -s "$font_package_root/usr/share/doc/fonts-wqy-zenhei/copyright" ]] || {
+  echo 'The downloaded WQY font package is missing its font or license.' >&2; exit 1;
+}
+font_target="$HOME/.fonts/lumira-wqy-zenhei.ttc"
+font_marker="$tools/font-packages/fonts-wqy-zenhei/user-font.sha256"
+mkdir -p "$HOME/.fonts"
+new_font_sha=$(sha256sum "$source_font" | awk '{print $1}')
+if [[ -L $font_target ]]; then
+  echo "Refusing to replace a symbolic link at $font_target." >&2; exit 1
+fi
+if [[ -e $font_target ]]; then
+  if ! cmp -s "$source_font" "$font_target"; then
+    existing_font_sha=$(sha256sum "$font_target" | awk '{print $1}')
+    [[ -r $font_marker && $(cat "$font_marker") == "$existing_font_sha" ]] || {
+      echo "Refusing to replace an unrelated font at $font_target." >&2; exit 1;
+    }
+    install -m 644 "$source_font" "$font_target"
+  fi
+else
+  install -m 644 "$source_font" "$font_target"
+fi
+printf '%s\n' "$new_font_sha" > "$font_marker"
 export PATH="$tools/node/bin:$tools/pnpm/bin:$tools/build-tools/usr/bin:$PATH"
 # Persist relocated Bison data lookup when retrying with cached build tools.
 if [[ -x $tools/build-tools/usr/bin/bison ]]; then
@@ -64,36 +126,6 @@ if [[ ! -x $tools/postgresql/bin/postgres ]] || [[ $("$tools/postgresql/bin/post
   # installing packages or altering the system. Bison needs its relocated data.
   if ! command -v bison >/dev/null || ! command -v flex >/dev/null || ! command -v m4 >/dev/null; then
     mkdir -p "$work/deb" "$tools/build-tools"
-    # VM images may have empty apt lists and unreadable system apt fragments.
-    # Keep indexes/config/cache in user space and require official signatures.
-    apt_dir="$tools/apt"
-    mkdir -p "$apt_dir/lists/partial" "$apt_dir/cache/archives/partial" "$apt_dir/state"
-    touch "$apt_dir/state/status"
-    if [[ $ID == debian ]]; then
-      key=/usr/share/keyrings/debian-archive-keyring.gpg
-      mirror=https://deb.debian.org/debian
-    else
-      key=/usr/share/keyrings/ubuntu-archive-keyring.gpg
-      mirror=https://archive.ubuntu.com/ubuntu
-      [[ $arch != aarch64 ]] || mirror=https://ports.ubuntu.com/ubuntu-ports
-    fi
-    [[ -r $key ]] || { echo 'Official distribution archive signing key is unavailable.' >&2; exit 1; }
-    printf 'deb [signed-by=%s] %s %s main\n' "$key" "$mirror" "$VERSION_CODENAME" > "$apt_dir/sources.list"
-    cat > "$apt_dir/apt.conf" <<APT
-Dir::Etc::main "-";
-Dir::Etc::parts "-";
-Dir::Etc::sourcelist "$apt_dir/sources.list";
-Dir::Etc::sourceparts "-";
-Dir::State "$apt_dir/state";
-Dir::State::lists "$apt_dir/lists";
-Dir::State::status "$apt_dir/state/status";
-Dir::Cache "$apt_dir/cache";
-Dir::Cache::archives "$apt_dir/cache/archives";
-APT::Sandbox::User "$(id -un)";
-APT::Get::AllowUnauthenticated "false";
-Acquire::AllowInsecureRepositories "false";
-APT
-    APT_CONFIG="$apt_dir/apt.conf" apt-get update
     (cd "$work/deb" && APT_CONFIG="$apt_dir/apt.conf" apt-get download bison flex m4)
     for deb in "$work/deb/"*.deb; do dpkg-deb -x "$deb" "$tools/build-tools"; done
     export BISON_PKGDATADIR="$tools/build-tools/usr/share/bison"

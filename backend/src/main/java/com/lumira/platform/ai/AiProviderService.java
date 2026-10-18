@@ -4,6 +4,7 @@ import static com.lumira.platform.ai.AiProviderProfile.ProviderKind;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lumira.platform.common.AdministrationPort;
+import com.lumira.platform.common.AiModelInputSettingsPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
@@ -12,8 +13,10 @@ import com.lumira.platform.common.SecretStorePort;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -40,7 +43,31 @@ public class AiProviderService {
             List<String> capabilityCodes,
             boolean enabled,
             Long version,
-            CredentialChange credential) {
+            CredentialChange credential,
+            Map<String, List<String>> modelFileFormats) {
+        public ProviderWrite(
+                String name,
+                ProviderKind providerKind,
+                String baseUrl,
+                String modelName,
+                List<String> modelNames,
+                List<String> capabilityCodes,
+                boolean enabled,
+                Long version,
+                CredentialChange credential) {
+            this(
+                    name,
+                    providerKind,
+                    baseUrl,
+                    modelName,
+                    modelNames,
+                    capabilityCodes,
+                    enabled,
+                    version,
+                    credential,
+                    null);
+        }
+
         public ProviderWrite(
                 String name,
                 ProviderKind providerKind,
@@ -86,7 +113,8 @@ public class AiProviderService {
             List<String> capabilityCodes,
             boolean enabled,
             long version,
-            boolean credentialConfigured) {
+            boolean credentialConfigured,
+            Map<String, List<String>> modelFileFormats) {
         public ProviderView(
                 UUID id,
                 String name,
@@ -107,7 +135,8 @@ public class AiProviderService {
                     capabilityCodes,
                     enabled,
                     version,
-                    credentialConfigured);
+                    credentialConfigured,
+                    Map.of());
         }
     }
 
@@ -149,6 +178,7 @@ public class AiProviderService {
     private final AdministrationPort guard;
     private final AuditPort audit;
     private final ObjectMapper mapper;
+    private final AiModelInputSettingsPort inputSettings;
 
     public AiProviderService(
             AiProviderRepository repository,
@@ -156,7 +186,9 @@ public class AiProviderService {
             SecretStorePort secrets,
             AdministrationPort guard,
             AuditPort audit,
-            ObjectMapper mapper) {
+            ObjectMapper mapper,
+            AiModelInputSettingsPort inputSettings) {
+        this.inputSettings = inputSettings;
         this.repository = repository;
         this.connections = connections;
         this.secrets = secrets;
@@ -204,6 +236,7 @@ public class AiProviderService {
         }
         List<String> models = profile.modelNames();
         if (models.isEmpty()) return new ModelConnectionService.ConnectionResult(List.of(), false);
+        var formats = modelFileFormats(profile.id(), profile.providerKind(), models);
         return new ModelConnectionService.ConnectionResult(
                 models.stream()
                         .map(
@@ -211,9 +244,12 @@ public class AiProviderService {
                                         new ModelConnectionService.ModelOption(
                                                 model,
                                                 model,
-                                                List.of(),
-                                                List.of(),
-                                                consoleCapabilities(profile, model)))
+                                                AiModelInputPolicy.vision(formats.get(model))
+                                                        ? List.of("text", "image")
+                                                        : List.of("text"),
+                                                List.of("text"),
+                                                consoleCapabilities(profile, model),
+                                                formats.get(model)))
                         .toList(),
                 true);
     }
@@ -247,6 +283,7 @@ public class AiProviderService {
                         normalized.enabled(),
                         1);
         repository.insert(profile, json(normalized.capabilities()), actor);
+        saveInputSettings(id, input, normalized, actor);
         saveCredential(id, input.credential());
         requireConfiguredCredential(normalized.kind(), id);
         audit.append(actor, "ai.provider.created", id);
@@ -289,6 +326,7 @@ public class AiProviderService {
                         normalized.enabled(),
                         input.version());
         if (repository.update(profile, json(normalized.capabilities()), actor) != 1) stale();
+        saveInputSettings(id, input, normalized, actor);
         saveCredential(id, input.credential());
         requireConfiguredCredential(normalized.kind(), id);
         audit.append(actor, "ai.provider.updated", id);
@@ -299,6 +337,7 @@ public class AiProviderService {
     public void delete(UUID id, long version, String actor) {
         requireWrite(actor, PlatformOperation.AI_MODELS_DELETE);
         if (version < 1 || repository.delete(id, version) != 1) stale();
+        inputSettings.delete(id);
         var state = secrets.state(ModelConnectionService.secretContext(id));
         if (state.configured())
             secrets.save(ModelConnectionService.secretContext(id), state.version(), null);
@@ -549,7 +588,40 @@ public class AiProviderService {
                 profile.providerCapabilityCodes(),
                 profile.enabled(),
                 profile.version(),
-                configured);
+                configured,
+                modelFileFormats(profile.id(), profile.providerKind(), profile.modelNames()));
+    }
+
+    private void saveInputSettings(
+            UUID id, ProviderWrite input, Normalized normalized, String actor) {
+        var requested =
+                input.modelFileFormats() == null
+                        ? inputSettings.read(id)
+                        : input.modelFileFormats();
+        var retained = new LinkedHashMap<String, List<String>>();
+        requested.forEach(
+                (model, formats) -> {
+                    if (normalized.modelNames().contains(model)) retained.put(model, formats);
+                });
+        if (input.modelFileFormats() != null)
+            AiModelInputPolicy.normalize(input.modelFileFormats(), normalized.modelNames());
+        inputSettings.save(
+                id, AiModelInputPolicy.normalize(retained, normalized.modelNames()), actor);
+    }
+
+    private Map<String, List<String>> modelFileFormats(
+            UUID id, ProviderKind kind, List<String> models) {
+        var saved = inputSettings.read(id);
+        var result = new LinkedHashMap<String, List<String>>();
+        for (String model : models)
+            result.put(
+                    model,
+                    saved.getOrDefault(model, AiModelInputPolicy.defaults(kind, model, false)));
+        return Map.copyOf(result);
+    }
+
+    public List<String> supportedFileFormats(AiProviderProfile provider, String model) {
+        return modelFileFormats(provider.id(), provider.providerKind(), List.of(model)).get(model);
     }
 
     private void requireWrite(String actor, PlatformOperation operation) {

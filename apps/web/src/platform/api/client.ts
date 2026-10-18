@@ -6,6 +6,7 @@ import { acceptSessionIdentity, currentSessionRevision, invalidateSession, sessi
 let authorizationContext: AuthorizationContext | null = null;
 let authorizationContextLoaded = false;
 let authorizationBootstrap: { revision: number; promise: Promise<void> } | null = null;
+const authorizationContextListeners = new Set<() => void>();
 const authorizationRevisionHeader = "X-Lumira-Authorization-Context-Revision";
 let lastBlockedRefreshContextKey: string | null = null;
 let lastStaleRefreshRevision: string | null = null;
@@ -131,27 +132,36 @@ export function getAuthorizationContext() {
   return authorizationContext;
 }
 
+export function subscribeAuthorizationContext(listener: () => void) {
+  authorizationContextListeners.add(listener);
+  return () => { authorizationContextListeners.delete(listener); };
+}
+
 /** True while the server-backed session is operating in any role-preview context. */
 export function isRolePreviewReadOnly() {
   return authorizationContext?.preview !== null && authorizationContext?.preview !== undefined;
 }
 
 export function setAuthorizationContext(context: AuthorizationContext | null) {
-  if (hasAuthorizationContextChanged(authorizationContext, context)) {
+  const changed = hasAuthorizationContextChanged(authorizationContext, context);
+  if (changed) {
     lastBlockedRefreshContextKey = null;
     lastStaleRefreshRevision = null;
   }
   authorizationContext = context;
   authorizationContextLoaded = true;
+  if (changed) for (const listener of authorizationContextListeners) listener();
 }
 
 export function clearAuthorizationContext() {
-  if (hasAuthorizationContextChanged(authorizationContext, null)) {
+  const changed = hasAuthorizationContextChanged(authorizationContext, null);
+  if (changed) {
     lastBlockedRefreshContextKey = null;
     lastStaleRefreshRevision = null;
   }
   authorizationContext = null;
   authorizationContextLoaded = false;
+  if (changed) for (const listener of authorizationContextListeners) listener();
 }
 
 export function shouldRefreshAuthorizationContextRevision(
@@ -179,11 +189,23 @@ export class ApiError extends Error {
   }
 }
 type SuccessResponseDecoder<T> = (response: Response) => Promise<T> | T;
+const DEFAULT_API_TIMEOUT_MS = 15_000;
+const MAX_API_TIMEOUT_MS = 600_000;
+
+function requestTimeout(timeoutMs: number) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_API_TIMEOUT_MS) {
+    throw new RangeError(`timeoutMs must be an integer between 1 and ${MAX_API_TIMEOUT_MS}`);
+  }
+  return timeoutMs;
+}
+
 export async function api<T>(
   path: string,
   init: RequestInit = {},
   decodeSuccess?: SuccessResponseDecoder<T>,
+  timeoutMs = DEFAULT_API_TIMEOUT_MS,
 ): Promise<T> {
+  const boundedTimeoutMs = requestTimeout(timeoutMs);
   const route = path.split("?", 1)[0];
   const anonymousPublicRead = isAnonymousPublicRead(route, init.method);
   const policyMethod = init.method?.toUpperCase() ?? "GET";
@@ -198,7 +220,7 @@ export async function api<T>(
     // controller that accepting that identity must retire.
     ...(sessionBound && !identityBootstrap ? [sessionSignal()] : []),
     ...(init.signal ? [init.signal] : []),
-    AbortSignal.timeout(15_000),
+    AbortSignal.timeout(boundedTimeoutMs),
   ];
   const requestSignal = AbortSignal.any(signals);
   assertActiveSessionEpoch(startingSessionRevision, sessionBound, requestSignal);
@@ -315,8 +337,8 @@ export async function api<T>(
   return result;
 }
 /** Binary reads share authorization headers, cancellation, credentials and API errors with JSON requests. */
-export function apiBlob(path: string, init: RequestInit = {}) {
-  return api<Blob>(path, init, response => response.blob());
+export function apiBlob(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_API_TIMEOUT_MS) {
+  return api<Blob>(path, init, response => response.blob(), timeoutMs);
 }
 export async function csrf(signal?: AbortSignal) {
   return api<{ headerName: string; token: string }>("/auth/csrf", { signal });

@@ -1,6 +1,8 @@
 package com.lumira.platform.common;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -24,6 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
 /** Host-side, bounded client for the cgroup-limited Office parser service. */
 public final class OfficeWorkerClient {
     private static final int MAX_INPUT_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_METADATA_BYTES = 4 * 1024 * 1024;
     private static final int MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final Semaphore IN_FLIGHT = new Semaphore(1);
@@ -65,15 +68,87 @@ public final class OfficeWorkerClient {
         return dictionary;
     }
 
+    static OfficeWorkerProtocol.Inspection inspectDocument(String filename, byte[] bytes) {
+        var response = invoke(OfficeWorkerProtocol.DOCUMENT_INSPECT, filename, null, bytes, null);
+        var inspection = response.inspection();
+        if (!OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(response.kind())
+                || inspection == null
+                || inspection.slots() == null
+                || inspection.placeholders() == null
+                || inspection.slots().size() > DocumentTemplateProcessor.MAX_SLOTS
+                || inspection.placeholders().size() > DocumentTemplateProcessor.MAX_PLACEHOLDERS)
+            throw unavailable();
+        return inspection;
+    }
+
+    static byte[] documentPdf(
+            String filename,
+            byte[] bytes,
+            java.util.Map<String, String> bindings,
+            java.util.Map<String, String> values) {
+        var response =
+                invoke(
+                        OfficeWorkerProtocol.DOCUMENT_PDF,
+                        filename,
+                        null,
+                        bytes,
+                        new OfficeWorkerProtocol.DocumentMetadata(bindings, values));
+        byte[] pdf = response.documentPdf();
+        if (!OfficeWorkerProtocol.DOCUMENT_PDF.equals(response.kind())
+                || pdf == null
+                || pdf.length < 8
+                || pdf.length > DocumentTemplateProcessor.MAX_RESPONSE_PDF_BYTES
+                || !new String(pdf, 0, 5, StandardCharsets.US_ASCII).startsWith("%PDF-"))
+            throw unavailable();
+        return pdf;
+    }
+
+    static OfficeWorkerProtocol.WorkbookData readWorkbook(byte[] bytes) {
+        var response =
+                invoke(OfficeWorkerProtocol.WORKBOOK_READ, "workbook.xlsx", null, bytes, null);
+        var workbook = response.workbook();
+        if (!OfficeWorkerProtocol.WORKBOOK_READ.equals(response.kind())
+                || workbook == null
+                || workbook.rows() == null
+                || workbook.rows().size() > DocumentTemplateProcessor.MAX_WORKBOOK_ROWS)
+            throw unavailable();
+        return workbook;
+    }
+
+    static byte[] writeWorkbook(java.util.List<java.util.List<String>> rows) {
+        var response =
+                invoke(
+                        OfficeWorkerProtocol.WORKBOOK_WRITE,
+                        "workbook.xlsx",
+                        null,
+                        null,
+                        new OfficeWorkerProtocol.WorkbookWriteMetadata(rows));
+        byte[] bytes = response.workbookFile();
+        if (!OfficeWorkerProtocol.WORKBOOK_WRITE.equals(response.kind())
+                || bytes == null
+                || bytes.length < 4
+                || bytes.length > MAX_INPUT_BYTES
+                || bytes[0] != 'P'
+                || bytes[1] != 'K') throw unavailable();
+        return bytes;
+    }
+
+    static ResponseStatusException workerUnavailable() {
+        return unavailable();
+    }
+
     private static OfficeWorkerProtocol.Response invoke(
             String operation, String filename, String structure, byte[] bytes) {
-        if (bytes == null || bytes.length == 0)
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    OfficeWorkerProtocol.PREVIEW.equals(operation)
-                            ? "filePreviewInvalid"
-                            : "invalidDictionaryDataset");
-        if (bytes.length > MAX_INPUT_BYTES) throw tooLarge(operation);
+        return invoke(operation, filename, structure, bytes, null);
+    }
+
+    private static OfficeWorkerProtocol.Response invoke(
+            String operation, String filename, String structure, byte[] bytes, Object metadata) {
+        boolean noFilePayload = OfficeWorkerProtocol.WORKBOOK_WRITE.equals(operation);
+        if ((!noFilePayload && (bytes == null || bytes.length == 0))
+                || (noFilePayload && bytes != null && bytes.length != 0))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, invalidReason(operation));
+        if (bytes != null && bytes.length > MAX_INPUT_BYTES) throw tooLarge(operation);
         String baseUrl = setting("LUMIRA_OFFICE_WORKER_URL", "lumira.office.worker.url");
         String token = setting("LUMIRA_OFFICE_WORKER_TOKEN", "lumira.office.worker.token");
         if (baseUrl == null || token == null || token.length() < 32) throw unavailable();
@@ -82,6 +157,7 @@ public final class OfficeWorkerClient {
         CompletableFuture<HttpResponse<byte[]>> request = null;
         var bodyHandler = new BoundedBodyHandler(MAX_RESPONSE_BYTES);
         try {
+            byte[] requestBody = requestBody(operation, bytes, metadata);
             URI endpoint = endpoint(baseUrl);
             if (filename == null
                     || filename.isBlank()
@@ -98,7 +174,7 @@ public final class OfficeWorkerClient {
                             .header(OfficeWorkerProtocol.OPERATION_HEADER, operation)
                             .header(OfficeWorkerProtocol.FILENAME_HEADER, encodedName)
                             .header("Content-Type", "application/octet-stream")
-                            .POST(HttpRequest.BodyPublishers.ofByteArray(bytes));
+                            .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody));
             if (structure != null) builder.header(OfficeWorkerProtocol.STRUCTURE_HEADER, structure);
             request = HTTP.sendAsync(builder.build(), bodyHandler);
             HttpResponse<byte[]> response =
@@ -164,10 +240,7 @@ public final class OfficeWorkerClient {
             String operation, OfficeWorkerProtocol.Response response) {
         String reason = response.reason();
         if (response.status() == 413) {
-            String expectedTooLargeReason =
-                    OfficeWorkerProtocol.PREVIEW.equals(operation)
-                            ? "filePreviewTooLarge"
-                            : "dictionaryDatasetTooLarge";
+            String expectedTooLargeReason = tooLargeReason(operation);
             if (expectedTooLargeReason.equals(reason)) throw tooLarge(operation);
             throw unavailable();
         }
@@ -185,10 +258,7 @@ public final class OfficeWorkerClient {
                                                     issue.row(), issue.field(), issue.reason()))
                             .toList());
         }
-        String expectedReason =
-                OfficeWorkerProtocol.PREVIEW.equals(operation)
-                        ? "filePreviewInvalid"
-                        : "invalidDictionaryDataset";
+        String expectedReason = invalidReason(operation);
         if (expectedReason.equals(reason)
                 || (OfficeWorkerProtocol.PREVIEW.equals(operation)
                         && "officeInputInvalid".equals(reason)))
@@ -203,19 +273,83 @@ public final class OfficeWorkerClient {
     }
 
     private static ResponseStatusException tooLarge(String operation) {
-        return new ResponseStatusException(
-                HttpStatus.PAYLOAD_TOO_LARGE,
-                OfficeWorkerProtocol.PREVIEW.equals(operation)
-                        ? "filePreviewTooLarge"
-                        : "dictionaryDatasetTooLarge");
+        return new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, tooLargeReason(operation));
     }
 
     private static ResponseStatusException invalidInput(String operation) {
-        return new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                OfficeWorkerProtocol.PREVIEW.equals(operation)
-                        ? "filePreviewInvalid"
-                        : "invalidDictionaryDataset");
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, invalidReason(operation));
+    }
+
+    private static String tooLargeReason(String operation) {
+        if (OfficeWorkerProtocol.PREVIEW.equals(operation)) return "filePreviewTooLarge";
+        if (OfficeWorkerProtocol.DICTIONARY.equals(operation)) return "dictionaryDatasetTooLarge";
+        return isTemplateOperation(operation)
+                ? "documentTemplateTooLarge"
+                : "documentWorkbookTooLarge";
+    }
+
+    private static String invalidReason(String operation) {
+        if (OfficeWorkerProtocol.PREVIEW.equals(operation)) return "filePreviewInvalid";
+        if (OfficeWorkerProtocol.DICTIONARY.equals(operation)) return "invalidDictionaryDataset";
+        return isTemplateOperation(operation)
+                ? "documentTemplateInvalid"
+                : "documentWorkbookInvalid";
+    }
+
+    private static boolean isTemplateOperation(String operation) {
+        return OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
+                || OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation);
+    }
+
+    private static byte[] requestBody(String operation, byte[] bytes, Object metadata)
+            throws IOException {
+        if (metadata == null) return bytes;
+        validateLocalMetadata(
+                operation,
+                metadata instanceof OfficeWorkerProtocol.DocumentMetadata document
+                        ? document.bindings()
+                        : null,
+                metadata instanceof OfficeWorkerProtocol.DocumentMetadata document
+                        ? document.values()
+                        : null,
+                metadata instanceof OfficeWorkerProtocol.WorkbookWriteMetadata workbook
+                        ? workbook.rows()
+                        : null);
+        byte[] metadataBytes = JSON.writeValueAsBytes(metadata);
+        if (metadataBytes.length == 0 || metadataBytes.length > MAX_METADATA_BYTES)
+            throw tooLarge(operation);
+        int inputSize = bytes == null ? 0 : bytes.length;
+        int expectedSize =
+                OfficeWorkerProtocol.REQUEST_FRAME_MAGIC.length()
+                        + 4
+                        + metadataBytes.length
+                        + inputSize;
+        var stream = new ByteArrayOutputStream(expectedSize);
+        try (var data = new DataOutputStream(stream)) {
+            data.write(
+                    OfficeWorkerProtocol.REQUEST_FRAME_MAGIC.getBytes(StandardCharsets.US_ASCII));
+            data.writeInt(metadataBytes.length);
+            data.write(metadataBytes);
+            if (bytes != null) data.write(bytes);
+        }
+        byte[] body = stream.toByteArray();
+        if (body.length != expectedSize) throw new IOException("Invalid document request frame");
+        return body;
+    }
+
+    private static void validateLocalMetadata(
+            String operation,
+            java.util.Map<String, String> bindings,
+            java.util.Map<String, String> values,
+            java.util.List<java.util.List<String>> rows) {
+        try {
+            if (OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation))
+                DocumentWorkerRequestGuard.validateValues(bindings, values);
+            else if (OfficeWorkerProtocol.WORKBOOK_WRITE.equals(operation))
+                DocumentWorkerRequestGuard.validateRows(rows);
+        } catch (IOException invalid) {
+            throw tooLarge(operation);
+        }
     }
 
     private static ResponseStatusException unavailable() {

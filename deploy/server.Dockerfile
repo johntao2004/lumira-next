@@ -18,6 +18,10 @@ FROM eclipse-temurin:25-jre
 WORKDIR /app
 # The Ubuntu 26.04 base includes Canonical Pebble, which this JVM service does not use.
 RUN rm -f /usr/bin/pebble
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends fontconfig fonts-wqy-zenhei \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /workspace/backend/target/platform-server-0.1.0-SNAPSHOT.jar app.jar
 # Plugin bundles are part of the immutable release image; only extracted runtime state is writable.
 COPY --from=build /workspace/backend/target/plugin-runtime/bundle /app/plugins

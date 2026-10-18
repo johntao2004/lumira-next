@@ -22,7 +22,7 @@ export PATH="$(brew --prefix node@24)/bin:$PATH"
 export JAVA_HOME="$(brew --prefix openjdk@25)/libexec/openjdk.jdk/Contents/Home"
 ```
 
-`scripts/start.mjs` 要求当前 Node 主版本为 24，并使用当前系统 Node 与 `JAVA_HOME` 启动服务。它会在 `.runtime/office-worker/` 单独生成权限受限的 worker token，启动只映射到回环地址的 Office worker 容器，并把 worker 地址和 token 只传给后端进程；不会改写 `.runtime/local.json`。`scripts/stop.mjs` 只停止该本地 Compose 项目。项目不携带 Node/JDK 工具链。
+`scripts/start.mjs` 要求当前 Node 主版本为 24，并使用当前系统 Node 与 `JAVA_HOME` 启动服务。它会在 `.runtime/office-worker/` 单独生成权限受限的 worker token，启动内部隔离网络中的 Office worker，并通过固定入口仅向回环地址提供访问；worker 地址和 token 只传给后端进程，不会改写 `.runtime/local.json`。`scripts/stop.mjs` 只停止该本地 Compose 项目。项目不携带 Node/JDK 工具链。
 
 ```sh
 pnpm install
@@ -50,7 +50,7 @@ SPRING_FLYWAY_BASELINE_ON_MIGRATE=true SPRING_FLYWAY_BASELINE_VERSION=52 node sc
 
 空库初始化会在 B52 中创建“管理员”和“普通用户”两个角色，但不会预置普通账号、业务记录或直授权限。服务首次启动只创建 `admin` 引导账号，并通过“管理员”角色获得管理权限；“普通用户”角色为 SELF 数据范围，仅含工单反馈的访问、读取和创建权限，作为注册缺省角色（注册仍默认关闭）。随机引导密码保存在本机 `.runtime/local.json` 的 `LUMIRA_BOOTSTRAP_PASSWORD`。文件权限 0600，仅在本机查看，不提交或发布。初始管理员首次登录必须先设置新密码；改密成功后登录流程会继续，按需完成 CAPTCHA 或 MFA，不必重新输入新密码。刷新可继续改密，返回登录页不会解除要求。重启不会重设已有账号密码。完整流程见[数据库初始化说明](docs/database-initialization.md)。
 
-全局数据库只保留 `backend/src/main/resources/db/migration/B52__platform_initialization.sql` 一份初始化脚本，包含完整结构、约束、索引、函数、视图和稳定种子。Flyway 只扫描 `classpath:db/migration`，空库首次启动执行这份基线，重复启动只校验已有 B52 记录。旧增量脚本、兼容升级目录和历史 SQL 测试归档已删除，不提供旧版本数据库升级。已有 B52 本地库的保数据切换方案与限制见[数据库初始化说明](docs/database-initialization.md)；不能通过关闭校验或 repair 伪装兼容。插件仍独立管理各自安装迁移。初始化不包含账号、业务记录、密码或其他秘密。
+全局数据库只保留 `backend/src/main/resources/db/migration/B52__platform_initialization.sql` 一份初始化脚本，包含完整结构、约束、索引、函数、视图和稳定种子。Flyway 只扫描 `classpath:db/migration`，空库首次启动执行这份基线，重复启动只校验已有 B52 记录。旧增量脚本、兼容升级目录和历史 SQL 测试归档已删除，不提供旧版本数据库升级。已有 B52 本地库的保数据切换方案与限制见[数据库初始化说明](docs/database-initialization.md)；不能通过关闭校验或 repair 伪装兼容。插件各自保留一份最终初始化 SQL，旧安装保留并严格校验原迁移记录，详见[插件初始化契约](docs/plugin-initialization.md)。初始化不包含账号、业务记录、密码或其他秘密。
 
 需要重建本地数据库时先停止服务，再执行 `LUMIRA_ALLOW_LOCAL_DB_RESET=1 pnpm db:reinitialize`。命令必须带显式的本地重置开关，会先生成 `.runtime/backups/*.dump` 备份，并且只重建配置中的 `lumira_next`，不会触碰旧系统数据库。重建后启动服务会执行 B52 单文件初始化；`pnpm db:schema-smoke` 会检查唯一初始化脚本、表/约束/索引和种子完整性。数据库结构与维护约定见 [数据库初始化说明](docs/database-initialization.md)。
 
@@ -78,6 +78,8 @@ pnpm db:schema-smoke
 管理员全部文件中心（`/dashboard/files-all`）按所属账号检索平台文件，复用 BlobStore 流式下载、版本化删除、文件引用保护和审计；通知中心（`/dashboard/notifications`）支持向全部或指定账号发布站内通知，使用统一 PlatformForm/FormDrawer/ResourceTable 和独立的全局通知权限；发布确认表示事件已入队，通知随后异步进入收件箱。邮件和短信仍通过各自的持久化投递队列处理，不把外部渠道凭据写入通知记录。
 
 我的文件与管理员全部文件中心共用在线预览，支持图片、分页 PDF、Word 文字和常见文本格式，详见 [文件在线预览](docs/file-preview.md)。
+
+模板中心支持上传 Word/Excel 空表、绑定用户字段并生成 PDF，用户管理支持 Excel 导入与导出。模板发布版本、权限、文件限制和隔离转换依赖见[模板中心与用户数据传输](docs/template-center.md)。
 
 顶栏个人通知弹层默认展示未读通知，可切换已读通知并分别分页。`GET /api/account/notifications` 支持可选的 `read=false`（仅未读）和 `read=true`（仅已读）；未提供 `read` 时保留原有 `unread=true` 仅未读、`unread=false` 全部通知的语义。筛选在服务端分页前执行，两类列表都只返回当前账号尚未过期的通知。
 

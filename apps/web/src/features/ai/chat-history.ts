@@ -1,6 +1,7 @@
 import type { ChatAttachment, ChatResponse, ExecutionStep } from "./types";
 
 export type TranscriptItem = { key: number; role: "user" | "assistant"; content: string; attachments?: ChatAttachment[]; steps?: ExecutionStep[]; proposalId?: string; failed?: boolean };
+export type ChatShareReference = { id: string; path: string };
 export type ChatSession = {
   key: string;
   label: string;
@@ -11,6 +12,7 @@ export type ChatSession = {
   providerId?: string;
   modelName?: string;
   draftAttachments?: ChatAttachment[];
+  share?: ChatShareReference;
 };
 export type ChatHistory = { sessions: ChatSession[]; activeSessionKey: string };
 type HistoryStorage = Pick<Storage, "getItem" | "setItem">;
@@ -35,6 +37,30 @@ export function createChatHistory(): ChatHistory {
   return { sessions: [session], activeSessionKey: session.key };
 }
 
+/** Archive a conversation while keeping an active conversation selected. */
+export function archiveChatConversation(history: ChatHistory, sessionKey: string, replacementSessionKey: string): ChatHistory {
+  const target = history.sessions.find((session) => session.key === sessionKey);
+  if (!target || target.archived) return history;
+
+  const sessions = history.sessions.map((session) => session.key === sessionKey ? { ...session, archived: true } : session);
+  if (history.activeSessionKey !== sessionKey) return { ...history, sessions };
+
+  const nextActive = history.sessions.find((session) => session.key !== sessionKey && !session.archived);
+  if (nextActive) return { sessions, activeSessionKey: nextActive.key };
+
+  const replacement: ChatSession = {
+    key: replacementSessionKey,
+    label: "",
+    transcript: [],
+    users: null,
+    draft: "",
+    archived: false,
+    providerId: target.providerId,
+    modelName: target.modelName,
+  };
+  return { sessions: [replacement, ...sessions], activeSessionKey: replacement.key };
+}
+
 export function chatHistoryStorageKey(owner: string): string {
   return `lumira-next.ai-history.v1.${encodeURIComponent(owner)}`;
 }
@@ -52,6 +78,14 @@ export function formatChatTranscript(session: ChatSession, labels: ChatTranscrip
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Keep bearer links relative to this site; malformed metadata must not discard a saved chat. */
+export function decodeChatShareReference(value: unknown): ChatShareReference | undefined {
+  if (!isRecord(value) || typeof value.id !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.id) ||
+    typeof value.path !== "string" || !/^\/share\/ai\/[A-Za-z0-9_-]{43}$/.test(value.path)) return undefined;
+  return { id: value.id, path: value.path };
 }
 
 function decodeAttachments(value: unknown): ChatAttachment[] | undefined | null {
@@ -118,7 +152,7 @@ export function decodeChatHistory(payload: unknown, owner: string): ChatHistory 
       transcript.push(item);
       messageKeys.add(item.key);
     }
-    sessions.push({ key: value.key, label: value.label, draft: value.draft, archived: value.archived === true, draftAttachments, transcript, users: null, providerId: value.providerId as string | undefined, modelName: value.modelName as string | undefined });
+    sessions.push({ key: value.key, label: value.label, draft: value.draft, archived: value.archived === true, draftAttachments, transcript, users: null, providerId: value.providerId as string | undefined, modelName: value.modelName as string | undefined, share: decodeChatShareReference(value.share) });
     keys.add(value.key);
   }
   return { sessions, activeSessionKey: keys.has(payload.activeSessionKey) ? payload.activeSessionKey : sessions[0].key };
@@ -152,6 +186,7 @@ export function saveChatHistory(owner: string, history: ChatHistory, storage: Hi
     sessions: history.sessions.map((session) => ({
       key: session.key, label: session.label, draft: session.draft, archived: session.archived, providerId: session.providerId, modelName: session.modelName,
       draftAttachments: attachmentMetadata(session.draftAttachments),
+      share: decodeChatShareReference(session.share),
       transcript: session.transcript.map((entry) => ({
         key: entry.key, role: entry.role, content: entry.content, steps: entry.steps?.map(serializeStep),
         proposalId: entry.proposalId, failed: entry.failed,

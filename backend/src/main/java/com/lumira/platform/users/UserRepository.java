@@ -43,6 +43,15 @@ public class UserRepository implements com.lumira.platform.common.UserDirectoryP
         this.jdbc = jdbc;
     }
 
+    public String preferredLocale(String actor) {
+        return jdbc.sql(
+                        "SELECT preferred_locale FROM platform_user WHERE username=:actor AND enabled AND deleted_at IS NULL")
+                .param("actor", actor)
+                .query((rs, row) -> rs.getString("preferred_locale"))
+                .optional()
+                .orElse("zh-CN");
+    }
+
     private PageFilterSql.Clause filters(PageRequest page) {
         return PageFilterSql.build(
                 page,
@@ -182,6 +191,57 @@ public class UserRepository implements com.lumira.platform.common.UserDirectoryP
                 .list();
     }
 
+    public List<UserSummary> findSelected(
+            java.util.Set<UUID> ids,
+            String actor,
+            RequestAuthorizationContext context,
+            String scopePermission,
+            String pagePermission) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        if (ids.size() > 4_999)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "batchLimitExceeded");
+        var params = new java.util.HashMap<String, Object>();
+        params.put("actor", actor);
+        params.put("scopePermission", scopePermission);
+        params.put("pagePermission", pagePermission);
+        params.put("ids", ids);
+        contextParams(params, context);
+        return jdbc.sql(
+                        "SELECT id,username,display_name,enabled,version,file_quota_bytes_override,file_quota_files_override FROM platform_user WHERE deleted_at IS NULL AND id IN (:ids) AND id IN (SELECT user_id FROM "
+                                + visible(context)
+                                + ") AND id IN (SELECT user_id FROM "
+                                + visible(context).replace(":scopePermission", ":pagePermission")
+                                + ") ORDER BY username,id")
+                .params(params)
+                .query(UserRepository::mapSummary)
+                .list();
+    }
+
+    public UserSummary findByUsernameVisible(
+            String username,
+            String actor,
+            RequestAuthorizationContext context,
+            String scopePermission,
+            String pagePermission) {
+        var params = new java.util.HashMap<String, Object>();
+        params.put("username", username);
+        params.put("actor", actor);
+        params.put("scopePermission", scopePermission);
+        params.put("pagePermission", pagePermission);
+        contextParams(params, context);
+        return jdbc.sql(
+                        "SELECT id,username,display_name,enabled,version,file_quota_bytes_override,file_quota_files_override FROM platform_user WHERE username=:username AND deleted_at IS NULL AND id IN (SELECT user_id FROM "
+                                + visible(context)
+                                + ") AND id IN (SELECT user_id FROM "
+                                + visible(context).replace(":scopePermission", ":pagePermission")
+                                + ")")
+                .params(params)
+                .query(UserRepository::mapSummary)
+                .optional()
+                .orElse(null);
+    }
+
     public List<UserSummary> findExport(String search, String actor, int limit) {
         return findExport(new PageRequest(1, 1, search), actor, limit);
     }
@@ -286,6 +346,21 @@ public class UserRepository implements com.lumira.platform.common.UserDirectoryP
                 .param("id", id)
                 .param("name", displayName)
                 .param("enabled", enabled)
+                .update();
+    }
+
+    public int updateBasicProfile(
+            UUID id, String realName, String birthMonth, String region, long expectedVersion) {
+        return jdbc.sql(
+                        "UPDATE platform_user SET real_name=CASE WHEN :writeReal THEN :realName ELSE real_name END,birth_month=CASE WHEN :writeBirth THEN :birthMonth ELSE birth_month END,region=CASE WHEN :writeRegion THEN :region ELSE region END,version=version+1 WHERE id=:id AND version=:version AND deleted_at IS NULL")
+                .param("id", id)
+                .param("version", expectedVersion)
+                .param("writeReal", realName != null)
+                .param("realName", realName == null ? "" : realName)
+                .param("writeBirth", birthMonth != null)
+                .param("birthMonth", birthMonth == null ? "" : birthMonth)
+                .param("writeRegion", region != null)
+                .param("region", region == null ? "" : region)
                 .update();
     }
 

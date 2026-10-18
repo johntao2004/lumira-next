@@ -13,7 +13,7 @@ test("verification debugger manifests keep a database-safe route label and synch
   assert.match(route.label, /^[a-z][a-zA-Z0-9._:-]{0,127}$/);
   const frontendDescriptor = frontend.match(/export const verificationDebuggerManifest = \{\s*id:\s*"([^"]+)",\s*version:\s*"([^"]+)"/);
   const frontendRoute = frontend.match(/routes:\s*\[\s*\{\s*id:\s*"verification-debugger",\s*label:\s*"([^"]+)"/);
-  const backendDescriptor = backend.match(/new PlatformModule\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*List\.of\("([^"]+)"\)\)/);
+  const backendDescriptor = backend.match(/new PlatformModule\(\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*List\.of\("([^"]+)"\)\)/);
   assert.ok(frontendDescriptor, "frontend manifest declares module id and version");
   assert.ok(frontendRoute, "frontend manifest declares the verification-debugger navigation route");
   assert.ok(backendDescriptor, "backend module configuration declares id, name, version, and dependency");

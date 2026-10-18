@@ -152,10 +152,10 @@ function mergeTargetConfig(sourceConfig, targetConfig) {
   return merged;
 }
 
-async function switchRuntime(targetConfigPath) {
+async function switchRuntime(targetConfigPath, activityAuditDockerAdmin = false) {
   if (!targetConfigPath)
     throw new LocalRuntimeConfigError(
-      "Usage: node scripts/local-runtime.mjs switch --target-config <path>",
+      "Usage: node scripts/local-runtime.mjs switch --target-config <path> [--activity-audit-docker-admin true]",
       "INVALID_ARGUMENT",
     );
   const current = readLocalRuntime(root);
@@ -180,6 +180,7 @@ async function switchRuntime(targetConfigPath) {
     root,
     sourceConfig: current.config,
     targetConfig,
+    activityAuditDockerAdmin,
   });
   if (transfer?.verified !== true || !transfer.snapshotForTarget || !transfer.sourceSnapshotDigest)
     throw new LocalRuntimeConfigError("The plugin inventory guard did not verify the target database.", "PLUGIN_TRANSFER_NOT_VERIFIED");
@@ -266,10 +267,13 @@ async function main() {
       acceptChangesReason: options.acceptchanges,
     }));
   if (command === "capture") return withLocalRuntimeLock(root, command, () => capture(options.acceptchanges));
-  if (command === "switch") return withLocalRuntimeLock(root, command, () => switchRuntime(options.targetconfig));
+  if (command === "switch") return withLocalRuntimeLock(root, command, () => switchRuntime(
+    options.targetconfig,
+    options.activityauditdockeradmin ?? false,
+  ));
   if (command === "refresh-artifact") return withLocalRuntimeLock(root, command, () => refreshArtifact(options.jar, options.sha256));
   throw new LocalRuntimeConfigError(
-    "Usage: node scripts/local-runtime.mjs <adopt --pid PID | capture [--accept-changes REASON] | switch --target-config PATH | refresh-artifact --jar PATH --sha256 SHA>",
+    "Usage: node scripts/local-runtime.mjs <adopt --pid PID | capture [--accept-changes REASON] | switch --target-config PATH [--activity-audit-docker-admin true] | refresh-artifact --jar PATH --sha256 SHA>",
     "INVALID_COMMAND",
   );
 }

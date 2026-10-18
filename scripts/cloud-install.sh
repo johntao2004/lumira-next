@@ -20,7 +20,7 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 as_root() { if [[ $EUID == 0 ]]; then "$@"; else sudo -n "$@"; fi; }
 as_root env DEBIAN_FRONTEND=noninteractive apt-get update
-as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg xz-utils python3 zip
+as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg xz-utils python3 zip fontconfig fonts-wqy-zenhei
 download_dir=$(mktemp -d)
 trap 'rm -rf "$download_dir"' EXIT
 if ! command -v node >/dev/null || [[ $(node -p 'process.versions.node.split(".")[0]') != 24 ]]; then

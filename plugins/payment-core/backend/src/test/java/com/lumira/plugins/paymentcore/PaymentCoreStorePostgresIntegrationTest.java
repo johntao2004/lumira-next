@@ -15,7 +15,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -24,10 +23,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 class PaymentCoreStorePostgresIntegrationTest {
-    private static final String PAYMENT_CORE_HISTORY = "plugin_payment_core_schema_history";
 
     @Test
-    void persistsProviderInstantsAsPostgresTimestamptz() {
+    void persistsProviderInstantsAsPostgresTimestamptz() throws Exception {
         String url = System.getenv("LUMIRA_TEST_DB_URL");
         String username = System.getenv("LUMIRA_TEST_DB_USER");
         String password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
@@ -54,45 +52,14 @@ class PaymentCoreStorePostgresIntegrationTest {
                     jdbc.sql("SELECT unnest(current_schemas(false))").query(String.class).list(),
                     "The test connection must search only its owned schema, without public fallback.");
 
-            // Host tables come from the current B52 baseline; keep the published plugin migration
-            // unchanged.
+            // Store fixtures derive their plugin DDL from the single final-state SQL.
+            // Host permission adoption is covered by the initialization lifecycle tests.
             jdbc.sql(TestSchema.table("platform_user")).update();
             jdbc.sql(TestSchema.table("platform_authority")).update();
-            Flyway.configure()
-                    .dataSource(dataSource)
-                    .table(PAYMENT_CORE_HISTORY)
-                    .locations("filesystem:" + findPaymentCoreMigrations().toAbsolutePath())
-                    .schemas(schemaName)
-                    .defaultSchema(schemaName)
-                    .baselineOnMigrate(true)
-                    .baselineVersion("0")
-                    .target("1")
-                    .load()
-                    .migrate();
-            assertEquals(
-                    2,
-                    jdbc.sql("SELECT count(*) FROM " + PAYMENT_CORE_HISTORY)
-                            .query(Integer.class)
-                            .single(),
-                    "Only the host baseline marker and published payment-core V1 should be recorded.");
-            assertEquals(
-                    1,
-                    jdbc.sql(
-                                    "SELECT count(*) FROM "
-                                            + PAYMENT_CORE_HISTORY
-                                            + " WHERE version='0' AND type='BASELINE' AND success")
-                            .query(Integer.class)
-                            .single());
-            assertEquals(
-                    1,
-                    jdbc.sql(
-                                    "SELECT count(*) FROM "
-                                            + PAYMENT_CORE_HISTORY
-                                            + " WHERE version='1' AND type='SQL' "
-                                            + "AND script='V1__payment_orders.sql' "
-                                            + "AND checksum IS NOT NULL AND success")
-                            .query(Integer.class)
-                            .single());
+            String initialization =
+                    Files.readString(
+                            findPaymentCoreMigrations().resolve("V4__plugin_initialization.sql"));
+            jdbc.sql(initialization.split("-- BEGIN HOST PERMISSION ADOPTION", 2)[0]).update();
 
             var store =
                     new PaymentCoreStore(
@@ -231,13 +198,13 @@ class PaymentCoreStorePostgresIntegrationTest {
         Path directory = Path.of("").toAbsolutePath();
         while (directory != null) {
             Path migrations = directory.resolve("plugins/payment-core/migrations");
-            if (Files.isRegularFile(migrations.resolve("V1__payment_orders.sql"))) {
+            if (Files.isRegularFile(migrations.resolve("V4__plugin_initialization.sql"))) {
                 return migrations;
             }
             directory = directory.getParent();
         }
         throw new IllegalStateException(
-                "Payment-core published migrations were not found from the test working directory.");
+                "Payment-core initialization was not found from the test working directory.");
     }
 
     private record PersistedInstants(
