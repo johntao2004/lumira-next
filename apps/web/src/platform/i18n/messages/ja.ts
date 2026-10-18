@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "選択した権限を委譲できません。プラットフォーム権限にはグローバルな保有が必要です。プラグイン権限にはグローバルな保有、またはプラグインのインストール権限が必要です。",
+    rolePermissionUnavailable: "権限カタログが変更され、選択した権限が利用できなくなりました。ロール編集画面を更新して再試行してください。",
+    registrationRoleInUse: "このロールは新規アカウントの既定ロールです。削除、無効化、データ範囲の拡大、公開登録の許可範囲外の権限付与はできません。先に公開登録設定で別の既定ロールを選択してください。",
     mfaAuthenticator: "My authenticator",
     mfaManagement: "Authenticator management",
     mfaTitle: "Two-factor authentication",

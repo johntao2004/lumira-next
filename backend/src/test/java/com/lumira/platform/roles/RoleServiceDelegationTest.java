@@ -267,6 +267,124 @@ class RoleServiceDelegationTest {
     }
 
     @Test
+    void installerCanUpdateRoleWithExistingUnheldPluginGrantsAndAuditsEachGrant() {
+        String dynamic = registerPluginPermission();
+        UUID id = UUID.randomUUID();
+        var roles = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        var audit = mock(AuditPort.class);
+        when(roles.find(id)).thenReturn(role(id, true, Set.of(dynamic)));
+        when(roles.hasAdministrators()).thenReturn(true);
+        when(guard.hasGlobal(ACTOR, "platform:modules:install")).thenReturn(true);
+        var service = new RoleService(roles, mock(UserDirectoryPort.class), guard, audit);
+        String monitoring = "platform:monitoring:access";
+
+        service.update(id, input(Set.of(dynamic, monitoring)), ACTOR);
+
+        verify(guard).requireGlobal(ACTOR, monitoring);
+        verify(guard, never()).requireGlobal(ACTOR, dynamic);
+        verify(audit).append(ACTOR, "role.pluginPermission.bootstrap:" + dynamic, id);
+        verify(roles).authorities(id, Set.of(dynamic, monitoring));
+    }
+
+    @Test
+    void installerCanRemoveExistingUnheldPluginPermission() {
+        String dynamic = registerPluginPermission();
+        UUID id = UUID.randomUUID();
+        var roles = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        var audit = mock(AuditPort.class);
+        when(roles.find(id)).thenReturn(role(id, true, Set.of(dynamic)));
+        when(roles.hasAdministrators()).thenReturn(true);
+        when(guard.hasGlobal(ACTOR, "platform:modules:install")).thenReturn(true);
+        var service = new RoleService(roles, mock(UserDirectoryPort.class), guard, audit);
+
+        service.update(id, input(Set.of()), ACTOR);
+
+        verify(audit).append(ACTOR, "role.pluginPermission.bootstrap:" + dynamic, id);
+        verify(roles).authorities(id, Set.of());
+    }
+
+    @Test
+    void changingRoleWithUnheldPluginGrantsRequiresInstallerPermission() {
+        String dynamic = registerPluginPermission();
+        UUID id = UUID.randomUUID();
+        var roles = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        when(roles.find(id)).thenReturn(role(id, true, Set.of(dynamic)));
+        var service = service(roles, guard, mock(UserDirectoryPort.class));
+
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                service.update(
+                                        id,
+                                        input(Set.of(dynamic, "platform:monitoring:access")),
+                                        ACTOR));
+
+        assertEquals(HttpStatus.FORBIDDEN, error.getStatusCode());
+        assertEquals("rolePermissionDelegationDenied", error.getReason());
+        verify(roles, never()).update(any(), anyString(), anyBoolean(), anyString(), any(), any());
+    }
+
+    @Test
+    void installerCannotUsePluginBootstrapToDelegateUnheldPlatformPermission() {
+        String dynamic = registerPluginPermission();
+        UUID id = UUID.randomUUID();
+        var roles = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        when(roles.find(id)).thenReturn(role(id, true, Set.of(dynamic)));
+        when(guard.hasGlobal(ACTOR, "platform:modules:install")).thenReturn(true);
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
+                .when(guard)
+                .requireGlobal(ACTOR, FILE_DELETE);
+        var service = service(roles, guard, mock(UserDirectoryPort.class));
+
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> service.update(id, input(Set.of(dynamic, FILE_DELETE)), ACTOR));
+
+        assertEquals("rolePermissionDelegationDenied", error.getReason());
+        verify(roles, never()).authorities(any(), any());
+    }
+
+    @Test
+    void authorizationRevisionFailuresKeepTheirOriginalErrorCode() {
+        var roles = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "authorizationContextChanged"))
+                .when(guard)
+                .requireGlobal(ACTOR, FILE_DELETE);
+        var service = service(roles, guard, mock(UserDirectoryPort.class));
+
+        var error =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> service.create(input(Set.of(FILE_DELETE)), ACTOR));
+
+        assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
+        assertEquals("authorizationContextChanged", error.getReason());
+    }
+
+    private static String registerPluginPermission() {
+        String dynamic = "platform:fixture:read";
+        PluginPermissions.replaceAll(
+                Map.of(
+                        "fixture",
+                        List.of(
+                                new PluginPermissions.CatalogGroup(
+                                        "fixture",
+                                        "fixture",
+                                        List.of(),
+                                        List.of(
+                                                new PluginPermissions.Permission(
+                                                        dynamic, "read"))))));
+        return dynamic;
+    }
+
+    @Test
     void keepsAnExistingRetiredGrantWhenEditingOtherRoleFields() {
         var roles = mock(RoleRepository.class);
         var guard = mock(AdministrationPort.class);

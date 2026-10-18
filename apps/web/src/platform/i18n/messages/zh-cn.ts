@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "当前账号无权委派所选权限。平台权限须在全局范围持有；插件权限须在全局范围持有，或具有插件安装权限。",
+    rolePermissionUnavailable: "权限目录已变化，所选权限已不可用。请刷新角色编辑器后重试。",
+    registrationRoleInUse: "该角色是新账号默认角色，不能删除、停用、扩大数据范围或增加公开注册范围外的权限。请先在公开注册设置中更换默认角色。",
     mfaAuthenticator: "我的验证器",
     mfaManagement: "验证器管理",
     mfaTitle: "二次认证",

@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "선택한 권한을 위임할 수 없습니다. 플랫폼 권한은 전역 범위로 보유해야 하며, 플러그인 권한은 전역 범위로 보유하거나 플러그인 설치 권한이 있어야 합니다.",
+    rolePermissionUnavailable: "권한 목록이 변경되어 선택한 권한을 사용할 수 없습니다. 역할 편집기를 새로 고친 후 다시 시도하세요.",
+    registrationRoleInUse: "이 역할은 새 계정의 기본 역할입니다. 삭제, 비활성화, 데이터 범위 확대 또는 공개 가입 허용 범위 밖의 권한 부여는 불가능합니다. 먼저 공개 가입 설정에서 다른 기본 역할을 선택하세요.",
     mfaAuthenticator: "My authenticator",
     mfaManagement: "Authenticator management",
     mfaTitle: "Two-factor authentication",

@@ -7,7 +7,7 @@ import { usePreferences } from "../providers";
 import type { MessageKey } from "../i18n/messages";
 import { useSubmitAction } from "../forms/use-submit-action";
 
-const deleteErrorKeys = ["staleRecord","fileMutationConflict","dictionaryInUse","dictionaryReferenced","dictionaryItemReferenced","dictionaryItemInUse","roleInUse","organizationInUse","sessionNotFound","forbidden","protectedAccount"] as const satisfies readonly MessageKey[];
+const deleteErrorKeys = ["staleRecord","fileMutationConflict","dictionaryInUse","dictionaryReferenced","dictionaryItemReferenced","dictionaryItemInUse","roleInUse","registrationRoleInUse","rolePermissionDelegationDenied","organizationInUse","sessionNotFound","forbidden","protectedAccount"] as const satisfies readonly MessageKey[];
 
 /** Shared confirmation, pending state, and error feedback for versioned deletions. */
 export function DeleteAction({name,onDelete,actionLabel,confirmation,disabled=false,conflictErrorKey="staleRecord",buttonType="link"}:{name:string;onDelete:()=>Promise<void>;actionLabel?:string;confirmation?:string;disabled?:boolean;conflictErrorKey?:MessageKey;buttonType?:ButtonProps["type"]}) {

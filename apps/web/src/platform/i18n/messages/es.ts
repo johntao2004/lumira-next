@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "Tu cuenta no puede delegar los permisos seleccionados. Los permisos de la plataforma requieren acceso global; los de los plugins requieren acceso global o permiso para instalar plugins.",
+    rolePermissionUnavailable: "El catálogo de permisos ha cambiado y un permiso seleccionado ya no está disponible. Actualiza el editor de roles e inténtalo de nuevo.",
+    registrationRoleInUse: "Este es el rol predeterminado de las cuentas nuevas. No se puede eliminar, desactivar, ampliar su ámbito de datos ni otorgarle permisos fuera de la lista permitida para el registro público. Primero selecciona otro rol predeterminado en la configuración de registro público.",
     mfaAuthenticator: "My authenticator",
     mfaManagement: "Authenticator management",
     mfaTitle: "Two-factor authentication",

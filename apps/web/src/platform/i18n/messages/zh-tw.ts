@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "目前帳號無權委派所選權限。平台權限須在全域範圍持有；外掛權限須在全域範圍持有，或具有外掛安裝權限。",
+    rolePermissionUnavailable: "權限目錄已變更，所選權限已無法使用。請重新整理角色編輯器後再試。",
+    registrationRoleInUse: "此角色是新帳號預設角色，不能刪除、停用、擴大資料範圍或增加公開註冊範圍外的權限。請先在公開註冊設定中更換預設角色。",
     mfaAuthenticator: "我的驗證器",
     mfaManagement: "驗證器管理",
     mfaTitle: "雙重驗證",

@@ -279,7 +279,8 @@ public class RoleService {
             Collection<String> requested, Collection<String> retained) {
         var allowed = new HashSet<>(permissions());
         allowed.addAll(retained);
-        if (!allowed.containsAll(requested)) fail(HttpStatus.FORBIDDEN, "forbidden");
+        if (!allowed.containsAll(requested))
+            fail(HttpStatus.FORBIDDEN, "rolePermissionUnavailable");
     }
 
     /**
@@ -291,14 +292,14 @@ public class RoleService {
         var pluginBootstrap = new TreeSet<String>();
         for (String authority : new TreeSet<>(authorities)) {
             if (PERMISSIONS.contains(authority) || !pluginPermissions.contains(authority)) {
-                guard.requireGlobal(actor, authority);
+                requireDelegableGlobal(actor, authority);
             } else if (!guard.hasGlobal(actor, authority)) {
                 pluginBootstrap.add(authority);
             }
         }
         if (pluginBootstrap.isEmpty()) return;
         if (isPreview(actor) || !guard.hasGlobal(actor, "platform:modules:install"))
-            fail(HttpStatus.FORBIDDEN, "forbidden");
+            fail(HttpStatus.FORBIDDEN, "rolePermissionDelegationDenied");
         for (String authority : pluginBootstrap)
             audit.append(actor, "role.pluginPermission.bootstrap:" + authority, targetRoleId);
     }
@@ -306,7 +307,17 @@ public class RoleService {
     private void requireCurrentDelegation(String actor, Collection<String> authorities) {
         Set<String> active = permissions();
         for (String authority : new TreeSet<>(authorities))
-            if (active.contains(authority)) guard.requireGlobal(actor, authority);
+            if (active.contains(authority)) requireDelegableGlobal(actor, authority);
+    }
+
+    private void requireDelegableGlobal(String actor, String authority) {
+        try {
+            guard.requireGlobal(actor, authority);
+        } catch (ResponseStatusException denied) {
+            if (denied.getStatusCode().value() == 403 && "forbidden".equals(denied.getReason()))
+                fail(HttpStatus.FORBIDDEN, "rolePermissionDelegationDenied");
+            throw denied;
+        }
     }
 
     private void requireCurrentDelegation(String actor, RoleRepository.Role role) {
@@ -315,11 +326,12 @@ public class RoleService {
 
     private void requireUpdateDelegation(
             String actor, UUID targetRoleId, Collection<String> previous, Collection<String> next) {
-        var existing = new HashSet<>(previous);
-        requireCurrentDelegation(actor, existing);
-        var additions = new HashSet<>(next);
-        additions.removeAll(existing);
-        requireDelegation(actor, targetRoleId, additions);
+        // Revalidate existing and added active grants with the same delegation contract
+        // advertised by the catalog. Retired grants remain inert and may be retained/removed.
+        var active = new HashSet<>(previous);
+        active.addAll(next);
+        active.retainAll(permissions());
+        requireDelegation(actor, targetRoleId, active);
     }
 
     private static int scopeRank(String scope) {
@@ -493,7 +505,9 @@ public class RoleService {
             String actor, String permission, String source, boolean includeEditability) {
         if (!includeEditability || actor == null || isPreview(actor)) return false;
         return guard.hasGlobal(actor, permission)
-                || ("plugin".equals(source) && guard.hasGlobal(actor, "platform:modules:install"));
+                || ("plugin".equals(source)
+                        && !PERMISSIONS.contains(permission)
+                        && guard.hasGlobal(actor, "platform:modules:install"));
     }
 
     private boolean hasPage(String actor, PlatformPageId page) {
@@ -591,6 +605,11 @@ public class RoleService {
         boolean reenabled = !old.enabled() && Boolean.TRUE.equals(in.enabled());
         boolean scopeWidened = scopeRank(requestedScope) > scopeRank(old.dataScope());
         boolean authoritiesChanged = !new HashSet<>(old.authorities()).equals(in.authorities());
+        if (isDefaultRegistrationRole(id)
+                && (!Boolean.TRUE.equals(in.enabled())
+                        || !"SELF".equals(requestedScope)
+                        || !RegistrationRoleAdapter.allowsAuthorities(in.authorities())))
+            fail(HttpStatus.CONFLICT, "registrationRoleInUse");
         if (authoritiesChanged || reenabled || scopeWidened) {
             Set<String> active = permissions();
             if ((reenabled || scopeWidened)
@@ -603,11 +622,6 @@ public class RoleService {
             if (authoritiesChanged || reenabled || scopeWidened)
                 requireUpdateDelegation(actor, id, old.authorities(), in.authorities());
         }
-        if (isDefaultRegistrationRole(id)
-                && (!Boolean.TRUE.equals(in.enabled())
-                        || !"SELF".equals(in.dataScope() == null ? old.dataScope() : in.dataScope())
-                        || !RegistrationRoleAdapter.allowsAuthorities(in.authorities())))
-            fail(HttpStatus.CONFLICT, "registrationRoleInUse");
         roles.update(
                 id,
                 in.name().strip(),

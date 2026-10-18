@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "Dein Konto kann die ausgewählten Berechtigungen nicht delegieren. Plattformberechtigungen müssen global vorliegen; Plugin-Berechtigungen erfordern globale Berechtigungen oder die Berechtigung zur Plugin-Installation.",
+    rolePermissionUnavailable: "Der Berechtigungskatalog hat sich geändert und eine ausgewählte Berechtigung ist nicht mehr verfügbar. Aktualisiere den Rollen-Editor und versuche es erneut.",
+    registrationRoleInUse: "Dies ist die Standardrolle für neue Konten. Sie kann nicht gelöscht, deaktiviert, mit einem größeren Datenbereich oder mit Berechtigungen außerhalb der Zulassungsliste für die öffentliche Registrierung versehen werden. Wähle zuerst in den Einstellungen zur öffentlichen Registrierung eine andere Standardrolle.",
     mfaAuthenticator: "My authenticator",
     mfaManagement: "Authenticator management",
     mfaTitle: "Two-factor authentication",

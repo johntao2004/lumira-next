@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -144,5 +145,79 @@ class RegistrationRoleAdapterDatabaseTest {
 
         verify(roleRepository).update(USER_ROLE_ID, "普通用户", true, "SELF", null, null);
         verify(roleRepository, never()).authorities(any(UUID.class), any());
+    }
+
+    @Test
+    void defaultRoleRestrictionWinsBeforeDelegationAndRejectsAllUnsafeChanges() {
+        var repository = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        when(repository.find(USER_ROLE_ID))
+                .thenReturn(
+                        new RoleRepository.Role(
+                                USER_ROLE_ID,
+                                "user",
+                                "普通用户",
+                                true,
+                                1L,
+                                "SELF",
+                                null,
+                                null,
+                                USER_ROLE_AUTHORITIES,
+                                true));
+        var service =
+                new RoleService(
+                        repository,
+                        mock(UserDirectoryPort.class),
+                        guard,
+                        mock(AuditPort.class),
+                        null,
+                        null,
+                        JdbcClient.create(jdbc.getDataSource()),
+                        null,
+                        null);
+        var unsafeGrants = new java.util.HashSet<>(USER_ROLE_AUTHORITIES);
+        unsafeGrants.add("platform:monitoring:access");
+        unsafeGrants.add("platform:api-docs:access");
+        var inputs =
+                List.of(
+                        new RoleService.RoleInput(
+                                "user", "普通用户", true, 1L, unsafeGrants, "SELF", null, null),
+                        new RoleService.RoleInput(
+                                "user",
+                                "普通用户",
+                                false,
+                                1L,
+                                Set.copyOf(USER_ROLE_AUTHORITIES),
+                                "SELF",
+                                null,
+                                null),
+                        new RoleService.RoleInput(
+                                "user",
+                                "普通用户",
+                                true,
+                                1L,
+                                Set.copyOf(USER_ROLE_AUTHORITIES),
+                                "ALL",
+                                null,
+                                null));
+        for (var input : inputs) {
+            var error =
+                    assertThrows(
+                            ResponseStatusException.class,
+                            () -> service.update(USER_ROLE_ID, input, ADMIN_ACTOR));
+            assertEquals(409, error.getStatusCode().value());
+            assertEquals("registrationRoleInUse", error.getReason());
+        }
+        var deletion =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> service.delete(USER_ROLE_ID, 1L, ADMIN_ACTOR));
+        assertEquals("registrationRoleInUse", deletion.getReason());
+        verify(repository, never()).update(any(), any(), anyBoolean(), any(), any(), any());
+        verify(repository, never()).authorities(any(), any());
+        verify(repository, never()).delete(any());
+        verify(guard, never()).requireGlobal(ADMIN_ACTOR, "platform:feedback:access");
+        assertTrue(roles.isDefaultRole(USER_ROLE_ID));
+        assertTrue(roles.candidate(USER_ROLE_ID).eligible());
     }
 }

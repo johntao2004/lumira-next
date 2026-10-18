@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "Your account cannot delegate the selected permissions. Platform permissions require global access; plugin permissions require global access or plugin installation permission.",
+    rolePermissionUnavailable: "The permission catalog has changed and a selected permission is unavailable. Refresh the role editor and try again.",
+    registrationRoleInUse: "This is the default role for new accounts. It cannot be deleted, disabled, given a broader data scope, or granted permissions outside the public registration allow-list. Select a different default role in Public registration settings first.",
     mfaAuthenticator: "My authenticator",
     mfaManagement: "Authenticator management",
     mfaTitle: "Two-factor authentication",

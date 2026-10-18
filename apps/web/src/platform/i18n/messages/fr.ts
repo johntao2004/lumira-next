@@ -1,4 +1,7 @@
 export const messages = {
+    rolePermissionDelegationDenied: "Votre compte ne peut pas déléguer les autorisations sélectionnées. Les autorisations de la plateforme doivent être détenues globalement ; celles des plugins nécessitent un accès global ou le droit d’installer des plugins.",
+    rolePermissionUnavailable: "Le catalogue des autorisations a changé et une autorisation sélectionnée n’est plus disponible. Actualisez l’éditeur de rôle et réessayez.",
+    registrationRoleInUse: "Ce rôle est le rôle par défaut des nouveaux comptes. Il ne peut être supprimé, désactivé, doté d’un périmètre de données élargi ou d’autorisations hors de la liste autorisée pour l’inscription publique. Choisissez d’abord un autre rôle par défaut dans les paramètres d’inscription publique.",
     mfaAuthenticator: "My authenticator",
     mfaManagement: "Authenticator management",
     mfaTitle: "Two-factor authentication",

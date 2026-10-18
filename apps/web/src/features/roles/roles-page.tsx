@@ -2,7 +2,7 @@
 import { useEffect, useRef } from "react";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {Button, Card, Input, InputNumber, Spin, Switch, Tag, Select, Space, Typography} from "antd";
+import {Alert, Button, Card, Input, InputNumber, Spin, Switch, Tag, Select, Space, Typography} from "antd";
 import { TableActions } from "@/platform/components/table-actions";
 import { api, isRolePreviewReadOnly, mutate } from "@/platform/api/client";
 import { useCrudDrawer } from "@/platform/forms/use-crud-drawer";
@@ -16,7 +16,7 @@ import type { MessageKey } from "@/platform/i18n/messages";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 
-const roleErrorKeys = ["staleRecord", "protectedAccount", "forbidden", "invalidRole", "invalidFileQuota"] as const satisfies readonly MessageKey[];
+import { roleErrorKeys } from "./role-errors";
 const roleErrorAliases = { duplicateRecord: "duplicateRole" } as const satisfies Readonly<Record<string, MessageKey>>;
 import { QueryFailure } from "@/platform/components/query-failure";
 import { listRequestParams } from "@/platform/api/pagination";
@@ -103,6 +103,7 @@ export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissi
           ]);
 
       })}>
+        {detail.data?.defaultRegistrationRole && <Alert className="mb-4" type="info" showIcon title={t("registrationDefaultRole")} description={t("registrationRoleInUse")} />}
         <Form.Item name="code" label={t("roleCode")} rules={[{required:true,pattern:/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}$/,message:t("invalidRole")}]}><Input disabled={!!selected || !editableRole} maxLength={100}/></Form.Item>
         <Form.Item name="name" label={t("name")} rules={[{required:true,whitespace:true,message:t("nameRequired")},{max:200,message:t("nameTooLong")}]}><Input maxLength={200}/></Form.Item>
         <Form.Item name="enabled" label={t("enabled")} valuePropName="checked"><Switch/></Form.Item>
