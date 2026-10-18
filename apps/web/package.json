@@ -19,7 +19,7 @@
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@tanstack/react-query": "5.102.8",
-    "antd": "6.6.3",
+    "antd": "6.6.6",
     "antd-style": "^4.1.0",
     "dayjs": "1.11.23",
     "pdfjs-dist": "6.4.299",
