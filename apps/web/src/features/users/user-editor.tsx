@@ -10,7 +10,6 @@ import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import type { UserSummary } from "@/platform/directory/api-types";
 import { FormDrawer } from "@/platform/components/form-drawer";
 import { usePreferences } from "@/platform/providers";
-import type { MessageKey } from "@/platform/i18n/messages";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { CapacityMeter } from "@/platform/components/capacity-meter";
 import { QueryFailure } from "@/platform/components/query-failure";
@@ -26,8 +25,8 @@ import { formatQuotaBytes, formatQuotaLimitBytes, formatQuotaLimitCount } from "
 import { AssignmentSearchField, AssignmentSearchLayout } from "./assignment-search-layout";
 import { RoleAssignmentSearch } from "./role-assignment-search";
 import { buildUserEditorSavePlan } from "./user-editor-save-plan";
-
-const userErrorKeys = ["invalidUser", "duplicateRecord", "staleRecord", "protectedAccount", "forbidden", "invalidRole", "invalidOrganization"] as const satisfies readonly MessageKey[];
+import { userErrorKeys } from "./user-errors";
+import { roleAssignmentCheckboxDisabled } from "./user-role-selection";
 
 type UserDetail = UserSummary;
 type Assignment = { version: number; roleIds: string[] };
@@ -365,9 +364,10 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
             {roles.error ? <QueryFailure title={t("unavailable")} pending={roles.isFetching} onRetry={() => void roles.refetch()} /> : !roles.data || roles.isFetching ? <Spin /> : <>
               <Typography.Paragraph>{t("selectedRoles", { count: selectedRoleIds.length })}</Typography.Paragraph>
               {canAssignRoles && <Typography.Paragraph type="secondary">{t("roleAssignmentHint")}</Typography.Paragraph>}
+              {canAssignRoles && rolesList.data?.total === 0 && !rolesRequest.search && <Alert className="mb-4" type="info" showIcon title={t("roleAssignmentNoneDelegable")} />}
               <RoleAssignmentSearch userId={user.id} request={rolesRequest} onChange={setRolesRequest} codeLabel={t("roleCode")} nameLabel={t("name")} statusLabel={t("status")} />
               <ResourceTable<LinkedRole> result={rolesList.data} loading={rolesList.isFetching} error={rolesList.error} request={rolesRequest} onChange={setRolesRequest} onRetry={() => void rolesList.refetch()} searchable={false} scroll={{ x: 640 }}
-                rowSelection={{ columnWidth: 40, selectedRowKeys: selectedRoleIds, preserveSelectedRowKeys: true, onChange: keys => setRoleSelection(keys.map(String)), getCheckboxProps: role => ({ disabled: pending || committed || !canAssignRoles || !role.assignable }) }}
+                rowSelection={{ columnWidth: 40, selectedRowKeys: selectedRoleIds, preserveSelectedRowKeys: true, onChange: keys => setRoleSelection(keys.map(String)), getCheckboxProps: role => ({ disabled: roleAssignmentCheckboxDisabled({ pending, committed, canAssignRoles, assignable: role.assignable, selected: selectedRoleIds.includes(role.id) }) }) }}
                 columns={[{ title: t("roleCode"), dataIndex: "code", width: 104, ellipsis: { showTitle: true }, search: true }, { title: t("name"), dataIndex: "name", width: 120, ellipsis: { showTitle: true }, search: true },
                   { title: t("roleFileStorageLimit"), dataIndex: "fileQuotaBytesLimit", width: 152, search: false, render: (_, role) => formatQuotaLimitBytes(role.fileQuotaBytesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) },
                   { title: t("roleFileCountLimit"), dataIndex: "fileQuotaFilesLimit", width: 152, search: false, render: (_, role) => formatQuotaLimitCount(role.fileQuotaFilesLimit,locale,{unlimited:t("roleQuotaUnlimited"),inherited:t("roleQuotaInherit")}) },

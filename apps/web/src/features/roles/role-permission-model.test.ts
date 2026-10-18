@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  canEditRolePermission,
   checkedPermissionTreeKeys,
+  roleContainsUndelegableActiveGrant,
   filterPermissionCatalog,
   mergePermissionPageRows,
   permissionOperationNodeKey,
@@ -203,4 +205,36 @@ test("bulk select and clear span the full catalog and preserve uneditable and un
 
   const cleared = updateAllEditableActiveRoleAuthorities(selected, groups, ["platform:users:access"], false);
   assert.deepEqual(cleared, ["platform:unknown:grant", "platform:files:access", "plugin:legacy:manage"]);
+});
+
+test("a role that already contains an undelegable active grant is read-only", () => {
+  const groups = catalog().map((group) => ({
+    ...group,
+    permissions: group.permissions.map((entry) => entry.code === "platform:users:update" ? { ...entry, editable: false } : entry),
+  }));
+  assert.equal(roleContainsUndelegableActiveGrant(groups, ["platform:users:update"]), true);
+  assert.equal(roleContainsUndelegableActiveGrant(groups, ["platform:users:access"]), false);
+  assert.equal(roleContainsUndelegableActiveGrant([{
+    id: "retired-permissions",
+    title: "retired",
+    source: "platform",
+    pages: [],
+    permissions: [{ code: "platform:retired:read", label: "retired", editable: false, retired: true }],
+  }], ["platform:retired:read"]), false);
+});
+
+test("the default registration role cannot gain permissions outside its allow-list", () => {
+  const groups: PermissionCatalogGroup[] = [{
+    id: "feedback",
+    title: "feedback",
+    source: "plugin",
+    pages: [],
+    permissions: [
+      { code: "platform:feedback:access", label: "access", editable: true, registrationEligible: true },
+      { code: "platform:feedback:reply", label: "reply", editable: true, registrationEligible: false },
+    ],
+  }];
+  assert.equal(canEditRolePermission(groups, "platform:feedback:reply", [], [], false, true, true), false);
+  assert.equal(canEditRolePermission(groups, "platform:feedback:reply", ["platform:feedback:reply"], [], false, false, true), true);
+  assert.equal(canEditRolePermission(groups, "platform:feedback:access", [], [], false, true, true), true);
 });

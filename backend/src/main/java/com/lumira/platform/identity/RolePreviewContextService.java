@@ -10,6 +10,7 @@ import com.lumira.platform.common.PluginAuthorizationPort;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.AuthorizationContextBoundaryPort;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
+import com.lumira.platform.modules.ActivePermissionCatalog;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -125,7 +126,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
             Set<String> currentRealAuthorities) {
         StoredContext stored = ensureAndLockContext(request, principalName, actorId);
         String sessionPrimaryId = stored.sessionPrimaryId();
-        Set<String> realAuthorities = Set.copyOf(currentRealAuthorities);
+        Set<String> realAuthorities = ActivePermissionCatalog.retain(currentRealAuthorities);
         ScopeSnapshot scopeSnapshot =
                 "ACTIVE".equals(stored.state())
                         ? scopeSnapshot(actorId)
@@ -756,7 +757,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
     }
 
     private Set<String> globalAuthorities(UUID actorId) {
-        return Set.copyOf(
+        return ActivePermissionCatalog.retain(
                 jdbc.sql(
                                 """
                         SELECT g.authority
@@ -770,7 +771,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
     }
 
     private Set<String> effectiveAuthorities(UUID actorId) {
-        return Set.copyOf(
+        return ActivePermissionCatalog.retain(
                 jdbc.sql(
                                 "SELECT authority FROM platform_effective_authority WHERE user_id=:actor ORDER BY authority")
                         .param("actor", actorId)
@@ -808,6 +809,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                 .list()
                 .forEach(
                         entry -> {
+                            if (!ActivePermissionCatalog.current().contains(entry.getKey())) return;
                             values.computeIfAbsent(entry.getKey(), ignored -> new TreeSet<>())
                                     .add(entry.getValue());
                             if ("ALL".equals(entry.getValue())) global.add(entry.getKey());

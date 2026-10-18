@@ -65,17 +65,22 @@ public class RoleService {
     }
 
     public record PermissionCatalogPermission(
-            String code, String label, List<String> requires, boolean editable, boolean retired) {
+            String code,
+            String label,
+            List<String> requires,
+            boolean editable,
+            boolean retired,
+            boolean registrationEligible) {
         public PermissionCatalogPermission {
             requires = List.copyOf(requires == null ? List.of() : requires);
         }
 
         public PermissionCatalogPermission(String code, String label) {
-            this(code, label, List.of(), false, false);
+            this(code, label, List.of(), false, false, false);
         }
 
         public PermissionCatalogPermission(String code, String label, List<String> requires) {
-            this(code, label, requires, false, false);
+            this(code, label, requires, false, false, false);
         }
     }
 
@@ -214,17 +219,21 @@ public class RoleService {
             fail(HttpStatus.FORBIDDEN, "forbidden");
 
         Set<String> delegableAuthorities = Set.of();
+        Set<String> activeAuthorities = Set.of();
         if (canAssign) {
-            Set<String> globalAuthorities = globalAuthorities(actor);
-            var delegable = new HashSet<>(permissions());
-            delegable.retainAll(globalAuthorities);
-            if (globalAuthorities.contains("platform:modules:install"))
-                delegable.addAll(pluginPermissions());
-            delegableAuthorities = Set.copyOf(delegable);
+            var catalog = AuthorityCatalog.capture();
+            delegableAuthorities =
+                    delegableAuthorities(
+                            globalAuthorities(actor), effectiveAuthorities(actor), catalog);
+            activeAuthorities = catalog.active();
         }
 
         return roles.assignmentOptions(
-                        page, Set.copyOf(roles.userRoles(userId)), delegableAuthorities, canAssign)
+                        page,
+                        Set.copyOf(roles.userRoles(userId)),
+                        delegableAuthorities,
+                        activeAuthorities,
+                        canAssign)
                 .map(
                         option ->
                                 new AssignmentRoleOption(
@@ -275,63 +284,226 @@ public class RoleService {
             fail(HttpStatus.BAD_REQUEST, "invalidRole");
     }
 
+    /**
+     * One catalog read for a mutation. Later uninstalls cannot drop an addition out of the
+     * delegation check, and a permission that was already gone cannot be added.
+     */
+    static final class AuthorityCatalog {
+        private final Set<String> host;
+        private final Set<String> plugin;
+
+        AuthorityCatalog(Set<String> host, Set<String> plugin) {
+            this.host = Set.copyOf(host);
+            this.plugin = Set.copyOf(plugin);
+        }
+
+        static AuthorityCatalog capture() {
+            return new AuthorityCatalog(PERMISSIONS, pluginPermissions());
+        }
+
+        boolean active(String authority) {
+            return host.contains(authority) || plugin.contains(authority);
+        }
+
+        Set<String> active() {
+            var result = new LinkedHashSet<>(host);
+            result.addAll(plugin);
+            return Set.copyOf(result);
+        }
+
+        boolean host(String authority) {
+            return host.contains(authority);
+        }
+
+        boolean plugin(String authority) {
+            return plugin.contains(authority);
+        }
+    }
+
     private void validateAssignableAuthorities(
-            Collection<String> requested, Collection<String> retained) {
-        var allowed = new HashSet<>(permissions());
+            Collection<String> requested, Collection<String> retained, AuthorityCatalog catalog) {
+        var allowed = new HashSet<>(catalog.active());
         allowed.addAll(retained);
         if (!allowed.containsAll(requested))
             fail(HttpStatus.FORBIDDEN, "rolePermissionUnavailable");
     }
 
     /**
-     * New platform grants require global possession; installer can bootstrap active plugin codes.
+     * Platform grants on a role require global possession. Assigning a role to a user may use
+     * effective possession for permissions the catalog marks as caller-scoped. Bootstrapping a
+     * plugin permission the actor does not hold requires installation permission and every host
+     * permission, and that bootstrap is audited only for permissions added by this request.
      */
     private void requireDelegation(
-            String actor, UUID targetRoleId, Collection<String> authorities) {
-        Set<String> pluginPermissions = pluginPermissions();
+            String actor,
+            UUID targetRoleId,
+            Collection<String> authorities,
+            Collection<String> additions,
+            AuthorityCatalog catalog,
+            boolean auditBootstrap,
+            boolean assignment) {
+        if (authorities.contains(PlatformOperation.MODULE_INSTALL.permission()))
+            requireInstallAuthority(guard, actor);
+        Set<String> added = Set.copyOf(additions);
         var pluginBootstrap = new TreeSet<String>();
         for (String authority : new TreeSet<>(authorities)) {
-            if (PERMISSIONS.contains(authority) || !pluginPermissions.contains(authority)) {
-                requireDelegableGlobal(actor, authority);
-            } else if (!guard.hasGlobal(actor, authority)) {
+            if (!catalog.active(authority)) continue;
+            if (catalog.host(authority) || !catalog.plugin(authority)) {
+                requireDelegable(actor, authority, false, !assignment || globallyScoped(authority));
+            } else if (!holds(actor, authority, assignment)) {
                 pluginBootstrap.add(authority);
             }
         }
         if (pluginBootstrap.isEmpty()) return;
-        if (isPreview(actor) || !guard.hasGlobal(actor, "platform:modules:install"))
+        if (isPreview(actor)
+                || !guard.hasGlobal(actor, PlatformOperation.MODULE_INSTALL.permission()))
             fail(HttpStatus.FORBIDDEN, "rolePermissionDelegationDenied");
+        requireInstallAuthority(guard, actor);
+        if (!auditBootstrap) return;
         for (String authority : pluginBootstrap)
-            audit.append(actor, "role.pluginPermission.bootstrap:" + authority, targetRoleId);
+            if (added.contains(authority))
+                audit.append(actor, "role.pluginPermission.bootstrap:" + authority, targetRoleId);
     }
 
-    private void requireCurrentDelegation(String actor, Collection<String> authorities) {
-        Set<String> active = permissions();
+    private void requireCurrentDelegation(
+            String actor, Collection<String> authorities, AuthorityCatalog catalog) {
         for (String authority : new TreeSet<>(authorities))
-            if (active.contains(authority)) requireDelegableGlobal(actor, authority);
+            if (catalog.active(authority)) requireDelegableGlobal(actor, authority, true);
     }
 
-    private void requireDelegableGlobal(String actor, String authority) {
+    private void requireDelegableGlobal(String actor, String authority, boolean revocation) {
+        requireDelegable(actor, authority, revocation, true);
+    }
+
+    private void requireDelegable(
+            String actor, String authority, boolean revocation, boolean globalOnly) {
         try {
-            guard.requireGlobal(actor, authority);
+            if (globalOnly) guard.requireGlobal(actor, authority);
+            else guard.require(actor, authority);
         } catch (ResponseStatusException denied) {
             if (denied.getStatusCode().value() == 403 && "forbidden".equals(denied.getReason()))
-                fail(HttpStatus.FORBIDDEN, "rolePermissionDelegationDenied");
+                fail(
+                        HttpStatus.FORBIDDEN,
+                        revocation
+                                ? "rolePermissionRevocationDenied"
+                                : "rolePermissionDelegationDenied");
             throw denied;
         }
     }
 
-    private void requireCurrentDelegation(String actor, RoleRepository.Role role) {
-        requireCurrentDelegation(actor, role.authorities());
+    private boolean holds(String actor, String authority, boolean assignment) {
+        if (guard.hasGlobal(actor, authority)) return true;
+        if (!assignment || globallyScoped(authority)) return false;
+        try {
+            guard.require(actor, authority);
+            return true;
+        } catch (ResponseStatusException denied) {
+            if (denied.getStatusCode().value() == 403 && "forbidden".equals(denied.getReason()))
+                return false;
+            throw denied;
+        }
     }
 
-    private void requireUpdateDelegation(
-            String actor, UUID targetRoleId, Collection<String> previous, Collection<String> next) {
-        // Revalidate existing and added active grants with the same delegation contract
-        // advertised by the catalog. Retired grants remain inert and may be retained/removed.
-        var active = new HashSet<>(previous);
-        active.addAll(next);
-        active.retainAll(permissions());
-        requireDelegation(actor, targetRoleId, active);
+    private void requireCurrentDelegation(
+            String actor, RoleRepository.Role role, AuthorityCatalog catalog) {
+        requireCurrentDelegation(actor, role.authorities(), catalog);
+    }
+
+    void requireUpdateDelegation(
+            String actor,
+            UUID targetRoleId,
+            Collection<String> previous,
+            Collection<String> next,
+            AuthorityCatalog catalog) {
+        // Existing and added grants from this snapshot stay in the check. A second catalog read
+        // must not drop an addition that was active when the request started.
+        var additions = new LinkedHashSet<>(next);
+        additions.removeAll(previous);
+        for (String authority : additions)
+            if (!catalog.active(authority)) fail(HttpStatus.FORBIDDEN, "rolePermissionUnavailable");
+        var checked = new LinkedHashSet<>(previous);
+        checked.addAll(next);
+        checked.retainAll(catalog.active());
+        requireDelegation(actor, targetRoleId, checked, additions, catalog, true, false);
+    }
+
+    /**
+     * A global permission is delegable only when held globally. A caller-scoped permission is
+     * delegable when held globally or in the actor's effective grants. Plugin bootstrap is limited
+     * to an actor who already holds every host permission.
+     */
+    static Set<String> delegableAuthorities(
+            Set<String> globalHeld, Set<String> effectiveHeld, AuthorityCatalog catalog) {
+        boolean bootstrap =
+                globalHeld.contains(PlatformOperation.MODULE_INSTALL.permission())
+                        && globalHeld.containsAll(
+                                com.lumira.platform.common.PlatformInstallAuthority
+                                        .currentPlatformPermissions());
+        var delegable = new LinkedHashSet<String>();
+        for (String permission : catalog.active()) {
+            if (catalog.plugin(permission) && bootstrap) {
+                delegable.add(permission);
+                continue;
+            }
+            boolean held =
+                    globallyScoped(permission)
+                            ? globalHeld.contains(permission)
+                            : effectiveHeld.contains(permission) || globalHeld.contains(permission);
+            if (held) delegable.add(permission);
+        }
+        return Set.copyOf(delegable);
+    }
+
+    static boolean globallyScoped(String permission) {
+        for (PlatformPageId page : PlatformPageId.values())
+            if (page.accessPermission().equals(permission))
+                return page.scope() == PlatformOperation.Scope.GLOBAL;
+        for (PlatformOperation operation : PlatformOperation.values())
+            if (operation.permission().equals(permission))
+                return operation.scope() == PlatformOperation.Scope.GLOBAL;
+        for (var group : com.lumira.platform.modules.PluginPermissions.catalogGroups())
+            for (var page : group.pages()) {
+                if (permission.equals(page.accessPermission()))
+                    return !"scoped".equals(page.accessScope());
+                if (page.operationPermissions().contains(permission))
+                    return !"scoped"
+                            .equals(page.operationScopes().getOrDefault(permission, "global"));
+            }
+        return true;
+    }
+
+    private void requireInstallBundle(Collection<String> authorities) {
+        if (!authorities.contains(PlatformOperation.MODULE_INSTALL.permission())) return;
+        if (!authorities.containsAll(
+                com.lumira.platform.common.PlatformInstallAuthority.currentPlatformPermissions()))
+            fail(HttpStatus.CONFLICT, "moduleInstallRequiresPlatformAuthority");
+    }
+
+    /** Installing or granting install requires every current platform permission, held globally. */
+    public static void requireInstallAuthority(
+            com.lumira.platform.common.AdministrationPort guard, String actor) {
+        com.lumira.platform.common.PlatformInstallAuthority.require(guard, actor);
+    }
+
+    /**
+     * Preview of an import assignment. Uses the same snapshot and delegation rules as {@link
+     * #assign} and does not write bootstrap audit events.
+     */
+    public void validateImportAssignment(UUID userId, Set<UUID> nextRoleIds, String actor) {
+        if (nextRoleIds == null) return;
+        var catalog = AuthorityCatalog.capture();
+        Set<UUID> current = userId == null ? Set.of() : Set.copyOf(roles.userRoles(userId));
+        var additions = new LinkedHashSet<>(nextRoleIds);
+        additions.removeAll(current);
+        for (UUID roleId : additions) {
+            var role = roles.find(roleId);
+            validateAssignableAuthorities(role.authorities(), role.authorities(), catalog);
+            var active = role.authorities().stream().filter(catalog::active).toList();
+            requireDelegation(actor, roleId, active, active, catalog, false, true);
+        }
+        var removals = new LinkedHashSet<>(current);
+        removals.removeAll(nextRoleIds);
+        for (UUID roleId : removals) requireCurrentDelegation(actor, roles.find(roleId), catalog);
     }
 
     private static int scopeRank(String scope) {
@@ -388,7 +560,12 @@ public class RoleService {
                                                                     permission.code(),
                                                                     "platform",
                                                                     includeEditability),
-                                                            false))
+                                                            false,
+                                                            RegistrationRoleAdapter
+                                                                    .allowsAuthorities(
+                                                                            Set.of(
+                                                                                    permission
+                                                                                            .code()))))
                                     .toList(),
                             PlatformPermissionCatalog.VERSION));
         }
@@ -410,7 +587,9 @@ public class RoleService {
                                                             permission.code(),
                                                             "plugin",
                                                             includeEditability),
-                                                    false))
+                                                    false,
+                                                    RegistrationRoleAdapter.allowsAuthorities(
+                                                            Set.of(permission.code()))))
                             .toList();
             if (groupPermissions.isEmpty()) continue;
             catalog.add(
@@ -433,7 +612,8 @@ public class RoleService {
                         .map(
                                 authority ->
                                         new PermissionCatalogPermission(
-                                                authority, authority, List.of(), false, true))
+                                                authority, authority, List.of(), false, true,
+                                                false))
                         .toList();
         if (!retired.isEmpty())
             catalog.add(
@@ -504,10 +684,19 @@ public class RoleService {
     private boolean editable(
             String actor, String permission, String source, boolean includeEditability) {
         if (!includeEditability || actor == null || isPreview(actor)) return false;
+        if (PlatformOperation.MODULE_INSTALL.permission().equals(permission))
+            return holdsEveryPlatformPermission(actor);
         return guard.hasGlobal(actor, permission)
                 || ("plugin".equals(source)
                         && !PERMISSIONS.contains(permission)
-                        && guard.hasGlobal(actor, "platform:modules:install"));
+                        && guard.hasGlobal(actor, PlatformOperation.MODULE_INSTALL.permission()));
+    }
+
+    private boolean holdsEveryPlatformPermission(String actor) {
+        for (String permission :
+                com.lumira.platform.common.PlatformInstallAuthority.currentPlatformPermissions())
+            if (!guard.hasGlobal(actor, permission)) return false;
+        return true;
     }
 
     private boolean hasPage(String actor, PlatformPageId page) {
@@ -549,6 +738,15 @@ public class RoleService {
         return roles.actorGlobalAuthorities(actor);
     }
 
+    private Set<String> effectiveAuthorities(String actor) {
+        var snapshot = AuthenticationRequestContext.current();
+        if (snapshot != null
+                && actor.equals(snapshot.principalName())
+                && snapshot.authorization() != null)
+            return snapshot.authorization().effectiveAuthorities();
+        return roles.actorEffectiveAuthorities(actor);
+    }
+
     private static String pageIdFromPath(String path) {
         if (path == null || path.isBlank()) return "";
         int slash = path.lastIndexOf('/');
@@ -566,12 +764,14 @@ public class RoleService {
     @Transactional
     public RoleRepository.Role create(RoleInput in, String actor) {
         validateInput(in);
-        validateAssignableAuthorities(in.authorities(), Set.of());
         if (in.code() == null || !in.code().matches("[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}"))
             fail(HttpStatus.BAD_REQUEST, "invalidRole");
         begin(actor, PlatformOperation.ROLE_CREATE);
+        var catalog = AuthorityCatalog.capture();
+        validateAssignableAuthorities(in.authorities(), Set.of(), catalog);
+        requireInstallBundle(in.authorities());
         var id = UUID.randomUUID();
-        requireDelegation(actor, id, in.authorities());
+        requireDelegation(actor, id, in.authorities(), in.authorities(), catalog, true, false);
         roles.create(
                 id,
                 in.code(),
@@ -600,7 +800,9 @@ public class RoleService {
         var old = roles.find(id);
         if (in.version() == null || old.version() != in.version())
             fail(HttpStatus.CONFLICT, "staleRecord");
-        validateAssignableAuthorities(in.authorities(), old.authorities());
+        var catalog = AuthorityCatalog.capture();
+        validateAssignableAuthorities(in.authorities(), old.authorities(), catalog);
+        requireInstallBundle(in.authorities());
         String requestedScope = in.dataScope() == null ? old.dataScope() : in.dataScope();
         boolean reenabled = !old.enabled() && Boolean.TRUE.equals(in.enabled());
         boolean scopeWidened = scopeRank(requestedScope) > scopeRank(old.dataScope());
@@ -610,18 +812,14 @@ public class RoleService {
                         || !"SELF".equals(requestedScope)
                         || !RegistrationRoleAdapter.allowsAuthorities(in.authorities())))
             fail(HttpStatus.CONFLICT, "registrationRoleInUse");
-        if (authoritiesChanged || reenabled || scopeWidened) {
-            Set<String> active = permissions();
-            if ((reenabled || scopeWidened)
-                    && old.authorities().stream()
-                            .anyMatch(
-                                    authority ->
-                                            in.authorities().contains(authority)
-                                                    && !active.contains(authority)))
-                fail(HttpStatus.FORBIDDEN, "forbidden");
-            if (authoritiesChanged || reenabled || scopeWidened)
-                requireUpdateDelegation(actor, id, old.authorities(), in.authorities());
-        }
+        if ((reenabled || scopeWidened)
+                && old.authorities().stream()
+                        .anyMatch(
+                                authority ->
+                                        in.authorities().contains(authority)
+                                                && !catalog.active(authority)))
+            fail(HttpStatus.CONFLICT, "roleRetainsRetiredPermissions");
+        requireUpdateDelegation(actor, id, old.authorities(), in.authorities(), catalog);
         roles.update(
                 id,
                 in.name().strip(),
@@ -650,7 +848,7 @@ public class RoleService {
         if (role.version() != version) fail(HttpStatus.CONFLICT, "staleRecord");
         if (isDefaultRegistrationRole(id)) fail(HttpStatus.CONFLICT, "registrationRoleInUse");
         if (roles.assigned(id)) fail(HttpStatus.CONFLICT, "roleInUse");
-        requireCurrentDelegation(actor, role);
+        requireCurrentDelegation(actor, role, AuthorityCatalog.capture());
         roles.delete(id);
         protect();
         audit.append(actor, "role.delete", id);
@@ -687,17 +885,19 @@ public class RoleService {
         var version = users.version(id);
         if (in.version() == null || version != in.version())
             fail(HttpStatus.CONFLICT, "staleRecord");
+        var catalog = AuthorityCatalog.capture();
         var additions = new HashSet<>(in.roleIds());
         var currentRoleIds = new HashSet<>(roles.userRoles(id));
         additions.removeAll(currentRoleIds);
         for (var roleId : additions) {
             var role = roles.find(roleId);
-            validateAssignableAuthorities(role.authorities(), Set.of());
-            requireDelegation(actor, roleId, role.authorities());
+            validateAssignableAuthorities(role.authorities(), role.authorities(), catalog);
+            var active = role.authorities().stream().filter(catalog::active).toList();
+            requireDelegation(actor, roleId, active, active, catalog, true, true);
         }
         var removals = new HashSet<>(currentRoleIds);
         removals.removeAll(in.roleIds());
-        for (var roleId : removals) requireCurrentDelegation(actor, roles.find(roleId));
+        for (var roleId : removals) requireCurrentDelegation(actor, roles.find(roleId), catalog);
         roles.assign(id, in.roleIds());
         validateAssignedPolicies(id);
         protect();

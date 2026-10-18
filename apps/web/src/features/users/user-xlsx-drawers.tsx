@@ -19,33 +19,12 @@ import { userFieldLabel } from "@/platform/templates/field-labels";
 import { commitUserImport, exportUsersXlsx, getExportFields, getImportFields, getUserImportErrors, getUserImportTask, getUserImportTemplate, inspectImportColumns, previewUserImport } from "@/platform/templates/api";
 import type { ExportField, ImportColumn, ImportField, ImportPreview, ImportPreviewRow, ImportTask } from "@/platform/templates/types";
 import "./user-xlsx-drawers.css";
+import { importRowErrorKeys, importTaskErrorKeys } from "./user-import-errors";
 
 type ExportScope = "currentPage" | "selected" | "filtered";
 type ImportMode = "create" | "update" | "upsert";
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 const transferErrorKeys = ["unsupportedFile", "documentFileTooLarge", "forbidden", "fieldNotReadable", "importPreviewExpired", "importVersionConflict", "idempotencyKeyConflict", "batchLimitExceeded", "staleRecord", "unavailable"] as const;
-const importRowErrorKeys: Record<string, MessageKey> = {
-  invalidUsername: "userImportRowInvalidUsername",
-  duplicateUsername: "userImportRowDuplicateUsername",
-  missingDisplayName: "userImportRowMissingDisplayName",
-  invalidBoolean: "userImportRowInvalidBoolean",
-  usernameAlreadyExists: "userImportRowUsernameExists",
-  userNotFound: "userImportRowUserNotFound",
-  forbidden: "userImportRowForbidden",
-  noImportChanges: "userImportRowNoChanges",
-  invalidRoleCodes: "userImportRowInvalidRoleCodes",
-  invalidOrganizationCodes: "userImportRowInvalidOrganizationCodes",
-  invalidProfileValues: "userImportRowInvalidProfileValues",
-};
-const importTaskErrorKeys: Record<string, MessageKey> = {
-  importHasInvalidRows: "userImportTaskRowsInvalid",
-  importVersionConflict: "importVersionConflict",
-  staleRecord: "staleRecord",
-  invalidUser: "userImportTaskInvalidUser",
-  invalidProfileValues: "userImportRowInvalidProfileValues",
-  invalidRoleAssignment: "userImportTaskInvalidRoleAssignment",
-  invalidOrganizationAssignment: "userImportTaskInvalidOrganizationAssignment",
-};
 
 function importRowErrorLabel(code: string, fields: ImportField[], t: Translate) {
   if (code.startsWith("requiredFieldMissing:")) {

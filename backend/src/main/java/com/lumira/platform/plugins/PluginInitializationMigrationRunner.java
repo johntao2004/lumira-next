@@ -85,6 +85,7 @@ final class PluginInitializationMigrationRunner {
 
     static void migrate(DataSource source, String pluginId, Path directory) {
         if (!pluginId.matches("[a-z][a-z0-9-]{0,39}")) throw invalid(pluginId);
+        PluginMigrationGrantGuard.rejectUntrustedMutations(directory);
         var catalog = readCatalog(pluginId, directory);
         String table = "plugin_" + pluginId.replace('-', '_') + "_schema_history";
         var jdbc = new JdbcTemplate(source);

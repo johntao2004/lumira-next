@@ -65,9 +65,12 @@ class RoleRepositoryAssignmentOptionsDatabaseTest {
     @Test
     void readOnlyLookupReturnsOnlyAssignedRowsAcrossSearchAndPages() {
         var assigned = Set.of(assignedOne, assignedTwo);
-        var first = roles.assignmentOptions(new PageRequest(1, 1, "HR"), assigned, Set.of(), false);
+        var first =
+                roles.assignmentOptions(
+                        new PageRequest(1, 1, "HR"), assigned, Set.of(), Set.of(), false);
         var second =
-                roles.assignmentOptions(new PageRequest(2, 1, "HR"), assigned, Set.of(), false);
+                roles.assignmentOptions(
+                        new PageRequest(2, 1, "HR"), assigned, Set.of(), Set.of(), false);
 
         assertEquals(2, first.total());
         assertEquals(assignedTwo, first.items().getFirst().id());
@@ -85,6 +88,11 @@ class RoleRepositoryAssignmentOptionsDatabaseTest {
                         new PageRequest(1, 10, "HR"),
                         Set.of(assignedOne),
                         Set.of("platform:users:update"),
+                        Set.of(
+                                "platform:roles:create",
+                                "platform:users:delete",
+                                "platform:users:update",
+                                "platform:roles:delete"),
                         true);
         var byId =
                 result.items().stream()
@@ -101,7 +109,9 @@ class RoleRepositoryAssignmentOptionsDatabaseTest {
 
     @Test
     void emptyReadOnlyAssignmentReturnsNoRoleCatalogRows() {
-        var result = roles.assignmentOptions(new PageRequest(1, 10, ""), Set.of(), Set.of(), false);
+        var result =
+                roles.assignmentOptions(
+                        new PageRequest(1, 10, ""), Set.of(), Set.of(), Set.of(), false);
 
         assertEquals(0, result.total());
         assertTrue(result.items().isEmpty());

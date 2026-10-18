@@ -93,7 +93,7 @@ test('navigation groups own the intended routes while hidden account pages stay 
   for (const [routeId, group] of Object.entries(expectedOwners)) {
     assert.equal(routesById.get(routeId)?.group, group, `${routeId} belongs to ${group}`);
   }
-  for (const routeId of ['account-profile', 'account-security', 'account-authentication-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions', 'file-retention', 'mfa-authenticator']) {
+  for (const routeId of ['account-profile', 'account-security', 'account-authentication-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions', 'mfa-authenticator']) {
     const route = routesById.get(routeId);
     assert.equal(route?.hidden, true, `${routeId} stays hidden`);
     assert.ok(!navigationGroups.some(group => group.sections.includes(routeId)), `${routeId} is not a menu item`);
@@ -101,6 +101,8 @@ test('navigation groups own the intended routes while hidden account pages stay 
   for (const routeId of ['account-profile', 'account-security', 'account-authentication-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions']) {
     assert.equal(routesById.get(routeId)?.group, 'user-management');
   }
+  assert.equal(routesById.get('file-retention')?.hidden, undefined);
+  assert.equal(navigationGroups.some(group => group.id === 'administration' && group.sections.includes('file-retention')), true);
   assert.deepEqual(availableNavigation([]).find(group => group.id === 'overview').pages.map(page => page.id), ['home', 'files']);
 });
 
@@ -116,7 +118,7 @@ test('static manifest ordering matches the current built-in navigation order', (
     communication: ['notifications', 'smtp', 'sms', 'mail-deliveries', 'sms-deliveries', 'feedback'],
     payments: [],
     operations: ['monitoring', 'api-docs', 'audit', 'event-outbox'],
-    administration: ['modules', 'branding', 'watermark', 'agreements', 'maintenance', 'navigation'],
+    administration: ['modules', 'branding', 'watermark', 'agreements', 'maintenance', 'navigation', 'file-retention'],
   };
   for (const [groupId, expected] of Object.entries(expectedStaticSections)) {
     assert.deepEqual(navigationGroups.find(group => group.id === groupId).sections, expected, `${groupId} follows the built-in order`);

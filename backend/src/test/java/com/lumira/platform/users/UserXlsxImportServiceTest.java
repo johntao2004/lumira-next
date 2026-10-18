@@ -4,7 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
@@ -29,6 +34,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.server.ResponseStatusException;
@@ -312,6 +318,55 @@ class UserXlsxImportServiceTest {
                 mock(AuditPort.class),
                 mock(JdbcClient.class),
                 mock(PlatformTransactionManager.class));
+    }
+
+    @Test
+    void importPreviewRecordsRoleDelegationBeforeCommit() {
+        UUID roleId = UUID.randomUUID();
+        var repository = mock(UserRepository.class);
+        var jdbc = mock(JdbcClient.class);
+        when(jdbc.sql(anyString()))
+                .thenAnswer(
+                        invocation -> {
+                            String sql = invocation.getArgument(0);
+                            var spec = mock(JdbcClient.StatementSpec.class);
+                            var mapped = mock(JdbcClient.MappedQuerySpec.class);
+                            when(spec.param(anyString(), any())).thenReturn(spec);
+                            when(spec.query(any(RowMapper.class))).thenReturn(mapped);
+                            if (sql.contains("version"))
+                                when(mapped.list()).thenReturn(List.of(Map.entry("qa", 3L)));
+                            else when(mapped.list()).thenReturn(List.of(roleId));
+                            return spec;
+                        });
+        var roles = mock(RoleService.class);
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "rolePermissionDelegationDenied"))
+                .when(roles)
+                .validateImportAssignment(isNull(), eq(Set.of(roleId)), eq(ACTOR));
+        var service =
+                new UserXlsxImportService(
+                        mock(UserImportStore.class),
+                        repository,
+                        mock(UserService.class),
+                        mock(UserEditorService.class),
+                        mock(UserProfileValuesPort.class),
+                        profileSchema(),
+                        mock(TemplateUserDataPort.class),
+                        mock(AdministrationPort.class),
+                        mock(AuditPort.class),
+                        jdbc,
+                        mock(PlatformTransactionManager.class),
+                        roles);
+
+        var row =
+                service.planRow(
+                        2,
+                        Map.of("username", "fixture", "displayName", "Fixture", "roles", "qa"),
+                        "create",
+                        Map.of("fixture", 1),
+                        ACTOR);
+
+        assertEquals("invalid", row.action());
+        assertTrue(row.errors().contains("rolePermissionDelegationDenied"));
     }
 
     private static ProfileSchemaPort profileSchema() {

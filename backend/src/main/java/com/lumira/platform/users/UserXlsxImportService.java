@@ -11,6 +11,7 @@ import com.lumira.platform.identity.api.ProfileFields;
 import com.lumira.platform.identity.api.ProfileSchemaPort;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import com.lumira.platform.identity.api.UserProfileValuesPort;
+import com.lumira.platform.roles.RoleService;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -129,6 +131,7 @@ public class UserXlsxImportService {
     private final AdministrationPort guard;
     private final AuditPort audit;
     private final JdbcClient jdbc;
+    private final RoleService roleDelegation;
     private final TransactionTemplate requiresNew;
     private final TransactionTemplate atomic;
 
@@ -144,6 +147,35 @@ public class UserXlsxImportService {
             AuditPort audit,
             JdbcClient jdbc,
             PlatformTransactionManager transactionManager) {
+        this(
+                store,
+                usersRepository,
+                users,
+                editor,
+                profileValues,
+                profileSchema,
+                userData,
+                guard,
+                audit,
+                jdbc,
+                transactionManager,
+                null);
+    }
+
+    @Autowired
+    public UserXlsxImportService(
+            UserImportStore store,
+            UserRepository usersRepository,
+            UserService users,
+            UserEditorService editor,
+            UserProfileValuesPort profileValues,
+            ProfileSchemaPort profileSchema,
+            TemplateUserDataPort userData,
+            AdministrationPort guard,
+            AuditPort audit,
+            JdbcClient jdbc,
+            PlatformTransactionManager transactionManager,
+            RoleService roleDelegation) {
         this.store = store;
         this.usersRepository = usersRepository;
         this.users = users;
@@ -154,6 +186,7 @@ public class UserXlsxImportService {
         this.guard = guard;
         this.audit = audit;
         this.jdbc = jdbc;
+        this.roleDelegation = roleDelegation;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.atomic = new TransactionTemplate(transactionManager);
@@ -452,6 +485,17 @@ public class UserXlsxImportService {
         Map<String, Long> roleVersions = codeVersions(values.get("roles"), true, errors);
         Map<String, Long> organizationVersions =
                 codeVersions(values.get("organizations"), false, errors);
+        if (roleDelegation != null
+                && values.containsKey("roles")
+                && !errors.contains("invalidRoleCodes")) {
+            try {
+                roleDelegation.validateImportAssignment(
+                        matchedId, enabledRoleIds(values.get("roles")), actor);
+            } catch (ResponseStatusException denied) {
+                String reason = denied.getReason();
+                errors.add(reason == null || reason.isBlank() ? "forbidden" : reason);
+            }
+        }
         if (summary != null && changesContainUserData(values)) {
             try {
                 var current = userData.readValues(summary.id(), actor);
@@ -649,6 +693,18 @@ public class UserXlsxImportService {
                                 java.util.stream.Collectors.toMap(
                                         Map.Entry::getKey, Map.Entry::getValue));
         if (!actual.equals(expected)) conflict("importVersionConflict");
+    }
+
+    private Set<UUID> enabledRoleIds(String value) {
+        Set<String> codes = parseCodes(value);
+        if (codes.isEmpty() || jdbc == null) return Set.of();
+        return jdbc.sql(
+                        "SELECT id FROM platform_role WHERE code IN (:codes) AND enabled=true")
+                .param("codes", codes)
+                .query((rs, n) -> rs.getObject("id", UUID.class))
+                .list()
+                .stream()
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
     Set<UUID> resolveCodes(String value, boolean roles) {

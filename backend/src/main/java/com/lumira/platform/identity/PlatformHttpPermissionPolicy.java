@@ -535,11 +535,10 @@ final class PlatformHttpPermissionPolicy {
                 PlatformPageId.MAINTENANCE,
                 PlatformOperation.MAINTENANCE_UPDATE,
                 "/maintenance");
-        action(
+        page(
                 routes,
                 HttpMethod.GET,
                 PlatformPageId.MAINTENANCE,
-                PlatformOperation.MAINTENANCE_UPDATE,
                 "/api/platform/settings/maintenance/roles");
         settings(routes, PlatformPageId.SECURITY, PlatformOperation.SECURITY_UPDATE, "/security");
         settings(

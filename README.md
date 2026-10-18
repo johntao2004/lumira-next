@@ -32,6 +32,8 @@ pnpm plugins:build
 pnpm test:java
 # 创建独立 PostgreSQL 角色/数据库，仅首次需要
 PSQL_BIN=/opt/homebrew/opt/postgresql@18/bin/psql node scripts/init-local.mjs
+# 首次登录前生成会话密钥。缺少时登录返回 503 secretKeyUnavailable
+node scripts/init-secret-key.mjs
 # 服务首次启动会由 Flyway 自动导入单文件基线
 node scripts/start.mjs
 node scripts/stop.mjs

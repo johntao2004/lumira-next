@@ -111,10 +111,14 @@ public class IdentityConfiguration {
                             .optional()
                             .orElseThrow(() -> new UsernameNotFoundException("Unknown account"));
             var authorities =
-                    jdbc.sql("SELECT authority FROM platform_effective_authority WHERE user_id=:id")
-                            .param("id", account.id())
-                            .query(String.class)
-                            .list();
+                    com.lumira.platform.modules.ActivePermissionCatalog.retain(
+                                    jdbc.sql(
+                                                    "SELECT authority FROM platform_effective_authority WHERE user_id=:id")
+                                            .param("id", account.id())
+                                            .query(String.class)
+                                            .list())
+                            .stream()
+                            .toList();
             var granted =
                     authorities.stream()
                             .map(

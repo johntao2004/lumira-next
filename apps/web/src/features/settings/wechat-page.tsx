@@ -126,7 +126,7 @@ export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?:
       </SettingsEnabledControls>
       <FeedbackBubble id="settings-wechat-error" content={submit.error ? t(submit.error) : undefined} />
       <FeedbackBubble kind="success" id="settings-wechat-saved" content={saved ? t("settingsSaved") : undefined} />
-      {!canWrite && <Typography.Text type="secondary">{t("forbidden")}</Typography.Text>}
+      {!canWrite && <Typography.Text type="secondary">{t("settingsReadOnly")}</Typography.Text>}
       <div className="form-actions auth-config-actions"><AsyncButton htmlType="submit" type="primary" pending={submit.pending} disabled={!canWrite} label={t("save")} /></div>
     </Form>
   </>;

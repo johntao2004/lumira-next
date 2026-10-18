@@ -129,7 +129,7 @@ export function RoleAuthenticationEditor({ role, canWrite }: { role: Role; canWr
       </Form.Item> : <Form.Item><Alert type="info" showIcon title={t("roleCaptchaCapabilityUnavailable")} /></Form.Item>}
       <FeedbackBubble id={`role-auth-policy-${role.id}-error`} content={action.errorMessage} />
       <Space className="form-actions" wrap>
-        <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />
+        <AsyncButton htmlType="submit" pending={action.pending} disabled={!canWrite} label={t("saveRoleAuthenticationPolicy")} />
       </Space>
     </Form>
   </Card>;

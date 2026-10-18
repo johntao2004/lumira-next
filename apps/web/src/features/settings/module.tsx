@@ -1,7 +1,7 @@
 import type { FrontendModule } from "@/platform/modules/types";
 import { settingsManifest } from "./manifest";
 import { ProCard } from "@ant-design/pro-components";
-import { lazy, useEffect, type ReactNode } from "react";
+import { lazy, type ReactNode } from "react";
 import { RouteTabs } from "@/platform/components/route-tabs";
 import { routeTabsForGroup } from "@/platform/modules/route-tabs";
 import "./authentication-security-layout.css";
@@ -21,15 +21,7 @@ const WatermarkPage = lazy(() => import("./watermark-page").then(({ WatermarkPag
 const WechatPage = lazy(() => import("./wechat-page").then(({ WechatPage }) => ({ default: WechatPage })));
 const FileRetentionPage = lazy(() => import("./file-retention-page").then(({ FileRetentionPage }) => ({ default: FileRetentionPage })));
 
-function FileRetentionLegacyRedirect() {
-  useEffect(() => {
-    window.location.replace("/dashboard/files-all#tab=file-retention");
-  }, []);
-  return null;
-}
-
-function FileRetentionLegacyRoute({ hasRouteAccess, hasRouteOperation }: { hasRouteAccess: (routeId: string) => boolean; hasRouteOperation: (routeId: string, actionId: string) => boolean }) {
-  if (hasRouteAccess("files-all")) return <FileRetentionLegacyRedirect />;
+function FileRetentionLegacyRoute({ hasRouteOperation }: { hasRouteAccess: (routeId: string) => boolean; hasRouteOperation: (routeId: string, actionId: string) => boolean }) {
   return <FileRetentionPage canWrite={hasRouteOperation("file-retention", "update")} />;
 }
 

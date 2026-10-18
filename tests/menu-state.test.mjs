@@ -43,9 +43,10 @@ test('every built-in Tab route in a navigation group preserves its expansion sta
   }
 });
 
-test('file retention keeps its settings permission but is no longer a settings sidebar entry', () => {
+test('file retention is a sidebar page when its access grant is global', () => {
   assert.equal(canAccessSection('file-retention', ['platform:file-retention:access']), true);
-  assert.equal(canAccessSection('file-retention', []), false);
-  const navigation = availableNavigation(['platform:file-retention:access'], [], ['platform:file-retention:access']);
-  assert.equal(navigation.flatMap(group => group.pages).some(page => page.id === 'file-retention'), false);
+  assert.equal(canAccessSection('file-retention', [], [], ['platform:file-retention:access']), true);
+  assert.equal(canAccessSection('file-retention', ['platform:file-retention:access'], [], []), false);
+  const navigation = availableNavigation([], [], ['platform:file-retention:access']);
+  assert.equal(navigation.flatMap(group => group.pages).some(page => page.id === 'file-retention'), true);
 });

@@ -51,7 +51,7 @@ class RoleServiceAssignmentOptionsTest {
                 .when(guard)
                 .requireOperationUser(ACTOR, USER_ID, PlatformOperation.USER_READ_ROLES);
         when(roles.userRoles(USER_ID)).thenReturn(List.of(ASSIGNED_ROLE_ID));
-        when(roles.assignmentOptions(page, Set.of(ASSIGNED_ROLE_ID), Set.of(), false))
+        when(roles.assignmentOptions(page, Set.of(ASSIGNED_ROLE_ID), Set.of(), Set.of(), false))
                 .thenReturn(new PageResult<>(List.of(option), 1, 1, 10));
 
         var result = service(roles, guard).assignmentOptions(USER_ID, page, ACTOR);
@@ -63,7 +63,7 @@ class RoleServiceAssignmentOptionsTest {
                 java.util.Arrays.stream(
                                 RoleService.AssignmentRoleOption.class.getRecordComponents())
                         .anyMatch(component -> component.getName().equals("authorities")));
-        verify(roles).assignmentOptions(page, Set.of(ASSIGNED_ROLE_ID), Set.of(), false);
+        verify(roles).assignmentOptions(page, Set.of(ASSIGNED_ROLE_ID), Set.of(), Set.of(), false);
         verify(roles, never()).actorGlobalAuthorities(ACTOR);
     }
 
@@ -90,7 +90,8 @@ class RoleServiceAssignmentOptionsTest {
                         "platform:users:access",
                         "platform:users:assign-roles",
                         "platform:users:update");
-        when(roles.assignmentOptions(page, Set.of(ASSIGNED_ROLE_ID), delegable, true))
+        when(roles.assignmentOptions(
+                        page, Set.of(ASSIGNED_ROLE_ID), delegable, RoleService.PERMISSIONS, true))
                 .thenReturn(new PageResult<>(List.of(option), 1, 2, 20));
 
         var result = service(roles, guard).assignmentOptions(USER_ID, page, ACTOR);
@@ -98,7 +99,9 @@ class RoleServiceAssignmentOptionsTest {
         assertEquals(2, result.page());
         assertEquals("qa-role", result.items().getFirst().code());
         assertTrue(result.items().getFirst().assignable());
-        verify(roles).assignmentOptions(page, Set.of(ASSIGNED_ROLE_ID), delegable, true);
+        verify(roles)
+                .assignmentOptions(
+                        page, Set.of(ASSIGNED_ROLE_ID), delegable, RoleService.PERMISSIONS, true);
         verify(guard).requireOperationUser(ACTOR, USER_ID, PlatformOperation.USER_ASSIGN_ROLES);
     }
 

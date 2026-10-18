@@ -71,6 +71,21 @@ test("page access controls navigation separately from action grants", () => {
   assert.equal(canAccessSection("online-users", ["platform:users:access"], [], ["platform:users:access"]), false);
 });
 
+test("page menus follow access grants rather than legacy read operations", () => {
+  assert.equal(canAccessSection("feedback", ["platform:feedback:access"], ["feedback"], []), true);
+  assert.equal(canAccessSection("feedback", ["platform:feedback:read"], ["feedback"], []), false);
+  assert.equal(canAccessSection("localization", ["platform:localization:access"], ["localization"], []), false);
+  assert.equal(canAccessSection("localization", [], ["localization"], ["platform:localization:access"]), true);
+  assert.equal(canAccessSection("localization", [], ["localization"], ["platform:localization:read"]), false);
+  assert.equal(canAccessSection("sensitive-words", [], ["sensitive-words"], ["platform:sensitive-words:access"]), true);
+  assert.equal(canAccessSection("sensitive-words", ["platform:sensitive-words:read"], ["sensitive-words"], []), false);
+  assert.equal(canAccessSection("print-templates", ["platform:print-templates:access"], [], []), false);
+  assert.equal(canAccessSection("print-templates", [], [], ["platform:print-templates:access"]), true);
+  const retention = availableNavigation([], [], ["platform:file-retention:access"])
+    .flatMap(({ pages }) => pages.map(({ id }) => id));
+  assert.equal(retention.includes("file-retention"), true);
+});
+
 test("settings tabs include only children with their own page access", () => {
   const settings = frontendModuleManifests.find(({ id }) => id === "settings");
   assert.ok(settings);

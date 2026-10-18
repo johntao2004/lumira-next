@@ -726,7 +726,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
   </Popover>;
 
   return <div ref={consolePage} className="w-full ai-console-page">
-    {!canReadUsers && <Typography.Text type="secondary" className="ai-console-permission">{t("forbidden")}</Typography.Text>}
+    {!canReadUsers && <Typography.Text type="secondary" className="ai-console-permission">{t("settingsReadOnly")}</Typography.Text>}
     {historySaveFailed && <Alert type="warning" showIcon title={t("aiHistorySaveFailed")} />}
     {shareSyncFailures.length > 0 && <Alert type="warning" showIcon title={t("aiShareSyncFailed")} action={<Button size="small" disabled={isRolePreviewReadOnly()} onClick={() => shareSyncQueue.current?.retry()}>{t("retry")}</Button>} />}
 
@@ -755,7 +755,7 @@ function AiChatWorkspace({ owner, canReadUsers, canCreateUsers, canUpdateUsers, 
 
         <div className="ai-chat-log" aria-live="polite" aria-busy={busy} role="log">
           {transcript.length === 0 && providers.isPending ? <div className="ai-chat-centered"><Spin /></div>
-            : transcript.length === 0 && providers.error ? <div className="ai-chat-centered"><Typography.Text type="danger">{t("unavailable")}</Typography.Text></div>
+            : transcript.length === 0 && providers.error ? <div className="ai-chat-centered">{providers.error instanceof ApiError && providers.error.status === 403 ? <Typography.Text type="secondary">{t("aiNoProviders")}</Typography.Text> : <Typography.Text type="danger">{t("unavailable")}</Typography.Text>}</div>
             : transcript.length === 0 && chatProviders.length === 0 ? <div className="ai-chat-centered">
               <Typography.Text type="secondary">{t("aiChatNoModel")}</Typography.Text>
             </div>

@@ -255,6 +255,8 @@ public class PluginRuntime
                                     HttpStatus.BAD_REQUEST, "invalidPluginOperation");
                 };
         guard.requireGlobal(actor, permission);
+        if ("INSTALL".equals(kind))
+            com.lumira.platform.common.PlatformInstallAuthority.require(guard, actor);
     }
 
     private void requireLifecyclePermissions(String actor, Plan plan) {
@@ -287,6 +289,7 @@ public class PluginRuntime
     }
 
     private void restoreUnderClusterLock() throws Exception {
+        com.lumira.platform.common.NavigationMenuGrantAligner.alignHost(jdbc);
         Files.createDirectories(root.resolve("artifacts"));
         Files.createDirectories(root.resolve("loaded"));
         recoverExpiredOperations();
@@ -1082,6 +1085,7 @@ public class PluginRuntime
     public List<View> importPackage(String actor, byte[] bytes) throws Exception {
         guard.requireGlobal(actor, PlatformPageId.MODULES.accessPermission());
         guard.requireGlobal(actor, PlatformOperation.MODULE_INSTALL.permission());
+        com.lumira.platform.common.PlatformInstallAuthority.require(guard, actor);
         requireLifecycleChangeAllowed();
         return withClusterLifecycleLock(
                 () -> {
@@ -1881,6 +1885,11 @@ public class PluginRuntime
                             .optional();
             if (existing.isPresent()) {
                 if (!m.id().equals(existing.get())) throw conflict("pluginRouteConflict");
+                com.lumira.platform.common.NavigationMenuGrantAligner.alignBuiltIn(
+                        jdbc,
+                        new com.lumira.platform.common.NavigationMenuGrantAligner.Desired(
+                                r.id(), r.permission(), r.global()),
+                        m.id());
                 continue;
             }
             UUID parent =

@@ -19,7 +19,7 @@ export const settingsManifest = {
     { id: "wechat", label: "wechatSettings", permission: "platform:wechat:access", accessScope: "global", operations: { update: "platform:wechat:update" }, group: "user-management", order: 90 },
     { id: "captcha", label: "captchaSettingsTitle", permission: "platform:captcha:access", accessScope: "global", operations: { update: "platform:captcha:update" }, group: "user-management", order: 100 },
     { id: "registration", label: "registrationSettingsTitle", permission: "platform:registration:access", accessScope: "global", operations: { update: "platform:registration:update", readRoles: "platform:registration:read-roles", assignDefaultRole: "platform:registration:assign-default-role" }, group: "user-management", order: 110 },
-    { id: "file-retention", label: "fileRetention", permission: "platform:file-retention:access", accessScope: "global", operations: { update: "platform:file-retention:update" }, hidden: true, group: "administration", order: 195 },
+    { id: "file-retention", label: "fileRetention", permission: "platform:file-retention:access", accessScope: "global", operations: { update: "platform:file-retention:update" }, group: "administration", order: 195 },
   ],
   tabGroups: [
     { id: "personalization", routes: ["branding", "watermark", "agreements", "maintenance"], anchor: "branding", collapse: "when-all-visible" },

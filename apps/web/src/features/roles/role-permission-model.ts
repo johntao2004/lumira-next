@@ -5,6 +5,8 @@ export type PermissionCatalogPermission = {
   editable?: boolean;
   /** Retired grants are inert and may only be removed when already present. */
   retired?: boolean;
+  /** True when a default registration role may keep this permission. */
+  registrationEligible?: boolean;
 };
 
 export type PermissionCatalogPage = {
@@ -120,26 +122,41 @@ export function canEditRolePermission(
   actorAuthorities: string[],
   canManagePluginPermissions: boolean,
   adding: boolean,
+  registrationOnly = false,
 ) {
   const entry = permissionCatalogMap(groups).get(code);
   if (!entry) return false;
   const { group, permission } = entry;
   const retired = permission.retired === true || group.id === "retired-plugin-permissions";
   if (retired) return !adding && current.includes(code);
+  if (registrationOnly && permission.registrationEligible !== true) return !adding && current.includes(code);
   if (permission.editable === false) return false;
   if (permission.editable === true) return true;
   return actorAuthorities.includes(code) || (group.source === "plugin" && canManagePluginPermissions);
+}
+
+/** The save rechecks every active grant, so one undelegable grant makes the tree read-only. */
+export function roleContainsUndelegableActiveGrant(
+  groups: PermissionCatalogGroup[],
+  authorities: readonly string[],
+) {
+  const held = new Set(authorities);
+  return groups.some((group) => group.permissions.some((permission) => held.has(permission.code)
+    && permission.retired !== true
+    && group.id !== "retired-permissions"
+    && permission.editable === false));
 }
 
 export function editableActivePermissionCodes(
   groups: PermissionCatalogGroup[],
   actorAuthorities: string[],
   canManagePluginPermissions = false,
+  registrationOnly = false,
 ) {
   return [...new Set(groups
     .filter((group) => group.id !== "retired-plugin-permissions")
     .flatMap((group) => group.permissions.map(({ code }) => code)))]
-    .filter((code) => canEditRolePermission(groups, code, [], actorAuthorities, canManagePluginPermissions, true));
+    .filter((code) => canEditRolePermission(groups, code, [], actorAuthorities, canManagePluginPermissions, true, registrationOnly));
 }
 
 /** Bulk changes use the full active catalog and never depend on the visible search rows. */
@@ -149,9 +166,10 @@ export function updateAllEditableActiveRoleAuthorities(
   actorAuthorities: string[],
   selected: boolean,
   canManagePluginPermissions = false,
+  registrationOnly = false,
 ) {
-  const activeCodes = editableActivePermissionCodes(groups, actorAuthorities, canManagePluginPermissions);
-  return updateRoleAuthorities(current, selected ? { add: activeCodes } : { remove: activeCodes }, groups, actorAuthorities, canManagePluginPermissions);
+  const activeCodes = editableActivePermissionCodes(groups, actorAuthorities, canManagePluginPermissions, registrationOnly);
+  return updateRoleAuthorities(current, selected ? { add: activeCodes } : { remove: activeCodes }, groups, actorAuthorities, canManagePluginPermissions, registrationOnly);
 }
 
 /** Merge duplicate rows for one route without inventing shared permission behavior. */
@@ -200,15 +218,16 @@ export function updateRoleAuthorities(
   groups: PermissionCatalogGroup[],
   actorAuthorities: string[],
   canManagePluginPermissions = false,
+  registrationOnly = false,
 ) {
   const next = new Set(current);
 
   for (const code of change.remove ?? []) {
-    if (canEditRolePermission(groups, code, current, actorAuthorities, canManagePluginPermissions, false)) next.delete(code);
+    if (canEditRolePermission(groups, code, current, actorAuthorities, canManagePluginPermissions, false, registrationOnly)) next.delete(code);
   }
   for (const code of change.add ?? []) {
     if (current.includes(code)) continue;
-    if (canEditRolePermission(groups, code, current, actorAuthorities, canManagePluginPermissions, true)) next.add(code);
+    if (canEditRolePermission(groups, code, current, actorAuthorities, canManagePluginPermissions, true, registrationOnly)) next.add(code);
   }
 
   return [...next];

@@ -90,6 +90,7 @@ public class RoleRepository {
             PageRequest page,
             Set<UUID> assignedRoleIds,
             Set<String> delegableAuthorities,
+            Set<String> activeAuthorities,
             boolean includeDelegableCandidates) {
         var f = filters(page);
         var params = new HashMap<String, Object>();
@@ -105,12 +106,18 @@ public class RoleRepository {
                 "NOT EXISTS (SELECT 1 FROM platform_role_authority ra "
                         + "WHERE ra.role_id=r.id "
                         + "AND ra.authority NOT LIKE 'platform:__v50:%' "
+                        + "AND ra.authority IN (:activeAuthorities) "
                         + "AND ra.authority NOT IN (:delegableAuthorities))";
         String assignmentFilter = "";
         if (includeDelegableCandidates) {
             params.put(
                     "delegableAuthorities",
                     delegableAuthorities.isEmpty() ? Set.of("") : delegableAuthorities);
+            params.put(
+                    "activeAuthorities",
+                    activeAuthorities == null || activeAuthorities.isEmpty()
+                            ? Set.of("")
+                            : activeAuthorities);
             if (assigned.isEmpty()) {
                 assignmentFilter = " AND " + delegationCheck;
             } else {
@@ -253,6 +260,10 @@ public class RoleRepository {
                         .param("name", actor)
                         .query(String.class)
                         .list());
+    }
+
+    public Set<String> actorEffectiveAuthorities(String actor) {
+        return actorAuthorities(actor);
     }
 
     public Set<String> actorGlobalAuthorities(String actor) {

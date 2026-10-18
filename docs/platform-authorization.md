@@ -133,6 +133,24 @@ preview intersects the target role's ordinary grants and data scope with the act
 effective grants and scopes; current role assignments and organization membership are read when the
 preview is checked.
 
+Built-in navigation rows are aligned to the current page access grant and catalog scope when the
+application restores plugins. The published B52 seed still contains a few older operation keys
+(`platform:feedback:read`, `platform:localization:read`, `platform:sensitive-words:read`) and marks
+print templates as caller-scoped. Startup rewrites only built-in page rows, so a grant of the page
+access permission is what shows the page. File retention has no B52 menu row; startup inserts one
+built-in page under administration when it is missing, and the frontend lists that page for
+`platform:file-retention:access`. Custom rows that are not built in are left unchanged. Session
+authorities returned by `/auth/me` include only permissions in the current host and installed-plugin
+catalog. Grants kept for an uninstalled plugin stay on the role and become effective again if that
+plugin is reinstalled.
+
+`platform:modules:install` is not a lesser privilege. A role can store it only together with every
+current platform permission, and the actor must hold every current platform permission globally
+before granting it or importing and installing a plugin. Plugin migration SQL that writes
+`platform_role_authority`, `platform_authority`, or `platform_user_role` is rejected unless its
+SHA-256 is one of the published bundled initialization scripts. In-process plugin code still runs
+as the application, so only an operator who already holds the full platform catalog can load it.
+
 ## Deliberately ungranted routes
 
 Self-service routes such as the workspace/home, personal files, and account settings do not appear

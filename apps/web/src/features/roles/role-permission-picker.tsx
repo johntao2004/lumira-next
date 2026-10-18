@@ -34,6 +34,7 @@ type PermissionPickerProps = {
   actorAuthorities: string[];
   canEdit: boolean;
   canManagePluginPermissions: boolean;
+  registrationOnly?: boolean;
   t: (key: string, variables?: Record<string, string | number>) => string;
 };
 
@@ -74,7 +75,7 @@ function unknownNodeKey(code: string) {
 }
 
 export function RolePermissionPicker({
-  value = [], onChange, groups, actorAuthorities, canEdit, canManagePluginPermissions, t,
+  value = [], onChange, groups, actorAuthorities, canEdit, canManagePluginPermissions, registrationOnly = false, t,
 }: PermissionPickerProps) {
   const [search, setSearch] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
@@ -121,11 +122,12 @@ export function RolePermissionPicker({
           actorAuthorities,
           canManagePluginPermissions,
           !value.includes(accessCode),
+          registrationOnly,
         );
 
         const operationNodes: PermissionTreeNode[] = operations.map(({ code, label }) => {
           const operationKey = permissionOperationNodeKey(group, page, code);
-          const canEditOperation = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code));
+          const canEditOperation = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code), registrationOnly);
           const pageAccessGranted = !!accessCode && value.includes(accessCode);
           const actionUnavailable = value.includes(code) && !pageAccessGranted;
           return {
@@ -190,7 +192,7 @@ export function RolePermissionPicker({
       title: <span className="role-permission-picker__domain">{permissionGroupTitle(group, t)}</span>,
       children: groupPermissions.map(({ code, label }) => {
         const key = orphanNodeKey(group, code);
-        const canEditPermission = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code));
+        const canEditPermission = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code), registrationOnly);
         nodeActions.set(key, { codes: [code] });
         return {
           key,
@@ -316,7 +318,7 @@ export function RolePermissionPicker({
   const checkedKeys = checkedPermissionTreeKeys(nodeActions, value);
   const unknownCheckedKeys = visibleUnknownCodes.map(unknownNodeKey);
   const disabledTree = !canEdit;
-  const bulkCodes = editableActivePermissionCodes(groups, actorAuthorities, canManagePluginPermissions);
+  const bulkCodes = editableActivePermissionCodes(groups, actorAuthorities, canManagePluginPermissions, registrationOnly);
   const bulkAllSelected = bulkCodes.length > 0 && bulkCodes.every((code) => value.includes(code));
   const bulkClearHasChanges = bulkCodes.some((code) => value.includes(code));
 
@@ -327,6 +329,7 @@ export function RolePermissionPicker({
       actorAuthorities,
       selected,
       canManagePluginPermissions,
+      registrationOnly,
     );
     onChange?.(next);
   };
@@ -365,7 +368,7 @@ export function RolePermissionPicker({
         const checked = info.checked;
         const next = updateRoleAuthorities(value, checked
           ? { add: action.codes }
-          : { remove: action.codes }, groups, actorAuthorities, canManagePluginPermissions);
+          : { remove: action.codes }, groups, actorAuthorities, canManagePluginPermissions, registrationOnly);
         onChange?.(next);
       }}
     /> : <Typography.Text type="secondary" className="role-permission-picker__empty">{t("permissionNoMatches")}</Typography.Text>}

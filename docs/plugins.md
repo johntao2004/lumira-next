@@ -43,11 +43,13 @@ pnpm plugins:build sdk/examples/hotplug-probe
 
 API 规则保留 `authorities` 的旧任一项匹配行为，不能改解释为 AND。格式 v2 的权限规则必须把本页访问权限放入 `allAuthorities`，并至少要求该页一个已映射操作；`authorities` 只能列该页操作，不能替代页面访问门槛。新增的 `allAuthorities` 表示额外的全部匹配条件，必须是同一插件页面上已声明的访问/操作映射；同时出现两个字段时，旧列表先按任一项匹配，再要求 `allAuthorities` 全部满足。旧格式 v1 和旧 `global:true` 规则继续保持原有匹配及全局范围语义。混合范围路由可额外声明 `globalAuthorities`：其中至少一项必须同时满足普通权限匹配并具有全局范围；该字段是任一项匹配，适用于“页面访问可按本人范围、管理动作必须全局”等组合。它不能放宽 `allAuthorities` 的持有要求。实际服务也必须校验页面访问和动作，并保留已有用户/角色数据范围；manifest 规则不能替代服务的对象级检查。`authenticatedOnly`、公开读取和签名回调规则保持既有语义，不能与权限规则混用。
 
-`GET /api/platform/permission-catalog` 返回平台与当前已安装插件的动态权限组，页面结构为 `{id,path,title,navigationGroup,navigationOrder,accessPermission,operationPermissions,accessScope,operationScopes}`；权限项结构为 `{code,label,requires,editable,retired}`，插件组的 `source` 为 `plugin`。插件页面只从该 route 的显式映射生成，旧清单缺少映射时 `operationPermissions` 为空，不能按组内其他权限补齐。插件权限只在当前已安装 manifest 声明时可新增到角色。首次给角色授予插件权限，仍须通过角色创建或更新的 `platform:roles:create` / `platform:roles:update` 检查，并由持有全局 `platform:modules:install` 的操作者为当前已安装插件提供的权限执行受审计引导；此引导不能授予平台权限、未知权限或已卸载插件权限。卸载后，角色中保留的历史权限会显示为退役条目，只能保留或移除，不能再次新增。
+`GET /api/platform/permission-catalog` 返回平台与当前已安装插件的动态权限组，页面结构为 `{id,path,title,navigationGroup,navigationOrder,accessPermission,operationPermissions,accessScope,operationScopes}`；权限项结构为 `{code,label,requires,editable,retired}`，插件组的 `source` 为 `plugin`。插件页面只从该 route 的显式映射生成，旧清单缺少映射时 `operationPermissions` 为空，不能按组内其他权限补齐。插件权限只在当前已安装 manifest 声明时可新增到角色。首次给角色授予插件权限，仍须通过角色创建或更新的 `platform:roles:create` / `platform:roles:update` 检查。引导一项操作者自己并不持有的插件权限，要求同时在全局范围持有 `platform:modules:install` 和全部当前平台权限；此引导不能授予平台权限、未知权限或已卸载插件权限。卸载后，角色中保留的历史权限会显示为退役条目，只能保留或移除，不能再次新增，并且不会出现在 `/auth/me`。重新安装后，这些保留授权重新生效，不会在卸载时被静默删除。
 
 运行时每次刷新都按插件 ID 替换完整目录快照；安装后注册，卸载后移除，避免静态权限集合累积。卸载不会删除角色已保存的 authority；目录会将不再由已安装插件声明的历史授权列为退役权限，供查看现有角色使用。角色可以保留或移除退役权限，但不能新增。插件服务卸载后不再注册路由或执行能力；重新安装后再按当前 manifest 注册权限和页面。
 
-插件生命周期权限按操作拆分：导入包和首次安装需要 `platform:modules:install`，启用已安装插件需要 `platform:modules:update`，卸载需要 `platform:modules:uninstall`。安装操作若同时启用已安装依赖，也要求 update。后台任务执行时会再次检查对应权限。业务 API 的细粒度权限仍由插件 manifest 和服务层共同执行；服务层原有的数据范围、全局范围与事务边界必须保留，不能因拆分 authority 而放宽。
+插件生命周期权限按操作拆分：导入包和首次安装需要 `platform:modules:install`，启用已安装插件需要 `platform:modules:update`，卸载需要 `platform:modules:uninstall`。安装操作若同时启用已安装依赖，也要求 update。后台任务执行时会再次检查对应权限。`platform:modules:install` 不能单独构成安装资格：操作者还必须在全局范围持有全部当前平台权限，角色也只能把它和全部当前平台权限一起保存。插件包没有签名或允许名单，插件 Java 在进程内运行，迁移使用应用数据库账号；因此安装等同于完整平台管理，而不是一项可以单独下放的低权限。业务 API 的细粒度权限仍由插件 manifest 和服务层共同执行；服务层原有的数据范围、全局范围与事务边界必须保留，不能因拆分 authority 而放宽。
+
+插件初始化 SQL 不能借迁移自行写入 `platform_role_authority`、`platform_authority` 或 `platform_user_role`。宿主在 Flyway 之前扫描迁移目录：已随发行包公布、且摘要在允许名单中的初始化脚本可以照常复制既有授权；任何其他会改写这些表的脚本（含把表名放进字符串再动态执行的语句）直接拒绝。只读引用这些表不受影响。动态拼接或编码后的 SQL 不在扫描范围内，由“只有完整平台管理员可以安装”这条规则兜底。已公布的 `initialization.json` 校验和与现有数据库历史保持不变，不改写已发布的初始化脚本。
 
 ## 后端资源所有权
 

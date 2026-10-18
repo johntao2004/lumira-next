@@ -119,6 +119,7 @@ public class AdministrationGuard
                                         .param("name", actor)
                                         .query(String.class)
                                         .list());
+        held.retainAll(com.lumira.platform.modules.ActivePermissionCatalog.current());
         if (!held.contains(permission))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
         return held;

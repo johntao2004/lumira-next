@@ -70,6 +70,7 @@ final class PluginPermissionMigrationRunner {
     }
 
     static void migrate(DataSource dataSource, String pluginId, Path migrations) {
+        PluginMigrationGrantGuard.rejectUntrustedMutations(migrations);
         if (PluginInitializationMigrationRunner.supports(migrations)) {
             PluginInitializationMigrationRunner.migrate(dataSource, pluginId, migrations);
             return;

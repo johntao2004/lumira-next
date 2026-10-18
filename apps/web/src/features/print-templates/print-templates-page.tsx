@@ -12,7 +12,7 @@ import { PlatformDrawer } from "@/platform/components/platform-drawer";
 import { PlatformForm } from "@/platform/components/platform-form";
 import { QueryFailure } from "@/platform/components/query-failure";
 import { ResourceTable } from "@/platform/components/resource-table";
-import { isRolePreviewReadOnly } from "@/platform/api/client";
+import { ApiError, isRolePreviewReadOnly } from "@/platform/api/client";
 import { useSessionScope } from "@/platform/auth/use-session-scope";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
@@ -293,7 +293,7 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
   const tagLabels = (values: string[]) => values.map((tag) => <Tag key={tag}>{tag}</Tag>);
 
   return <>
-    {fieldsQuery.error && <QueryFailure title={t("unavailable")} pending={fieldsQuery.isFetching} onRetry={() => void fieldsQuery.refetch()} />}
+    {fieldsQuery.error && !(fieldsQuery.error instanceof ApiError && fieldsQuery.error.status === 403) && <QueryFailure title={t("unavailable")} pending={fieldsQuery.isFetching} onRetry={() => void fieldsQuery.refetch()} />}
     <ResourceTable<TemplateSummary>
       result={query.data}
       loading={query.isFetching}

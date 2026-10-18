@@ -9,6 +9,10 @@ test("role save preserves specific delegation and registration errors", () => {
   for (const [status, code] of [
     [403, "rolePermissionDelegationDenied"],
     [403, "rolePermissionUnavailable"],
+    [403, "rolePermissionRevocationDenied"],
+    [409, "roleRetainsRetiredPermissions"],
+    [409, "moduleInstallRequiresPlatformAuthority"],
+    [403, "moduleInstallRequiresPlatformAuthority"],
     [409, "registrationRoleInUse"],
   ] as const) {
     const key = messageKeyFor(new ApiError(status, code), roleErrorKeys);
