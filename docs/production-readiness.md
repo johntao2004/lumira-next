@@ -6,10 +6,10 @@
 
 | 领域 | 必需证据 | 当前约束 |
 |---|---|---|
-| 构建与供应链 | 干净 checkout、锁文件、SDK/插件/宿主/前端构建、格式/类型/依赖扫描 | 独立 SDK 仍为候选本地版本，尚无远端发布 |
+| 构建与供应链 | 干净 checkout、锁文件、SDK/插件/宿主/前端构建、格式/类型/依赖扫描 | 独立 SDK 仍为候选版本，尚未发布到公共制品仓库 |
 | 权限 | 两兄弟组织和子组织，多角色/只读/SELF/ORG/SUBTREE/ALL、越权拒绝、撤权同会话即时生效 | 自动化及真实 HTTP 样本需随版本重跑 |
-| 界面 | 登录、首次设置、授权刷新、插件装卸、HMR/导航/响应式真实浏览器操作 | 云浏览器与执行容器网络不通时，仍是阻断项 |
-| Office | 真实隔离 worker 的解析、超时、大小限制、打印/导入链路 | 无 Docker 隔离能力不能以宿主解析或 mock 替代 |
+| 界面 | 登录、首次设置、授权刷新、插件装卸、HMR/导航/响应式真实浏览器操作 | CI 真实浏览器分别验证固定生产图和独立动态 QA；未通过的流程仍阻断准入 |
+| Office | 真实隔离 worker 的解析、超时、大小限制、打印/导入链路 | CI 使用真实隔离 worker；本地无 Docker 时不得以宿主解析或 mock 替代 |
 | 数据 | 支持版本声明、校验和保护、真实备份恢复、加密密钥及遗留文件可用 | 样例 V1→V2 不证明旧平台生产库可升级 |
 | 恢复 | 插件装载失败/卸载清理、Outbox回滚与并发完成记账、服务重启 | 外部副作用不在数据库事务保证内，可靠发送需独立机制、幂等与对账 |
 | 运维 | TLS边缘、私网DB/worker、最小权限、密钥配置、就绪/指标告警 | 不擅自关闭安全检查来启动服务 |
@@ -24,3 +24,7 @@
 本文件是准入约束，不是“全部通过”声明。每次交付在 `.runtime` 保存真实命令和结果，区分通过、失败、环境阻断和未测；所有阻断关闭后才能宣称该支持部署组合生产就绪。
 
 数据库默认身份与升级检查见 [部署角色](database-deployment-roles.md)：新卷分别使用 bootstrap、非超级迁移 owner 和仅 DML 业务身份；宿主仍持迁移配置，受信插件不是沙箱。旧卷需 DBA 迁移与实际验证，不自动更改。
+
+默认平台合成数据的停机恢复集成门禁见 [平台恢复验收](platform-recovery-verification.md)。该门禁使用当前发行包和独立 QA 数据库，不能替代实际部署的备份保管、跨集群角色恢复、PITR 或 RPO/RTO 验收。
+
+The default-platform synthetic-data offline recovery gate is documented separately; it does not replace deployment-specific backup custody, cross-cluster role recovery, PITR or RPO/RTO acceptance.

@@ -3,22 +3,29 @@
 set -euo pipefail
 [[ ${GITHUB_ACTIONS:-} == true && -n ${GITHUB_RUN_ID:-} && -n ${GITHUB_RUN_ATTEMPT:-} ]]
 root=$(pwd)
-mkdir -p .runtime/browser-ci/evidence
+export LUMIRA_BROWSER_CI_MODE=${LUMIRA_BROWSER_CI_MODE:-immutable}
+[[ $LUMIRA_BROWSER_CI_MODE == immutable || $LUMIRA_BROWSER_CI_MODE == dynamic ]]
+work=".runtime/browser-ci/$LUMIRA_BROWSER_CI_MODE"
+mkdir -p "$work/evidence"
 umask 077
-export LUMIRA_BROWSER_CI_CONFIG="$root/.runtime/browser-ci/private.json"
+export LUMIRA_BROWSER_CI_CONFIG="$root/$work/private.json"
 python3 - <<'PY'
 import os,json,secrets,base64
 from pathlib import Path
-root=Path('.runtime/browser-ci')
+root=Path('.runtime/browser-ci')/os.environ['LUMIRA_BROWSER_CI_MODE']
 password=secrets.token_urlsafe(32)
 env={'LUMIRA_DB_BOOTSTRAP_PASSWORD':secrets.token_urlsafe(32),'LUMIRA_DB_PASSWORD':secrets.token_urlsafe(32),'LUMIRA_DB_MIGRATION_PASSWORD':secrets.token_urlsafe(32),'LUMIRA_BOOTSTRAP_PASSWORD':password,'LUMIRA_SECRET_KEYS':'primary='+base64.b64encode(secrets.token_bytes(32)).decode(),'LUMIRA_SECRET_ACTIVE_KEY':'primary','LUMIRA_OFFICE_WORKER_TOKEN':secrets.token_urlsafe(48),'LUMIRA_COOKIE_SECURE':'false'}
 (root/'private.env').write_text('\n'.join(f'{k}={v}' for k,v in env.items())+'\n')
-(root/'private.json').write_text(json.dumps({'runId':os.environ['GITHUB_RUN_ID'],'bootstrapPassword':password}))
+(root/'private.json').write_text(json.dumps({'runId':os.environ['GITHUB_RUN_ID'],'mode':os.environ['LUMIRA_BROWSER_CI_MODE'],'bootstrapPassword':password}))
 PY
-cat > .runtime/browser-ci/compose.override.yml <<'YAML'
+fixed=true
+[[ $LUMIRA_BROWSER_CI_MODE == dynamic ]] && fixed=false
+cat > "$work/compose.override.yml" <<YAML
 services:
   server:
     image: lumira-server:ci
+    environment:
+      LUMIRA_PLUGINS_FIXED_GRAPH: "$fixed"
   office-worker:
     image: lumira-office-worker:ci
   web:
@@ -26,13 +33,15 @@ services:
   edge:
     image: lumira-edge:ci
 YAML
-project="lumira-browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-compose=(docker compose --project-name "$project" --env-file "$root/.runtime/browser-ci/private.env" -f deploy/compose.yml -f "$root/.runtime/browser-ci/compose.override.yml")
+project="lumira-browser-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${LUMIRA_BROWSER_CI_MODE}"
+compose=(docker compose --project-name "$project" --env-file "$root/$work/private.env" -f deploy/compose.yml -f "$root/$work/compose.override.yml")
 cleanup() {
+  status=$?
   # 日志和原始 trace 可能含合成凭据，不自动上传。
   # Logs and raw traces may include synthetic secrets; never upload them automatically.
-  "${compose[@]}" logs --no-color > .runtime/browser-ci/private-services.log 2>&1 || true
-  "${compose[@]}" down --volumes --remove-orphans || true
+  "${compose[@]}" logs --no-color > "$work/private-services.log" 2>&1 || true
+  if ! "${compose[@]}" down --volumes --remove-orphans; then status=1; fi
+  exit "$status"
 }
 trap cleanup EXIT
 "${compose[@]}" up --no-build --detach --wait --wait-timeout 240

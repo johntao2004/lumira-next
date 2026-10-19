@@ -81,6 +81,27 @@ jobs:
           PGUSER: lumira_next
           PGPASSWORD: ci-only
         run: python3 scripts/verify-backup-restore.py
+      - name: Build trusted plugin release artifacts for recovery verification
+        run: |
+          pnpm install --frozen-lockfile
+          node scripts/build-plugins.mjs --no-host
+      - name: Verify complete disposable platform recovery
+        timeout-minutes: 10
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+          LUMIRA_RECOVERY_QA: "1"
+        run: python3 scripts/verify-platform-recovery.py
+      - name: Upload sanitized platform recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .runtime/platform-restore-results.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify independent build, authorization, upgrade and restore
         env:
           PGHOST: 127.0.0.1
@@ -117,14 +138,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Real browser acceptance against disposable production images
-        timeout-minutes: 12
-        run: bash scripts/run-ci-browser.sh
+        timeout-minutes: 20
+        run: |
+          bash scripts/run-ci-browser.sh
+          LUMIRA_BROWSER_CI_MODE=dynamic bash scripts/run-ci-browser.sh
       - name: Upload safe browser acceptance evidence only
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: browser-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .runtime/browser-ci/evidence/
+          path: .runtime/browser-ci/*/evidence/
           if-no-files-found: error
           retention-days: 7
       - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix

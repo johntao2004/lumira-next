@@ -1,6 +1,7 @@
 /** 在一次性 CI 部署上验证真实登录和权限组件，不访问已有或生产数据。
  * Verify real login and permission components in disposable CI, never saved or production data. */
 import assert from 'node:assert/strict';
+import { verifyDynamicPlugins } from './ci-browser-dynamic-plugins.mjs';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { chromium, expect as baseExpect } from '@playwright/test';
@@ -10,7 +11,9 @@ assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Only a disposable GitHub CI ru
 const config = JSON.parse(readFileSync(process.env.LUMIRA_BROWSER_CI_CONFIG, 'utf8'));
 assert.equal(config.runId, process.env.GITHUB_RUN_ID);
 const baseURL = 'http://127.0.0.1:8010';
-const out = '.runtime/browser-ci/evidence';
+assert.ok(['immutable','dynamic'].includes(config.mode));
+const work = `.runtime/browser-ci/${config.mode}`;
+const out = `${work}/evidence`;
 mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const contexts = [];
@@ -147,11 +150,16 @@ try {
   await expect(memberPage.getByRole('tab',{name:'可管理模块',exact:true})).toHaveCount(0);
   assert.equal((await write(member,'/api/platform/modules','GET')).status(),403);
   await record('role removal removes UI and direct API access after refresh',memberPage);
+  if(config.mode === 'dynamic') {
+    stage='dynamic-plugin-lifecycle';currentPage=page;
+    await verifyDynamicPlugins({admin,page,member,write,record});
+  }
   stage='session-revocation';
   assert.equal((await write(admin,`/api/platform/online-users/user/${user.id}`,'DELETE')).status(),200);
   await memberPage.reload();await expect(memberPage).toHaveURL(/\/user\/login/);
   assert.equal((await member.request.get('/api/auth/me')).status(),401);
   await record('admin session revocation rejects existing browser',memberPage);
+  if(config.mode === 'immutable') {
   stage='fixed-graph-plugin-lifecycle-denied';currentPage=page;
   await page.goto('/dashboard/modules');
   await page.getByRole('tab',{name:'可管理模块',exact:true}).click();
@@ -168,17 +176,21 @@ try {
   await page.reload();
   await expect(card.getByRole('button',{name:'卸载插件',exact:true})).toBeDisabled();
   await record('immutable production graph blocks switch and uninstall through UI and API',page);
+  }
   writeFileSync(`${out}/results.json`,JSON.stringify({status:'passed',checks},null,2));
 } catch(error) {
   // 不序列化可能含凭据的错误正文、请求、HTML 或 trace。
   // Do not serialize arbitrary errors, request bodies, HTML or network traces containing credentials.
   writeFileSync(`${out}/results.json`,JSON.stringify({status:'failed',stage,checks,errorType:error.name},null,2));
   if(currentPage) await currentPage.screenshot({path:`${out}/failure.png`,fullPage:true,mask:[currentPage.locator('input'),currentPage.locator('textarea')]}).catch(()=>{});
+  for(const [index,failedPage] of contexts.flatMap(ctx=>ctx.pages()).entries()) {
+    await failedPage.screenshot({path:`${out}/failure-page-${index}.png`,fullPage:true,mask:[failedPage.locator('input'),failedPage.locator('textarea')]}).catch(()=>{});
+  }
   console.error(`Browser acceptance failed at ${stage}; ${error.name}`);
   process.exitCode=1;
 } finally {
   for(const [index,ctx] of contexts.entries()) {
-    await ctx.tracing.stop({path:`.runtime/browser-ci/private-trace-${index}.zip`});
+    await ctx.tracing.stop({path:`${work}/private-trace-${index}.zip`});
     await ctx.close();
   }
   await browser.close();
