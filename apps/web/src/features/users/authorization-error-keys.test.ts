@@ -4,7 +4,8 @@ import { ApiError } from "../../platform/api/client.ts";
 import { messageKeyFor } from "../../platform/api/errors.ts";
 import { deleteErrorKeys } from "../../platform/components/delete-errors.ts";
 import { messages } from "../../platform/i18n/messages/zh-cn.ts";
-import { importRowErrorKeys, importTaskErrorKeys } from "./user-import-errors.ts";
+import { loadLocaleMessages, staticLocales } from "../../platform/i18n/messages.ts";
+import { importDelegationErrorKeys, importRowErrorKeys, importTaskErrorKeys } from "./user-import-errors.ts";
 import { userErrorKeys } from "./user-errors.ts";
 import { roleAssignmentCheckboxDisabled } from "./user-role-selection.ts";
 
@@ -26,6 +27,7 @@ test("import preview and commit map live role delegation errors", () => {
     "rolePermissionDelegationDenied",
     "rolePermissionUnavailable",
     "rolePermissionRevocationDenied",
+    "moduleInstallRequiresPlatformAuthority",
   ] as const) {
     assert.equal(importRowErrorKeys[code], code);
     assert.equal(importTaskErrorKeys[code], code);
@@ -50,4 +52,20 @@ test("role deletion explains that plugin installation cannot replace revocation"
   assert.equal(key, "rolePermissionRevocationDenied");
   assert.match(messages[key], /不能代替/);
   assert.doesNotMatch(messages[key], /令牌.*过期/);
+});
+
+
+test("all import rejection paths preserve specific delegation messages in every locale", async () => {
+  for (const locale of staticLocales) {
+    const dictionary = await loadLocaleMessages(locale);
+    for (const code of importDelegationErrorKeys) {
+      assert.equal(messageKeyFor(new ApiError(403, code), importDelegationErrorKeys), code);
+      assert.equal(importRowErrorKeys[code], code);
+      assert.equal(importTaskErrorKeys[code], code);
+      assert.ok(dictionary[code]?.trim(), `${locale}: ${code}`);
+      assert.notEqual(dictionary[code], dictionary.forbidden);
+      assert.notEqual(dictionary[code], dictionary.userImportRowUnknownError);
+    }
+    assert.ok(dictionary.saveRoleAuthenticationPolicySucceeded?.trim());
+  }
 });

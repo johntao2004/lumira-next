@@ -121,7 +121,7 @@ public class SensitiveWordService {
             String action,
             Boolean enabled,
             String actor) {
-        requireGlobalOperation(actor, READ);
+        requirePageView(actor);
         String wordFilter = textFilter(word, MAX_WORD_LENGTH);
         String requestedCategory = categoryFilter(category);
         String categoryFilter =
@@ -139,7 +139,7 @@ public class SensitiveWordService {
 
     @Transactional(readOnly = true)
     public SensitiveWordRepository.Word find(UUID id, String actor) {
-        requireGlobalOperation(actor, READ);
+        requirePageView(actor);
         return repository.find(id);
     }
 
@@ -273,13 +273,13 @@ public class SensitiveWordService {
 
     @Transactional(readOnly = true)
     public CheckResult check(String text, String actor) {
-        requireGlobalOperation(actor, READ);
+        requirePageView(actor);
         return scan(text);
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<CategoryOption> categories(String actor) {
-        requireGlobalOperation(actor, READ);
+        requirePageView(actor);
         return categoryItems().stream()
                 .map(item -> new CategoryOption(item.value(), item.label(), item.sortOrder()))
                 .toList();
@@ -338,17 +338,14 @@ public class SensitiveWordService {
     }
 
     private void writeGuard(String actor, String permission) {
-        guard.require(actor, ACCESS);
-        guard.requireGlobal(actor, ACCESS);
+        requirePageView(actor);
         guard.require(actor, permission);
         guard.requireGlobal(actor, permission);
     }
 
-    private void requireGlobalOperation(String actor, String permission) {
+    private void requirePageView(String actor) {
         guard.require(actor, ACCESS);
         guard.requireGlobal(actor, ACCESS);
-        guard.require(actor, permission);
-        guard.requireGlobal(actor, permission);
     }
 
     private Normalized normalize(Input input, String categoryValue) {

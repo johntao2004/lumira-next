@@ -1,3 +1,8 @@
+/**
+ * 登记插件任务和可关闭资源，仅在发布后启动任务，并通过调用租约及逆序释放配合卸载排空。 Owns plugin tasks and closeable resources, starting
+ * tasks only after publication and coordinating uninstall draining through call leases and
+ * reverse-order release.
+ */
 package com.lumira.platform.plugins;
 
 import com.lumira.plugin.sdk.PluginResources;
@@ -5,7 +10,10 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** No work starts until publication. Admission is shared with HTTP and extension calls. */
+/**
+ * 发布前不启动任务；HTTP 与扩展调用共用同一准入控制。 No work starts until publication. Admission is shared with HTTP and
+ * extension calls.
+ */
 final class PluginOwnedResources implements PluginResources, AutoCloseable {
     private final ScheduledExecutorService executor;
     private final java.util.function.Supplier<AutoCloseable> lease;

@@ -1,0 +1,602 @@
+{
+  "backend/src/main/java/com/lumira/platform/PlatformApplication.java": {
+    "responsibility": "分流宿主、Office worker、解析子进程及离线 MFA 恢复入口，使专用进程复用发行包而无需启动整套 Web 服务。\nDispatches host, Office worker, parser-child and offline MFA recovery entry points so specialized processes can reuse the distribution without starting the web application.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/OfficeWorkerServer.java": {
+    "responsibility": "验证令牌和容器资源限制后执行独立 Office 处理，为每次操作启动可回收子进程，并限制请求大小、并发与执行时间。\nRuns isolated Office operations after validating tokens and container limits, using a disposable child process per operation with bounded request size, concurrency and execution time.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/modules/ModuleConfiguration.java": {
+    "responsibility": "汇集各功能模块自行声明的描述信息并组装注册表，避免新增模块时修改中央业务清单。\nAssembles the registry from descriptors contributed by feature modules, avoiding a central business-module list that must change for every addition.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/modules/ModuleRegistry.java": {
+    "responsibility": "维护模块依赖顺序和插件存活状态，拒绝重名、循环依赖及核心模块对可停用模块的依赖。\nTracks module dependency order and plugin liveness, rejecting duplicate IDs, cycles and core-module dependencies on disableable modules.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/modules/ModuleStateStore.java": {
+    "responsibility": "在图级事务锁下校验版本和依赖、保存启停状态及审计，并结合插件存活状态判断可用性；行政授权由调用适配层负责。\nValidates versions and dependencies under a graph-wide transaction lock, persists state and audit records, and combines state with plugin liveness; administrative authorization belongs to calling adapters.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/modules/ActivePermissionCatalog.java": {
+    "responsibility": "合并宿主及当前已安装插件的权限目录，并过滤目录外授权，防止卸载后残留记录继续充当有效权限。\nCombines host permissions with installed-plugin declarations and filters out other grants so leftover records cannot keep uninstalled permissions active.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/moduleadmin/ModuleAccessInterceptor.java": {
+    "responsibility": "在请求解析到处理方法后检查其所属模块是否可用，按处理器声明而非 URL 前缀执行模块停用边界。\nChecks module availability after handler resolution, enforcing disabled-module boundaries through handler ownership rather than URL prefixes.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/moduleadmin/ModuleEndpointValidator.java": {
+    "responsibility": "启动时校验宿主应用接口均声明了已注册模块归属，使遗漏的端点契约在接收请求前失败。\nValidates registered module ownership for host application handlers during startup so missing endpoint contracts fail before requests are served.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginRuntime.java": {
+    "responsibility": "编排可信插件的恢复、装配、健康检查和安装卸载，以批准图、节点租约及调用排空协调运行状态，恢复失败时阻止业务流量。\nOrchestrates trusted-plugin restoration, assembly, health checks and installation or removal using approved graphs, node leases and call draining, blocking business traffic when recovery fails.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginCleanup.java": {
+    "responsibility": "逐项尝试所有资源释放后再传播首个异常并附带后续异常，避免单步清理失败截断其余释放动作。\nAttempts every resource release before propagating the first failure with subsequent failures suppressed, preventing one cleanup error from skipping the remaining actions.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginOwnedResources.java": {
+    "responsibility": "登记插件任务和可关闭资源，仅在发布后启动任务，并通过调用租约及逆序释放配合卸载排空。\nOwns plugin tasks and closeable resources, starting tasks only after publication and coordinating uninstall draining through call leases and reverse-order release.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginArchive.java": {
+    "responsibility": "验证离线包的路径、摘要、入口和类依赖，并按内容摘要保存制品，拒绝覆盖宿主类或既有制品。\nValidates offline-package paths, digests, entry points and class dependencies, storing content-addressed artifacts while rejecting host-class or existing-artifact replacement.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginManifest.java": {
+    "responsibility": "校验插件身份、依赖、页面动作与 HTTP 授权声明，明确页面访问和操作权限，拒绝含糊或跨归属的映射。\nValidates plugin identity, dependencies, page actions and HTTP authorization declarations, separating page access from operations and rejecting ambiguous or cross-owner mappings.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginInitializationMigrationRunner.java": {
+    "responsibility": "新安装执行单份最终初始化 SQL，已有完整发布历史按原脚本身份和校验和验证，不重放或改写已应用历史。\nExecutes one final initialization script for new installations and validates complete published histories against original script identities and checksums without replaying or rewriting applied history.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginPermissionMigrationRunner.java": {
+    "responsibility": "按宿主权限能力选择迁移路径，对指定旧权限脚本保留原校验和并跳过重复授权逻辑，再继续校验和应用后续迁移。\nSelects migrations according to host permission capabilities, preserving original checksums while bypassing specified redundant legacy grants before validating and applying later migrations.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/plugins/PluginRuntimeReadinessFilter.java": {
+    "responsibility": "在认证前拒绝插件运行图尚未安全就绪时的业务 API 流量，同时保留生命周期操作状态查询入口。\nRejects business API traffic before authentication while the plugin graph is unsafe or unready, preserving access to lifecycle-operation status queries.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/events/PlatformEventOutboxStore.java": {
+    "responsibility": "持久化事件、租约、重试与追踪，以幂等键和令牌隔离重复及过期领取，并锁定共享操作行防止并发分片汇总丢失。\nPersists events, leases, retries and traces, using idempotency keys and tokens to fence duplicates and stale claims and locking shared operation rows to prevent lost shard aggregates.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/events/PlatformEventOutboxWorker.java": {
+    "responsibility": "以有界并发将消费者数据库副作用与租约校验后的确认放在同一事务，过期领取使两者回滚，外部网络副作用不在此原子边界内。\nConsumes with bounded concurrency and commits database effects with a lease-fenced acknowledgement in one transaction, rolling both back for stale claims while excluding external network effects from this atomic boundary.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/events/PlatformEventConsumerRegistry.java": {
+    "responsibility": "按来源和事件类型索引已注入消费者并拒绝重复注册，事件只匹配既有处理器，不从数据库内容加载代码。\nIndexes injected consumers by source and event type and rejects duplicate registrations, matching events to known handlers without loading code from database content.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/events/PlatformEventOutboxAdminService.java": {
+    "responsibility": "校验全局重放权限和必填原因，将死信重置、审批记录与审计一并提交，保证人工恢复可追溯。\nChecks global replay authority and a required reason, committing dead-letter resets with approval and audit records to keep manual recovery traceable.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/events/PlatformEventOutboxMaintenance.java": {
+    "responsibility": "定期恢复过期消费租约并按保留期分批清理已投递事件，使中断任务可重试且历史数据增长有界。\nPeriodically recovers expired consumption leases and purges delivered events in retention-limited batches so interrupted work can retry without unbounded historical growth.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/audit/AuditService.java": {
+    "responsibility": "以全局审计页面权限控制平台审计查询，并在同一只读快照中读取记录和总数，保持分页一致。\nRequires global audit-page authority and reads records and totals from one read-only snapshot to keep platform-audit pagination consistent.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/audit/AuditRepository.java": {
+    "responsibility": "提供审计追加、受限筛选与分批清理；追加应加入业务事务，并可指定审计 ID 关联同一次操作。\nProvides audit appends, constrained filtering and batched cleanup; appends should join the business transaction and may use an explicit audit ID to correlate one operation.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/settings/SettingStore.java": {
+    "responsibility": "为类型化配置服务校验设置操作权限并保存版本、修订和审计，以期望版本拒绝并发覆盖，原始 JSON 仅作内部存储。\nChecks setting-operation authority and persists versions, revisions and audits for typed configuration services, rejecting stale writes while keeping raw JSON an internal storage format.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/settings/SecretStore.java": {
+    "responsibility": "按上下文加密并独立保存配置秘密，避免其进入普通配置及修订响应；授权和审计由外层服务负责。\nEncrypts configuration secrets by context and stores them separately from ordinary settings and revision responses, leaving authorization and auditing to enclosing services.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/files/FileRepository.java": {
+    "responsibility": "维护文件归属、位置、状态和版本，以所有者限定查询及行锁、持久引用检查支撑上传发布和安全删除。\nMaintains file ownership, location, state and versions, using owner-scoped queries, row locks and durable-reference checks to support publication and safe deletion.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/files/PostgresBlobStore.java": {
+    "responsibility": "以有界分块流式读写 PostgreSQL 文件内容，发布前核对状态及分块完整性，避免整份上传常驻内存。\nStreams file content through bounded PostgreSQL chunks and verifies state and chunk integrity before publication, avoiding whole-upload buffering in memory.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/files/RoutedBlobStore.java": {
+    "responsibility": "新文件写入 PostgreSQL，旧文件按元数据路由至本地存储，并复核迁移切换竞态以免误报文件丢失。\nWrites new files to PostgreSQL and routes legacy files by metadata, rechecking migration races to avoid falsely reporting missing content.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/files/FileService.java": {
+    "responsibility": "协调文件授权、配额预留、暂存、发布与回收站操作，并在上传发布事务中再次校验授权及状态，避免长传输沿用过期许可。\nCoordinates file authorization, quota reservations, staging, publication and trash operations, revalidating authorization and state at publication so long uploads cannot rely on stale permission.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/communication/DurableDeliveryStore.java": {
+    "responsibility": "为邮件短信共用加密负载、租约和重试状态机，将发送后结果未知的任务保留为不确定状态，避免自动重发造成重复投递。\nShares encrypted payload, lease and retry state across mail and SMS queues, retaining unknown post-send outcomes as uncertain instead of automatically risking duplicate delivery.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/communication/DurableDeliveryWorker.java": {
+    "responsibility": "以有界并发、续租和截止时间执行渠道投递，网络调用不占数据库事务，结果与审计另行提交，超时或失租按不确定处理。\nExecutes provider deliveries with bounded concurrency, lease renewal and deadlines outside database transactions, committing outcomes with audits and treating timeout or lease loss as uncertain.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/common/OfficeWorkerClient.java": {
+    "responsibility": "以受限并发、超时及响应大小调用独立 Office 服务并校验协议，服务不可用时明确失败，不回退宿主解析。\nCalls the isolated Office service with bounded concurrency, time and response size, validating its protocol and failing explicitly without host-side parsing fallback.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/IdentityConfiguration.java": {
+    "responsibility": "装配密码认证、哈希升级与管理员引导，以带版本标识的密码编码和事务化首次改密要求保护凭据兼容及初始化。\nConfigures password authentication, hash upgrades and administrator bootstrap, using versioned encoding and transactional first-change requirements to protect credential compatibility and initialization.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/SecurityConfiguration.java": {
+    "responsibility": "集中装配 HTTP 安全链、公开入口、权限、CSRF 与限流，并在授权判断前接入实时权限校验，未匹配请求默认拒绝。\nAssembles HTTP security, public entry points, authorization, CSRF and rate limits, refreshing authority before access decisions and denying unmatched requests by default.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/CurrentAuthorityFilter.java": {
+    "responsibility": "逐次核验已认证 API 请求的当前权限、认证策略及会话凭据证据后绑定授权上下文，避免撤权后继续沿用旧会话许可。\nBinds authorization context only after checking current API-request grants, authentication policy and session evidence, preventing revoked access from surviving through stale sessions.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/PlatformHttpPermissionPolicy.java": {
+    "responsibility": "显式映射平台路由所需页面和操作权限及数据范围，未匹配路由交由插件授权端口判断，避免根据路径命名推测权限。\nExplicitly maps platform routes to page and operation authorities with their scopes, delegating unmatched routes to plugin authorization rather than inferring permissions from path names.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/AdministrationGuard.java": {
+    "responsibility": "复核管理权限、目标可见性和预览范围，并只在写事务内取得相应一致性锁，避免只读查询等待无关管理写入。\nRechecks administrative grants, target visibility and preview scope, taking consistency locks only in write transactions so read-only queries do not wait on unrelated administration writes.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/AuthorizationRevisionService.java": {
+    "responsibility": "从授权、有效角色、数据范围及组织关系生成修订值，并在存在子树范围时纳入组织树，使可见范围变化也能触发识别。\nBuilds an authorization revision from grants, active roles, scopes and memberships, including the organization tree for subtree grants so visibility changes also invalidate the revision.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/CurrentAuthorizationContextProjection.java": {
+    "responsibility": "将已验证的请求快照转换为共享只读授权投影，仅在主体匹配时返回，避免借用其他主体的请求权限。\nAdapts validated request snapshots into shared read-only authorization projections only for the matching principal, preventing reuse of another principal’s request authority.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/RolePreviewContextService.java": {
+    "responsibility": "维护会话级角色预览及授权修订，将实际权限与范围同目标角色取交集，并在请求和事务边界拒绝过期上下文及预览写入。\nMaintains session role previews and authorization revisions, intersecting actual grants and scopes with the target role and rejecting stale contexts or preview writes at request and transaction boundaries.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/identity/IdentityAuthenticationPolicyWriteLock.java": {
+    "responsibility": "以同一数据库锁行协调认证共享读取和策略排他写入，避免最终认证检查与并发策略变更交错。\nCoordinates shared authentication reads and exclusive policy writes through one database lock row, preventing final authentication checks from racing policy changes.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/roles/RoleService.java": {
+    "responsibility": "编排角色维护和分配，校验委派及撤权上限、版本与恢复管理员保护，防止角色变更扩大权限或破坏认证可达性。\nOrchestrates role maintenance and assignment with delegation and revocation ceilings, version checks and recovery-administrator protection, preventing privilege expansion or loss of authentication reachability.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/roles/RoleRepository.java": {
+    "responsibility": "封装角色、权限、分配及配额持久化，按有效权限和范围筛选可分配项，同时保留既有分配供展示而不将其视作新委派资格。\nPersists roles, permissions, assignments and quotas, filtering assignable options by effective authority and scope while showing existing assignments without treating them as new delegation eligibility.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/users/UserRepository.java": {
+    "responsibility": "封装用户目录持久化，使列表、导出及选中查询取页面与操作可见集的交集并支持预览范围，区分加锁读取和只读快照。\nPersists the user directory and intersects page and operation visibility for lists, exports and selected-user queries, honoring preview scope and separating locking reads from read-only snapshots.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/organizations/OrganizationRepository.java": {
+    "responsibility": "维护组织层级、祖先链和成员关系，提供预览适配的可见性、循环检测及版本化写入，供服务层保持树结构一致。\nPersists organization hierarchies, ancestry and memberships, providing preview-aware visibility, cycle checks and versioned writes for service-level tree consistency.",
+    "category": "host-core"
+  },
+  "apps/web/.umirc.ts": {
+    "responsibility": "配置 Umi 路由、代理和静态资源，并隔离开发与生产输出，避免构建清理破坏运行中的预览。\nConfigure Umi routes, proxies and static assets while separating development and production output so builds do not disrupt a running preview.",
+    "category": "host-core"
+  },
+  "apps/web/src/app.tsx": {
+    "responsibility": "在根容器读取语言和主题偏好并挂载公共 Provider，使首屏状态与后续客户端状态衔接。\nRead language and theme preferences at the root and mount shared providers so initial rendering and client state remain aligned.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/providers.tsx": {
+    "responsibility": "组合查询缓存、主题语言、品牌和错误边界，并在账号切换时撤销旧缓存；跨标签页通知只触发服务端会话重验。\nCompose query caching, locale, theme, branding and error boundaries, retiring old account caches while treating cross-tab signals only as requests to revalidate the server session.",
+    "category": "host-core"
+  },
+  "apps/web/src/pages/dashboard/section.tsx": {
+    "responsibility": "校验 dashboard 单段路径格式后进入宿主工作区，页面存在性与访问权限仍由后续路由状态及服务端判断。\nValidate the dashboard segment format before entering the host workspace, leaving page existence and access decisions to subsequent routing and server checks.",
+    "category": "host-core"
+  },
+  "apps/web/src/app/dashboard-modules.tsx": {
+    "responsibility": "按依赖顺序装配静态宿主模块并初始化页面存储，公共运行时不得反向导入此入口以免形成业务依赖循环。\nAssemble static host modules in dependency order and initialize the page store without reverse imports from the shared runtime that would create feature dependency cycles.",
+    "category": "host-core"
+  },
+  "apps/web/src/app/dashboard-workspace.tsx": {
+    "responsibility": "组装会话、导航及宿主／插件页面并协调缓存和状态展示，前端可见性判断不能替代后端请求及数据范围校验。\nCompose sessions, navigation and host or plugin pages with cache and status handling, keeping UI visibility checks separate from backend request and data-scope enforcement.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/types.ts": {
+    "responsibility": "定义宿主与插件共用的页面契约，分别表达页面访问、操作权限及全局／作用域授权，避免混淆访问与操作能力。\nDefine shared host and plugin page contracts that distinguish page access, operation grants and global or scoped authorities rather than conflating access with action rights.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/contracts.ts": {
+    "responsibility": "校验清单及页面归属并拒绝冲突，使旧卸载回调和已失效的动态路由权限辅助判断不能影响新注册。\nValidate manifests and page ownership, reject conflicts, and prevent stale disposers or expired dynamic-route permission helpers from affecting newer registrations.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/page-store.ts": {
+    "responsibility": "保存共享页面注册表以隔离业务装配依赖，并要求先初始化静态页面再注册插件，保留页面归属和冲突约束。\nHold the shared page registry independently of feature composition and require static-page initialization before plugin registration to preserve ownership and collision checks.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/plugin-loader.ts": {
+    "responsibility": "按状态、版本和摘要协调插件资源，并把回调绑定到原始 script 对象，防止卸载或升级后的迟到事件误认领新任务。\nReconcile plugin assets by state, version and digest while binding callbacks to their original script objects so late events cannot claim replacement attempts.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/plugin-runtime.ts": {
+    "responsibility": "将服务端插件清单接入共享加载器和 SDK，同步查询及本地化刷新，并在最后一个消费者退出时释放资源。\nConnect the server plugin catalog to the shared loader and SDK, refresh queries and localization, and release resources when the final consumer leaves.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/plugin-sdk.ts": {
+    "responsibility": "将精确白名单路径映射到宿主共享模块，新增接口须同步白名单和契约测试，避免插件依赖私有实现。\nMap exact allowlisted paths to shared host modules, updating the allowlist and contract tests with new APIs so plugins do not depend on private implementations.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/catalog.ts": {
+    "responsibility": "仅汇总清单元数据供路由和导航使用，不导入页面实现，也不把目录声明等同于动态插件已安装或运行。\nCollect only manifest metadata for routes and navigation without importing page implementations or treating catalog presence as proof that a dynamic plugin is installed or running.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/modules/graph.ts": {
+    "responsibility": "拓扑排序模块清单并拒绝重复、缺失、循环及必选模块依赖可选模块等配置，使装配不依赖偶然的导入顺序。\nTopologically order manifests and reject duplicate, missing, cyclic or required-to-optional dependencies so composition does not depend on incidental import order.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/shell/routes.ts": {
+    "responsibility": "将静态清单和服务端导航转为菜单及路由辅助判断，只消费授权事实，实际接口与数据范围权限仍由后端执行。\nTurn static manifests and server navigation into menus and route helpers that consume authorization facts while leaving API and data-scope enforcement to the backend.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/shell/workspace-route-state.ts": {
+    "responsibility": "区分导航加载、页面不存在和访问受限，避免把未知页面的 404 误报为 403，同时保留受保护路由的拒绝状态。\nDistinguish navigation loading, missing pages and denied access so unknown pages retain 404 semantics without weakening denial for protected routes.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/shell/navigation.tsx": {
+    "responsibility": "把已筛选导航转换为 ProLayout 路径、标签和图标，保留顺序与深链，不扩大可访问页面集合。\nConvert filtered navigation into ProLayout paths, labels and icons while preserving order and deep links without expanding the accessible page set.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/shell/page-component-registry.tsx": {
+    "responsibility": "按精确 componentKey 注册和查找代码定义的组件，拒绝冲突覆盖，并把服务端标识作为数据而非可执行模块路径。\nRegister and resolve code-defined components by exact componentKey, rejecting conflicting replacements and treating server identifiers as data rather than executable module paths.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/shell/dynamic-page.tsx": {
+    "responsibility": "为服务端 PAGE 查找已注册组件，缺少实现时明确显示不可用状态，避免把菜单配置的空壳呈现为成功加载。\nResolve registered components for server-defined PAGE entries and show an explicit unavailable state when implementation is missing instead of presenting a menu-only shell as loaded.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/api/client.ts": {
+    "responsibility": "统一请求凭据、CSRF、授权版本及错误处理并丢弃旧会话响应，服务端授权版本用于一致性检查而非客户端授予权限。\nUnify credentials, CSRF, authorization revisions and errors while discarding stale-session responses, using server revisions for consistency checks rather than client-issued grants.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/auth/api-types.ts": {
+    "responsibility": "定义认证流程、证据、有效策略和授权上下文的响应契约，认证事实不能代替页面及数据权限的独立裁决。\nDefine response contracts for authentication flows, evidence, effective policy and authorization context without substituting authentication facts for separate page and data authorization decisions.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/auth/authorization-signature.ts": {
+    "responsibility": "将服务端授权事实稳定序列化为缓存标识以识别变化并隔离导航缓存，这里的 signature 不是密码学签名或授权凭证。\nSerialize server authorization facts into a stable cache key for change detection and navigation isolation; this signature is neither a cryptographic signature nor an authorization credential.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/auth/authorization-cache.ts": {
+    "responsibility": "授权变化时取消并清空受保护读缓存后刷新活跃查询，同时保留公开配置、当前会话／导航及仍由服务端裁决的写操作。\nCancel and clear protected read caches before refetching active queries after authorization changes, preserving public configuration, current session and navigation queries, and writes still adjudicated by the server.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/auth/session-lifecycle.ts": {
+    "responsibility": "以会话代际撤销旧账号请求，身份只取服务端确认的 userId，跨标签页仅广播不含身份或凭据的失效标记。\nRetire old-account requests through session epochs, accept only server-confirmed userId values, and broadcast cross-tab invalidation markers without identity data or credentials.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/auth/use-session-scope.ts": {
+    "responsibility": "把异步后续操作绑定到起始账号代际和组件生命周期，换号或卸载后用取消信号阻止旧操作继续影响界面。\nBind asynchronous continuations to their starting account epoch and component lifetime, using cancellation signals to prevent stale UI effects after account changes or unmounting.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/routing/dashboard-section.ts": {
+    "responsibility": "独立校验 dashboard 单段键的格式，不判定页面存在或授权，使认证回跳无需依赖业务导航清单。\nValidate dashboard segment syntax independently of page existence or authorization so authentication redirects need not depend on the feature navigation catalog.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/auth/return-path.ts": {
+    "responsibility": "把登录回跳限制为站内单段 dashboard 路径并保留合法查询与锚点，阻止外部地址或异常路径进入恢复流程。\nRestrict post-login return targets to internal single-segment dashboard paths while preserving valid queries and fragments and rejecting external or malformed destinations.",
+    "category": "host-core"
+  },
+  "apps/web/src/platform/auth/use-reauthentication-ticket.ts": {
+    "responsibility": "编排再认证并暂存服务端签发的操作票据，完成后清除表单秘密，票据有效性和操作绑定仍由服务端校验。\nCoordinate reauthentication and retain server-issued action tickets, clearing form secrets after completion while leaving ticket validity and action binding to server checks.",
+    "category": "host-core"
+  },
+  "scripts/build-plugins.mjs": {
+    "responsibility": "按依赖顺序构建插件并核对清单身份和版本，先检查公开接口边界，再按精确前端 SDK 白名单打包并生成文件摘要。\nBuild plugins in dependency order and verify manifest identity and version, checking public API boundaries before bundling through the exact frontend SDK allowlist and recording file digests.",
+    "category": "host-core"
+  },
+  "scripts/frontend-plugin-boundaries.mjs": {
+    "responsibility": "按规范化路径将相对导入限制在本插件或公共前端 SDK 目录内，阻止用相对路径绕过宿主接口白名单。\nConstrain normalized relative imports to the current plugin or public frontend SDK directories so relative paths cannot bypass the host API allowlist.",
+    "category": "host-core"
+  },
+  "scripts/plugins-typecheck.mjs": {
+    "responsibility": "发现插件与 SDK 示例并用临时配置统一类型检查，复用宿主 Umi 类型和依赖以避免工作区解析差异造成漏检。\nDiscover plugins and SDK examples for unified type checking with a temporary configuration, reusing host Umi types and dependencies to avoid gaps caused by workspace resolution differences.",
+    "category": "host-core"
+  },
+  "scripts/web-typecheck.mjs": {
+    "responsibility": "类型检查复用已登记运行中的预览生成文件，未运行时才执行 Umi setup，避免清空 .umi 而破坏开发预览。\nReuse generated files from a registered running preview during type checking and run Umi setup only when it is stopped, avoiding disruption from clearing .umi.",
+    "category": "host-core"
+  },
+  "scripts/verify-web-output.mjs": {
+    "responsibility": "递归检查产物中的 source map 和引用，避免仅关闭构建选项却仍随静态资源发布遗留映射文件。\nRecursively check output for source maps and their references so disabling build options cannot leave stale maps in published static assets.",
+    "category": "host-core"
+  },
+  "scripts/plugin_boundaries.py": {
+    "responsibility": "从清单发现插件及 SDK 示例，检查包所有权、私有跨模块依赖和控制器归属，并要求公开宿主 API 的模块依赖声明。\nDiscover plugins and SDK examples from manifests, validate package ownership, private cross-module dependencies and controller ownership, and require declared module dependencies for designated public host APIs.",
+    "category": "host-core"
+  },
+  "scripts/module-boundaries-smoke.py": {
+    "responsibility": "以可执行约束检查前后端清单、公共依赖、宿主装配、懒加载和 DTO 边界，在运行前暴露依赖方向或声明漂移。\nCheck frontend and backend manifests, public dependencies, host composition, lazy loading and DTO boundaries through executable constraints to expose dependency or declaration drift before runtime.",
+    "category": "host-core"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/modules/PlatformModule.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/modules/ModuleRuntime.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/modules/ModuleEndpoint.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/UploadRateLimitPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/ClientAddressPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/RateLimitExceededException.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/PlatformPageId.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/AdministrationPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/GeneratedAvatarPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/PageFilterSql.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/RegistrationContentPolicyPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/ContentPolicyPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/FileContentPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/DurableEventTopologyPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/PageRequest.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/DurableEventProducerPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/PlatformOperation.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/RateLimitKeys.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/AuthorizationContextBoundaryPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/LocaleRegistryPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/DurableEventPublisherPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/BoundedBody.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/AiTextGenerationPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/AuditPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/PageResult.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/MailSender.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/SecretCryptoPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/AuthenticationPolicyWriteLock.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/PrimaryMethod.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/DurableEventConsumerPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/ContentPolicyExempt.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/PluginExtensionsPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/common/SecretStorePort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/content/RichText.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/dictionaries/api/DictionaryLookupPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/dictionaries/api/DictionaryItemUsagePort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/RequestAuthorizationContext.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/AuthenticationRequestContext.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/AuthorizationContextBoundaryPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/ReauthenticationPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/AccountOwnerPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/EffectiveAuthenticationPolicyPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/SecondFactorProvider.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/AccountSecurityPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/identity/api/MfaRecoveryTicketPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/platform-contracts/src/main/java/com/lumira/platform/notifications/api/NotificationProducerPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/plugin-sdk/src/main/java/com/lumira/plugin/sdk/PluginResources.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/plugin-sdk/src/main/java/com/lumira/plugin/sdk/PluginEntry.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/payment-sdk/src/main/java/com/lumira/plugin/sdk/common/PaymentHttpClient.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/payment-sdk/src/main/java/com/lumira/plugin/sdk/common/PaymentCoreAdminPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/payment-sdk/src/main/java/com/lumira/plugin/sdk/common/PaymentChannelAdminController.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/payment-sdk/src/main/java/com/lumira/plugin/sdk/common/PaymentGatewayPort.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/payment-sdk/src/main/java/com/lumira/plugin/sdk/common/PaymentCoreAdminClient.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "framework/payment-sdk/src/main/java/com/lumira/plugin/sdk/common/PaymentCrypto.java": {
+    "category": "public-contract",
+    "responsibility": "公开版本化契约或SDK工具 / Versioned public contract or SDK utility"
+  },
+  "examples/independent-notes/src/test/java/com/lumira/example/notes/NotesAuthorizationTest.java": {
+    "category": "independent-example",
+    "responsibility": "独立应用入口、权限或持久化 / Standalone composition, authorization or persistence"
+  },
+  "examples/independent-notes/src/main/java/com/lumira/example/notes/NotesApplication.java": {
+    "category": "independent-example",
+    "responsibility": "独立应用入口、权限或持久化 / Standalone composition, authorization or persistence"
+  },
+  "examples/independent-notes/src/main/java/com/lumira/example/notes/NotesSecurity.java": {
+    "category": "independent-example",
+    "responsibility": "独立应用入口、权限或持久化 / Standalone composition, authorization or persistence"
+  },
+  "examples/independent-notes/src/main/java/com/lumira/example/notes/NotesStore.java": {
+    "category": "independent-example",
+    "responsibility": "独立应用入口、权限或持久化 / Standalone composition, authorization or persistence"
+  },
+  "examples/independent-notes/src/main/java/com/lumira/example/notes/NotesController.java": {
+    "category": "independent-example",
+    "responsibility": "独立应用入口、权限或持久化 / Standalone composition, authorization or persistence"
+  },
+  "backend/src/test/java/com/lumira/platform/ArchitectureTest.java": {
+    "category": "verification-core",
+    "responsibility": "依赖图回归 / Dependency-graph regression"
+  },
+  "scripts/verify-trivy-report.mjs": {
+    "category": "verification-core",
+    "responsibility": "供应链门禁 / Supply-chain gate"
+  },
+  "scripts/verify-independent-app.py": {
+    "category": "verification-core",
+    "responsibility": "独立消费与恢复 / Independent consumption and recovery"
+  },
+  "scripts/check-core-comments.py": {
+    "category": "verification-core",
+    "responsibility": "核心职责清单 / Core responsibility inventory"
+  },
+  "scripts/check-react-standard.mjs": {
+    "responsibility": "检查前端结构与 Hooks 规则，保留历史告警供逐项审查。\nCheck frontend structural and Hooks rules while keeping legacy warnings visible for review.",
+    "category": "build-boundary"
+  },
+  "apps/web/src/platform/components/resource-table.tsx": {
+    "responsibility": "组合资源列表与搜索表单，按已提交筛选同步控件而保留搜索草稿。\nCompose resource listings and search forms, synchronizing committed filters while preserving search drafts.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/platform/components/resource-search-sync.ts": {
+    "responsibility": "保留表单值类型并生成完整稳定同步签名。\nPreserve form value types and compute complete stable synchronization signatures.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/users/user-editor.tsx": {
+    "responsibility": "协调用户资料与授权编辑，绑定表单快照版本并保留后台冲突护栏。\nCoordinate profile and assignment editing with bound form snapshot versions and background conflict guards.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/users/user-editor-save-plan.ts": {
+    "responsibility": "生成用户编辑请求并核对快照版本，不在客户端推断额外授权。\nBuild user edit requests and check snapshot versions without inferring additional client-side authority.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/roles/role-permission-model.ts": {
+    "responsibility": "权限目录与树选择的显式授权边界。\nExplicit grant boundaries for the permission catalog and tree selection.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/roles/role-permission-picker.tsx": {
+    "responsibility": "权限目录与树选择的显式授权边界。\nExplicit grant boundaries for the permission catalog and tree selection.",
+    "category": "frontend-core"
+  }
+}

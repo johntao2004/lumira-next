@@ -33,7 +33,7 @@ class PlatformControllerSessionTest {
                         .param("username", "alice")
                         .query(String.class)
                         .list())
-                .thenReturn(List.of("platform:settings:read"));
+                .thenReturn(List.of("platform:roles:access"));
         var modules = mock(ModuleCapabilityPort.class);
         when(modules.enabledModules()).thenReturn(List.of("identity"));
         var policies = mock(AuthenticationPolicyService.class);
@@ -41,7 +41,7 @@ class PlatformControllerSessionTest {
         var authorizationRevisions = mock(AuthorizationRevisionPort.class);
         UUID userId = UUID.randomUUID();
         when(owners.id("alice", false)).thenReturn(userId);
-        when(authorizationRevisions.revision(userId, Set.of(), Set.of("platform:settings:read")))
+        when(authorizationRevisions.revision(userId, Set.of(), Set.of("platform:roles:access")))
                 .thenReturn("session-authorization-tag");
         when(policies.resolve(userId))
                 .thenReturn(

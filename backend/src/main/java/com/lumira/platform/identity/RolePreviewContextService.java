@@ -1,3 +1,8 @@
+/**
+ * 维护会话级角色预览及授权修订，将实际权限与范围同目标角色取交集，并在请求和事务边界拒绝过期上下文及预览写入。 Maintains session role previews and
+ * authorization revisions, intersecting actual grants and scopes with the target role and rejecting
+ * stale contexts or preview writes at request and transaction boundaries.
+ */
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.AuditPort;
@@ -37,7 +42,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Shared-database session context for read-only role preview. */
+/** 基于共享数据库的只读角色预览会话上下文。 Shared-database session context for read-only role preview. */
 @Service
 public class RolePreviewContextService implements AuthorizationContextBoundaryPort {
     public static final String REVISION_HEADER = "X-Lumira-Authorization-Context-Revision";
@@ -117,7 +122,10 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         this.policyLock = policyLock;
     }
 
-    /** Called by CurrentAuthorityFilter after real authentication and MFA are verified. */
+    /**
+     * 由 CurrentAuthorityFilter 在真实认证与 MFA 校验通过后调用。 Called by CurrentAuthorityFilter after real
+     * authentication and MFA are verified.
+     */
     @Transactional
     public RequestAuthorizationContext resolve(
             HttpServletRequest request,
@@ -127,10 +135,10 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         StoredContext stored = ensureAndLockContext(request, principalName, actorId);
         String sessionPrimaryId = stored.sessionPrimaryId();
         Set<String> realAuthorities = ActivePermissionCatalog.retain(currentRealAuthorities);
-        ScopeSnapshot scopeSnapshot =
-                "ACTIVE".equals(stored.state())
-                        ? scopeSnapshot(actorId)
-                        : new ScopeSnapshot(globalAuthorities(actorId), Map.of());
+        // 普通请求同样需要真实的逐权限范围投影以校验委派；未启用预览不能抹去已知范围，也不能代表无限制访问。
+        // Ordinary requests also need the real per-permission scope projection for delegation.
+        // An absent preview must not erase known scopes or imply unrestricted access.
+        ScopeSnapshot scopeSnapshot = scopeSnapshot(actorId);
         Set<String> realGlobal = scopeSnapshot.globalAuthorities();
         Map<String, Set<String>> realScopes = scopeSnapshot.scopes();
 
@@ -184,7 +192,10 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         return authorization;
     }
 
-    /** Run after the context row has committed so BLOCKED transitions survive rejected requests. */
+    /**
+     * 在上下文行提交后执行，使 BLOCKED 状态转换不会随被拒绝请求回滚。 Run after the context row has committed so BLOCKED
+     * transitions survive rejected requests.
+     */
     public void enforceRequestBoundary(
             HttpServletRequest request, RequestAuthorizationContext context) {
         enforceRequestBoundaryInternal(request, context);
@@ -420,7 +431,9 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
     }
 
     /**
-     * Called from guarded service operations and split write transactions. The per-session share
+     * 由受保护服务操作与分段写事务调用；会话共享锁一直持有到业务事务结束，避免进入或退出预览超越已跨过写边界的请求。
+     *
+     * <p>Called from guarded service operations and split write transactions. The per-session share
      * lock remains held until the business transaction completes, so enter/exit cannot overtake a
      * request that already crossed its write boundary.
      */
@@ -438,6 +451,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         if (isContextControl(path, method)) return;
 
         boolean writeBoundary = !TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        // 写边界保持先策略、后会话的统一锁顺序；PostgreSQL 只读事务不能执行加锁 SELECT，因此无锁重读相同实时行，再执行同样的修订、状态、过期及摘要检查。
         // Write boundaries must retain the shared lock order: policy, then session. Read-only
         // transactions cannot issue locking SELECTs in PostgreSQL, so they re-read the same live
         // rows without locks and run the identical revision/state/expiry/digest checks below.
@@ -594,6 +608,8 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         var existing = activeContextForUpdate(session.getId(), principalName, actorId);
         if (existing.isPresent()) return existing.get();
 
+        // 常见 NONE 路径只需一次加锁读取；首次使用分开执行 INSERT 与 SELECT，因为同一语句快照看不到未被引用的数据修改 CTE 新插入的行，ON CONFLICT
+        // 还会串行化同一会话的两个首次请求，让后续语句看到已提交的胜出行。
         // The common NONE path above is one locking read. On first use, use a separate INSERT
         // command and then SELECT: PostgreSQL's statement snapshot cannot see a row inserted by
         // an unreferenced data-modifying CTE in the same command. ON CONFLICT also serializes two

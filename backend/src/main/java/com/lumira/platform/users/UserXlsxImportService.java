@@ -698,8 +698,8 @@ public class UserXlsxImportService {
     private Set<UUID> enabledRoleIds(String value) {
         Set<String> codes = parseCodes(value);
         if (codes.isEmpty() || jdbc == null) return Set.of();
-        return jdbc.sql(
-                        "SELECT id FROM platform_role WHERE code IN (:codes) AND enabled=true")
+        return jdbc
+                .sql("SELECT id FROM platform_role WHERE code IN (:codes) AND enabled=true")
                 .param("codes", codes)
                 .query((rs, n) -> rs.getObject("id", UUID.class))
                 .list()

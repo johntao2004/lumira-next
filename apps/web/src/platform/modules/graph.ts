@@ -1,3 +1,7 @@
+/**
+ * 拓扑排序模块清单并拒绝重复、缺失、循环及必选模块依赖可选模块等配置，使装配不依赖偶然的导入顺序。
+ * Topologically order manifests and reject duplicate, missing, cyclic or required-to-optional dependencies so composition does not depend on incidental import order.
+ */
 export type ModuleGraphNode = {
   readonly id: string;
   readonly dependencies: readonly string[];
@@ -5,7 +9,10 @@ export type ModuleGraphNode = {
   readonly required?: boolean;
 };
 
-/** Topologically order a manifest without importing any UI or runtime code. */
+/**
+ * 按拓扑顺序排列清单，不导入 UI 或运行时代码。
+ * Topologically order a manifest without importing any UI or runtime code.
+ */
 export function orderModuleGraph<T extends ModuleGraphNode>(candidates: readonly T[]): readonly T[] {
   const indexed = new Map<string, T>();
   for (const module of candidates) {

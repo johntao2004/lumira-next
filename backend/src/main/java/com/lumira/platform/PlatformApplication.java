@@ -1,3 +1,8 @@
+/**
+ * 分流宿主、Office worker、解析子进程及离线 MFA 恢复入口，使专用进程复用发行包而无需启动整套 Web 服务。 Dispatches host, Office worker,
+ * parser-child and offline MFA recovery entry points so specialized processes can reuse the
+ * distribution without starting the web application.
+ */
 package com.lumira.platform;
 
 import org.springframework.boot.SpringApplication;

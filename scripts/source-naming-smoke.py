@@ -17,6 +17,8 @@ def problems():
     front = [ROOT / "apps/web/src", *[p / "frontend" for p in (ROOT / "plugins").iterdir() if (p / "frontend").exists()]]
     java = [ROOT / "backend/src/main/java", ROOT / "backend/src/test/java"]
     java += [p for plugin in (ROOT / "plugins").iterdir() for p in (plugin / "backend/src/main/java", plugin / "backend/src/test/java") if p.exists()]
+    java += list((ROOT / "framework").glob("*/src/main/java"))
+    java += list((ROOT / "examples").glob("*/src/main/java")) + list((ROOT / "examples").glob("*/src/test/java"))
     for root in front:
         for path in owned(root):
             if path.suffix not in {".ts", ".tsx"}:

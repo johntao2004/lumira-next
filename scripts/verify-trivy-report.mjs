@@ -1,3 +1,7 @@
+/**
+ * 校验依赖扫描覆盖与结构，仅豁免有源码修补证据的已审核项。
+ * Validate dependency-scan coverage and structure, allowing only reviewed findings with verified source mitigations.
+ */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -15,8 +19,14 @@ const allowedVersion = "3.0.3";
 const expectedTargets = new Map([
   ["backend/pom.xml", "pom"],
   ["plugins/pom.xml", "pom"],
+  ["framework/platform-contracts/pom.xml", "pom"],
+  ["framework/plugin-sdk/pom.xml", "pom"],
+  ["framework/payment-sdk/pom.xml", "pom"],
+  ["framework/plugin-build/pom.xml", "pom"],
+  ["examples/independent-notes/pom.xml", "pom"],
   ["pnpm-lock.yaml", "pnpm"],
 ]);
+const optionalAggregatorTargets = new Set(["pom.xml", "framework/pom.xml"]);
 const expectedScannerVersion = "0.75.0";
 
 function assertNonEmptyString(value, field) {
@@ -54,8 +64,8 @@ export function assertValidTrivyReport(report) {
     assertNonEmptyString(result.Target, "result target");
     assert.equal(targets.has(result.Target), false, `Trivy scanned ${result.Target} more than once`);
     assert.equal(result.Class, "lang-pkgs", `Trivy result ${result.Target} is not a language package scan`);
-    assert.ok(expectedTargets.has(result.Target), `Trivy returned an unexpected target: ${result.Target}`);
-    assert.equal(result.Type, expectedTargets.get(result.Target), `Trivy result type changed for ${result.Target}`);
+    assert.ok(expectedTargets.has(result.Target) || optionalAggregatorTargets.has(result.Target), `Trivy returned an unexpected target: ${result.Target}`);
+    assert.equal(result.Type, (expectedTargets.get(result.Target) ?? "pom"), `Trivy result type changed for ${result.Target}`);
     assert.ok(Array.isArray(result.Packages) && result.Packages.length > 0, `Trivy scanned no packages in ${result.Target}`);
     for (const pkg of result.Packages) {
       assert.ok(pkg && typeof pkg === "object" && !Array.isArray(pkg), `Trivy result ${result.Target} has a malformed package`);

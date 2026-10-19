@@ -113,10 +113,39 @@ class FeedbackNotificationOutboxDatabaseTest {
         feedbackAudience = new FeedbackNotificationAudience(client);
         notificationService =
                 new NotificationService(
-                        notificationStore, client, mapper, null, events::append, feedbackAudience);
+                        notificationStore, client, mapper, null, events, feedbackAudience);
         feedback = new FeedbackStore(client, (actor, action, target) -> {}, notificationService);
         consumer =
                 new FeedbackNotificationEventConsumer(notificationStore, mapper, feedbackAudience);
+    }
+
+    @Test
+    void duplicateLegacyPublicationDoesNotLeaveAnUnlinkedPendingOperation() {
+        UUID feedbackId = UUID.randomUUID();
+        for (int attempt = 0; attempt < 2; attempt++) {
+            tx.executeWithoutResult(
+                    status ->
+                            notificationService.publishFeedback(
+                                    ownerId, feedbackId, 1, "fixture", "OPEN", false));
+        }
+        assertEquals(
+                1,
+                jdbc.queryForObject("SELECT count(*) FROM platform_event_outbox", Integer.class));
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM platform_event_operation WHERE outcome_code='EVENTS_PENDING'",
+                        Integer.class));
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM platform_event_operation WHERE outcome_code='DUPLICATE_ONLY' AND expected_event_count=0 AND result_known AND completed_at IS NOT NULL",
+                        Integer.class));
+        assertEquals(
+                0,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM platform_event_operation o WHERE outcome_code='EVENTS_PENDING' AND NOT EXISTS (SELECT 1 FROM platform_event_outbox e WHERE e.operation_id=o.operation_id)",
+                        Integer.class));
     }
 
     @AfterEach

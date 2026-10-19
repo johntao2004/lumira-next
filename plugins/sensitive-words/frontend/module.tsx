@@ -7,9 +7,9 @@ const SensitiveWordsPage = lazy(() => import("./sensitive-policies-page").then((
 export const sensitiveWordsFrontendModule = {
   ...sensitiveWordsManifest,
   pages: {
-    "sensitive-words": ({ hasOperation }) => (
+    "sensitive-words": ({ hasOperation, hasRouteAccess }) => (
       <SensitiveWordsPage
-        canRead={hasOperation("read")}
+        canRead={hasRouteAccess("sensitive-words") || hasOperation("read")}
         canCreate={hasOperation("create")}
         canUpdate={hasOperation("update")}
         canDelete={hasOperation("delete")}

@@ -1,3 +1,8 @@
+/**
+ * 按上下文加密并独立保存配置秘密，避免其进入普通配置及修订响应；授权和审计由外层服务负责。 Encrypts configuration secrets by context and stores
+ * them separately from ordinary settings and revision responses, leaving authorization and auditing
+ * to enclosing services.
+ */
 package com.lumira.platform.settings;
 
 import com.lumira.platform.common.SecretKeys;
@@ -10,8 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Internal only: typed services must enforce authorization and audit in the enclosing transaction.
- * Secrets are deliberately excluded from SettingStore payloads and revision responses.
+ * 仅供内部使用；类型化服务必须在外层事务中执行授权与审计，秘密值明确排除在 SettingStore 载荷和修订响应之外。
+ *
+ * <p>Internal only: typed services must enforce authorization and audit in the enclosing
+ * transaction. Secrets are deliberately excluded from SettingStore payloads and revision responses.
  */
 @Repository
 public class SecretStore implements SecretStorePort {
@@ -42,7 +49,10 @@ public class SecretStore implements SecretStorePort {
                 .orElse(new SecretStorePort.State(0, false));
     }
 
-    /** Returns owned plaintext bytes for short-lived use; the caller should clear them. */
+    /**
+     * 返回归调用方所有的明文字节供短时使用；调用方应及时清零。 Returns owned plaintext bytes for short-lived use; the caller
+     * should clear them.
+     */
     @Override
     public Optional<byte[]> reveal(String context) {
         context(context);

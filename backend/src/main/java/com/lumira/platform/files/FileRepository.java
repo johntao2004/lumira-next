@@ -1,3 +1,8 @@
+/**
+ * 维护文件归属、位置、状态和版本，以所有者限定查询及行锁、持久引用检查支撑上传发布和安全删除。 Maintains file ownership, location, state and
+ * versions, using owner-scoped queries, row locks and durable-reference checks to support
+ * publication and safe deletion.
+ */
 package com.lumira.platform.files;
 
 import com.lumira.platform.common.PageFilterSql;
@@ -10,7 +15,10 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** Internal metadata access. Every user-facing lookup is constrained by its resolved owner ID. */
+/**
+ * 内部元数据访问；每次面向用户的查询均受已解析所有者标识约束。 Internal metadata access. Every user-facing lookup is constrained
+ * by its resolved owner ID.
+ */
 @Repository
 public class FileRepository {
     public record Entry(
@@ -271,7 +279,7 @@ public class FileRepository {
                 .optional();
     }
 
-    /** Resolve an image that is explicitly referenced by an owner's feedback. */
+    /** 解析被该所有者反馈明确引用的图片。 Resolve an image that is explicitly referenced by an owner's feedback. */
     public Optional<Entry> findFeedbackReference(UUID feedbackId, UUID fileId, UUID ownerId) {
         return jdbc.sql(
                         "SELECT f.* FROM platform_file f JOIN platform_feedback_file r ON"
@@ -286,7 +294,10 @@ public class FileRepository {
     }
 
     /**
-     * Management reads are still constrained to a feedback reference and a ready normalized image.
+     * 管理读取仍须关联反馈引用，且图片必须已就绪并完成规范化。
+     *
+     * <p>Management reads are still constrained to a feedback reference and a ready normalized
+     * image.
      */
     public Optional<Entry> findManagedFeedbackReference(UUID feedbackId, UUID fileId) {
         return jdbc.sql(
@@ -299,7 +310,10 @@ public class FileRepository {
                 .optional();
     }
 
-    /** Ready normalized images can be used by the generic inline-content adapters. */
+    /**
+     * 已就绪且规范化的图片可由通用内联内容适配器使用。 Ready normalized images can be used by the generic inline-content
+     * adapters.
+     */
     public Optional<Entry> findReadyImage(UUID id, UUID ownerId) {
         return jdbc.sql(
                         "SELECT * FROM platform_file WHERE id=:id AND owner_id=:owner AND"
@@ -310,7 +324,10 @@ public class FileRepository {
                 .optional();
     }
 
-    /** A management read still requires at least one durable feedback reference. */
+    /**
+     * 管理读取仍须至少存在一条持久化反馈引用。 A management read still requires at least one durable feedback
+     * reference.
+     */
     public Optional<Entry> findManagedFeedbackImage(UUID id) {
         return jdbc.sql(
                         "SELECT f.* FROM platform_file f WHERE f.id=:id AND f.state='READY' AND"
@@ -322,7 +339,10 @@ public class FileRepository {
     }
 
     /**
-     * Public branding reads still require a durable upload registration and saved-image reference.
+     * 公开品牌图片读取仍须具有持久化上传登记和已保存图片引用。
+     *
+     * <p>Public branding reads still require a durable upload registration and saved-image
+     * reference.
      */
     public Optional<Entry> findReadyBrandingImage(UUID id) {
         return jdbc.sql(
@@ -334,14 +354,20 @@ public class FileRepository {
                 .optional();
     }
 
-    /** Called inside the upload publication transaction so abandoned images can be swept later. */
+    /**
+     * 在上传发布事务内调用，使遗弃图片可在之后清理。 Called inside the upload publication transaction so abandoned images
+     * can be swept later.
+     */
     public void reserveBrandingImage(UUID id) {
         jdbc.sql("INSERT INTO platform_branding_file(file_id) VALUES(:id)")
                 .param("id", id)
                 .update();
     }
 
-    /** Locks file metadata before publication so deletion and setting saves serialize safely. */
+    /**
+     * 发布前锁定文件元数据，使删除与设置保存安全串行化。 Locks file metadata before publication so deletion and setting
+     * saves serialize safely.
+     */
     public boolean retainBrandingImage(UUID id) {
         if (jdbc.sql(
                         "SELECT id FROM platform_file WHERE id=:id AND state='READY' AND"
@@ -388,7 +414,10 @@ public class FileRepository {
     }
 
     /**
-     * Global file-center reads include an explicit owner projection and never expose file payloads.
+     * 全局文件中心读取显式投影所有者信息，绝不暴露文件内容。
+     *
+     * <p>Global file-center reads include an explicit owner projection and never expose file
+     * payloads.
      */
     public PageResult<ManagedEntry> listManaged(PageRequest page) {
         String where =
@@ -482,7 +511,10 @@ public class FileRepository {
                 MANAGED_MAPPER);
     }
 
-    /** Repository-owned SQL fragments preserve each caller's owner/state/filter scope. */
+    /**
+     * 仓储内部 SQL 片段保留各调用方的所有者、状态及筛选范围。 Repository-owned SQL fragments preserve each caller's
+     * owner/state/filter scope.
+     */
     private <T> PageResult<T> listPage(
             PageRequest page,
             String from,
@@ -526,7 +558,10 @@ public class FileRepository {
                 .optional();
     }
 
-    /** Management deletion keeps the same reference protections as an owner deletion. */
+    /**
+     * 管理删除与所有者删除采用相同的引用保护。 Management deletion keeps the same reference protections as an owner
+     * deletion.
+     */
     public boolean requestManagedDelete(UUID id, long version) {
         if (jdbc.sql("SELECT id FROM platform_file WHERE id=:id FOR UPDATE")
                 .param("id", id)
@@ -569,7 +604,7 @@ public class FileRepository {
                 == 1;
     }
 
-    /** Only the reserved upload version may publish metadata. */
+    /** 只有预留的上传版本可以发布元数据。 Only the reserved upload version may publish metadata. */
     public boolean lockUpload(UUID id, UUID owner) {
         boolean locked =
                 jdbc.sql(
@@ -580,6 +615,7 @@ public class FileRepository {
                         .query(UUID.class)
                         .optional()
                         .isPresent();
+        // 取得锁后再检查实际时间，计入等待锁的耗时。
         // Check wall time after obtaining the lock, including time spent waiting for it.
         return locked
                 && jdbc.sql(
@@ -606,6 +642,7 @@ public class FileRepository {
     }
 
     public boolean requestDelete(UUID id, UUID ownerId, long version) {
+        // 先获取锁；后续语句才能看到等待期间已提交的引用。
         // Lock first; the following statement sees references committed while waiting.
         if (jdbc.sql("SELECT id FROM platform_file WHERE id=:id AND owner_id=:owner FOR UPDATE")
                 .param("id", id)
@@ -746,7 +783,7 @@ public class FileRepository {
                 .update();
     }
 
-    /** Called by the uploading request only after streaming has terminated. */
+    /** 上传请求仅可在流式传输结束后调用。 Called by the uploading request only after streaming has terminated. */
     public boolean abandonUpload(UUID id) {
         return jdbc.sql(
                                 "UPDATE platform_file SET"
@@ -757,7 +794,7 @@ public class FileRepository {
                 == 1;
     }
 
-    /** Called only after the storage adapter confirms the object is absent. */
+    /** 仅在存储适配器确认对象已不存在后调用。 Called only after the storage adapter confirms the object is absent. */
     public boolean finishDelete(UUID id, long version) {
         return jdbc.sql(
                                 "DELETE FROM platform_file WHERE id=:id AND version=:version AND"
@@ -817,7 +854,10 @@ public class FileRepository {
                 .list();
     }
 
-    /** Unpublished branding uploads are visible only to the uploader and expire after one day. */
+    /**
+     * 尚未发布的品牌图片上传仅上传者可见，一天后过期。 Unpublished branding uploads are visible only to the uploader and
+     * expire after one day.
+     */
     public java.util.List<UUID> expirePendingBrandingImages() {
         return jdbc.sql(
                         "WITH expired AS (SELECT f.id FROM platform_file f JOIN"

@@ -1,3 +1,8 @@
+/**
+ * 启动时校验宿主应用接口均声明了已注册模块归属，使遗漏的端点契约在接收请求前失败。 Validates registered module ownership for host
+ * application handlers during startup so missing endpoint contracts fail before requests are
+ * served.
+ */
 package com.lumira.platform.moduleadmin;
 
 import com.lumira.platform.modules.ModuleRegistry;
@@ -22,6 +27,7 @@ public class ModuleEndpointValidator implements SmartInitializingSingleton {
     @Override
     public void afterSingletonsInstantiated() {
         mappings.getObject().getHandlerMethods().values().stream()
+                // Spring Boot 的 BasicErrorController 属于框架，没有 Lumira 模块归属；模块归属契约只约束应用处理器。
                 // Spring Boot's BasicErrorController is framework-owned and has no Lumira module.
                 // Only application handlers participate in the module ownership contract.
                 .filter(

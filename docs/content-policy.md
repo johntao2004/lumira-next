@@ -16,7 +16,7 @@ JSON 文本字段包括 name、displayName、realName、title、description、de
 
 ## 管理与记录
 
-`/dashboard/sensitive-words` 提供角色管控、共享词库、命中记录、策略试运行。试运行是辅助验证，不替代真实业务提交。只有具有独立全局敏感词权限的管理员可访问；读取、写入与导入权限继续分别校验。
+`/dashboard/sensitive-words` 提供角色管控、共享词库、命中记录、策略试运行。试运行是辅助验证，不替代真实业务提交。具有全局页面访问权限即可读取列表、详情和试运行；写入、删除、导入和角色策略更新仍分别校验对应操作权限。
 
 `/api/platform/sensitive-policies/roles` 读取角色开关；`PUT /roles/{id}` 使用 `{mode:"ON"|"OFF",version}` 乐观更新。`/hits` 分页读取命中元数据；`/preview` 使用所选角色开关或直接测试共享词库，不生成提交命中记录。
 

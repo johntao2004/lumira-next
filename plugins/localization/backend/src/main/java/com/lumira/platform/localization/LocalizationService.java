@@ -233,7 +233,7 @@ public class LocalizationService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<CatalogEntry> list(
             PageRequest page, String requestedLocale, Boolean enabled, String actor) {
-        requireGlobalOperation(actor, READ);
+        requirePageView(actor);
         var language = requireLocale(requestedLocale);
         var chain = fallbackChain(language);
         var rows = repository.allActive();
@@ -277,13 +277,13 @@ public class LocalizationService {
 
     @Transactional(readOnly = true)
     public LocalizationRepository.Entry find(UUID id, String actor) {
-        requireGlobalOperation(actor, READ);
+        requirePageView(actor);
         return repository.find(id);
     }
 
     @Transactional(readOnly = true)
     public List<LocaleView> locales(String actor) {
-        requireGlobalOperation(actor, READ);
+        requirePageView(actor);
         return localeViews();
     }
 
@@ -508,7 +508,7 @@ public class LocalizationService {
 
     @Transactional(readOnly = true)
     public BundlePreview previewBundle(BundlePreviewRequest request, String actor) {
-        requireGlobalOperation(actor, IMPORT);
+        writeGuard(actor, IMPORT);
         var checked = validateBundle(request == null ? null : request.bundle());
         return bundlePreview(checked, Boolean.TRUE.equals(request.overwriteExisting()), null);
     }
@@ -1147,17 +1147,14 @@ public class LocalizationService {
     }
 
     private void writeGuard(String actor, String permission) {
-        guard.require(actor, ACCESS);
-        guard.requireGlobal(actor, ACCESS);
+        requirePageView(actor);
         guard.require(actor, permission);
         guard.requireGlobal(actor, permission);
     }
 
-    private void requireGlobalOperation(String actor, String permission) {
+    private void requirePageView(String actor) {
         guard.require(actor, ACCESS);
         guard.requireGlobal(actor, ACCESS);
-        guard.require(actor, permission);
-        guard.requireGlobal(actor, permission);
     }
 
     private static String clean(String value) {

@@ -30,6 +30,9 @@ import tools.jackson.databind.ObjectMapper;
 public class AiConversationShareService {
     public record Message(String role, String content) {}
 
+    /** Documentation shape; raw JSON is retained at runtime for strict validation. */
+    public record ShareWrite(String title, List<Message> messages) {}
+
     public record CreateResult(UUID id, String token, String path, OffsetDateTime createdAt) {}
 
     public record ShareSummary(UUID id, String title, OffsetDateTime createdAt) {}
@@ -239,7 +242,10 @@ public class AiConversationShareService {
      * its creator account is enabled and not deleted.
      */
     static boolean shareVisible(
-            OffsetDateTime createdAt, Boolean enabled, OffsetDateTime deletedAt, OffsetDateTime now) {
+            OffsetDateTime createdAt,
+            Boolean enabled,
+            OffsetDateTime deletedAt,
+            OffsetDateTime now) {
         return createdAt != null
                 && Boolean.TRUE.equals(enabled)
                 && deletedAt == null

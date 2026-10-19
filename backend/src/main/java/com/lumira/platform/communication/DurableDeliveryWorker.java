@@ -1,3 +1,8 @@
+/**
+ * 以有界并发、续租和截止时间执行渠道投递，网络调用不占数据库事务，结果与审计另行提交，超时或失租按不确定处理。 Executes provider deliveries with bounded
+ * concurrency, lease renewal and deadlines outside database transactions, committing outcomes with
+ * audits and treating timeout or lease loss as uncertain.
+ */
 package com.lumira.platform.communication;
 
 import com.lumira.platform.common.AuditPort;
@@ -19,7 +24,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Shared orchestration for durable provider deliveries.
+ * 持久化服务商投递的共享编排；通道模块只提供载荷、连接、网关结果与存储适配器，领取隔离、有界并发、租约续期、截止中断及保守完成语义由同一实现负责。
+ *
+ * <p>Shared orchestration for durable provider deliveries.
  *
  * <p>Channel modules provide only their payload, connection, gateway result and store adapter.
  * Claim fencing, bounded concurrency, lease renewal, deadline interruption and conservative
@@ -232,6 +239,7 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
                     log.warn("{} failure recording deferred for {}", channel, claim.id());
                 }
             }
+            // 完成事务失败时保留 SENDING，等待保守的租约过期恢复。
             // A failed completion transaction leaves SENDING for conservative expiry recovery.
             log.warn(
                     "{} attempt deferred for {} ({})",

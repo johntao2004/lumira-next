@@ -1,3 +1,8 @@
+/**
+ * 逐次核验已认证 API 请求的当前权限、认证策略及会话凭据证据后绑定授权上下文，避免撤权后继续沿用旧会话许可。 Binds authorization context only after
+ * checking current API-request grants, authentication policy and session evidence, preventing
+ * revoked access from surviving through stale sessions.
+ */
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
@@ -25,7 +30,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Re-evaluates live grants and authentication policy for every authenticated request. */
+/**
+ * 对每个已认证请求重新评估实时授权与认证策略。 Re-evaluates live grants and authentication policy for every authenticated
+ * request.
+ */
 final class CurrentAuthorityFilter extends OncePerRequestFilter {
     private static final String CONTEXT_QUERY =
             """
@@ -87,6 +95,7 @@ final class CurrentAuthorityFilter extends OncePerRequestFilter {
         CurrentContext current =
                 transactions.execute(
                         status -> {
+                            // 共用写侧策略锁，在请求进入应用处理器前，从同一一致时点读取权限与有效认证策略。
                             // Share the write-side policy lock so grants and effective
                             // authentication policy
                             // are read from one coherent point before the request reaches an
@@ -211,6 +220,7 @@ final class CurrentAuthorityFilter extends OncePerRequestFilter {
                 try {
                     rolePreviewContexts.recordBoundaryRejection(current.authorization(), code);
                 } catch (RuntimeException ignored) {
+                    // 即使审计存储不可用，请求仍按安全默认拒绝。
                     // The request still fails closed if the audit store is unavailable.
                 }
                 response.setStatus(denied.getStatusCode().value());

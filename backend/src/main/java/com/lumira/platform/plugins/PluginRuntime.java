@@ -1,3 +1,8 @@
+/**
+ * 编排可信插件的恢复、装配、健康检查和安装卸载，以批准图、节点租约及调用排空协调运行状态，恢复失败时阻止业务流量。 Orchestrates trusted-plugin restoration,
+ * assembly, health checks and installation or removal using approved graphs, node leases and call
+ * draining, blocking business traffic when recovery fails.
+ */
 package com.lumira.platform.plugins;
 
 import com.lumira.platform.common.*;
@@ -38,7 +43,10 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import org.springframework.web.util.pattern.PathPatternParser;
 import tools.jackson.databind.ObjectMapper;
 
-/** Single-instance orchestrator. Every published extension has an owned, drainable context. */
+/**
+ * 单实例编排器；每个已发布扩展都有归属明确、可排空在途调用的上下文。 Single-instance orchestrator. Every published extension has an
+ * owned, drainable context.
+ */
 @Service
 public class PluginRuntime
         implements AutoCloseable,
@@ -213,6 +221,7 @@ public class PluginRuntime
                                                     return PluginRuntime.class
                                                             .getClassLoader()
                                                             .loadClass(name);
+                                                // 宿主契约优先；插件也可以在自身 api 包中定义响应 DTO。
                                                 // Host contracts win; a plugin may also own
                                                 // response DTOs in its own api package.
                                                 if (name.startsWith("com.lumira.platform.")
@@ -341,6 +350,7 @@ public class PluginRuntime
                 importArchive(Files.readAllBytes(p), 0);
             }
         }
+        // 运行版本由安装摘要确定，不由目录导入时间确定。
         // The installation digest, rather than catalog import time, selects the running
         // version.
         for (var installation : installationMap().values())
@@ -768,7 +778,9 @@ public class PluginRuntime
     }
 
     /**
-     * Only publishes local state after commit; the heartbeat executor writes the node row later.
+     * 仅在事务提交后发布本地状态；节点记录稍后由心跳执行器写入。
+     *
+     * <p>Only publishes local state after commit; the heartbeat executor writes the node row later.
      */
     private void publishCommittedGraph(String committedRevision) {
         if (committedRevision == null) {
@@ -995,7 +1007,10 @@ public class PluginRuntime
         return graphSnapshot().revision();
     }
 
-    /** Reads all revision inputs and its approval in one PostgreSQL statement snapshot. */
+    /**
+     * 在同一 PostgreSQL 语句快照中读取全部修订输入及其批准记录。 Reads all revision inputs and its approval in one
+     * PostgreSQL statement snapshot.
+     */
     private RuntimeGraphSnapshot graphSnapshot() {
         return jdbc.sql(
                         """
@@ -1303,7 +1318,7 @@ public class PluginRuntime
         var added = new ArrayList<String>();
         var enabled = new ArrayList<String>();
         var removed = new ArrayList<String>();
-        var deleteUninstallCommitted = new AtomicReference<>(false);
+        var uninstallCommitted = new AtomicReference<>(false);
         var recoveryFailed = new AtomicReference<>(false);
         try {
             withClusterLifecycleLock(
@@ -1336,6 +1351,7 @@ public class PluginRuntime
                                 ready = true;
                                 updateNodeState(true, completedRevision);
                             } else {
+                                // 移除任何提供方前，先排空所有受影响句柄的在途调用。
                                 // Drain all affected handles before removing any provider.
                                 for (String id : plan.remove()) drain(id);
                                 if (!makePlan(plan.moduleId(), plan.kind(), plan.dataMode())
@@ -1347,41 +1363,24 @@ public class PluginRuntime
                                     boolean wasLoaded = handles.containsKey(id);
                                     try {
                                         unload(id);
-                                    } catch (Exception unloadError) {
+                                    } finally {
                                         if (wasLoaded && !handles.containsKey(id)) removed.add(id);
-                                        throw unloadError;
-                                    }
-                                    if (wasLoaded) removed.add(id);
-                                    if (!deleteUninstall) {
-                                        persistInstalled(id, false, false);
-                                        setFlag(id, false);
                                     }
                                 }
-                                if (deleteUninstall) {
+                                if (deleteUninstall)
                                     step(op, "RUNNING", "delete data " + plan.moduleId(), null);
-                                    String completedRevision =
-                                            completeDeleteUninstall(actor, op, plan);
-                                    deleteUninstallCommitted.set(true);
-                                    loadedGraphRevision = completedRevision;
-                                    ready = true;
-                                    updateNodeState(true, completedRevision);
-                                } else {
-                                    String completedRevision =
-                                            completeLifecycleOperation(
-                                                    actor, op, "plugin.uninstalled");
-                                    loadedGraphRevision = completedRevision;
-                                    ready = true;
-                                    updateNodeState(true, completedRevision);
-                                }
+                                String completedRevision = completeUninstall(actor, op, plan);
+                                uninstallCommitted.set(true);
+                                loadedGraphRevision = completedRevision;
+                                ready = true;
+                                updateNodeState(true, completedRevision);
                             }
                         }
                         return null;
                     });
         } catch (Throwable error) {
             boolean restoreRemovedResources =
-                    plan.kind().equals("UNINSTALL")
-                            && plan.dataMode().equals("DELETE")
-                            && !deleteUninstallCommitted.get();
+                    plan.kind().equals("UNINSTALL") && !uninstallCommitted.get();
             try {
                 recoverFailedOperation(
                         op,
@@ -1492,6 +1491,7 @@ public class PluginRuntime
                             }
                         }
                         if (restoreRemovedResources) {
+                            // 失败事务释放生命周期锁后，其他节点可能已修改模块图；仅当旧图仍是此运行时唯一批准图时才重新加载。
                             // A peer may have changed the graph after the failed transaction
                             // released its lifecycle lock. Only reload the old graph if it is
                             // still the sole approved graph in this runtime.
@@ -1527,6 +1527,7 @@ public class PluginRuntime
                                             "Plugin permission catalog refresh failed",
                                             catalogError);
                         }
+                        // 排空失败时，恢复所有仍已发布句柄的调用准入。
                         // Failed draining restores admission on all still-published handles.
                         handles.values()
                                 .forEach(
@@ -1556,16 +1557,18 @@ public class PluginRuntime
         return completedRevision;
     }
 
-    private String completeDeleteUninstall(String actor, UUID op, Plan plan) {
+    private String completeUninstall(String actor, UUID op, Plan plan) {
         return tx.execute(
                 status -> {
                     for (String id : plan.remove()) {
                         persistInstalled(id, false, false);
                         setFlag(id, false);
                     }
-                    PluginDataRemoval.delete(
-                            jdbc, artifacts.get(plan.moduleId()).manifest().dataSets());
-                    audit.append(actor, "plugin.dataDeleted", op);
+                    if (plan.dataMode().equals("DELETE")) {
+                        PluginDataRemoval.delete(
+                                jdbc, artifacts.get(plan.moduleId()).manifest().dataSets());
+                        audit.append(actor, "plugin.dataDeleted", op);
+                    }
                     audit.append(actor, "plugin.uninstalled", op);
                     registerCatalog();
                     String completedRevision = revision();
@@ -1776,6 +1779,7 @@ public class PluginRuntime
             for (var p : mappings)
                 if (mapping.getHandlerMethods().containsKey(p.mapping()))
                     throw conflict("pluginEndpointConflict");
+            // 只执行前向迁移，每个插件使用独立的迁移历史表。
             // Apply only forward migrations, with a distinct table per plugin.
             progress.accept("migrate " + id);
             Path migrations = a.directory().resolve("migrations");
@@ -1795,16 +1799,13 @@ public class PluginRuntime
             registerNavigation(a.manifest());
             resources.start();
         } catch (Throwable e) {
-            for (var p : published) mappingProvider.getObject().unregisterMapping(p.mapping());
-            resources.close();
-            context.close();
-            try {
-                manager.stopPlugin(id);
-                manager.unloadPlugin(id);
-            } catch (Exception ignored) {
-            }
             registry.live(id, false);
             handles.remove(id);
+            try {
+                release(id, published, resources, context);
+            } catch (Throwable cleanupError) {
+                e.addSuppressed(cleanupError);
+            }
             throw e;
         }
     }
@@ -1936,11 +1937,28 @@ public class PluginRuntime
         var h = handles.remove(id);
         registry.live(id, false);
         if (h == null) return;
-        h.resources.close();
-        for (var p : h.mappings) mappingProvider.getObject().unregisterMapping(p.mapping());
-        h.context.close();
-        manager.stopPlugin(id);
-        manager.unloadPlugin(id);
+        release(id, h.mappings, h.resources, h.context);
+    }
+
+    /**
+     * 每项资源释放都必须尝试；回调失败不能让路由或类加载器继续存活。
+     *
+     * <p>Every release is attempted; a failed callback must not leave routes or a classloader live.
+     */
+    private void release(
+            String id,
+            List<Published> mappings,
+            PluginOwnedResources resources,
+            AnnotationConfigApplicationContext context)
+            throws Exception {
+        var actions = new ArrayList<AutoCloseable>();
+        for (var published : mappings)
+            actions.add(() -> mappingProvider.getObject().unregisterMapping(published.mapping()));
+        actions.add(resources);
+        actions.add(context::close);
+        actions.add(() -> manager.stopPlugin(id));
+        actions.add(() -> manager.unloadPlugin(id));
+        PluginCleanup.closeAll(actions);
     }
 
     public AutoCloseable acquire(String id) {
@@ -1996,7 +2014,10 @@ public class PluginRuntime
         return false;
     }
 
-    /** Legacy `authorities` retain any-of semantics; the additive all-of list is explicit. */
+    /**
+     * 旧 authorities 保留满足任一项的语义；新增的全部满足列表显式声明。 Legacy `authorities` retain any-of semantics; the
+     * additive all-of list is explicit.
+     */
     static boolean authorityRuleMatches(PluginManifest.Rule rule, Set<String> authorities) {
         if (rule == null || authorities == null) return false;
         boolean legacyAny =

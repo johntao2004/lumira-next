@@ -251,6 +251,111 @@ class RoleServiceDelegationTest {
     }
 
     @Test
+    void fullInstallerCanBootstrapPluginAssignmentImportAndCandidateScope() {
+        String dynamic = registerPluginPermission();
+        var roles = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        var users = mock(UserDirectoryPort.class);
+        var audit = mock(AuditPort.class);
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        holdEveryPlatformPermissionExcept(guard, dynamic);
+        var platform =
+                com.lumira.platform.common.PlatformInstallAuthority.currentPlatformPermissions();
+        when(roles.actorGlobalAuthorities(ACTOR)).thenReturn(platform);
+        when(roles.actorEffectiveAuthorities(ACTOR)).thenReturn(platform);
+        when(roles.find(roleId)).thenReturn(role(roleId, true, Set.of(dynamic)));
+        when(roles.userRoles(userId)).thenReturn(List.of());
+        when(roles.hasAdministrators()).thenReturn(true);
+        when(users.version(userId)).thenReturn(3L);
+        when(roles.assignmentOptions(any(), any(), any(), any(), any(), eq(true)))
+                .thenReturn(new com.lumira.platform.common.PageResult<>(List.of(), 0, 1, 10));
+        var service = new RoleService(roles, users, guard, audit);
+
+        service.validateImportAssignment(null, Set.of(roleId), ACTOR);
+        verifyNoInteractions(audit);
+        service.assign(userId, new RoleService.Assignment(3L, Set.of(roleId)), ACTOR);
+        service.assignmentOptions(
+                userId, new com.lumira.platform.common.PageRequest(1, 10, ""), ACTOR);
+
+        verify(roles).assign(userId, Set.of(roleId));
+        verify(audit).append(ACTOR, "role.pluginPermission.bootstrap:" + dynamic, roleId);
+        verify(roles)
+                .assignmentOptions(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        argThat(ceiling -> ceiling.rank(dynamic) == 3),
+                        eq(true));
+        when(roles.userRoles(userId)).thenReturn(List.of(roleId));
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
+                .when(guard)
+                .requireGlobal(ACTOR, dynamic);
+        var denied =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () -> service.validateImportAssignment(userId, Set.of(), ACTOR));
+        assertEquals("rolePermissionRevocationDenied", denied.getReason());
+    }
+
+    @Test
+    void installerBootstrapDoesNotWidenAnExistingScopedPluginGrant() {
+        String dynamic = registerPluginPermission();
+        var roles = mock(RoleRepository.class);
+        var guard = mock(AdministrationPort.class);
+        holdEveryPlatformPermissionExcept(guard, dynamic);
+        UUID roleId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        when(roles.find(roleId))
+                .thenReturn(
+                        new RoleRepository.Role(
+                                roleId,
+                                "qa-global",
+                                "QA global",
+                                true,
+                                7L,
+                                "ALL",
+                                null,
+                                null,
+                                List.of(dynamic),
+                                false));
+        var platform =
+                com.lumira.platform.common.PlatformInstallAuthority.currentPlatformPermissions();
+        var effective = new java.util.HashSet<>(platform);
+        effective.add(dynamic);
+        var scopes = Map.of(dynamic, Set.of("SELF"));
+        var context =
+                new com.lumira.platform.identity.api.RequestAuthorizationContext(
+                        ACTOR,
+                        actorId,
+                        "qa-session",
+                        effective,
+                        platform,
+                        scopes,
+                        effective,
+                        platform,
+                        scopes,
+                        "revision",
+                        "revision",
+                        true,
+                        null);
+        var snapshot =
+                new com.lumira.platform.identity.api.AuthenticationRequestContext.Snapshot(
+                        ACTOR, actorId, null, context);
+        try (var ignored =
+                com.lumira.platform.identity.api.AuthenticationRequestContext.bind(snapshot)) {
+            var denied =
+                    assertThrows(
+                            ResponseStatusException.class,
+                            () ->
+                                    service(roles, guard, mock(UserDirectoryPort.class))
+                                            .validateImportAssignment(null, Set.of(roleId), ACTOR));
+            assertEquals("rolePermissionDelegationDenied", denied.getReason());
+        }
+    }
+
+    @Test
     void cannotGrantAnUninstalledPluginPermissionEvenAsInstaller() {
         var roles = mock(RoleRepository.class);
         var guard = mock(AdministrationPort.class);
@@ -656,6 +761,7 @@ class RoleServiceDelegationTest {
         when(roles.userRoles(userId)).thenReturn(List.of());
         when(roles.hasAdministrators()).thenReturn(true);
         when(users.version(userId)).thenReturn(3L);
+        when(roles.actorGlobalAuthorities(ACTOR)).thenReturn(Set.of(active));
         var service = service(roles, guard, users);
 
         service.assign(userId, new RoleService.Assignment(3L, Set.of(roleId)), ACTOR);
@@ -663,6 +769,91 @@ class RoleServiceDelegationTest {
         verify(guard).require(ACTOR, active);
         verify(guard, never()).requireGlobal(ACTOR, retired);
         verify(roles).assign(userId, Set.of(roleId));
+    }
+
+    @Test
+    void assignmentUsesTheValidatedRequestEffectiveScopeInsteadOfRealOrFallbackGrants() {
+        var roles = mock(RoleRepository.class);
+        var users = mock(UserDirectoryPort.class);
+        var guard = mock(AdministrationPort.class);
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        String authority = "platform:users:access";
+        var grants = Set.of(authority);
+        when(roles.find(roleId))
+                .thenReturn(
+                        new RoleRepository.Role(
+                                roleId,
+                                "qa-org",
+                                "QA org",
+                                true,
+                                7L,
+                                "ORGANIZATION",
+                                null,
+                                null,
+                                List.of(authority),
+                                false));
+        when(roles.userRoles(userId)).thenReturn(List.of());
+        when(users.version(userId)).thenReturn(3L);
+        when(roles.actorGlobalAuthorities(ACTOR)).thenReturn(grants);
+        var context =
+                new com.lumira.platform.identity.api.RequestAuthorizationContext(
+                        ACTOR,
+                        userId,
+                        "qa-session",
+                        grants,
+                        grants,
+                        Map.of(authority, Set.of("ALL")),
+                        grants,
+                        Set.of(),
+                        Map.of(authority, Set.of("SELF")),
+                        "revision",
+                        "revision",
+                        true,
+                        null);
+        var snapshot =
+                new com.lumira.platform.identity.api.AuthenticationRequestContext.Snapshot(
+                        ACTOR, userId, null, context);
+        try (var ignored =
+                com.lumira.platform.identity.api.AuthenticationRequestContext.bind(snapshot)) {
+            var denied =
+                    assertThrows(
+                            ResponseStatusException.class,
+                            () ->
+                                    service(roles, guard, users)
+                                            .assign(
+                                                    userId,
+                                                    new RoleService.Assignment(3L, Set.of(roleId)),
+                                                    ACTOR));
+            assertEquals("rolePermissionDelegationDenied", denied.getReason());
+            verify(roles, never()).assign(any(), any());
+            verify(roles, never()).actorGlobalAuthorities(ACTOR);
+        }
+    }
+
+    @Test
+    void missingScopeEvidenceDoesNotPermitAssignment() {
+        var roles = mock(RoleRepository.class);
+        var users = mock(UserDirectoryPort.class);
+        var guard = mock(AdministrationPort.class);
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(roles.find(roleId)).thenReturn(role(roleId, true, Set.of("platform:users:access")));
+        when(roles.userRoles(userId)).thenReturn(List.of());
+        when(users.version(userId)).thenReturn(3L);
+        var service = service(roles, guard, users);
+
+        var denied =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                service.assign(
+                                        userId,
+                                        new RoleService.Assignment(3L, Set.of(roleId)),
+                                        ACTOR));
+
+        assertEquals("rolePermissionDelegationDenied", denied.getReason());
+        verify(roles, never()).assign(any(), any());
     }
 
     @Test

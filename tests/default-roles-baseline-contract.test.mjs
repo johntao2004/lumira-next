@@ -16,12 +16,12 @@ function sorted(values) {
 }
 
 function permissionCatalogFromSources() {
-  const pageSource = read('backend/src/main/java/com/lumira/platform/common/PlatformPageId.java');
+  const pageSource = read('framework/platform-contracts/src/main/java/com/lumira/platform/common/PlatformPageId.java');
   const pageIds = new Map(
     [...pageSource.matchAll(/^\s*([A-Z][A-Z0-9_]*)\("([^"]+)"/gm)]
       .map(([, constant, id]) => [constant, id]),
   );
-  const operationSource = read('backend/src/main/java/com/lumira/platform/common/PlatformOperation.java');
+  const operationSource = read('framework/platform-contracts/src/main/java/com/lumira/platform/common/PlatformOperation.java');
   const operations = new Map(
     [...operationSource.matchAll(/^\s*([A-Z][A-Z0-9_]*)\(PlatformPageId\.([A-Z][A-Z0-9_]*),\s*"([^"]+)"/gm)]
       .map(([, constant, page, action]) => [constant, `platform:${pageIds.get(page)}:${action}`]),

@@ -1,3 +1,7 @@
+/**
+ * 组合查询缓存、主题语言、品牌和错误边界，并在账号切换时撤销旧缓存；跨标签页通知只触发服务端会话重验。
+ * Compose query caching, locale, theme, branding and error boundaries, retiring old account caches while treating cross-tab signals only as requests to revalidate the server session.
+ */
 "use client";
 import {BrandingProvider} from "./branding/provider";
 import type {Branding} from "./branding/model";
@@ -97,11 +101,13 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
         client.clear();
         clearAuthorizationContext();
       } else {
+        // 保留确立新身份的在途 /auth/me 查询；其他账户范围查询全部移除，必须重新加载。
         // Keep the in-flight /auth/me query that established the new identity;
         // every account-scoped query is removed and must be loaded again.
         client.removeQueries({ predicate: query => query.queryKey[0] !== "session" });
         clearAuthorizationContext();
 
+        // 其他启动调用可能先确立新身份，使同会话代次的重复 /auth/me 未通过代次校验；若尚未缓存已接受用户，则等待确立身份的请求完成后重验，避免工作区一直停在临时错误状态直到下次轮询。
         // Another bootstrap caller can establish the new identity first, which
         // makes a same-epoch duplicate /auth/me fail its epoch guard. If the
         // session query has not already cached the accepted user, revalidate it
@@ -149,7 +155,8 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
     return () => window.removeEventListener("lumira:session-expired", expire);
   }, [client]);
   useEffect(() => {
-    // One-time upgrade from legacy local-only preferences; subsequent SSR uses the cookie.
+    // 一次性迁移旧版仅本地保存的偏好；后续客户端启动从 Cookie 恢复偏好。
+    // Migrate legacy local-only preferences once; subsequent client startup restores them from the cookie.
     if (!hasSavedPreferences) {
       try {
         const saved = localStorage.getItem(PREFERENCES_COOKIE);
@@ -171,7 +178,7 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
-  }, [hasSavedPreferences]);
+  }, [hasSavedPreferences, updatePreferences]);
   useEffect(() => {
     const controller = new AbortController();
     api<Array<{ locale?: unknown }>>("/public/localization/locales", { signal: controller.signal })
@@ -181,7 +188,7 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
         const saved = canonicalLocale(current.current.locale);
         if (!saved || !locales.has(saved)) updatePreferences({ locale: defaultPreferences.locale });
       })
-      .catch(() => { /* Keep the saved locale while the registry is unreachable. */ });
+      .catch(() => { /* 语言注册表不可访问时，保留已保存的语言。 Keep the saved locale while the registry is unreachable. */ });
     return () => controller.abort();
   }, [locale, updatePreferences]);
   useEffect(() => {
@@ -198,6 +205,7 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
         setStaticLocaleRevision((revision) => revision + 1);
       })
       .catch(() => {
+        // 语言分块加载失败时，英语仍提供完整静态回退。
         // English remains a complete static fallback when a locale chunk fails.
         if (active) setAntLocale(enUS);
       });
@@ -214,11 +222,13 @@ export function Providers({ children, initialBranding, initialPreferences, hasSa
           .slice(0, 20_000);
         setRuntimeMessages(Object.fromEntries(entries));
       })
-      .catch(() => { /* Static messages remain the resilient fallback. */ });
+      .catch(() => { /* 静态文案继续作为可靠回退。 Static messages remain the resilient fallback. */ });
     return () => controller.abort();
   }, [locale, runtimeRevision]);
   const toggleDark = useCallback(() => updatePreferences({ dark: !current.current.dark }), [updatePreferences]);
   const setLocale = useCallback((next: string) => accountLocale.select(next), [accountLocale]);
+  // 静态词典异步装载后需要新函数身份，让缓存翻译的消费者重算。
+  // Static dictionary arrival must change translator identity so memoized consumers recompute.
   const t = useCallback((key: string, params?: Record<string, string | number>) => {
     const template = runtimeMessages[key] ?? translate(resolveLocale(locale), key as MessageKey, params);
     return runtimeMessages[key]

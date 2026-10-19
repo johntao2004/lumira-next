@@ -59,13 +59,30 @@ jobs:
       # Includes the integration tests that need PostgreSQL (enabled by LUMIRA_TEST_DB_URL)
       # and ArchitectureTest, which freezes the module dependency graph.
       - run: node scripts/office-worker-test.mjs verify
+      - name: Prepare version-matched PostgreSQL clients
+        run: |
+          mkdir -p "$RUNNER_TEMP/pg-bin"
+          for command in psql createdb dropdb pg_dump pg_restore; do
+            printf '#!/usr/bin/env bash\nexec docker run --rm --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -v /tmp:/tmp postgres:18.6 %s "$@"\n' "$command" > "$RUNNER_TEMP/pg-bin/$command"
+            chmod +x "$RUNNER_TEMP/pg-bin/$command"
+          done
+          echo "$RUNNER_TEMP/pg-bin" >> "$GITHUB_PATH"
+      - name: Verify independent build, authorization, upgrade and restore
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+        run: python3 scripts/verify-independent-app.py
   images:
-    # Proves both production images still build; the server build also runs the localization generator.
+    # 构建三种生产镜像；实际扫描结果仍由该次 CI 提供。
+    # Build all three production images; scan evidence belongs to the actual CI run.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f deploy/server.Dockerfile -t lumira-server:ci .
       - run: docker build -f deploy/web.Dockerfile -t lumira-web:ci .
+      - run: docker build -f deploy/office-worker.Dockerfile -t lumira-office-worker:ci .
       - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -76,6 +93,12 @@ jobs:
       - uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: lumira-web:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: lumira-office-worker:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"

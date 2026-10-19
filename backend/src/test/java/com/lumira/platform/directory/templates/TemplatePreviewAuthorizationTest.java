@@ -90,7 +90,11 @@ class TemplatePreviewAuthorizationTest {
         var guard = mock(AdministrationPort.class);
         var service =
                 new TemplateService(
-                        repository, userData, guard, mock(AuditPort.class), mock(ObjectMapper.class));
+                        repository,
+                        userData,
+                        guard,
+                        mock(AuditPort.class),
+                        mock(ObjectMapper.class));
         UUID userId = UUID.randomUUID();
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
                 .when(guard)
@@ -121,7 +125,6 @@ class TemplatePreviewAuthorizationTest {
                 RuntimeException.class,
                 () -> service.preview(UUID.randomUUID(), 0, null, Map.of(), "actor"));
 
-        verify(guard, never())
-                .requireOperationUser(any(), any(), eq(PlatformOperation.USER_PRINT));
+        verify(guard, never()).requireOperationUser(any(), any(), eq(PlatformOperation.USER_PRINT));
     }
 }

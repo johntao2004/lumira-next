@@ -1,3 +1,7 @@
+/**
+ * 将服务端授权事实稳定序列化为缓存标识以识别变化并隔离导航缓存，这里的 signature 不是密码学签名或授权凭证。
+ * Serialize server authorization facts into a stable cache key for change detection and navigation isolation; this signature is neither a cryptographic signature nor an authorization credential.
+ */
 export interface AuthorizationSignatureInput {
   userId?: string | null;
   authorities?: readonly string[] | null;
@@ -25,7 +29,10 @@ function stableValue(value: unknown): unknown {
   return value ?? null;
 }
 
-/** A stable key for the effective grants, module state, data scope, and preview context. */
+/**
+ * 为有效权限、模块状态、数据范围及预览上下文生成稳定键。
+ * A stable key for the effective grants, module state, data scope, and preview context.
+ */
 export function effectiveAuthorizationSignature(user: AuthorizationSignatureInput | null | undefined) {
   if (!user) return JSON.stringify({ userId: null });
   return JSON.stringify({

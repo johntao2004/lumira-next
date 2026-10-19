@@ -1,5 +1,7 @@
 package com.lumira.platform.monitoring;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,6 +63,16 @@ class ApiDocsRuntimeMappingTest {
 
     @MockitoBean PluginAuthorizationPort pluginAuthorization;
 
+    @MockitoBean com.lumira.platform.dictionaries.DictionaryService dictionaries;
+    @MockitoBean com.lumira.platform.organizations.OrganizationService organizations;
+    @MockitoBean com.lumira.platform.navigation.NavigationMenuService navigation;
+    @MockitoBean com.lumira.platform.settings.SmtpSettingsService smtp;
+    @MockitoBean com.lumira.platform.settings.WechatSettingsService wechat;
+    @MockitoBean com.lumira.platform.common.AdministrationPort administration;
+    @MockitoBean com.lumira.platform.users.UserXlsxExportService exports;
+    @MockitoBean com.lumira.platform.directory.templates.TemplatePdfService printing;
+    @MockitoBean com.lumira.platform.ai.AiConversationShareService shares;
+
     private MockMvc mvc;
 
     @BeforeEach
@@ -81,12 +93,12 @@ class ApiDocsRuntimeMappingTest {
                 .andExpect(
                         jsonPath(
                                         "$.paths['/api/platform/docs-probe'].post.requestBody.content['application/json'].schema.$ref")
-                                .value("#/components/schemas/ApiDocsRequest"))
+                                .value("#/components/schemas/" + schemaName(ApiDocsRequest.class)))
                 .andExpect(
-                        jsonPath("$.components.schemas.ApiDocsRequest.properties.label.type")
+                        jsonPath(schemaPath(ApiDocsRequest.class) + ".properties.label.type")
                                 .value("string"))
                 .andExpect(
-                        jsonPath("$.components.schemas.ApiDocsResponse.properties.id.type")
+                        jsonPath(schemaPath(ApiDocsResponse.class) + ".properties.id.type")
                                 .value("integer"))
                 .andExpect(
                         jsonPath("$.components.securitySchemes.lumiraSession.in").value("cookie"))
@@ -141,7 +153,7 @@ class ApiDocsRuntimeMappingTest {
                 .andExpect(status().isOk())
                 .andExpect(
                         jsonPath("$.paths['/api/plugins/runtime-probe/{probeId}']").doesNotExist())
-                .andExpect(jsonPath("$.components.schemas.PluginProbeResponse").doesNotExist());
+                .andExpect(jsonPath(schemaPath(PluginProbeResponse.class)).doesNotExist());
 
         when(pluginAuthorization.authorize(
                         "GET", "/api/plugins/runtime-probe/{probeId}", Set.of(), false))
@@ -184,7 +196,8 @@ class ApiDocsRuntimeMappingTest {
                     .andExpect(jsonPath("$.paths['/api/plugins/inherited-probe'].get").exists())
                     .andExpect(
                             jsonPath(
-                                            "$.components.schemas.PluginProbeResponse.properties.ready.type")
+                                            schemaPath(PluginProbeResponse.class)
+                                                    + ".properties.ready.type")
                                     .value("boolean"));
             verify(pluginAuthorization)
                     .authorize("GET", "/api/plugins/runtime-probe/{probeId}", Set.of(), false);
@@ -202,7 +215,119 @@ class ApiDocsRuntimeMappingTest {
                         jsonPath("$.paths['/api/plugins/runtime-probe/{probeId}']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/plugins/private-probe']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/plugins/inherited-probe']").doesNotExist())
-                .andExpect(jsonPath("$.components.schemas.PluginProbeResponse").doesNotExist());
+                .andExpect(jsonPath(schemaPath(PluginProbeResponse.class)).doesNotExist());
+    }
+
+    @Test
+    void requestSchemasWithRepeatedSimpleNamesStayDistinctAndJsonNodesStayHidden()
+            throws Exception {
+        var document =
+                new tools.jackson.databind.ObjectMapper()
+                        .readTree(
+                                mvc.perform(get("/api/platform/api-docs"))
+                                        .andExpect(status().isOk())
+                                        .andReturn()
+                                        .getResponse()
+                                        .getContentAsString());
+        assertRequestSchema(
+                document,
+                "/api/platform/dictionaries",
+                "post",
+                com.lumira.platform.dictionaries.DictionaryService.Input.class,
+                "code",
+                "structure");
+        assertRequestSchema(
+                document,
+                "/api/platform/organizations",
+                "post",
+                com.lumira.platform.organizations.OrganizationService.Input.class,
+                "parentId",
+                "sortNo");
+        assertRequestSchema(
+                document,
+                "/api/platform/navigation/menus",
+                "post",
+                com.lumira.platform.navigation.NavigationMenuService.Input.class,
+                "menuCode",
+                "componentKey");
+        assertRequestSchema(
+                document,
+                "/api/platform/settings/smtp",
+                "put",
+                com.lumira.platform.settings.SmtpSettingsService.Input.class,
+                "data",
+                "credentials");
+        assertRequestSchema(
+                document,
+                "/api/platform/settings/wechat",
+                "put",
+                com.lumira.platform.settings.WechatSettingsService.Input.class,
+                "appId",
+                "appSecret");
+        assertRequestSchema(
+                document,
+                "/api/platform/users/export.xlsx",
+                "post",
+                com.lumira.platform.users.UserXlsxExportService.Request.class,
+                "scope",
+                "fields",
+                "filters");
+        assertRequestSchema(
+                document,
+                "/api/platform/users/template-print",
+                "post",
+                com.lumira.platform.directory.templates.TemplatePdfService.Request.class,
+                "templateId",
+                "format",
+                "merge");
+        assertRequestSchema(
+                document,
+                "/api/platform/ai/shares",
+                "post",
+                com.lumira.platform.ai.AiConversationShareService.ShareWrite.class,
+                "title",
+                "messages");
+        assertRequestSchema(
+                document,
+                "/api/platform/ai/shares/{id}",
+                "put",
+                com.lumira.platform.ai.AiConversationShareService.ShareWrite.class,
+                "title",
+                "messages");
+        String shareSchema =
+                document.path("components")
+                        .path("schemas")
+                        .path(
+                                schemaName(
+                                        com.lumira.platform.ai.AiConversationShareService.ShareWrite
+                                                .class))
+                        .toString();
+        assertFalse(shareSchema.contains("JsonNode"));
+        assertFalse(shareSchema.contains("nodeType"));
+    }
+
+    private static void assertRequestSchema(
+            tools.jackson.databind.JsonNode document,
+            String path,
+            String method,
+            Class<?> requestType,
+            String... properties) {
+        String name = schemaName(requestType);
+        assertEquals(
+                "#/components/schemas/" + name,
+                document.path("paths")
+                        .path(path)
+                        .path(method)
+                        .path("requestBody")
+                        .path("content")
+                        .path("application/json")
+                        .path("schema")
+                        .path("$ref")
+                        .asText(),
+                path);
+        var schema = document.path("components").path("schemas").path(name).path("properties");
+        for (String property : properties)
+            assertTrue(schema.has(property), path + " missing " + property);
     }
 
     @SpringBootConfiguration(proxyBeanMethods = false)
@@ -212,7 +337,19 @@ class ApiDocsRuntimeMappingTest {
                 FlywayAutoConfiguration.class,
                 SessionAutoConfiguration.class
             })
-    @Import({ApiDocsConfiguration.class, SampleController.class, ViewController.class})
+    @Import({
+        ApiDocsConfiguration.class,
+        SampleController.class,
+        ViewController.class,
+        com.lumira.platform.dictionaries.DictionaryController.class,
+        com.lumira.platform.organizations.OrganizationController.class,
+        com.lumira.platform.navigation.NavigationController.class,
+        com.lumira.platform.settings.SmtpSettingsController.class,
+        com.lumira.platform.settings.WechatSettingsController.class,
+        com.lumira.platform.users.UserExportController.class,
+        com.lumira.platform.users.UserTemplatePrintController.class,
+        com.lumira.platform.ai.AiConversationShareController.class
+    })
     static class TestApplication {}
 
     @RestController
@@ -301,6 +438,14 @@ class ApiDocsRuntimeMappingTest {
         public PluginProbeResponse inheritedProbe() {
             return new PluginProbeResponse(true);
         }
+    }
+
+    private static String schemaName(Class<?> type) {
+        return type.getName().replace('$', '.');
+    }
+
+    private static String schemaPath(Class<?> type) {
+        return "$.components.schemas['" + schemaName(type) + "']";
     }
 
     record ApiDocsRequest(String label) {}

@@ -1,3 +1,7 @@
+/**
+ * 仅汇总清单元数据供路由和导航使用，不导入页面实现，也不把目录声明等同于动态插件已安装或运行。
+ * Collect only manifest metadata for routes and navigation without importing page implementations or treating catalog presence as proof that a dynamic plugin is installed or running.
+ */
 import { orderModuleGraph } from "./graph.ts";
 import type { FrontendModuleManifest, FrontendRoute } from "./types.ts";
 import { validateFrontendModuleManifest } from "./contracts.ts";
@@ -44,7 +48,10 @@ type RegisteredFrontendModule = Omit<FrontendModuleManifest, "id" | "routes"> & 
   readonly routes: readonly FrontendRoute[];
 };
 
-/** Server-safe catalog: no JSX and no feature page implementation is imported here. */
+/**
+ * 可安全用于服务端的纯目录：此处不导入 JSX 或功能页面实现。
+ * Server-safe catalog: no JSX and no feature page implementation is imported here.
+ */
 export const frontendModuleManifests: readonly RegisteredFrontendModule[] = orderModuleGraph(candidates);
 const catalogRouteOwners = new Map<string, string>();
 for (const module of frontendModuleManifests) {

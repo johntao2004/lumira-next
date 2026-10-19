@@ -137,7 +137,10 @@ Built-in navigation rows are aligned to the current page access grant and catalo
 application restores plugins. The published B52 seed still contains a few older operation keys
 (`platform:feedback:read`, `platform:localization:read`, `platform:sensitive-words:read`) and marks
 print templates as caller-scoped. Startup rewrites only built-in page rows, so a grant of the page
-access permission is what shows the page. File retention has no B52 menu row; startup inserts one
+access permission is what shows the page. Localization and sensitive-word list, detail,
+provider options, and read-only previews require only that global page-access permission;
+create, update, delete, import, and policy changes still require their separate operation grants.
+File retention has no B52 menu row; startup inserts one
 built-in page under administration when it is missing, and the frontend lists that page for
 `platform:file-retention:access`. Custom rows that are not built in are left unchanged. Session
 authorities returned by `/auth/me` include only permissions in the current host and installed-plugin

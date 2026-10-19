@@ -1,3 +1,8 @@
+/**
+ * 为邮件短信共用加密负载、租约和重试状态机，将发送后结果未知的任务保留为不确定状态，避免自动重发造成重复投递。 Shares encrypted payload, lease and retry
+ * state across mail and SMS queues, retaining unknown post-send outcomes as uncertain instead of
+ * automatically risking duplicate delivery.
+ */
 package com.lumira.platform.communication;
 
 import com.lumira.platform.common.SecretKeys;
@@ -14,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Shared durable-delivery state machine for provider-specific queues.
+ * 服务商专用队列共用的持久化投递状态机；表名与载荷上下文由模块适配器提供并按标识符校验，请求值从不直接拼入 SQL，邮件与短信因此共享租约、隔离、重试及保留语义，同时保持各自载荷与网关类型私有。
+ *
+ * <p>Shared durable-delivery state machine for provider-specific queues.
  *
  * <p>The table name and payload context are supplied by module-owned adapters and validated as
  * identifiers. No request value is ever interpolated into the SQL. Mail and SMS therefore share the
@@ -62,7 +69,10 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
         return channel + ":" + id + ":payload";
     }
 
-    /** First enqueue wins; repeat IDs never replace an existing message or deadline. */
+    /**
+     * 以首次入队为准；重复标识不能替换已有消息或截止时间。 First enqueue wins; repeat IDs never replace an existing message
+     * or deadline.
+     */
     @Transactional
     public boolean enqueue(UUID id, P payload, int lifetimeSeconds) {
         Objects.requireNonNull(id, "id");
@@ -121,7 +131,10 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                 .optional();
     }
 
-    /** Load before beginSending; no DB transaction surrounds subsequent provider IO. */
+    /**
+     * 在 beginSending 前加载数据；后续服务商 I/O 不包裹在数据库事务中。 Load before beginSending; no DB transaction
+     * surrounds subsequent provider IO.
+     */
     @Transactional(readOnly = true)
     public Optional<P> message(Claim claim) {
         Objects.requireNonNull(claim, "claim");
@@ -156,7 +169,10 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                 == 1;
     }
 
-    /** Extend only the current worker's live lease; a lost lease fences completion. */
+    /**
+     * 只续期当前工作进程仍有效的租约；失去租约后禁止完成操作。 Extend only the current worker's live lease; a lost lease fences
+     * completion.
+     */
     @Transactional
     public boolean renewLease(Claim claim) {
         return jdbc.sql(
@@ -181,7 +197,10 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                 == 1;
     }
 
-    /** Complete a provider attempt using the shared result names used by both gateways. */
+    /**
+     * 使用两个网关共享的结果名称完成一次服务商投递尝试。 Complete a provider attempt using the shared result names used by
+     * both gateways.
+     */
     @Transactional
     protected boolean completeResult(Claim claim, String resultName) {
         String target =
@@ -209,7 +228,10 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                 == 1;
     }
 
-    /** A worker may have died after provider submission; never requeue expired SENDING leases. */
+    /**
+     * 工作进程可能在向服务商提交后崩溃；绝不将租约过期的 SENDING 记录重新入队。 A worker may have died after provider submission;
+     * never requeue expired SENDING leases.
+     */
     @Transactional
     public List<Recovery> recoverExpiredEntries() {
         return jdbc.sql(

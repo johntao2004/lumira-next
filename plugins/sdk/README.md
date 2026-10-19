@@ -2,7 +2,7 @@
 
 插件是可信自研扩展，在宿主 JVM 和浏览器中执行。每个插件包含源码及独立安装包；平台安装时不编译源码、不联网获取 Maven/npm 依赖。
 
-后端入口继承 `com.lumira.plugin.sdk.PluginEntry`，返回独立 Spring 配置，提供 `checkHealth()`。宿主提供 Spring/Jackson、事务、JdbcClient 及 `common`、`identity/api`、`dictionaries/api`、`notifications/api` 稳定契约。可选能力通过 `PluginExtensionsPort` 的租约调用，禁止保留插件对象引用。HTTP Controller 使用自己的 `@ModuleEndpoint`，每个接口必须在清单中声明方法、路径和权限。
+后端入口继承 `com.lumira.plugin.sdk.PluginEntry`，返回独立 Spring 配置，提供 `checkHealth()`。Java源码位于 `framework/` 的三个独立Maven开发包（候选0.1.0-alpha.1）；宿主提供 Spring/Jackson、事务基础设施、JdbcClient 及这些开发包明确列出的公共类型，不开放整个common或modules包。构建方法见 [框架开发约束](../../docs/framework-development.md)。可选能力通过 `PluginExtensionsPort` 的租约调用，禁止保留插件对象引用。HTTP Controller 使用自己的 `@ModuleEndpoint`，每个接口必须在清单中声明方法、路径和权限。
 
 前端入口导出 `FrontendModule`。SDK 可用模块列在 `frontend-modules.json`，共享同一 React、Ant Design、查询缓存和平台组件；插件不得导入其他 feature 的实现。插件页面和所有副作用须遵循 React 卸载清理。
 

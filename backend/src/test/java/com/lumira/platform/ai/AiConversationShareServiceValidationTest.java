@@ -57,15 +57,9 @@ class AiConversationShareServiceValidationTest {
     @Test
     void shareStaysVisibleForThirtyDaysOnlyWhileTheCreatorIsEnabled() {
         OffsetDateTime now = OffsetDateTime.parse("2026-10-18T00:00:00Z");
-        assertTrue(
-                AiConversationShareService.shareVisible(
-                        now.minusDays(29), true, null, now));
-        assertFalse(
-                AiConversationShareService.shareVisible(
-                        now.minusDays(30), true, null, now));
-        assertFalse(
-                AiConversationShareService.shareVisible(
-                        now.minusDays(1), false, null, now));
+        assertTrue(AiConversationShareService.shareVisible(now.minusDays(29), true, null, now));
+        assertFalse(AiConversationShareService.shareVisible(now.minusDays(30), true, null, now));
+        assertFalse(AiConversationShareService.shareVisible(now.minusDays(1), false, null, now));
         assertFalse(
                 AiConversationShareService.shareVisible(
                         now.minusDays(1), true, now.minusHours(1), now));

@@ -279,6 +279,116 @@ class PluginRuntimeApprovalDatabaseTest {
         }
     }
 
+    @Test
+    void failedPreserveTeardownAttemptsEveryReleaseAndDoesNotApproveMissingRuntime(
+            @TempDir Path temporaryDirectory) throws Exception {
+        PluginRuntime runtime = newRuntime(temporaryDirectory);
+        var context =
+                new org.springframework.context.annotation.AnnotationConfigApplicationContext();
+        var closed = new java.util.concurrent.atomic.AtomicInteger();
+        context.registerBean(
+                "disposable",
+                org.springframework.beans.factory.DisposableBean.class,
+                () -> () -> closed.incrementAndGet());
+        context.refresh();
+        var resources = new PluginOwnedResources("sample", () -> () -> {});
+        resources.own("probe", () -> closed.incrementAndGet());
+        var manager = mock(org.pf4j.PluginManager.class);
+        org.mockito.Mockito.when(manager.stopPlugin("sample"))
+                .thenThrow(new IllegalStateException("stop fixture"));
+        setField(runtime, "manager", manager);
+        Class<?> handleType = Class.forName(PluginRuntime.class.getName() + "$Handle");
+        var constructor = handleType.getDeclaredConstructors()[0];
+        constructor.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var handles = (Map<String, Object>) field(runtime, "handles");
+        var mapping =
+                new org.springframework.web.servlet.mvc.method.annotation
+                        .RequestMappingHandlerMapping();
+        var route =
+                org.springframework.web.servlet.mvc.method.RequestMappingInfo.paths(
+                                "/fixture-plugin-route")
+                        .build();
+        Object handler = new Object();
+        var handlerMethod = Object.class.getMethod("toString");
+        mapping.registerMapping(route, handler, handlerMethod);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<
+                        org.springframework.web.servlet.mvc.method.annotation
+                                .RequestMappingHandlerMapping>
+                provider = mock(ObjectProvider.class);
+        org.mockito.Mockito.when(provider.getObject()).thenReturn(mapping);
+        setField(runtime, "mappingProvider", provider);
+        Class<?> publishedType = Class.forName(PluginRuntime.class.getName() + "$Published");
+        var publishedConstructor = publishedType.getDeclaredConstructors()[0];
+        publishedConstructor.setAccessible(true);
+        Object published = publishedConstructor.newInstance(route, handler, handlerMethod);
+        handles.put("sample", constructor.newInstance(context, List.of(published), resources));
+        var manifest =
+                new PluginManifest(
+                        1,
+                        "sample",
+                        "Sample",
+                        "1.0.0",
+                        "1",
+                        "com.example.SamplePlugin",
+                        "backend/plugin.jar",
+                        "frontend/plugin.js",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        Map.of(),
+                        List.of());
+        artifacts(runtime)
+                .put(
+                        "sample",
+                        new PluginArchive.Artifact("a".repeat(64), manifest, temporaryDirectory));
+        jdbc.update("UPDATE platform_module_state SET enabled=true WHERE module_id='sample'");
+        String before = revision(runtime);
+        jdbc.update(
+                "UPDATE platform_plugin_graph_approval SET graph_revision=? WHERE id=1", before);
+        markRuntimeReady(runtime, before, true);
+        try {
+            var plan = runtime.plan("fixture-admin", "sample", "UNINSTALL", "PRESERVE");
+            var result =
+                    awaitTerminal(
+                            runtime,
+                            "fixture-admin",
+                            runtime.execute(
+                                    "fixture-admin",
+                                    "sample",
+                                    "UNINSTALL",
+                                    new PluginRuntime.Execute(plan.revision(), "PRESERVE", null)));
+            assertThat(result.status()).isEqualTo("FAILED");
+            org.mockito.Mockito.verify(manager).unloadPlugin("sample");
+            assertThat(mapping.getHandlerMethods()).doesNotContainKey(route);
+            assertThat(context.isActive()).isFalse();
+            assertThat(closed.get()).isEqualTo(2);
+            assertThat(handles).doesNotContainKey("sample");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT installed FROM platform_plugin_installation WHERE module_id='sample'",
+                                    Boolean.class))
+                    .isTrue();
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT enabled FROM platform_module_state WHERE module_id='sample'",
+                                    Boolean.class))
+                    .isTrue();
+            assertThat(approval()).isEqualTo(before);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while ((boolean) field(runtime, "busy") && System.nanoTime() < deadline)
+                Thread.sleep(10);
+            assertThat(runtime.isReadyForTraffic()).isFalse();
+            assertThat(runtime.health().getStatus()).isEqualTo(Status.DOWN);
+        } finally {
+            runtime.close();
+            context.close();
+            resources.close();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private PluginRuntime newRuntime(Path root) {
         return new PluginRuntime(

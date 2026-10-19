@@ -2773,11 +2773,9 @@
       "platform:modules:read",
       "platform:notifications:read"
     ],
-    "operationPermission": "platform:maintenance:update",
-    "operationScope": "GLOBAL",
-    "allowedOperationPermissions": [
-      "platform:maintenance:update"
-    ]
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
   },
   {
     "pageId": "maintenance",
@@ -4522,9 +4520,7 @@
     "accessScope": "SCOPED",
     "method": "POST",
     "path": "/platform/ai/chat",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",
@@ -4689,9 +4685,7 @@
     "accessScope": "SCOPED",
     "method": "POST",
     "path": "/platform/ai/chat",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",
@@ -4724,9 +4718,7 @@
     "accessScope": "SCOPED",
     "method": "POST",
     "path": "/platform/ai/chat",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",
@@ -4759,9 +4751,7 @@
     "accessScope": "SCOPED",
     "method": "POST",
     "path": "/platform/ai/chat",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",
@@ -7053,9 +7043,7 @@
     "accessScope": "SCOPED",
     "method": "PUT",
     "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",
@@ -7088,9 +7076,7 @@
     "accessScope": "SCOPED",
     "method": "PUT",
     "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",
@@ -7123,9 +7109,7 @@
     "accessScope": "SCOPED",
     "method": "PUT",
     "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",
@@ -7158,9 +7142,7 @@
     "accessScope": "SCOPED",
     "method": "PUT",
     "path": "/platform/ai/shares/00000000-0000-0000-0000-000000000001",
-    "allowedStatuses": [
-      400
-    ],
+    "allowedStatuses": [400],
     "legacyPermissions": [
       "platform:settings:read",
       "platform:settings:update",

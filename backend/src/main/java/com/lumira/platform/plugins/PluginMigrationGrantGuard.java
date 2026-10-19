@@ -36,10 +36,12 @@ public final class PluginMigrationGrantGuard {
     public static void rejectUntrustedMutations(Path directory) {
         if (directory == null || !Files.isDirectory(directory)) return;
         try (var files = Files.list(directory)) {
-            for (Path sql : files.filter(path -> path.getFileName().toString().endsWith(".sql")).toList()) {
+            for (Path sql :
+                    files.filter(path -> path.getFileName().toString().endsWith(".sql")).toList()) {
                 byte[] bytes = Files.readAllBytes(sql);
                 if (BUNDLED_GRANT_SCRIPT_DIGESTS.contains(sha256(bytes))) continue;
-                if (mutatesCoreGrantTables(new String(bytes, java.nio.charset.StandardCharsets.UTF_8)))
+                if (mutatesCoreGrantTables(
+                        new String(bytes, java.nio.charset.StandardCharsets.UTF_8)))
                     throw new IllegalStateException(
                             "pluginMigrationGrantMutationDenied:" + sql.getFileName());
             }
@@ -88,12 +90,15 @@ public final class PluginMigrationGrantGuard {
         for (int index = 0; index < statement.length(); index++) {
             char current = statement.charAt(index);
             if (current == '\'') {
-                if (quote && index + 1 < statement.length() && statement.charAt(index + 1) == '\'') {
+                if (quote
+                        && index + 1 < statement.length()
+                        && statement.charAt(index + 1) == '\'') {
                     literal.append('\'');
                     index++;
                     continue;
                 }
-                if (quote && GRANT_TABLE.matcher(literal.toString().toLowerCase(Locale.ROOT)).find())
+                if (quote
+                        && GRANT_TABLE.matcher(literal.toString().toLowerCase(Locale.ROOT)).find())
                     return true;
                 quote = !quote;
                 literal.setLength(0);

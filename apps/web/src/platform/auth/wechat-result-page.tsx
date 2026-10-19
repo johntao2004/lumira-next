@@ -56,7 +56,7 @@ export function WechatResultPage() {
       : <Alert type="error" showIcon title={t("unavailable")} action={<Button type="link" onClick={() => void result.refetch()}>{t("retry")}</Button>} />}
   </AuthPageLayout>;
   const value = result.data;
-  if (!value) return <AuthPageLayout children={null} />;
+  if (!value) return <AuthPageLayout>{null}</AuthPageLayout>;
 
   const statusKey = value.status === "READY" ? "wechatResultReady"
     : value.status === "UNBOUND" ? "wechatResultUnbound"

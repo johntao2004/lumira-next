@@ -1,3 +1,7 @@
+/**
+ * 定义认证流程、证据、有效策略和授权上下文的响应契约，认证事实不能代替页面及数据权限的独立裁决。
+ * Define response contracts for authentication flows, evidence, effective policy and authorization context without substituting authentication facts for separate page and data authorization decisions.
+ */
 export interface CurrentUser {
   userId: string;
   enabledModules: string[];
@@ -5,7 +9,10 @@ export interface CurrentUser {
   displayName: string;
   authorities: string[];
   globalAuthorities: string[];
-  /** Opaque revision for effective grants and data scopes; independent of preview revision. */
+  /**
+   * 有效权限与数据范围的不透明修订标识，独立于预览修订。
+   * Opaque revision for effective grants and data scopes; independent of preview revision.
+   */
   authorizationRevision?: string | null;
   authenticationEvidence?: AuthenticationEvidence;
   effectiveAuthentication?: EffectiveAuthentication;
@@ -168,7 +175,10 @@ export interface AuthenticationSettings {
   revision: string;
   enabledMethods: PrimaryMethod[];
   mfaRequired: boolean;
-  /** Provider readiness, independent of the global enabled-method policy. */
+  /**
+   * 服务商就绪状态，独立于全局启用认证方式策略。
+   * Provider readiness, independent of the global enabled-method policy.
+   */
   availableMethods: PrimaryMethod[];
   affectedAccountCount: number;
 }

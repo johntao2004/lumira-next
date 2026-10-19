@@ -1,3 +1,8 @@
+/**
+ * 复核管理权限、目标可见性和预览范围，并只在写事务内取得相应一致性锁，避免只读查询等待无关管理写入。 Rechecks administrative grants, target
+ * visibility and preview scope, taking consistency locks only in write transactions so read-only
+ * queries do not wait on unrelated administration writes.
+ */
 package com.lumira.platform.identity;
 
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
@@ -12,7 +17,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Call inside a write transaction to serialize with concurrent administration; grants are always
+ * 在写事务内调用以与并发管理操作串行化；每次都重新读取授权。
+ *
+ * <p>Call inside a write transaction to serialize with concurrent administration; grants are always
  * re-read.
  */
 @Component
@@ -126,7 +133,9 @@ public class AdministrationGuard
     }
 
     /**
-     * The advisory lock only orders writers. Outside a transaction it would be released at once
+     * 咨询锁只用于排序写入；事务外会因自动提交立即释放，只读事务也不写入，二者获取此锁只会让读取等待无关管理操作，因此仅重新读取授权。
+     *
+     * <p>The advisory lock only orders writers. Outside a transaction it would be released at once
      * (autocommit), and a read-only transaction writes nothing, so in both cases taking it would
      * only make readers queue behind unrelated administration. Grants are re-read either way.
      */
@@ -150,10 +159,12 @@ public class AdministrationGuard
     }
 
     /**
-     * Serialize only writes that share a consistency boundary. Settings and module lifecycle keep
-     * the historical lock because profile/schema writes and the module graph use it as their first
-     * lock. Other permission domains get stable advisory buckets so unrelated admin writes can
-     * normally proceed concurrently across instances.
+     * 只串行化共享一致性边界的写入；设置与模块生命周期沿用历史首锁，其他权限域使用稳定咨询锁分组，使无关管理写入通常可跨实例并发。
+     *
+     * <p>Serialize only writes that share a consistency boundary. Settings and module lifecycle
+     * keep the historical lock because profile/schema writes and the module graph use it as their
+     * first lock. Other permission domains get stable advisory buckets so unrelated admin writes
+     * can normally proceed concurrently across instances.
      */
     static long lockKey(String permission) {
         if (permission == null || permission.isBlank())

@@ -1,4 +1,8 @@
 "use client";
+
+/** 协调用户资料与授权编辑，绑定表单快照版本并保留后台冲突护栏。
+ * Coordinate profile and assignment editing with bound form snapshot versions and background conflict guards. */
+
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { Alert, Button, Form as AntForm, Input, Select, Spin, Switch, Tag, Typography } from "antd";
 import { AnchorTabs as Tabs } from "@/platform/components/anchor-tabs";
@@ -24,7 +28,7 @@ import type { DictionarySelection, ProfileFieldDefinition } from "@/platform/pro
 import { formatQuotaBytes, formatQuotaLimitBytes, formatQuotaLimitCount } from "@/platform/i18n/format";
 import { AssignmentSearchField, AssignmentSearchLayout } from "./assignment-search-layout";
 import { RoleAssignmentSearch } from "./role-assignment-search";
-import { buildUserEditorSavePlan } from "./user-editor-save-plan";
+import { buildUserEditorSavePlan, userEditorVersionMismatch, createUserEditorRefreshFence } from "./user-editor-save-plan";
 import { userErrorKeys } from "./user-errors";
 import { roleAssignmentCheckboxDisabled } from "./user-role-selection";
 
@@ -82,8 +86,15 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
 
   const isExisting = !!user;
   const editorOpen = user !== undefined;
+  const [refreshFence] = useState(createUserEditorRefreshFence);
+  const [formSnapshot, setFormSnapshot] = useState<UserDetail | null>(null);
+  const [profileSnapshot, setProfileSnapshot] = useState<ProfileValuesSnapshot | null>(null);
   const sessionId = user?.id ?? (user === null ? "create" : "closed");
   useEffect(() => {
+    refreshFence.invalidate();
+    setRefreshingSnapshots(false);
+    setFormSnapshot(null);
+    setProfileSnapshot(null);
     setRoleSelection(null);
     setOrganizationSelection(null);
     setCommitted(false);
@@ -91,7 +102,8 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
     setRefreshFailed(false);
     setCreateChanged(false);
     if (editorOpen) form.resetFields();
-  }, [editorOpen, form, sessionId]);
+    return () => refreshFence.invalidate();
+  }, [editorOpen, form, sessionId, refreshFence]);
 
   const detail = useQuery({
     queryKey: ["user", user?.id],
@@ -107,6 +119,9 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
   });
   useEffect(() => {
     if (!detail.data || !editorOpen) return;
+    // 将填表快照与提交基线绑定；后台刷新只触发冲突提示，不覆盖未保存输入。
+    // Bind hydration to the save baseline; background refresh flags a conflict without overwriting unsaved input.
+    setFormSnapshot(detail.data);
     form.setFieldsValue({
       username: detail.data.username,
       displayName: detail.data.displayName,
@@ -115,10 +130,11 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
     setFormRevision(value => value + 1);
   }, [detail.data?.id, editorOpen, form]);
   useEffect(() => {
-    if (!profileValues.data || !editorOpen) return;
+    if (!profileValues.data || !editorOpen || profileSnapshot) return;
+    setProfileSnapshot(profileValues.data);
     form.setFieldsValue(profileValues.data.values);
     setFormRevision(value => value + 1);
-  }, [profileValues.data?.version, profileValues.data?.schemaVersion, editorOpen, form]);
+  }, [profileValues.data, profileSnapshot, editorOpen, form]);
   const roles = useQuery({
     queryKey: ["user-assignments", "roles", user?.id],
     enabled: isExisting && canReadRoles,
@@ -157,12 +173,13 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
   });
 
   const values = form.getFieldsValue(true);
-  const profilePlan = isExisting && detail.data
+  const displayedDetail = formSnapshot;
+  const profilePlan = isExisting && displayedDetail
     ? buildUserEditorSavePlan({
-      version: detail.data.version,
-      baseline: detail.data,
+      version: displayedDetail.version,
+      baseline: displayedDetail,
       formValues: values,
-      profileValues: profileValues.data,
+      profileValues: profileSnapshot ?? undefined,
       canSaveProfile: canUpdate,
     })
     : undefined;
@@ -177,20 +194,23 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
   const versions = [
     detail.data?.version,
     canUpdate ? profileValues.data?.version : undefined,
+    canUpdate ? profileSnapshot?.version : undefined,
       canAssignRoles ? roles.data?.version : undefined,
     canAssignOrganizations ? organizations.data?.version : undefined,
     canAssignRoles ? quotaPreview.data?.version : undefined,
   ].filter((version): version is number => version !== undefined);
-  const versionMismatch = !!detail.data && versions.some(version => version !== detail.data!.version);
+  const versionMismatch = userEditorVersionMismatch(displayedDetail?.version, detail.data?.version, versions)
+    || !!(canUpdate && profileSnapshot && profileValues.data && profileSnapshot.schemaVersion !== profileValues.data.schemaVersion);
   const roleSaveReady = !rolesChanged || (!!rolesList.data && !rolesList.error && !!quotaPreview.data && !quotaPreview.error);
   const organizationSaveReady = !organizationsChanged || (!!organizationsList.data && !organizationsList.error);
-  const profileSaveReady = !canUpdate || (!!profileValues.data && !profileValues.error);
-  const submitDisabled = isExisting
+  const profileSaveReady = !canUpdate || (!!profileSnapshot && !!profileValues.data && !profileValues.error);
+  const submitDisabled = refreshingSnapshots || (isExisting
     ? !detail.data || !!detail.error || !profileSaveReady || !hasChanges || versionMismatch || !roleSaveReady || !organizationSaveReady || committed
-    : !canCreate || committed;
+    : !canCreate || committed);
 
   const retrySnapshots = async () => {
     if (refreshingSnapshots || pending) return;
+    const isCurrent = refreshFence.begin();
     setRefreshingSnapshots(true);
     setRoleSelection(null);
     setOrganizationSelection(null);
@@ -198,7 +218,9 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
     setSaveError(null);
     try {
       const freshDetail = await detail.refetch({ throwOnError: true });
+      if (!isCurrent()) return;
       if (freshDetail.data) {
+        setFormSnapshot(freshDetail.data);
         form.setFieldsValue({
           username: freshDetail.data.username,
           displayName: freshDetail.data.displayName,
@@ -206,19 +228,29 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
         });
         setFormRevision(value => value + 1);
       }
-      if (canUpdate) await profileValues.refetch({ throwOnError: true });
+      if (canUpdate) {
+        const freshProfile = await profileValues.refetch({ throwOnError: true });
+        if (!isCurrent()) return;
+        if (freshProfile.data) {
+          setProfileSnapshot(freshProfile.data);
+          form.setFieldsValue(freshProfile.data.values);
+          setFormRevision(value => value + 1);
+        }
+      }
       await Promise.all([
         canReadRoles ? roles.refetch({ throwOnError: true }) : Promise.resolve(undefined),
         canReadRoles ? rolesList.refetch({ throwOnError: true }) : Promise.resolve(undefined),
         canAssignOrganizations ? organizations.refetch({ throwOnError: true }) : Promise.resolve(undefined),
       ]);
+      if (!isCurrent()) return;
       if (canAssignRoles && user) {
         await client.invalidateQueries({ queryKey: ["user-file-quota-preview", user.id] });
       }
     } catch {
+      // 查询错误保留在各自区块，允许单独重试。
       // Query errors remain visible in their own section and can be retried there.
     } finally {
-      setRefreshingSnapshots(false);
+      if (isCurrent()) setRefreshingSnapshots(false);
     }
   };
 
@@ -285,7 +317,7 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
   };
 
   const onFinish = async (submitted: UserEditValues) => {
-    if (pending || committed) return false;
+    if (pending || committed || submitDisabled) return false;
     setRefreshFailed(false);
     return run(async () => {
       if (!isExisting) {
@@ -296,17 +328,18 @@ export function UserEditor({ user, canCreate, canUpdate, canAssignRoles, canRead
           password: submitted.password,
         });
       } else {
-        if (!detail.data || versionMismatch) return false;
+        if (!detail.data || !displayedDetail || versionMismatch) return false;
         const rolesChangedNow = canAssignRoles && !!roles.data && !sameIds(selectedRoleIds, roles.data.roleIds);
         const organizationsChangedNow = canAssignOrganizations && !!organizations.data
           && !sameIds(selectedOrganizationIds, organizations.data.organizationIds);
         const savePlan = buildUserEditorSavePlan({
-          version: detail.data.version,
-          baseline: detail.data,
+          version: displayedDetail.version,
+          baseline: displayedDetail,
+          // 未挂载页签也要保留字段，完整表单存储与字段快照共同提供原值。
           // Tabs may not have mounted every field. Read the full Form store and
-          // let the opening snapshots supply untouched values for unmounted fields.
+          // let field snapshots supply untouched values for unmounted fields.
           formValues: form.getFieldsValue(true),
-          profileValues: profileValues.data,
+          profileValues: profileSnapshot ?? undefined,
           canSaveProfile: canUpdate,
           roleIds: rolesChangedNow ? selectedRoleIds : undefined,
           organizationIds: organizationsChangedNow ? selectedOrganizationIds : undefined,

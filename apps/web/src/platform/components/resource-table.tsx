@@ -1,4 +1,8 @@
 "use client";
+
+/** 组合资源列表与搜索表单，按已提交筛选同步控件而保留搜索草稿。
+ * Compose resource listings and search forms, synchronizing committed filters while preserving search drafts. */
+
 import { ProTable, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
 import type { TableProps } from "antd";
 import { Children, useRef } from "react";
@@ -9,6 +13,7 @@ import { TABLE_PAGE_SIZE_OPTIONS, type ListRequest, type PageResult } from "../a
 import { usePreferences } from "../providers";
 import { FeedbackBubble } from "./feedback-bubble";
 import { tableActionColumn } from "./table-actions";
+import { resourceSearchSnapshot } from "./resource-search-sync";
 import { useQueryFilterSpan } from "./use-query-filter-span";
 
 export type { ListRequest, PageResult } from "../api/pagination";
@@ -93,11 +98,19 @@ export function ResourceTable<T extends { id: string }>({ result, loading, error
   const tableRef = useRef<HTMLDivElement>(null);
   const searchFormRef = useRef<ProFormInstance | undefined>(undefined);
   const requestSearch = requestSearchValues(columns, request);
-  const requestSearchKey = JSON.stringify(requestSearch);
+  const searchSnapshot = resourceSearchSnapshot(requestSearch, searchInitialValues);
+  const committedSearchValues = useRef(searchSnapshot.values);
+  // 只使用已提交渲染的真实值；JSON 签名不得替换日期实例或重置未提交搜索草稿。
+  // Use values from committed renders; the JSON signature must not replace date instances or reset unsubmitted search drafts.
+  useEffect(() => { committedSearchValues.current = searchSnapshot.values; });
+  const appliedSearchKey = useRef<string | null>(null);
   useEffect(() => {
-    searchFormRef.current?.setFieldsValue({ ...requestSearchValues(columns, request), ...searchInitialValues });
-  }, [requestSearchKey]);
+    if (appliedSearchKey.current === searchSnapshot.key) return;
+    searchFormRef.current?.setFieldsValue(committedSearchValues.current);
+    appliedSearchKey.current = searchSnapshot.key;
+  }, [searchSnapshot.key]);
   const searchSpan = useQueryFilterSpan(tableRef);
+  // 仅页面显式选择的字段成为搜索控件；动作列共享固定键和右侧布局。
   // Search only fields deliberately selected by each page; data columns alone
   // do not automatically become query controls.
   // Use a stable actions key across pages; option columns follow the same right-edge policy.

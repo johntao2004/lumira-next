@@ -24,6 +24,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -35,9 +36,9 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @EnabledIfEnvironmentVariable(named = "LUMIRA_TEST_DB_URL", matches = ".+")
 class RolePreviewReadOnlyBoundaryDatabaseTest {
-    private static final String READ_PERMISSION = "platform:users:read";
+    private static final String READ_PERMISSION = "platform:users:access";
     private static final String PREVIEW_PERMISSION = "platform:roles:preview";
-    private static final String ROLE_READ_PERMISSION = "platform:roles:read";
+    private static final String ROLE_READ_PERMISSION = "platform:roles:access";
     private static final Set<String> ACTOR_AUTHORITIES =
             Set.of(READ_PERMISSION, PREVIEW_PERMISSION, ROLE_READ_PERMISSION);
 
@@ -52,6 +53,7 @@ class RolePreviewReadOnlyBoundaryDatabaseTest {
     private UUID contextRevision;
     private DataSourceTransactionManager transactions;
     private AdministrationGuard guard;
+    private RolePreviewContextService boundary;
     private MockHttpServletRequest request;
     private RequestAuthorizationContext authorization;
 
@@ -205,13 +207,13 @@ class RolePreviewReadOnlyBoundaryDatabaseTest {
 
         transactions = new DataSourceTransactionManager(dataSource);
         transactions.setEnforceReadOnly(true);
-        var realBoundary =
+        boundary =
                 new RolePreviewContextService(
                         client,
                         mock(AuditPort.class),
                         null,
                         new IdentityAuthenticationPolicyWriteLock(client));
-        guard = new AdministrationGuard(client, realBoundary);
+        guard = new AdministrationGuard(client, boundary);
     }
 
     @AfterEach
@@ -219,6 +221,59 @@ class RolePreviewReadOnlyBoundaryDatabaseTest {
         RequestContextHolder.resetRequestAttributes();
         if (admin != null && schema != null)
             admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    }
+
+    @Test
+    void ordinaryRequestRetainsRealGlobalScopesWithoutAnActivePreview() {
+        prepareOrdinaryRequest();
+        var resolved = resolveOrdinaryRequest();
+        assertFalse(resolved.previewActive());
+        assertEquals("NONE", resolved.preview().state());
+        assertEquals(ACTOR_AUTHORITIES, resolved.effectiveGlobalAuthorities());
+        assertEquals(resolved.realScopes(), resolved.effectiveScopes());
+        for (String permission : ACTOR_AUTHORITIES)
+            assertEquals(Set.of("ALL"), resolved.effectiveScopes().get(permission));
+    }
+
+    @Test
+    void ordinaryRequestPreservesPerPermissionRoleScopesAndObservesRevocation() {
+        prepareOrdinaryRequest();
+        jdbc.update(
+                "DELETE FROM platform_authority WHERE user_id=? AND authority=?",
+                actorId,
+                READ_PERMISSION);
+        jdbc.update("INSERT INTO platform_user_role VALUES (?,?)", actorId, targetRoleId);
+        for (String scope : List.of("SELF", "ORGANIZATION", "SUBTREE", "ALL")) {
+            jdbc.update("UPDATE platform_role SET data_scope=? WHERE id=?", scope, targetRoleId);
+            var resolved = resolveOrdinaryRequest();
+            assertEquals(Set.of(scope), resolved.effectiveScopes().get(READ_PERMISSION));
+            assertEquals(
+                    "ALL".equals(scope),
+                    resolved.effectiveGlobalAuthorities().contains(READ_PERMISSION));
+            assertEquals(Set.of("ALL"), resolved.effectiveScopes().get(PREVIEW_PERMISSION));
+        }
+        jdbc.update("UPDATE platform_role SET enabled=false WHERE id=?", targetRoleId);
+        var disabled = resolveOrdinaryRequest();
+        assertFalse(disabled.effectiveScopes().containsKey(READ_PERMISSION));
+        assertFalse(disabled.effectiveGlobalAuthorities().contains(READ_PERMISSION));
+        jdbc.update("UPDATE platform_role SET enabled=true WHERE id=?", targetRoleId);
+        jdbc.update(
+                "DELETE FROM platform_user_role WHERE user_id=? AND role_id=?",
+                actorId,
+                targetRoleId);
+        assertFalse(resolveOrdinaryRequest().effectiveScopes().containsKey(READ_PERMISSION));
+    }
+
+    private void prepareOrdinaryRequest() {
+        jdbc.update(
+                "UPDATE platform_role_preview_context SET state='NONE' WHERE session_primary_id=?",
+                sessionPrimaryId);
+        request.setSession(new MockHttpSession(null, sessionId));
+    }
+
+    private RequestAuthorizationContext resolveOrdinaryRequest() {
+        return new TransactionTemplate(transactions)
+                .execute(status -> boundary.resolve(request, "admin", actorId, ACTOR_AUTHORITIES));
     }
 
     @Test

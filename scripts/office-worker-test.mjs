@@ -31,7 +31,7 @@ if (requestedGoals.length === 0) requestedGoals.push("verify");
 // a stale target/ artifact from becoming the parser child that the tests exercise.
 const packageResult = spawnSync(
   "./backend/mvnw",
-  ["-f", "backend/pom.xml", "-B", ...mavenOptions, "-Dmaven.test.skip=true", "package"],
+  ["-f", "pom.xml", "-pl", "backend", "-am", "-B", ...mavenOptions, "-Dmaven.test.skip=true", "install"],
   { cwd: process.cwd(), env: process.env, stdio: "inherit" },
 );
 if (packageResult.error) throw packageResult.error;

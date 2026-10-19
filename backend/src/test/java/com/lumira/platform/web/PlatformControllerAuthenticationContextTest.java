@@ -38,7 +38,7 @@ class PlatformControllerAuthenticationContextTest {
                         .param("username", "alice")
                         .query(String.class)
                         .list())
-                .thenReturn(List.of("platform:settings:read"));
+                .thenReturn(List.of("platform:roles:access"));
         var modules = mock(ModuleCapabilityPort.class);
         when(modules.enabledModules()).thenReturn(List.of("identity"));
         var policies = mock(AuthenticationPolicyService.class);
@@ -46,7 +46,7 @@ class PlatformControllerAuthenticationContextTest {
         UUID userId = UUID.randomUUID();
         var authorizationRevisions = mock(AuthorizationRevisionPort.class);
         when(authorizationRevisions.revision(
-                        userId, Set.of("platform:users:read"), Set.of("platform:roles:read")))
+                        userId, Set.of("platform:users:access"), Set.of("platform:roles:access")))
                 .thenReturn("session-authorization-tag");
         var policy =
                 new EffectivePolicy(
@@ -62,11 +62,11 @@ class PlatformControllerAuthenticationContextTest {
                         "alice",
                         userId,
                         UUID.randomUUID().toString(),
-                        Set.of("platform:users:read"),
-                        Set.of("platform:roles:read"),
+                        Set.of("platform:users:access"),
+                        Set.of("platform:roles:access"),
                         java.util.Map.of(),
-                        Set.of("platform:users:read"),
-                        Set.of("platform:roles:read"),
+                        Set.of("platform:users:access"),
+                        Set.of("platform:roles:access"),
                         java.util.Map.of(),
                         "authorization-revision",
                         "authorization-revision",
@@ -91,8 +91,8 @@ class PlatformControllerAuthenticationContextTest {
                     true,
                     ((java.util.Map<?, ?>) result.get("effectiveAuthentication"))
                             .get("mfaRequired"));
-            assertEquals(List.of("platform:users:read"), result.get("authorities"));
-            assertEquals(List.of("platform:roles:read"), result.get("globalAuthorities"));
+            assertEquals(List.of("platform:users:access"), result.get("authorities"));
+            assertEquals(List.of("platform:roles:access"), result.get("globalAuthorities"));
             assertEquals(userId, result.get("userId"));
             assertNotNull(result.get("authorizationRevision"));
             assertEquals("session-authorization-tag", result.get("authorizationRevision"));

@@ -84,9 +84,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:localization:access",
-        "platform:localization:read"
-      ]
+        "platform:localization:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "GET",
@@ -95,9 +95,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:localization:access",
-        "platform:localization:read"
-      ]
+        "platform:localization:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "GET",
@@ -106,9 +106,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:localization:access",
-        "platform:localization:read"
-      ]
+        "platform:localization:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "POST",
@@ -216,9 +216,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:localization:access",
-        "platform:localization:read"
-      ]
+        "platform:localization:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "POST",

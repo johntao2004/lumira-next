@@ -1,3 +1,8 @@
+/**
+ * 在认证前拒绝插件运行图尚未安全就绪时的业务 API 流量，同时保留生命周期操作状态查询入口。 Rejects business API traffic before authentication
+ * while the plugin graph is unsafe or unready, preserving access to lifecycle-operation status
+ * queries.
+ */
 package com.lumira.platform.plugins;
 
 import jakarta.servlet.Filter;
@@ -13,7 +18,10 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
-/** Rejects application traffic before authentication if the approved plugin snapshot is unsafe. */
+/**
+ * 批准的插件快照不安全时，在认证前拒绝应用流量。 Rejects application traffic before authentication if the approved plugin
+ * snapshot is unsafe.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public final class PluginRuntimeReadinessFilter implements Filter, Ordered {

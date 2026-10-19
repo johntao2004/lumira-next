@@ -1,3 +1,8 @@
+/**
+ * 以受限并发、超时及响应大小调用独立 Office 服务并校验协议，服务不可用时明确失败，不回退宿主解析。 Calls the isolated Office service with
+ * bounded concurrency, time and response size, validating its protocol and failing explicitly
+ * without host-side parsing fallback.
+ */
 package com.lumira.platform.common;
 
 import java.io.ByteArrayOutputStream;
@@ -23,7 +28,10 @@ import java.util.concurrent.TimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Host-side, bounded client for the cgroup-limited Office parser service. */
+/**
+ * 宿主侧有界客户端，调用受 cgroup 资源限制的 Office 解析服务。 Host-side, bounded client for the cgroup-limited Office
+ * parser service.
+ */
 public final class OfficeWorkerClient {
     private static final int MAX_INPUT_BYTES = 20 * 1024 * 1024;
     private static final int MAX_METADATA_BYTES = 4 * 1024 * 1024;

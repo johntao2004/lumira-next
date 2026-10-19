@@ -26,6 +26,7 @@ spring:
     virtual:
       enabled: true
 springdoc:
+  use-fqn: true
   api-docs:
     enabled: true
     path: /api/platform/api-docs

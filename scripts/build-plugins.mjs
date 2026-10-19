@@ -1,4 +1,9 @@
+/**
+ * 按依赖顺序构建插件并核对清单身份和版本，先检查公开接口边界，再按精确前端 SDK 白名单打包并生成文件摘要。
+ * Build plugins in dependency order and verify manifest identity and version, checking public API boundaries before bundling through the exact frontend SDK allowlist and recording file digests.
+ */
 import { build } from 'esbuild';
+import { assertPluginRelativeImport } from './frontend-plugin-boundaries.mjs';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, copyFileSync, rmSync, utimesSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,8 +13,13 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const javaHome=process.env.JAVA_HOME || (process.platform==='darwin'?'/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home':undefined);
 if(!javaHome)throw new Error('Set JAVA_HOME to JDK 25');
 function run(command,args){const r=spawnSync(command,args,{cwd:root,stdio:'inherit'});if(r.status!==0)throw new Error(`${command} failed`);}
-if(!process.argv.includes('--no-host'))run(path.join(root,'backend/mvnw'),['-f','backend/pom.xml','-q','-DskipTests','compile','dependency:build-classpath','-Dmdep.outputFile=target/plugin-classpath.txt']);
-const classpath=readFileSync(path.join(root,'backend/target/plugin-classpath.txt'),'utf8').trim();
+run('python3',[path.join(root,'scripts/plugin_boundaries.py')]);
+// 仅从版本化 SDK 和声明的第三方依赖编译插件；禁止宿主实现进入 classpath。
+// Compile against versioned SDKs and declared libraries only; exclude host implementation classes.
+run(path.join(root,'backend/mvnw'),['-f','framework/pom.xml','-q','-DskipTests','install']);
+run(path.join(root,'backend/mvnw'),['-f','framework/plugin-build/pom.xml','-q','dependency:build-classpath','-Dmdep.outputFile=target/plugin-classpath.txt']);
+const classpath=readFileSync(path.join(root,'framework/plugin-build/target/plugin-classpath.txt'),'utf8').trim();
+if(classpath.split(path.delimiter).some(p=>p.includes('backend/target')||/platform-server[^/]*\.jar$/.test(p)))throw new Error('Host implementation leaked into plugin classpath');
 const walk=p=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(p,e.name)):[path.join(p,e.name)]);
 const sdk=JSON.parse(readFileSync(path.join(root,'plugins/sdk/frontend-modules.json'),'utf8'));
 function validateFrontendManifest(id, plugin){
@@ -31,12 +41,12 @@ for(const id of ordered){
  const dist=path.join(dir,'dist');mkdirSync(dist,{recursive:true});const staging=path.join(dist,'package');rmSync(staging,{recursive:true,force:true});mkdirSync(path.join(staging,'backend'),{recursive:true});mkdirSync(path.join(staging,'frontend'),{recursive:true});
  const libraries=existsSync(path.join(dir,'backend/lib'))?walk(path.join(dir,'backend/lib')).filter(p=>p.endsWith('.jar')):[];
  const classes=path.join(dist,'classes');rmSync(classes,{recursive:true,force:true});mkdirSync(classes,{recursive:true});
- run(path.join(javaHome,'bin/javac'),['--release','25','-parameters','-cp',`${root}/backend/target/classes${path.delimiter}${classpath}${libraries.length?path.delimiter+libraries.join(path.delimiter):''}`,'-d',classes,...walk(path.join(dir,'backend/src/main/java')).filter(p=>p.endsWith('.java'))]);
+ run(path.join(javaHome,'bin/javac'),['--release','25','-parameters','-cp',`${classpath}${libraries.length?path.delimiter+libraries.join(path.delimiter):''}`,'-d',classes,...walk(path.join(dir,'backend/src/main/java')).filter(p=>p.endsWith('.java'))]);
  const manifest=path.join(dist,'MANIFEST.MF');writeFileSync(manifest,`Manifest-Version: 1.0\nPlugin-Id: ${m.id}\nPlugin-Version: ${m.version}\nPlugin-Class: ${m.entryClass}\nPlugin-Provider: Lumira\n\n`);
  run(path.join(javaHome,'bin/jar'),['--create','--date','2020-01-01T00:00:00Z','--file',path.join(staging,m.backend),'--manifest',manifest,'-C',classes,'.']);
  const entry=path.join(dir,'frontend/module.tsx');
  await build({entryPoints:[entry],outfile:path.join(staging,m.frontend),bundle:true,format:'iife',globalName:'LumiraPluginBundle',target:'es2022',jsx:'automatic',minify:false,loader:{'.svg':'dataurl','.png':'dataurl','.jpg':'dataurl','.webp':'dataurl','.woff':'dataurl','.woff2':'dataurl','.ttf':'dataurl'},
-  nodePaths:[path.join(root,'apps/web/node_modules')],plugins:[{name:'lumira-shared-sdk',setup(b){b.onResolve({filter:/^(react(?:\/.*)?|antd(?:\/.*)?|@[^.].*)$/},args=>{
+  nodePaths:[path.join(root,'apps/web/node_modules')],plugins:[{name:'lumira-shared-sdk',setup(b){b.onResolve({filter:/^\./},args=>{assertPluginRelativeImport(root,dir,args.importer,args.path);});b.onResolve({filter:/^(react(?:\/.*)?|antd(?:\/.*)?|@[^.].*)$/},args=>{
     if(args.path.startsWith('@/features/'))throw new Error('Plugins must use SDK contracts, not other feature implementations');
     if(!sdk.includes(args.path)){if(args.path.startsWith('@/')||args.path.startsWith('antd')||args.path.startsWith('react')||args.path.startsWith('@tanstack/react-query'))throw new Error(`Unsupported plugin SDK import: ${args.path}`);return;}
     return {path:args.path,namespace:'host'};

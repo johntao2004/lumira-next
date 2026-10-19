@@ -1,3 +1,8 @@
+/**
+ * 验证离线包的路径、摘要、入口和类依赖，并按内容摘要保存制品，拒绝覆盖宿主类或既有制品。 Validates offline-package paths, digests, entry
+ * points and class dependencies, storing content-addressed artifacts while rejecting host-class or
+ * existing-artifact replacement.
+ */
 package com.lumira.platform.plugins;
 
 import java.io.*;
@@ -8,7 +13,10 @@ import java.util.jar.JarFile;
 import java.util.zip.*;
 import tools.jackson.databind.ObjectMapper;
 
-/** Offline, digest-addressed archives. Extraction never overwrites an installed artifact. */
+/**
+ * 离线制品以摘要寻址；解包绝不覆盖已安装制品。 Offline, digest-addressed archives. Extraction never overwrites an
+ * installed artifact.
+ */
 public final class PluginArchive {
     public record Artifact(String digest, PluginManifest manifest, Path directory) {}
 
@@ -163,6 +171,7 @@ public final class PluginArchive {
                             || name.startsWith("java/")
                             || name.startsWith("com/lumira/platform/") && !name.startsWith(allowed))
                         throw new IllegalArgumentException("pluginHostClassConflict");
+                    // 插件不得替换宿主已公开的第三方库类。
                     // Third-party libraries already exposed by the host cannot replace their
                     // classes.
                     if (PluginArchive.class.getClassLoader().getResource(name) != null)

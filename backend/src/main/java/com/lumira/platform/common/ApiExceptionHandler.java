@@ -69,7 +69,23 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ProblemDetail invalidParameter(MethodArgumentTypeMismatchException error) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "invalidRequest");
+    }
+
+    @ExceptionHandler({
+        org.springframework.web.bind.MissingServletRequestParameterException.class,
+        org.springframework.web.bind.MissingRequestHeaderException.class,
+        org.springframework.web.multipart.support.MissingServletRequestPartException.class,
+        org.springframework.web.bind.MethodArgumentNotValidException.class
+    })
+    public ProblemDetail missingRequest(Exception error) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "invalidRequest");
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    public ProblemDetail unsupportedMedia(
+            org.springframework.web.HttpMediaTypeNotSupportedException error) {
         return ProblemDetail.forStatusAndDetail(
-                HttpStatus.BAD_REQUEST, "Invalid request parameter");
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE, "invalidRequest");
     }
 }

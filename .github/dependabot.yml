@@ -1,7 +1,14 @@
 version: 2
 updates:
   - package-ecosystem: maven
-    directory: /backend
+    directories:
+      - /backend
+      - /framework
+      - /framework/platform-contracts
+      - /framework/plugin-sdk
+      - /framework/payment-sdk
+      - /framework/plugin-build
+      - /examples/independent-notes
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
   - package-ecosystem: npm

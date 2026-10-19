@@ -16,7 +16,7 @@ import { useListRequest } from "@/platform/routing/use-list-request";
 import { usePreferences } from "@/platform/providers";
 import type { AuthenticationPolicy } from "@/platform/auth/api-types";
 import { useReauthenticationTicket } from "@/platform/auth/use-reauthentication-ticket";
-import { ReauthenticationFields } from "./reauthentication-fields";
+import { ReauthenticationFields } from "@/platform/auth/reauthentication-fields";
 import { mfaErrorKeys, type MfaAccount, type MfaActionValues } from "./types";
 
 export function ManagementPage({ canReset }: { canReset: boolean }) {

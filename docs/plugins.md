@@ -2,7 +2,7 @@
 
 ## 目录与构建
 
-根目录 `plugins/sdk/` 是稳定契约；`plugins/feedback/`、`plugins/localization/`、`plugins/sensitive-words/`、`plugins/mfa/`、`plugins/diffuse-avatar/`、`plugins/payment-core/`、`plugins/wechat-pay/`、`plugins/alipay-pay/` 各自包含 README、plugin.json、backend、frontend、migrations 和构建生成的 dist。每个 README 明确其插件用途、依赖、构建和安装方法。MFA 的认证状态与接口见 [二次认证说明](mfa.md)；扫码支付的模块边界、REST API、安全和运营限制见 [支付插件说明](payments.md)。
+Java公开契约位于 `framework/platform-contracts`、`framework/plugin-sdk` 和 `framework/payment-sdk`，前端清单与样例位于 `plugins/sdk/`；`plugins/feedback/`、`plugins/localization/`、`plugins/sensitive-words/`、`plugins/mfa/`、`plugins/diffuse-avatar/`、`plugins/payment-core/`、`plugins/wechat-pay/`、`plugins/alipay-pay/` 各自包含 README、plugin.json、backend、frontend、migrations 和构建生成的 dist。每个 README 明确其插件用途、依赖、构建和安装方法。MFA 的认证状态与接口见 [二次认证说明](mfa.md)；扫码支付的模块边界、REST API、安全和运营限制见 [支付插件说明](payments.md)。
 
 使用 Node 24、pnpm 10.33.0、JDK 25：
 
@@ -13,11 +13,11 @@ pnpm plugins:build
 pnpm plugins:build sdk/examples/hotplug-probe
 ```
 
-构建命令先编译 SDK/宿主契约，再 javac 编译插件、生成 PF4J JAR、编译共享 React/Ant Design 的页面入口、复制迁移并生成 SHA-256 文件清单。构建 ZIP/JAR 固定时间戳，以便相同源码重复构建产生相同包。编译产物被 Git 忽略。
+构建命令先编译版本化 SDK 和显式三方依赖（不编译宿主实现），再 javac 编译插件、生成 PF4J JAR、编译共享 React/Ant Design 的页面入口、复制迁移并生成 SHA-256 文件清单。构建 ZIP/JAR 固定时间戳，以便相同源码重复构建产生相同包。编译产物被 Git 忽略。
 
 私有 Java 依赖放 `backend/lib/*.jar`；构建时加入编译类路径并复制到包。前端私有库由 esbuild 打包，宿主模块清单见 `plugins/sdk/frontend-modules.json`。存在于 `plugins/<dependency-id>/plugin.json` 的插件依赖会先构建并递归放进 `dependencies/*.lumira-plugin.zip`；核心依赖无需打包。离线依赖版本必须精确匹配清单。
 
-宿主框架和 SDK 由平台提供，安装包不能重复覆盖。插件通过 common 与各模块 api 契约调用平台，禁止引用其他插件实现。SDK v1 包括认证、全局范围、权限、JdbcClient/事务、审计、文件、通知、字典、AI 文本生成、支付渠道 SPI 和可选扩展调用。安装清单格式 v2 要求每个授权页面使用本插件独有的访问权限，并通过 `route.operations` 显式映射该页操作；页面权限和操作权限不能跨页复用。格式 v1 继续读取历史清单，但不会推测或补齐它没有声明的操作映射。前后端 SDK 应按兼容契约演进。
+宿主框架和 SDK 由平台提供，安装包不能重复覆盖。插件仅通过独立开发包中列出的 common 与各模块 api 类型调用平台，禁止引用其他插件实现。SDK v1 包括认证、全局范围、权限、JdbcClient/事务、审计、文件、通知、字典、AI 文本生成、支付渠道 SPI 和可选扩展调用。安装清单格式 v2 要求每个授权页面使用本插件独有的访问权限，并通过 `route.operations` 显式映射该页操作；页面权限和操作权限不能跨页复用。格式 v1 继续读取历史清单，但不会推测或补齐它没有声明的操作映射。前后端 SDK 应按兼容契约演进。
 
 ## 安装包与接口
 
@@ -41,7 +41,9 @@ pnpm plugins:build sdk/examples/hotplug-probe
 
 新版 route 显式使用 `{id,label,permission,operations?,scopedOperations?,group,order,global}`：`permission` 是本页独有的访问权限，`operations` 把页面内稳定动作 ID 映射到本插件声明的独立权限代码，例如 `{"permission":"platform:wechat-pay:orders-access","operations":{"read":"platform:wechat-pay:orders-read","refund":"platform:wechat-pay:orders-refund"}}`。页面访问和每个动作分别勾选、分别保存；调用动作必须同时持有该页权限和对应操作权限。`global` 声明页面访问范围；`scopedOperations` 列出使用目标范围授权的动作，未列出的动作默认为全局。动作只能映射到一个页面，所有映射代码必须在同一权限组中声明。旧 manifest 可省略 `operations`，此时目录明确显示没有操作映射；宿主不会从权限名称、`read` 前缀或资源路径猜测页面或动作。依赖插件的历史路由权限仍按兼容规则读取，但不能用于新页面动作映射。
 
-API 规则保留 `authorities` 的旧任一项匹配行为，不能改解释为 AND。格式 v2 的权限规则必须把本页访问权限放入 `allAuthorities`，并至少要求该页一个已映射操作；`authorities` 只能列该页操作，不能替代页面访问门槛。新增的 `allAuthorities` 表示额外的全部匹配条件，必须是同一插件页面上已声明的访问/操作映射；同时出现两个字段时，旧列表先按任一项匹配，再要求 `allAuthorities` 全部满足。旧格式 v1 和旧 `global:true` 规则继续保持原有匹配及全局范围语义。混合范围路由可额外声明 `globalAuthorities`：其中至少一项必须同时满足普通权限匹配并具有全局范围；该字段是任一项匹配，适用于“页面访问可按本人范围、管理动作必须全局”等组合。它不能放宽 `allAuthorities` 的持有要求。实际服务也必须校验页面访问和动作，并保留已有用户/角色数据范围；manifest 规则不能替代服务的对象级检查。`authenticatedOnly`、公开读取和签名回调规则保持既有语义，不能与权限规则混用。
+格式 v2 的只读页面查询可显式声明 `pageReadOnly: true`（缺省为 false）：`allAuthorities` 必须恰好包含一个已映射页面的访问权限，`authorities` 和 `globalAuthorities` 必须为空，且规则 `global` 必须与页面一致。该标记只允许单一 GET 方法；唯一 POST 例外是内置 `sensitive-words` 插件的两个无副作用文本检查接口 `/api/platform/sensitive-words/check` 和 `/api/platform/sensitive-policies/preview`，它们还必须使用全局 `platform:sensitive-words:access` 门槛。其他 POST、PUT、PATCH、DELETE、混合方法以及通配符 POST 都不能使用此标记。它不能与 `publicAccess`、`authenticatedOnly`、`signedCallback` 或 `previewReadOnly` 组合，不豁免登录、CSRF、模块启用状态或服务层范围检查，也不会获得角色预览会话的只读放行。未显式声明此标记的规则继续要求页面及独立操作权限。
+
+API 规则保留 `authorities` 的旧任一项匹配行为，不能改解释为 AND。除上述显式页面只读规则外，格式 v2 的权限规则必须把本页访问权限放入 `allAuthorities`，并至少要求该页一个已映射操作；`authorities` 只能列该页操作，不能替代页面访问门槛。新增的 `allAuthorities` 表示额外的全部匹配条件，必须是同一插件页面上已声明的访问/操作映射；同时出现两个字段时，旧列表先按任一项匹配，再要求 `allAuthorities` 全部满足。旧格式 v1 和旧 `global:true` 规则继续保持原有匹配及全局范围语义。混合范围路由可额外声明 `globalAuthorities`：其中至少一项必须同时满足普通权限匹配并具有全局范围；该字段是任一项匹配，适用于“页面访问可按本人范围、管理动作必须全局”等组合。它不能放宽 `allAuthorities` 的持有要求。实际服务也必须校验页面访问和动作，并保留已有用户/角色数据范围；manifest 规则不能替代服务的对象级检查。`authenticatedOnly`、公开读取和签名回调规则保持既有语义，不能与权限规则混用。
 
 `GET /api/platform/permission-catalog` 返回平台与当前已安装插件的动态权限组，页面结构为 `{id,path,title,navigationGroup,navigationOrder,accessPermission,operationPermissions,accessScope,operationScopes}`；权限项结构为 `{code,label,requires,editable,retired}`，插件组的 `source` 为 `plugin`。插件页面只从该 route 的显式映射生成，旧清单缺少映射时 `operationPermissions` 为空，不能按组内其他权限补齐。插件权限只在当前已安装 manifest 声明时可新增到角色。首次给角色授予插件权限，仍须通过角色创建或更新的 `platform:roles:create` / `platform:roles:update` 检查。引导一项操作者自己并不持有的插件权限，要求同时在全局范围持有 `platform:modules:install` 和全部当前平台权限；此引导不能授予平台权限、未知权限或已卸载插件权限。卸载后，角色中保留的历史权限会显示为退役条目，只能保留或移除，不能再次新增，并且不会出现在 `/auth/me`。重新安装后，这些保留授权重新生效，不会在卸载时被静默删除。
 

@@ -1,10 +1,14 @@
+## 开发入口
+
+目录职责、独立 SDK 与构建见 [框架开发约束](docs/framework-development.md)，演进门槛见 [路线图](docs/evolution-plan.md)，生产交付见 [准入清单](docs/production-readiness.md)。编码参考：[后端规范](docs/reference/backend-standard.md)、[前端规范](docs/reference/frontend-standard.md)。核心双语注释清单见 docs/core-file-inventory.json。
+
 # Lumira 新脚手架
 
 与旧系统并行开发的独立底座。前端 8010，后端 8090，数据库 lumira_next；旧前端 8000 与旧后端不受影响。
 
 新克隆仍由 `scripts/init-local.mjs` 生成默认 `.runtime/local.json` 并使用 `lumira_next`；历史本地配置不会被自动发现或合并。接管已运行服务后，使用 canonical 配置和运行时 pin，并按[本地启动与插件清单换库护栏](docs/database-initialization.md#本地启动与换库插件清单护栏)检查启动和数据库切换。启动、状态和停止入口分别是 `node scripts/start.mjs`、`node scripts/status.mjs`、`node scripts/stop.mjs`。
 
-换电脑后的分支构建、本地配置和重复验收步骤见[跨机器测试说明](docs/cross-machine-testing.md)。
+换电脑后的分支构建、本地配置和重复验收步骤见[跨机器测试说明](docs/cloud-development.md)。
 
 ## 技术基线
 
@@ -67,7 +71,7 @@ pnpm test:java
 pnpm db:schema-smoke
 ```
 
-`pnpm db:schema-smoke` 在数据库迁移完成后检查结构和种子，只执行只读查询。`pnpm test:module-packages`、`pnpm test:plugin-data`、`pnpm test:browser` 以及 `scripts/smoke.py`、`scripts/passkey-smoke.py` 等共享 `smoke_support.py` 的测试会改动 fixture 数据，必须使用显式私有配置和带 QA 标记的专用数据库，不可用默认 `.runtime/local.json`。配置、marker、服务绑定与浏览器测试要求见[QA fixture guard 说明](docs/qa-fixture-guard.md)和[跨机器测试说明](docs/cross-machine-testing.md)。
+`pnpm db:schema-smoke` 在数据库迁移完成后检查结构和种子，只执行只读查询。`pnpm test:module-packages`、`pnpm test:plugin-data`、`pnpm test:browser` 以及 `scripts/smoke.py`、`scripts/passkey-smoke.py` 等共享 `smoke_support.py` 的测试会改动 fixture 数据，必须使用显式私有配置和带 QA 标记的专用数据库，不可用默认 `.runtime/local.json`。配置、marker、服务绑定与浏览器测试要求见[QA fixture guard 说明](docs/qa-fixture-guard.md)和[跨机器测试说明](docs/cloud-development.md)。
 
 命名、目录职责、CRUD 复用与自动质量检查见 [源码约定](docs/code-conventions.md)。`pnpm check:java-format` 使用 Spotless 全量检查宿主后端与独立插件后端的 Java 源码；`pnpm check:quality` 检查命名和新增重复代码，CI 与 `pnpm test` 均执行此检查。
 

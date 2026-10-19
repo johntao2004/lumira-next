@@ -5,6 +5,7 @@ import {
   checkedPermissionTreeKeys,
   roleContainsUndelegableActiveGrant,
   filterPermissionCatalog,
+  permissionSearchExpansionKeys,
   mergePermissionPageRows,
   permissionOperationNodeKey,
   permissionPageNodeKey,
@@ -237,4 +238,26 @@ test("the default registration role cannot gain permissions outside its allow-li
   assert.equal(canEditRolePermission(groups, "platform:feedback:reply", [], [], false, true, true), false);
   assert.equal(canEditRolePermission(groups, "platform:feedback:reply", ["platform:feedback:reply"], [], false, false, true), true);
   assert.equal(canEditRolePermission(groups, "platform:feedback:access", [], [], false, true, true), true);
+});
+
+test("search expansion follows navigation-group and source changes for the same route", () => {
+  const group = catalog()[0];
+  const page = group.pages[0];
+  const keys = (source: "platform" | "plugin", navigationGroup: string) => permissionSearchExpansionKeys([{
+    group: { ...group, source }, pages: [{ page: { ...page, navigationGroup }, operations: [] }], unmappedPermissions: [],
+  }]);
+  assert.notDeepEqual(keys("platform", "before"), keys("platform", "after"));
+  assert.notDeepEqual(keys("platform", "after"), keys("plugin", "after"));
+  assert.ok(keys("plugin", "after").includes("permission-root:plugin"));
+  assert.ok(keys("plugin", "after").includes("domain:plugin:after"));
+  assert.deepEqual(permissionSearchExpansionKeys([]), []);
+});
+
+test("search expansion deduplicates rows and keeps unmapped branches stable across label changes", () => {
+  const group = catalog()[0];
+  const result = { group, pages: [], unmappedPermissions: [permission("custom:read")] };
+  const keys = permissionSearchExpansionKeys([result]);
+  assert.ok(keys.includes("unmapped-root:platform"));
+  assert.deepEqual(permissionSearchExpansionKeys([result, result]), keys);
+  assert.deepEqual(permissionSearchExpansionKeys([{ ...result, group: { ...group, title: "Translated" } }]), keys);
 });

@@ -34,7 +34,7 @@
 
 ## 3. 备份与恢复
 
-数据库是唯一事实源（含文件二进制，见决策 D1），备份即全量数据备份。
+当前新文件二进制存于 PostgreSQL，但未迁完的 legacy 本地文件仍可能存在。完整恢复需要数据库、legacy 文件卷、不可变发行包和插件批准图，并单独保管解密密钥；仅恢复数据库不保证完整服务。
 
 **恢复演练（可无人值守运行）：**
 
@@ -42,7 +42,7 @@
 PGHOST=... PGUSER=<有 CREATEDB 权限的角色> PGPASSWORD=... scripts/backup-restore-drill.sh lumira_next /var/backups/lumira
 ```
 
-脚本对源库做 `pg_dump -Fc`，恢复到一个一次性数据库，逐表精确比对行数，全部一致才返回 0，并始终清理临时库；对比表数为 0 会判失败，避免“空比较也通过”。本机演练结果：45 张表逐表一致。
+脚本对源库做 `pg_dump -Fc`，恢复到一个一次性数据库，逐表精确比对行数，全部一致才返回 0，并始终清理临时库；对比表数为 0 会判失败，避免“空比较也通过”。表清单、行数与恢复后业务验证必须使用当次运行结果，不能沿用历史样本数字。
 
 **建议的策略（需运维方按业务确认后落地）：**
 
@@ -54,7 +54,7 @@ PGHOST=... PGUSER=<有 CREATEDB 权限的角色> PGPASSWORD=... scripts/backup-r
 ## 4. 供应链与 CI 门禁
 
 - `.github/dependabot.yml`：Maven、npm、GitHub Actions、Docker 基础镜像的更新 PR。
-- CI `images` 任务：构建两个生产镜像并用 Trivy 扫描 HIGH/CRITICAL（仅报告已有修复版本的漏洞）；`dependencies` 任务扫描 `pom.xml` 与 pnpm 锁文件。发现问题会使 CI 失败，处理方式是升级依赖，或在评审中明确记录豁免理由。
+- CI `images` 任务：构建生产镜像（server、web、office-worker，以当前 workflow 为准）并用 Trivy 扫描 HIGH/CRITICAL（仅报告已有修复版本的漏洞）；`dependencies` 任务扫描 `pom.xml` 与 pnpm 锁文件。发现问题会使 CI 失败，处理方式是升级依赖，或在评审中明确记录豁免理由。
 - CI `web` 任务现在也执行 `pnpm build`，保证生产构建持续可用。
 
 ## 5. 架构护栏
@@ -70,7 +70,7 @@ PGHOST=... PGUSER=<有 CREATEDB 权限的角色> PGPASSWORD=... scripts/backup-r
 
 ## 6. 仍未完成（不属于本次改动）
 
-以下需要基础设施或产品决策，代码无法单方面完成：数据库主从/自动故障切换、多副本滚动升级演练、WAL 归档与 PITR、集中式日志与追踪后端（OpenTelemetry Collector）、CAPTCHA/MFA（见 D3）、AI 外发数据的合规评估（见 D4）。
+以下需要基础设施或产品决策，代码无法单方面完成：数据库主从/自动故障切换、多副本滚动升级演练、WAL 归档与 PITR、集中式日志与追踪后端（OpenTelemetry Collector）、已实现 CAPTCHA/MFA 的实际供应商与完整界面联调、AI 外发数据的合规评估（见 D4）。
 
 ## 7. 云端模型服务与代理 DNS
 

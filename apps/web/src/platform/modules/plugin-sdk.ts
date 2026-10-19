@@ -1,3 +1,7 @@
+/**
+ * 将精确白名单路径映射到宿主共享模块，新增接口须同步白名单和契约测试，避免插件依赖私有实现。
+ * Map exact allowlisted paths to shared host modules, updating the allowlist and contract tests with new APIs so plugins do not depend on private implementations.
+ */
 import * as module0 from "@/platform/api/client";
 import * as module1 from "@/platform/api/errors";
 import * as module2 from "@/platform/api/pagination";
@@ -29,6 +33,8 @@ import * as module29 from "@/platform/auth/use-reauthentication-ticket";
 import * as module30 from "@/platform/auth/passkey";
 import * as module31 from "@/platform/components/editor-surface";
 import * as module32 from "@/platform/auth/use-session-scope";
+import * as module33 from "@/platform/auth/reauthentication-fields";
+import * as module34 from "@/platform/i18n/builtin-dictionary-labels";
 export const pluginSdkModules = {
  "@/platform/api/client": module0,
  "@/platform/api/errors": module1,
@@ -52,6 +58,8 @@ export const pluginSdkModules = {
  "@/platform/providers": module21,
  "@/platform/routing/use-list-request": module22,
  "@/platform/auth/reauthentication-contract": module28,
+ "@/platform/auth/reauthentication-fields": module33,
+ "@/platform/i18n/builtin-dictionary-labels": module34,
  "@/platform/auth/use-reauthentication-ticket": module29,
  "@/platform/auth/use-session-scope": module32,
  "@/platform/auth/passkey": module30,

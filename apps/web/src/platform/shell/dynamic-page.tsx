@@ -1,3 +1,7 @@
+/**
+ * 为服务端 PAGE 查找已注册组件，缺少实现时明确显示不可用状态，避免把菜单配置的空壳呈现为成功加载。
+ * Resolve registered components for server-defined PAGE entries and show an explicit unavailable state when implementation is missing instead of presenting a menu-only shell as loaded.
+ */
 "use client";
 
 import { ProCard } from "@ant-design/pro-components";
@@ -6,6 +10,8 @@ import { usePreferences } from "../providers";
 import { resolvePageComponent } from "./page-component-registry";
 
 /**
+ * 服务端 PAGE 的功能组件未随当前部署提供时，使用安全回退；绝不将缺失组件伪装成可用页面。
+ *
  * Safe fallback for a server-owned PAGE whose feature component is not bundled
  * in this deployment. Never present a missing component as a working page.
  */

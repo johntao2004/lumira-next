@@ -1,3 +1,8 @@
+/**
+ * 编排角色维护和分配，校验委派及撤权上限、版本与恢复管理员保护，防止角色变更扩大权限或破坏认证可达性。 Orchestrates role maintenance and assignment
+ * with delegation and revocation ceilings, version checks and recovery-administrator protection,
+ * preventing privilege expansion or loss of authentication reachability.
+ */
 package com.lumira.platform.roles;
 
 import com.lumira.platform.common.*;
@@ -48,7 +53,10 @@ public class RoleService {
             operationScopes = Map.copyOf(operationScopes == null ? Map.of() : operationScopes);
         }
 
-        /** Compatibility fallback for catalog entries without a route-to-permission mapping. */
+        /**
+         * 兼容缺少路由到权限映射的目录项。 Compatibility fallback for catalog entries without a route-to-permission
+         * mapping.
+         */
         public PermissionCatalogPage(String path, String title) {
             this(
                     pageIdFromPath(path),
@@ -93,7 +101,9 @@ public class RoleService {
             int catalogVersion) {}
 
     /**
-     * The final component is a request-only compatibility sentinel. It accepts only null or an
+     * 最后一个字段仅作为请求兼容哨兵，只接受 null 或空集合；拒绝非空值，避免旧客户端请求遗留投影行为。
+     *
+     * <p>The final component is a request-only compatibility sentinel. It accepts only null or an
      * empty set; non-empty values are rejected so a stale client cannot request legacy projection
      * behavior.
      */
@@ -220,12 +230,15 @@ public class RoleService {
 
         Set<String> delegableAuthorities = Set.of();
         Set<String> activeAuthorities = Set.of();
+        RoleRepository.AuthorityScopeCeiling scopeCeiling =
+                RoleRepository.AuthorityScopeCeiling.none();
         if (canAssign) {
             var catalog = AuthorityCatalog.capture();
             delegableAuthorities =
                     delegableAuthorities(
                             globalAuthorities(actor), effectiveAuthorities(actor), catalog);
             activeAuthorities = catalog.active();
+            scopeCeiling = authorityScopeCeilings(actor, catalog, true);
         }
 
         return roles.assignmentOptions(
@@ -233,6 +246,7 @@ public class RoleService {
                         Set.copyOf(roles.userRoles(userId)),
                         delegableAuthorities,
                         activeAuthorities,
+                        scopeCeiling,
                         canAssign)
                 .map(
                         option ->
@@ -285,7 +299,9 @@ public class RoleService {
     }
 
     /**
-     * One catalog read for a mutation. Later uninstalls cannot drop an addition out of the
+     * 一次变更只读取一次目录；后续卸载不能把新增权限移出委派检查，读取时已消失的权限也不能新增。
+     *
+     * <p>One catalog read for a mutation. Later uninstalls cannot drop an addition out of the
      * delegation check, and a permission that was already gone cannot be added.
      */
     static final class AuthorityCatalog {
@@ -329,7 +345,9 @@ public class RoleService {
     }
 
     /**
-     * Platform grants on a role require global possession. Assigning a role to a user may use
+     * 配置角色的平台权限必须全局持有；向用户分配角色时，目录标为调用方范围的权限可按有效持有判断；初始化委派尚未持有的插件权限需安装权限及全部宿主权限，且只审计本次新增权限。
+     *
+     * <p>Platform grants on a role require global possession. Assigning a role to a user may use
      * effective possession for permissions the catalog marks as caller-scoped. Bootstrapping a
      * plugin permission the actor does not hold requires installation permission and every host
      * permission, and that bootstrap is audited only for permissions added by this request.
@@ -342,13 +360,14 @@ public class RoleService {
             AuthorityCatalog catalog,
             boolean auditBootstrap,
             boolean assignment) {
-        if (authorities.contains(PlatformOperation.MODULE_INSTALL.permission()))
-            requireInstallAuthority(guard, actor);
         Set<String> added = Set.copyOf(additions);
         var pluginBootstrap = new TreeSet<String>();
         for (String authority : new TreeSet<>(authorities)) {
             if (!catalog.active(authority)) continue;
             if (catalog.host(authority) || !catalog.plugin(authority)) {
+                if (PlatformOperation.MODULE_INSTALL.permission().equals(authority)
+                        && !holdsEveryPlatformPermission(actor))
+                    fail(HttpStatus.FORBIDDEN, "rolePermissionDelegationDenied");
                 requireDelegable(actor, authority, false, !assignment || globallyScoped(authority));
             } else if (!holds(actor, authority, assignment)) {
                 pluginBootstrap.add(authority);
@@ -415,6 +434,7 @@ public class RoleService {
             Collection<String> previous,
             Collection<String> next,
             AuthorityCatalog catalog) {
+        // 该快照中的已有与新增权限均保留在检查中；不能二次读取目录而丢失请求开始时仍有效的新增权限。
         // Existing and added grants from this snapshot stay in the check. A second catalog read
         // must not drop an addition that was active when the request started.
         var additions = new LinkedHashSet<>(next);
@@ -428,7 +448,9 @@ public class RoleService {
     }
 
     /**
-     * A global permission is delegable only when held globally. A caller-scoped permission is
+     * 全局权限仅在全局持有时可委派；调用方范围权限可按全局或有效授权持有判断，插件初始化委派仅限已持有全部宿主权限的操作者。
+     *
+     * <p>A global permission is delegable only when held globally. A caller-scoped permission is
      * delegable when held globally or in the actor's effective grants. Plugin bootstrap is limited
      * to an actor who already holds every host permission.
      */
@@ -479,14 +501,19 @@ public class RoleService {
             fail(HttpStatus.CONFLICT, "moduleInstallRequiresPlatformAuthority");
     }
 
-    /** Installing or granting install requires every current platform permission, held globally. */
+    /**
+     * 执行安装或授予安装权限，都要求全局持有当前全部平台权限。 Installing or granting install requires every current platform
+     * permission, held globally.
+     */
     public static void requireInstallAuthority(
             com.lumira.platform.common.AdministrationPort guard, String actor) {
         com.lumira.platform.common.PlatformInstallAuthority.require(guard, actor);
     }
 
     /**
-     * Preview of an import assignment. Uses the same snapshot and delegation rules as {@link
+     * 预览导入中的角色分配，使用与 assign 相同的快照和委派规则，不写入初始化委派审计。
+     *
+     * <p>Preview of an import assignment. Uses the same snapshot and delegation rules as {@link
      * #assign} and does not write bootstrap audit events.
      */
     public void validateImportAssignment(UUID userId, Set<UUID> nextRoleIds, String actor) {
@@ -500,10 +527,142 @@ public class RoleService {
             validateAssignableAuthorities(role.authorities(), role.authorities(), catalog);
             var active = role.authorities().stream().filter(catalog::active).toList();
             requireDelegation(actor, roleId, active, active, catalog, false, true);
+            requireRoleScopeCovered(actor, role, active, catalog, false);
         }
         var removals = new LinkedHashSet<>(current);
         removals.removeAll(nextRoleIds);
-        for (UUID roleId : removals) requireCurrentDelegation(actor, roles.find(roleId), catalog);
+        for (UUID roleId : removals) requireAssignmentRemoval(actor, roles.find(roleId), catalog);
+    }
+
+    /**
+     * 分配与移除角色共用相同范围上限；操作者须以不小于角色的范围持有全部有效权限，对自己操作亦然，缺少范围信息绝不意味着可委派更大范围。
+     *
+     * <p>Assigning or removing a role uses the same scope ceiling. The actor must hold every active
+     * permission at a data scope at least as wide as the role, including when the target user is
+     * the actor. Missing scope information never implies permission to delegate a wider scope.
+     */
+    private void requireRoleScopeCovered(
+            String actor,
+            RoleRepository.Role role,
+            Collection<String> activeAuthorities,
+            AuthorityCatalog catalog,
+            boolean revocation) {
+        RoleRepository.AuthorityScopeCeiling ceiling =
+                authorityScopeCeilings(actor, catalog, !revocation);
+        int required = scopeRank(role.dataScope() == null ? "SELF" : role.dataScope());
+        for (String authority : activeAuthorities)
+            if (ceiling.rank(authority) < required)
+                fail(
+                        HttpStatus.FORBIDDEN,
+                        revocation
+                                ? "rolePermissionRevocationDenied"
+                                : "rolePermissionDelegationDenied");
+    }
+
+    private void requireAssignmentRemoval(
+            String actor, RoleRepository.Role role, AuthorityCatalog catalog) {
+        var active = role.authorities().stream().filter(catalog::active).toList();
+        for (String authority : new TreeSet<>(active))
+            requireDelegable(actor, authority, true, globallyScoped(authority));
+        requireRoleScopeCovered(actor, role, active, catalog, true);
+    }
+
+    private RoleRepository.AuthorityScopeCeiling authorityScopeCeilings(
+            String actor, AuthorityCatalog catalog, boolean allowBootstrap) {
+        Map<String, Set<String>> scopes = authorityScopes(actor);
+        var self = new LinkedHashSet<String>();
+        var organization = new LinkedHashSet<String>();
+        var subtree = new LinkedHashSet<String>();
+        var all = new LinkedHashSet<String>();
+        var active = com.lumira.platform.modules.ActivePermissionCatalog.current();
+        for (var entry : scopes.entrySet()) {
+            if (entry.getKey() == null || !active.contains(entry.getKey())) continue;
+            int rank = -1;
+            for (String scope : entry.getValue()) {
+                if (scope == null) continue;
+                try {
+                    rank = Math.max(rank, scopeRank(scope));
+                } catch (IllegalArgumentException ignored) {
+                    // 未知范围标签不会提高可委派上限。
+                    // Unknown scope labels do not raise the ceiling.
+                }
+            }
+            if (rank >= 0) self.add(entry.getKey());
+            if (rank >= 1) organization.add(entry.getKey());
+            if (rank >= 2) subtree.add(entry.getKey());
+            if (rank >= 3) all.add(entry.getKey());
+        }
+        // 保留完整平台安装者首次委派插件权限的能力；已有范围授权仍受真实上限约束，撤回从不使用此例外。
+        // Preserve first-time plugin delegation for the full platform installer. Existing
+        // scoped grants retain their actual ceiling; revocation never uses this exception.
+        if (allowBootstrap
+                && !isPreview(actor)
+                && guard.hasGlobal(actor, PlatformOperation.MODULE_INSTALL.permission())
+                && holdsEveryPlatformPermission(actor)) {
+            for (String authority : catalog.active()) {
+                if (!catalog.plugin(authority)
+                        || catalog.host(authority)
+                        || self.contains(authority)
+                        || holds(actor, authority, true)) continue;
+                self.add(authority);
+                organization.add(authority);
+                subtree.add(authority);
+                all.add(authority);
+            }
+        }
+        return new RoleRepository.AuthorityScopeCeiling(self, organization, subtree, all);
+    }
+
+    private Map<String, Set<String>> authorityScopes(String actor) {
+        var snapshot = AuthenticationRequestContext.current();
+        if (snapshot != null
+                && actor.equals(snapshot.principalName())
+                && snapshot.authorization() != null)
+            return snapshot.authorization().effectiveScopes();
+        if (jdbc == null) {
+            // 兼容构造器没有范围投影，只有独立验证的全局授权才能确定上限；仅有效持有并不足够，绝不能视为无限制委派。
+            // The compatibility constructor has no scoped projection. Only independently
+            // verified global grants provide a known ceiling; effective possession alone is
+            // insufficient and must never be treated as unrestricted delegation.
+            return globalAuthorities(actor).stream()
+                    .collect(
+                            java.util.stream.Collectors.toUnmodifiableMap(
+                                    authority -> authority, authority -> Set.of("ALL")));
+        }
+        Map<String, Set<String>> values = new HashMap<>();
+        jdbc.sql(
+                        """
+                        WITH actor AS (
+                            SELECT id FROM platform_user
+                             WHERE username=:name AND enabled AND deleted_at IS NULL
+                        ), effective AS (
+                            SELECT authority FROM platform_effective_authority e
+                              JOIN actor ON e.user_id=actor.id
+                        ), scope_sources AS (
+                            SELECT a.authority, 'ALL'::text AS data_scope
+                              FROM platform_authority a
+                              JOIN actor ON a.user_id=actor.id
+                              JOIN effective ON effective.authority=a.authority
+                            UNION ALL
+                            SELECT ra.authority, r.data_scope
+                              FROM platform_user_role ur
+                              JOIN actor ON ur.user_id=actor.id
+                              JOIN platform_role r ON r.id=ur.role_id AND r.enabled
+                              JOIN platform_role_authority ra ON ra.role_id=r.id
+                              JOIN effective ON effective.authority=ra.authority
+                        )
+                        SELECT authority, data_scope FROM scope_sources
+                        """)
+                .param("name", actor)
+                .query(
+                        (rs, row) ->
+                                Map.entry(rs.getString("authority"), rs.getString("data_scope")))
+                .list()
+                .forEach(
+                        entry ->
+                                values.computeIfAbsent(entry.getKey(), ignored -> new TreeSet<>())
+                                        .add(entry.getValue()));
+        return values;
     }
 
     private static int scopeRank(String scope) {
@@ -788,6 +947,7 @@ public class RoleService {
     @Transactional
     public RoleRepository.Role update(UUID id, RoleInput in, String actor) {
         validateInput(in);
+        // 认证策略锁必须先于 AdministrationGuard 的会话边界获取。
         // Authentication policy lock must precede AdministrationGuard's session boundary.
         lockPolicyMutation();
         begin(actor, PlatformOperation.ROLE_UPDATE);
@@ -894,10 +1054,11 @@ public class RoleService {
             validateAssignableAuthorities(role.authorities(), role.authorities(), catalog);
             var active = role.authorities().stream().filter(catalog::active).toList();
             requireDelegation(actor, roleId, active, active, catalog, true, true);
+            requireRoleScopeCovered(actor, role, active, catalog, false);
         }
         var removals = new HashSet<>(currentRoleIds);
         removals.removeAll(in.roleIds());
-        for (var roleId : removals) requireCurrentDelegation(actor, roles.find(roleId), catalog);
+        for (var roleId : removals) requireAssignmentRemoval(actor, roles.find(roleId), catalog);
         roles.assign(id, in.roleIds());
         validateAssignedPolicies(id);
         protect();

@@ -171,12 +171,14 @@ public class NotificationService implements NotificationProducerPort {
         if (handled) params.put("status", status == null ? "" : status);
         store.normalizeParams(mapper.writeValueAsString(params));
         String key = "feedback:" + feedbackId + ":" + version;
-        eventPublisher.publish(
-                UUID.randomUUID(),
-                FEEDBACK_SOURCE,
-                FEEDBACK_EVENT,
-                key,
-                mapper.writeValueAsString(payload),
-                operationId);
+        boolean published =
+                eventPublisher.publish(
+                        UUID.randomUUID(),
+                        FEEDBACK_SOURCE,
+                        FEEDBACK_EVENT,
+                        key,
+                        mapper.writeValueAsString(payload),
+                        operationId);
+        if (!published) eventPublisher.completeDuplicateSingleEventOperation(operationId);
     }
 }

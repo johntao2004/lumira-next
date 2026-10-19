@@ -1,3 +1,8 @@
+/**
+ * 以有界分块流式读写 PostgreSQL 文件内容，发布前核对状态及分块完整性，避免整份上传常驻内存。 Streams file content through bounded
+ * PostgreSQL chunks and verifies state and chunk integrity before publication, avoiding
+ * whole-upload buffering in memory.
+ */
 package com.lumira.platform.files;
 
 import java.io.IOException;
@@ -18,7 +23,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Stores file bytes in PostgreSQL without buffering a whole upload in application memory. */
+/**
+ * 将文件字节存入 PostgreSQL，无需在应用内存中缓冲整个上传。 Stores file bytes in PostgreSQL without buffering a whole
+ * upload in application memory.
+ */
 public final class PostgresBlobStore implements BlobStore {
     private static final int CHUNK_BYTES = 64 * 1024;
     private static final int BATCH_CHUNKS = 16;
@@ -77,7 +85,9 @@ public final class PostgresBlobStore implements BlobStore {
     }
 
     /**
-     * Copies one existing local file, validates its stored size and digest, then switches its DB
+     * 复制一个已有本地文件，校验其记录大小与摘要，再切换对应数据库行。
+     *
+     * <p>Copies one existing local file, validates its stored size and digest, then switches its DB
      * row.
      */
     public Stored migrateLocal(FileRepository.Entry entry, InputStream source) throws IOException {
@@ -164,6 +174,7 @@ public final class PostgresBlobStore implements BlobStore {
                 break;
             }
 
+            // InputStream.read(byte[], ...) 返回的字节可能少于请求量；持久化前应填满每个数据库分块，保证分块索引与大小一致规范。
             // InputStream.read(byte[], ...) may return fewer bytes than requested. Fill each
             // database chunk before persisting it so chunk indexes and size stay canonical.
             int count = 0;
@@ -336,7 +347,9 @@ public final class PostgresBlobStore implements BlobStore {
     }
 
     /**
-     * Immediately removes chunks for a fenced PostgreSQL object or an orphan key. Existing file
+     * 立即删除受隔离令牌保护的 PostgreSQL 对象分块或孤立键分块；已有文件元数据必须为 DELETING，读取采用惰性分块，因此永久删除尚未加载的字节可能使进行中的下载失败。
+     *
+     * <p>Immediately removes chunks for a fenced PostgreSQL object or an orphan key. Existing file
      * metadata must be DELETING. Readers load chunks lazily, so a download already in progress can
      * fail after permanent deletion removes bytes it has not loaded yet.
      */
@@ -366,6 +379,7 @@ public final class PostgresBlobStore implements BlobStore {
                         key));
     }
 
+    // 每轮最多处理 16,000 个分块，五秒后不再启动新批次；单条数据库语句仍使用正常超时。
     // At most 16,000 chunks per run. Stop starting batches after five seconds; an individual
     // database statement keeps its normal timeout.
     @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)

@@ -3,11 +3,11 @@ package com.lumira.platform.mfa;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
-import com.lumira.platform.common.FixedWindowBuckets;
 import com.lumira.platform.common.MailSender;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
-import com.lumira.platform.common.SecretKeys;
+import com.lumira.platform.common.RateLimitKeys;
+import com.lumira.platform.common.SecretCryptoPort;
 import com.lumira.platform.identity.api.AccountOwnerPort;
 import com.lumira.platform.identity.api.AccountSecurityPort;
 import com.lumira.platform.identity.api.AuthorizationContextBoundaryPort;
@@ -48,7 +48,7 @@ public class MfaService implements SecondFactorProvider {
     private final EffectiveAuthenticationPolicyPort policies;
     private final AuthenticationPolicyWriteLock policyLock;
     private final ReauthenticationPort reauthentication;
-    private final SecretKeys keys;
+    private final SecretCryptoPort keys;
     private final TransactionTemplate tx;
     private final AuditPort audit;
     private final AdministrationPort administration;
@@ -67,7 +67,7 @@ public class MfaService implements SecondFactorProvider {
             EffectiveAuthenticationPolicyPort policies,
             AuthenticationPolicyWriteLock policyLock,
             ReauthenticationPort reauthentication,
-            SecretKeys keys,
+            SecretCryptoPort keys,
             TransactionTemplate tx,
             AuditPort audit,
             AdministrationPort administration,
@@ -189,7 +189,7 @@ public class MfaService implements SecondFactorProvider {
                         store.replacementSetup(
                                 id,
                                 safeLabel,
-                                keys.require().encrypt(context(id) + ":replacement", secret),
+                                keys.encrypt(context(id) + ":replacement", secret),
                                 challengeId,
                                 sessionHash(sessionId),
                                 factorRevision,
@@ -307,7 +307,7 @@ public class MfaService implements SecondFactorProvider {
             store.setup(
                     userId,
                     label,
-                    keys.require().encrypt(context(userId), secret),
+                    keys.encrypt(context(userId), secret),
                     expires,
                     challengeId,
                     sessionHash);
@@ -424,8 +424,7 @@ public class MfaService implements SecondFactorProvider {
                     byte[] value = normalized(code);
                     try {
                         for (String digest : store.recoveryDigests(id)) {
-                            if (keys.require()
-                                    .matchesAuthentication(recoveryContext(id), value, digest)) {
+                            if (keys.matchesAuthentication(recoveryContext(id), value, digest)) {
                                 if (!store.consumeRecovery(id, digest)) return null;
                                 security.bumpFactorCredentialRevision(id);
                                 security.revokeSessions(id, retainedSessionId);
@@ -666,7 +665,7 @@ public class MfaService implements SecondFactorProvider {
     }
 
     private long checkTotp(UUID id, MfaStore.Authenticator authenticator, String code) {
-        byte[] secret = keys.require().decrypt(context(id), authenticator.envelope());
+        byte[] secret = keys.decrypt(context(id), authenticator.envelope());
         try {
             return Totp.verify(
                     secret, code, Instant.now().getEpochSecond(), authenticator.lastStep());
@@ -677,14 +676,13 @@ public class MfaService implements SecondFactorProvider {
 
     private ReplacementVerification verifyReplacementTotp(
             UUID id, MfaStore.Replacement replacement, String code) {
-        byte[] secret =
-                keys.require().decrypt(context(id) + ":replacement", replacement.envelope());
+        byte[] secret = keys.decrypt(context(id) + ":replacement", replacement.envelope());
         try {
             long step =
                     Totp.verify(
                             secret, code, Instant.now().getEpochSecond(), replacement.lastStep());
             if (step < 0) return new ReplacementVerification(-1, null);
-            String activeEnvelope = keys.require().encrypt(context(id), secret);
+            String activeEnvelope = keys.encrypt(context(id), secret);
             return new ReplacementVerification(step, activeEnvelope);
         } finally {
             Arrays.fill(secret, (byte) 0);
@@ -703,7 +701,7 @@ public class MfaService implements SecondFactorProvider {
             Arrays.fill(bytes, (byte) 0);
             byte[] normalized = normalized(code);
             try {
-                store.recovery(id, keys.require().authenticate(recoveryContext(id), normalized));
+                store.recovery(id, keys.authenticate(recoveryContext(id), normalized));
             } finally {
                 Arrays.fill(normalized, (byte) 0);
             }
@@ -751,7 +749,7 @@ public class MfaService implements SecondFactorProvider {
     private static String sessionHash(String sessionId) {
         if (sessionId == null || sessionId.isBlank())
             throw error(HttpStatus.UNAUTHORIZED, "authenticationRequired");
-        return FixedWindowBuckets.key("mfa-session", sessionId).substring("mfa-session:".length());
+        return RateLimitKeys.key("mfa-session", sessionId).substring("mfa-session:".length());
     }
 
     private static boolean constantTimeEquals(String left, String right) {

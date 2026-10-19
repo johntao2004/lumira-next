@@ -19,13 +19,13 @@ import org.springframework.web.bind.annotation.*;
 public class FeedbackController {
     private final FeedbackService service;
     private final UploadRateLimitPort limiter;
-    private final ClientAddressResolver addresses;
+    private final ClientAddressPort addresses;
     private final FileContentPort files;
 
     public FeedbackController(
             FeedbackService service,
             UploadRateLimitPort limiter,
-            ClientAddressResolver addresses,
+            ClientAddressPort addresses,
             FileContentPort files) {
         this.service = service;
         this.limiter = limiter;

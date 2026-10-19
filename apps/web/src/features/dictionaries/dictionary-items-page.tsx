@@ -19,6 +19,7 @@ import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import type { Dictionary } from "./dictionaries-page";
 import { QueryFailure } from "@/platform/components/query-failure";
 import { listRequestParams } from "@/platform/api/pagination";
+import { builtinDictionaryItemLabel, builtinDictionaryName } from "@/platform/i18n/builtin-dictionary-labels";
 
 const dictionaryItemErrorKeys = ["invalidDictionaryItem", "dictionaryFlat", "dictionaryCycle", "dictionaryItemInUse", "staleRecord", "forbidden"] as const satisfies readonly MessageKey[];
 const dictionaryItemErrorAliases = { duplicateRecord: "duplicateDictionaryItem" } as const satisfies Readonly<Record<string, MessageKey>>;
@@ -46,16 +47,16 @@ export function DictionaryItemsPage({dictionary,canCreate,canUpdate,canDelete,on
   const ready=selected===null || (!!detail.data && !detail.isFetching && !detail.error);
   const refresh=()=>Promise.all([client.invalidateQueries({queryKey:["dictionary-items",dictionary.id]}),client.invalidateQueries({queryKey:["resource-select",endpoint]}),client.invalidateQueries({queryKey:["resource-select-detail",endpoint]}),client.invalidateQueries({queryKey:["resource-select",lookupEndpoint]}),client.invalidateQueries({queryKey:["resource-select-detail",lookupEndpoint]}),client.invalidateQueries({queryKey:["feedback-options"]}),client.invalidateQueries({queryKey:["dictionary-options"]})]);
   return <>
-    <Space className="mb-4"><Button onClick={onBack}>{t("dictionaries")}</Button><Typography.Text strong>{dictionary.name} · {t("dictionaryItems")}</Typography.Text></Space>
+    <Space className="mb-4"><Button onClick={onBack}>{t("dictionaries")}</Button><Typography.Text strong>{builtinDictionaryName(dictionary.code,dictionary.name,t)} · {t("dictionaryItems")}</Typography.Text></Space>
     {dictionary.structure==="TREE" && <Space orientation="vertical" className="mb-4">
       <Select aria-label={t("dictionaryItems")} value={parent?"tree":"all"} onChange={value=>navigate(value==="all"?null:"root")} options={[{value:"tree",label:t("treeDictionary")},{value:"all",label:t("dictionaryItems")}]} />
-      {parent && <Breadcrumb items={[{title:<Button type="link" onClick={()=>navigate("root")}>{t("treeDictionary")}</Button>},...(ancestors.data??[]).map(item=>({title:<Button type="link" onClick={()=>navigate(item.id)}>{item.label}</Button>}))]} />}
+      {parent && <Breadcrumb items={[{title:<Button type="link" onClick={()=>navigate("root")}>{t("treeDictionary")}</Button>},...(ancestors.data??[]).map(item=>({title:<Button type="link" onClick={()=>navigate(item.id)}>{builtinDictionaryItemLabel(dictionary.code,item.value,item.label,t)}</Button>}))]} />}
       {ancestors.error && <QueryFailure title={t("unavailable")} pending={ancestors.isFetching} onRetry={()=>void ancestors.refetch()} />}
     </Space>}
     <ResourceTable<Item> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={()=>void query.refetch()}
       actions={canCreateItem && <Button type="primary" onClick={()=>setSelected(null)}>{t("createDictionaryItem")}</Button>}
-      columns={[{title:t("itemValue"),dataIndex:"value",search:true},{title:t("itemLabel"),dataIndex:"label", search: true,render:(_,row)=>dictionary.structure==="TREE"?<Button type="link" aria-label={`${t("viewChildren")}: ${row.label}`} onClick={()=>navigate(row.id)}>{row.label}</Button>:row.label},{title:t("sortOrder"),dataIndex:"sortOrder",valueType:"digit"},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,row)=><Tag color={row.enabled?"success":"default"}>{t(row.enabled?"enabled":"disabled")}</Tag>},
-        {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions><Button type="link" onClick={()=>setSelected(row.id)}>{t(canUpdateItem && !(feedbackStatus && !feedbackStatusValues.has(row.value))?"edit":"details")}</Button>{canDeleteItem && <DeleteAction name={row.label} onDelete={async()=>{
+      columns={[{title:t("itemValue"),dataIndex:"value",search:true},{title:t("itemLabel"),dataIndex:"label", search: true,render:(_,row)=>{const label=builtinDictionaryItemLabel(dictionary.code,row.value,row.label,t);return dictionary.structure==="TREE"?<Button type="link" aria-label={`${t("viewChildren")}: ${label}`} onClick={()=>navigate(row.id)}>{label}</Button>:label}},{title:t("sortOrder"),dataIndex:"sortOrder",valueType:"digit"},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,row)=><Tag color={row.enabled?"success":"default"}>{t(row.enabled?"enabled":"disabled")}</Tag>},
+        {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions><Button type="link" onClick={()=>setSelected(row.id)}>{t(canUpdateItem && !(feedbackStatus && !feedbackStatusValues.has(row.value))?"edit":"details")}</Button>{canDeleteItem && <DeleteAction name={builtinDictionaryItemLabel(dictionary.code,row.value,row.label,t)} onDelete={async()=>{
           await mutate(`${endpoint}/${row.id}?version=${row.version}`,"DELETE",{});setRequest(pageAfterRemoval(request,query.data?.items.length));await refresh();
         }}/>}</TableActions>}]} />
     <FormDrawer open={selected!==undefined} title={t(lockedLegacyStatus?"details":selected?"edit":"createDictionaryItem")} formId="dictionary-item-editor" pending={pending} submitDisabled={!ready || !canSaveItem || lockedLegacyStatus} onClose={close}>

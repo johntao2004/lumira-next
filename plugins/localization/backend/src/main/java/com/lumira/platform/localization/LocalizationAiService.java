@@ -62,7 +62,8 @@ public class LocalizationAiService {
     }
 
     public List<ProviderOption> providers(String actor) {
-        requireGlobalOperation(actor, LocalizationService.READ);
+        guard.require(actor, LocalizationService.ACCESS);
+        guard.requireGlobal(actor, LocalizationService.ACCESS);
         return generation.available().stream()
                 .map(
                         provider ->

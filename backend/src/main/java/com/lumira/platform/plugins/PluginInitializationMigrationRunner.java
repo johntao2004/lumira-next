@@ -1,3 +1,8 @@
+/**
+ * 新安装执行单份最终初始化 SQL，已有完整发布历史按原脚本身份和校验和验证，不重放或改写已应用历史。 Executes one final initialization script for
+ * new installations and validates complete published histories against original script identities
+ * and checksums without replaying or rewriting applied history.
+ */
 package com.lumira.platform.plugins;
 
 import java.io.IOException;
@@ -23,7 +28,10 @@ import org.flywaydb.core.internal.resolver.ResolvedMigrationImpl;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 
-/** Installs final-state SQL without replaying or rewriting an existing plugin history. */
+/**
+ * 安装最终状态 SQL，不重放或改写插件已有迁移历史。 Installs final-state SQL without replaying or rewriting an existing
+ * plugin history.
+ */
 final class PluginInitializationMigrationRunner {
     static final String CATALOG = "initialization.json";
 
@@ -116,6 +124,7 @@ final class PluginInitializationMigrationRunner {
                     .validate();
             return;
         }
+        // 当前安装使用常规解析器校验实际初始化 SQL；已完成的发布版安装只校验上述元数据，不执行 SQL。
         // Current installations validate the actual initialization SQL with the normal resolver.
         // Completed published installations instead validate metadata above, without executing SQL.
         configuration.load().migrate();

@@ -1,3 +1,8 @@
+/**
+ * 维护组织层级、祖先链和成员关系，提供预览适配的可见性、循环检测及版本化写入，供服务层保持树结构一致。 Persists organization hierarchies, ancestry
+ * and memberships, providing preview-aware visibility, cycle checks and versioned writes for
+ * service-level tree consistency.
+ */
 package com.lumira.platform.organizations;
 
 import com.lumira.platform.common.AuthorizationContextProjectionPort;

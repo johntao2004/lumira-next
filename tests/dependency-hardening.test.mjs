@@ -15,10 +15,15 @@ import {
 } from "../scripts/verify-trivy-report.mjs";
 import { assertOnlyKnownPnpmAuditFindings } from "../scripts/verify-pnpm-audit.mjs";
 
-const fixture = (name) =>
-  JSON.parse(
-    readFileSync(new URL(`./fixtures/security/${name}`, import.meta.url), "utf8"),
-  );
+const fixture = (name) => {
+  const report = JSON.parse(readFileSync(new URL(`./fixtures/security/${name}`, import.meta.url), "utf8"));
+  // 历史真实报告补充明确的合成结构样本，仅测试门禁；不冒充新依赖的扫描结果。
+  // Extend historical reports with explicit synthetic schema fixtures for gate tests, never as new dependency-scan evidence.
+  if (name.startsWith("trivy-")) for (const target of ["framework/platform-contracts/pom.xml", "framework/plugin-sdk/pom.xml", "framework/payment-sdk/pom.xml", "framework/plugin-build/pom.xml", "examples/independent-notes/pom.xml"]) {
+    report.Results.push({ Target: target, Class: "lang-pkgs", Type: "pom", Packages: [{ ID: "synthetic-contract-fixture:0.1.0", Name: "synthetic-contract-fixture", Version: "0.1.0" }] });
+  }
+  return report;
+};
 
 test("source patch hashes match the frozen lockfile and installed package copies", () => {
   verifyDependencyPatchIntegrity();
@@ -46,12 +51,12 @@ test("GHSA-337j stays outside the app's disabled React Router SSR hydration path
 
 test("Trivy accepts complete scanner fixtures, including a zero-finding scan", () => {
   const clean = fixture("trivy-fs-clean-scan.json");
-  assert.equal(assertValidTrivyReport(clean).size, 3);
+  assert.equal(assertValidTrivyReport(clean).size, 8);
   assert.doesNotThrow(() => assertOnlyVerifiedFindings(clean));
 
   const detachedCheckout = structuredClone(clean);
   delete detachedCheckout.Metadata.Branch;
-  assert.equal(assertValidTrivyReport(detachedCheckout).size, 3);
+  assert.equal(assertValidTrivyReport(detachedCheckout).size, 8);
 
   assert.doesNotThrow(() =>
     assertOnlyVerifiedFindings(fixture("trivy-fs-verified-braces.json")),

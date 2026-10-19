@@ -52,9 +52,9 @@ def baseline_data_section(table_name):
     end = canonical.find('-- Data for Name:', start + len(marker))
     return canonical[start:] if end < 0 else canonical[start:end]
 
-page_source = (root / 'backend/src/main/java/com/lumira/platform/common/PlatformPageId.java').read_text()
+page_source = (root / 'framework/platform-contracts/src/main/java/com/lumira/platform/common/PlatformPageId.java').read_text()
 page_ids = dict(re.findall(r'^\s*([A-Z][A-Z0-9_]*)\("([^"]+)"', page_source, re.MULTILINE))
-operation_source = (root / 'backend/src/main/java/com/lumira/platform/common/PlatformOperation.java').read_text()
+operation_source = (root / 'framework/platform-contracts/src/main/java/com/lumira/platform/common/PlatformOperation.java').read_text()
 operation_permissions = {
     name: f'platform:{page_ids[page]}:{action}'
     for name, page, action in re.findall(

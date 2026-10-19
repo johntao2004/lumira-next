@@ -31,7 +31,17 @@ public class AiConversationShareController {
     @PostMapping("/api/platform/ai/shares")
     @ResponseStatus(HttpStatus.CREATED)
     public AiConversationShareService.CreateResult create(
-            @BoundedBody(maxBytes = 4 * 1024 * 1024, errorCode = "aiShareTooLarge") @RequestBody
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                            content =
+                                    @io.swagger.v3.oas.annotations.media.Content(
+                                            mediaType = "application/json",
+                                            schema =
+                                                    @io.swagger.v3.oas.annotations.media.Schema(
+                                                            implementation =
+                                                                    AiConversationShareService
+                                                                            .ShareWrite.class)))
+                    @BoundedBody(maxBytes = 4 * 1024 * 1024, errorCode = "aiShareTooLarge")
+                    @RequestBody
                     JsonNode input,
             Authentication auth,
             HttpServletResponse response) {
@@ -60,7 +70,17 @@ public class AiConversationShareController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void update(
             @PathVariable UUID id,
-            @BoundedBody(maxBytes = 4 * 1024 * 1024, errorCode = "aiShareTooLarge") @RequestBody
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                            content =
+                                    @io.swagger.v3.oas.annotations.media.Content(
+                                            mediaType = "application/json",
+                                            schema =
+                                                    @io.swagger.v3.oas.annotations.media.Schema(
+                                                            implementation =
+                                                                    AiConversationShareService
+                                                                            .ShareWrite.class)))
+                    @BoundedBody(maxBytes = 4 * 1024 * 1024, errorCode = "aiShareTooLarge")
+                    @RequestBody
                     JsonNode input,
             Authentication auth,
             HttpServletResponse response) {

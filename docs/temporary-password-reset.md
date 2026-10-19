@@ -45,3 +45,8 @@ with the standard `LoginResponse`; successful completion rotates the session ID 
 saves the authenticated context. CAPTCHA, MFA, enrollment, or recovery requirements continue through
 their existing unauthenticated states. The administrator does not need to enter the new password
 again. Older responses without `passwordChangeReason` continue to use the temporary-reset wording.
+
+A password an administrator enters directly when creating a user does not set a
+first-login password-change requirement. The account can complete its first login
+with that password, subject to the configured authentication policy. System-generated
+temporary resets and the bootstrap administrator still require a password change.

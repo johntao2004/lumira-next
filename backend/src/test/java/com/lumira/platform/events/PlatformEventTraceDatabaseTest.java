@@ -65,6 +65,131 @@ class PlatformEventTraceDatabaseTest {
                         + " NOT NULL)");
     }
 
+    @Test
+    void concurrentShardAcknowledgementsAccumulateWithoutLostUpdates() throws Exception {
+        UUID business = UUID.randomUUID(), operation = UUID.randomUUID(), audit = UUID.randomUUID();
+        insertAudit(audit, business, "trace.concurrent");
+        recordOperation(
+                operation,
+                "trace.concurrent",
+                "BROADCAST",
+                business,
+                null,
+                audit,
+                2,
+                5,
+                "EVENTS_PENDING");
+        append(operation, "concurrent-a", "a");
+        append(operation, "concurrent-b", "b");
+        var claimA = transaction.execute(status -> store.claim().orElseThrow());
+        var claimB = transaction.execute(status -> store.claim().orElseThrow());
+        assertNotEquals(claimA.id(), claimB.id());
+        var first = new java.util.concurrent.CompletableFuture<Integer>();
+        var second = new java.util.concurrent.CompletableFuture<Integer>();
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var a =
+                    pool.submit(
+                            () -> {
+                                try {
+                                    transaction.executeWithoutResult(
+                                            status -> {
+                                                jdbc.execute("SET LOCAL lock_timeout='10s'");
+                                                int pidA =
+                                                        jdbc.queryForObject(
+                                                                "SELECT pg_backend_pid()",
+                                                                Integer.class);
+                                                assertTrue(
+                                                        store.deliver(
+                                                                claimA,
+                                                                DurableEventConsumerPort
+                                                                        .ConsumptionResult.of(
+                                                                        2,
+                                                                        1,
+                                                                        Map.of(
+                                                                                "RECIPIENT_INACTIVE",
+                                                                                1),
+                                                                        "PARTIAL")));
+                                                first.complete(pidA);
+                                                int pidB =
+                                                        second.orTimeout(
+                                                                        5,
+                                                                        java.util.concurrent
+                                                                                .TimeUnit.SECONDS)
+                                                                .join();
+                                                long deadline =
+                                                        System.nanoTime()
+                                                                + java.util.concurrent.TimeUnit
+                                                                        .SECONDS
+                                                                        .toNanos(5);
+                                                boolean blocked = false;
+                                                while (System.nanoTime() < deadline) {
+                                                    if (Boolean.TRUE.equals(
+                                                            jdbc.queryForObject(
+                                                                    "SELECT CAST(? AS integer) = ANY(pg_blocking_pids(CAST(? AS integer)))",
+                                                                    Boolean.class,
+                                                                    pidA,
+                                                                    pidB))) {
+                                                        blocked = true;
+                                                        break;
+                                                    }
+                                                    java.util.concurrent.locks.LockSupport
+                                                            .parkNanos(
+                                                                    java.util.concurrent.TimeUnit
+                                                                            .MILLISECONDS
+                                                                            .toNanos(10));
+                                                }
+                                                assertTrue(
+                                                        blocked,
+                                                        "Second delivery must actually wait on first transaction");
+                                            });
+                                } catch (RuntimeException | Error failure) {
+                                    first.completeExceptionally(failure);
+                                    throw failure;
+                                }
+                            });
+            var b =
+                    pool.submit(
+                            () -> {
+                                int pidA =
+                                        first.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                                                .join();
+                                transaction.executeWithoutResult(
+                                        status -> {
+                                            jdbc.execute("SET LOCAL lock_timeout='10s'");
+                                            int pidB =
+                                                    jdbc.queryForObject(
+                                                            "SELECT pg_backend_pid()",
+                                                            Integer.class);
+                                            assertNotEquals(pidA, pidB);
+                                            second.complete(pidB);
+                                            assertTrue(
+                                                    store.deliver(
+                                                            claimB,
+                                                            DurableEventConsumerPort
+                                                                    .ConsumptionResult.of(
+                                                                    3,
+                                                                    1,
+                                                                    Map.of("DUPLICATE", 2),
+                                                                    "PARTIAL")));
+                                        });
+                            });
+            a.get(20, java.util.concurrent.TimeUnit.SECONDS);
+            b.get(20, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(20, java.util.concurrent.TimeUnit.SECONDS));
+        }
+        var result = query.operation(ACTOR, audit, 1, 20).operation();
+        assertEquals(2, result.completedEventCount());
+        assertTrue(result.result().known());
+        assertEquals(2, result.result().inboxCreated());
+        assertEquals(3, result.result().inboxSkipped());
+        assertEquals(
+                Map.of("RECIPIENT_INACTIVE", 1, "DUPLICATE", 2), result.result().skippedByReason());
+        assertEquals("PARTIAL", result.outcomeCode());
+    }
+
     @AfterEach
     void cleanup() {
         if (admin != null && schema != null)

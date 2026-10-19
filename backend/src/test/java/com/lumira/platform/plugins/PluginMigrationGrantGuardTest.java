@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
-import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,8 +22,7 @@ class PluginMigrationGrantGuardTest {
             for (Path sql :
                     files.filter(path -> path.getFileName().toString().endsWith(".sql")).toList()) {
                 byte[] bytes = Files.readAllBytes(sql);
-                if (PluginMigrationGrantGuard.mutatesCoreGrantTables(
-                        Files.readString(sql)))
+                if (PluginMigrationGrantGuard.mutatesCoreGrantTables(Files.readString(sql)))
                     mutating.add(PluginMigrationGrantGuard.sha256(bytes));
                 PluginMigrationGrantGuard.rejectUntrustedMutations(sql.getParent());
             }

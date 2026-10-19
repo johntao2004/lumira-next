@@ -1,3 +1,8 @@
+/**
+ * 从授权、有效角色、数据范围及组织关系生成修订值，并在存在子树范围时纳入组织树，使可见范围变化也能触发识别。 Builds an authorization revision from
+ * grants, active roles, scopes and memberships, including the organization tree for subtree grants
+ * so visibility changes also invalidate the revision.
+ */
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.AuthorizationRevision;

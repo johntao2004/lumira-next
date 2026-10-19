@@ -1,3 +1,7 @@
+/**
+ * 类型检查复用已登记运行中的预览生成文件，未运行时才执行 Umi setup，避免清空 .umi 而破坏开发预览。
+ * Reuse generated files from a registered running preview during type checking and run Umi setup only when it is stopped, avoiding disruption from clearing .umi.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -31,6 +35,7 @@ if (!webRunning) {
 } else if (!existsSync(path.join(web, "src/.umi/exports.ts"))) {
   throw new Error("The running preview has not generated its Umi types yet. Retry once the preview is ready.");
 }
+// max setup 会先删除再生成 .umi；运行中的开发服务器已维护这些文件，类型检查应复用它们。
 // max setup removes .umi before regenerating it. The running development
 // server already maintains these files, so reuse them during type checking.
 run("typescript/bin/tsc", ["--noEmit"]);

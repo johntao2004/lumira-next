@@ -1,3 +1,7 @@
+/**
+ * 维护模块依赖顺序和插件存活状态，拒绝重名、循环依赖及核心模块对可停用模块的依赖。 Tracks module dependency order and plugin liveness,
+ * rejecting duplicate IDs, cycles and core-module dependencies on disableable modules.
+ */
 package com.lumira.platform.modules;
 
 import java.util.*;

@@ -1,3 +1,7 @@
+/**
+ * 新文件写入 PostgreSQL，旧文件按元数据路由至本地存储，并复核迁移切换竞态以免误报文件丢失。 Writes new files to PostgreSQL and routes
+ * legacy files by metadata, rechecking migration races to avoid falsely reporting missing content.
+ */
 package com.lumira.platform.files;
 
 import java.io.IOException;
@@ -5,7 +9,10 @@ import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.util.UUID;
 
-/** Writes new objects to PostgreSQL and routes legacy local objects until they are migrated. */
+/**
+ * 新对象写入 PostgreSQL；旧本地对象在迁移完成前继续路由至原存储。 Writes new objects to PostgreSQL and routes legacy local
+ * objects until they are migrated.
+ */
 public final class RoutedBlobStore implements BlobStore {
     private final FileRepository files;
     private final LocalBlobStore local;
@@ -32,6 +39,7 @@ public final class RoutedBlobStore implements BlobStore {
         try {
             return local.open(key);
         } catch (NoSuchFileException missingLocalFile) {
+            // 迁移可能在这两次调用之间切换元数据行并移除本地路径。
             // Migration may switch the metadata row and unlink the local path between these calls.
             if (files.storageBackend(key).filter("postgres"::equals).isPresent())
                 return postgres.open(key);
