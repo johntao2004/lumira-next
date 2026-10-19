@@ -8,7 +8,7 @@ RUN corepack enable pnpm && corepack prepare pnpm@10.33.0 --activate
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends unzip zip \
+    && apt-get install --yes --no-install-recommends python3 unzip zip \
     && rm -rf /var/lib/apt/lists/*
 RUN ./backend/mvnw -f pom.xml -pl backend -am -B -DskipTests package
 RUN pnpm plugins:build --no-host

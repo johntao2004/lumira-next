@@ -119,6 +119,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify:dependency-patches
       - run: pnpm verify:pnpm-audit
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+      # 先缓存解析后的依赖，避免扫描器并行请求 Maven Central 触发限流。
+      # Cache resolved dependencies before scanning to avoid burst requests to Maven Central.
+      - name: Populate Maven dependency cache
+        run: |
+          ./backend/mvnw -f pom.xml -B -DskipTests install
+          ./backend/mvnw -f examples/independent-notes/pom.xml -B dependency:resolve
       - name: Scan lockfiles and pom for known vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -131,7 +142,7 @@ jobs:
           exit-code: "0"
           format: json
           list-all-pkgs: true
-          skip-dirs: .runtime
+          skip-dirs: .runtime,**/target
           output: ${{ runner.temp }}/trivy-fs-report.json
       - name: Gate vulnerability findings against verified source patches
         run: node scripts/verify-trivy-report.mjs "${{ runner.temp }}/trivy-fs-report.json"

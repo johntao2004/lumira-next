@@ -32,3 +32,11 @@ test('independent application does not use repository-relative parent or system 
   assert.match(pom, /platform-contracts/);
   assert.doesNotMatch(pom, /platform-server|systemPath|build-helper|backend\/target/);
 });
+
+// 镜像构建必须安装插件边界检查依赖，不能仅在开发机上通过。
+// Image builds must install the plugin boundary checker dependency, not rely on a developer machine.
+test('server build image includes Python for plugin boundary checks', () => {
+  const dockerfile = readFileSync('deploy/server.Dockerfile', 'utf8');
+  assert.match(dockerfile, /apt-get install[^\n]*python3/);
+  assert.ok(dockerfile.indexOf('python3') < dockerfile.indexOf('RUN pnpm plugins:build'));
+});
