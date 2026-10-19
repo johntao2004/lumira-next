@@ -74,3 +74,13 @@ test('API documentation is in operations and requires its own global page-access
     .flatMap(group => group.pages.map(page => page.id));
   assert.ok(globalAuditPages.includes('api-docs'));
 });
+
+test('Swagger uses the official core build with shared React rather than an embedded React bundle', async () => {
+  const { readFileSync } = await import('node:fs');
+  const config = readFileSync(new URL('../apps/web/.umirc.ts', import.meta.url), 'utf8');
+  assert.match(config, /"swagger-ui\$": realpathSync\(resolve\(process\.cwd\(\), "node_modules\/swagger-ui\/dist\/swagger-ui\.js"\)\)/);
+  const core = readFileSync(new URL('../apps/web/node_modules/swagger-ui/dist/swagger-ui.js', import.meta.url), 'utf8');
+  assert.match(core, /require\("react"\)/);
+  assert.match(core, /require\("lodash\/memoize"\)/);
+  assert.doesNotMatch(core, /ReactCurrentDispatcher/);
+});
