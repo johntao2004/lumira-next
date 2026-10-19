@@ -32,11 +32,13 @@ export async function verifyExtraComponents({page,admin,member,write,record}) {
     const form=page.locator('form.settings-form');
     const enabled=form.getByRole('switch',{name:'启用邮件服务',exact:true});
     if(!await enabled.isChecked())await enabled.click(); // 仅改未保存界面；unsaved UI only
-    const port=form.getByRole('spinbutton',{name:'端口',exact:true});
+    const port=form.locator('input[id$="_data_port"]');
+    await expect(port).toHaveCount(1);await expect(port).toHaveAttribute('role','spinbutton');
+    assert.equal(await port.evaluate(input=>[...input.labels].some(label=>label.htmlFor===input.id&&label.textContent.trim()==='端口')),true);
     // 先校验全新配置的标准端口，不能预填预期值伪造联动。
     // Fresh CI defaults must be standard; do not overwrite baseline before testing inference.
     assert.ok(['465','587'].includes(await port.inputValue()));
-    const security=form.getByRole('combobox',{name:'连接加密',exact:true});
+    const security=form.getByLabel('连接加密',{exact:true});
     await choose(page,security,'TLS');await expect(port).toHaveValue('465');
     await choose(page,security,'STARTTLS');await expect(port).toHaveValue('587');
     await port.fill('2525');await choose(page,security,'TLS');await expect(port).toHaveValue('2525');
@@ -56,7 +58,7 @@ export async function verifyExtraComponents({page,admin,member,write,record}) {
       // 最小暂存字节不提交给导入或渲染服务。
       // Minimal staged bytes, never submitted to import/render services.
       const pick=name=>input.setInputFiles({name:`${name}.${item.ext}`,mimeType:'application/octet-stream',buffer:Buffer.from('synthetic staged fixture')});
-      const name=f.getByRole('textbox',{name:item.name,exact:true});
+      const name=f.getByLabel(item.name,{exact:true});
       await pick('QA_first');await expect(name).toHaveValue('QA_first');
       await pick('QA_second');await expect(name).toHaveValue('QA_second');
       await name.fill('Explicit label');await pick('QA_third');await expect(name).toHaveValue('Explicit label');
@@ -175,7 +177,7 @@ export async function verifySettingsDraftConflict({page,admin,write,record}) {
     const form=page.locator('form.captcha-settings-form');
     const enabled=form.getByRole('switch',{name:'启用 CAPTCHA 服务',exact:true});
     await enabled.click();
-    const type=form.getByRole('combobox',{name:'验证类型',exact:true});
+    const type=form.getByLabel('验证类型',{exact:true});
     await choose(page,type,'滑块');await choose(page,type,'图形文字');
     // 并发真实 HTTP 更新保留禁用状态和全部动作策略。
     // Real concurrent HTTP update, preserving disabled service and all existing action policies.
