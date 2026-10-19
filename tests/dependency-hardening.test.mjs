@@ -275,3 +275,17 @@ test('Caddy build retries are bounded and preserve module verification', () => {
   assert.match(image, /test -x \/out\/caddy/);
   assert.doesNotMatch(image, /GOSUMDB=off|GOINSECURE|GONOSUMDB=\*/);
 });
+
+// 前置镜像扫描产生的缓存不能经 COPY . . 放大构建磁盘使用。
+// Early image-scanner caches must not amplify build storage through COPY . . .
+test('image contexts exclude scanner caches and free completed builders before Office', () => {
+  const ignore = readFileSync(new URL('../.dockerignore', import.meta.url), 'utf8');
+  const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  assert.match(ignore, /^\.cache$/m);
+  assert.match(ignore, /^\*\*\/\.cache$/m);
+  assert.match(ignore, /^\.runtime$/m);
+  assert.match(ignore, /^\*\*\/__pycache__$/m);
+  assert.doesNotMatch(ignore, /^(?:framework|plugins|backend|apps)(?:\/)?$/m);
+  assert.ok(workflow.indexOf('name: Reclaim completed build cache before Office') < workflow.indexOf('docker build -f deploy/office-worker.Dockerfile'));
+  assert.doesNotMatch(workflow, /docker (?:system|volume) prune/);
+});

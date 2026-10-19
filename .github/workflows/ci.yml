@@ -153,6 +153,12 @@ jobs:
       - run: docker build -f deploy/web.Dockerfile --target edge -t lumira-edge:ci .
       - name: Validate edge routing configuration
         run: docker run --rm lumira-edge:ci caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      # Office 构建前释放已结束的构建缓存，保留已标记的交付镜像。
+      # Free completed build caches before Office while preserving tagged release images.
+      - name: Reclaim completed build cache before Office
+        run: |
+          docker builder prune --all --force
+          df -h
       - run: docker build -f deploy/office-worker.Dockerfile -t lumira-office-worker:ci .
       # 临时构建层已不再需要；保留五个已标记镜像，为漏洞数据库腾出空间。
       # Discard temporary build layers, keeping all five tagged images and space for vulnerability databases.
