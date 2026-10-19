@@ -19,13 +19,15 @@ env={'LUMIRA_DB_BOOTSTRAP_PASSWORD':secrets.token_urlsafe(32),'LUMIRA_DB_PASSWOR
 (root/'private.json').write_text(json.dumps({'runId':os.environ['GITHUB_RUN_ID'],'mode':os.environ['LUMIRA_BROWSER_CI_MODE'],'bootstrapPassword':password}))
 PY
 fixed=true
-[[ $LUMIRA_BROWSER_CI_MODE == dynamic ]] && fixed=false
+debug=false
+if [[ $LUMIRA_BROWSER_CI_MODE == dynamic ]]; then fixed=false; debug=true; fi
 cat > "$work/compose.override.yml" <<YAML
 services:
   server:
     image: lumira-server:ci
     environment:
       LUMIRA_PLUGINS_FIXED_GRAPH: "$fixed"
+      LUMIRA_SMS_DEBUG_ENABLED: "$debug"
   office-worker:
     image: lumira-office-worker:ci
   web:

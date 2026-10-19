@@ -1,7 +1,10 @@
+/** 编辑验证码策略并保留冲突草稿。
+ * Edit CAPTCHA policy while preserving conflicting drafts. */
 "use client";
 
 import { useEffect, useState } from "react";
-import { Alert, Select, Space, Spin, Switch, Tag, Typography } from "antd";
+import { useSettingsDraft } from "@/platform/forms/use-settings-draft";
+import { Button, Popconfirm, Alert, Select, Space, Spin, Switch, Tag, Typography } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, mutate } from "@/platform/api/client";
 import type { CaptchaAction, CaptchaMode, CaptchaSettings, CaptchaSettingsData, CaptchaSettingsUpdate } from "@/platform/auth/api-types";
@@ -63,6 +66,7 @@ export function CaptchaPage({ canWrite }: { canWrite: boolean }) {
   const client = useQueryClient();
   const [form] = Form.useForm<CaptchaForm>();
   const [saved, setSaved] = useState(false);
+
   const query = useQuery({
     queryKey: ["settings", "captcha"],
     queryFn: ({ signal }) => api<CaptchaSettings>("/platform/settings/captcha", { signal }),
@@ -72,21 +76,29 @@ export function CaptchaPage({ canWrite }: { canWrite: boolean }) {
     onError: async key => { if (key === "staleRecord") await query.refetch(); },
   });
 
+  const { snapshot, revision, commit: setSnapshot, reload, operationSignal } = useSettingsDraft(query.data,
+    () => query.refetch({ throwOnError: true }), () => { form.resetFields(); setSaved(false); });
+  // 草稿与首次读到的版本绑定，后台刷新只更新状态提示。
+  // Bind drafts to their initial version; background refresh updates status only.
   useEffect(() => {
-    if (!query.data) return;
+    if (!snapshot) return;
     form.setFieldsValue({
-      data: { ...query.data.data, actions: completeActions(query.data.data.actions) },
+      data: { ...snapshot.data, actions: completeActions(snapshot.data.actions) },
     });
-  }, [form, query.data]);
+  }, [form, snapshot, revision]);
 
   async function save(values: CaptchaForm) {
-    if (!canWrite || !query.data) return;
+    if (!canWrite || !snapshot) return;
+    const signal = operationSignal();
+    if (signal.aborted) return;
     await action.run(async () => {
       const payload: CaptchaSettingsUpdate = {
-        version: query.data!.version,
+        version: snapshot.version,
         data: { ...values.data, provider: "LOCAL" },
       };
-      const next = await mutate<CaptchaSettings>("/platform/settings/captcha", "PUT", payload);
+      const next = await mutate<CaptchaSettings>("/platform/settings/captcha", "PUT", payload, signal);
+      if (signal.aborted) return;
+      setSnapshot(next);
       client.setQueryData(["settings", "captcha"], next);
       form.setFieldsValue({
         data: { ...next.data, actions: completeActions(next.data.actions) },
@@ -95,6 +107,7 @@ export function CaptchaPage({ canWrite }: { canWrite: boolean }) {
         client.invalidateQueries({ queryKey: ["auth-methods"] }),
         client.invalidateQueries({ queryKey: ["session"] }),
       ]);
+      if (signal.aborted) return;
       setSaved(true);
     });
   }
@@ -163,6 +176,9 @@ export function CaptchaPage({ canWrite }: { canWrite: boolean }) {
           </SettingsEnabledControls>
         </section>
       </div>
+      <Popconfirm title={t("reloadSettingsHint")} okText={t("reloadSettings")} cancelText={t("cancel")} onConfirm={() => action.run(reload)} disabled={action.pending}>
+        <Button disabled={action.pending}>{t("reloadSettings")}</Button>
+      </Popconfirm>
       <FeedbackBubble id="settings-captcha-error" content={action.error ? t(action.error) : undefined} />
       <FeedbackBubble kind="success" id="settings-captcha-saved" content={saved ? t("settingsSaved") : undefined} />
       <Space className="form-actions auth-config-actions" wrap>

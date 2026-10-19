@@ -27,6 +27,42 @@ class VerificationDebuggerServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
+    void hostTransportProbeReachesRealLoopbackReceiverWithoutCreatingOtp() throws Exception {
+        try (var resources = new TestResources()) {
+            var service =
+                    new VerificationDebuggerService(
+                            resources,
+                            new MockEnvironment().withProperty("LUMIRA_SMS_DEBUG_ENABLED", "true"),
+                            allowAllGuard());
+            resources.runScheduledTask();
+            var session = service.start("qa");
+            var request =
+                    HttpRequest.newBuilder(URI.create(session.endpoint()))
+                            .timeout(Duration.ofSeconds(5))
+                            .header("Authorization", "Bearer " + session.bearerToken())
+                            .header("Content-Type", "application/json")
+                            .POST(
+                                    HttpRequest.BodyPublishers.ofString(
+                                            mapper.writeValueAsString(
+                                                    Map.of(
+                                                            "to",
+                                                            "+15555550123",
+                                                            "sender",
+                                                            "LumiraDebug",
+                                                            "message",
+                                                            "Lumira local SMS transport test. No account code is included."))))
+                            .build();
+            var response = client.send(request, BodyHandlers.ofString());
+            assertEquals(202, response.statusCode());
+            assertEquals(true, mapper.readValue(response.body(), Map.class).get("accepted"));
+            var message = service.messages("qa").items().getFirst();
+            assertEquals("transport-test", message.provider());
+            assertEquals("", message.code());
+            assertEquals(0, service.messages("other").items().size());
+        }
+    }
+
+    @Test
     void directProviderEndpointsAndPrivateInvokeReturnProviderShapesAndStoreCallerCode()
             throws Exception {
         var resources = new TestResources();

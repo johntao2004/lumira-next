@@ -1,3 +1,5 @@
+/** 显示本地调试窗口及私有合成消息，不把传输探针当验证码。
+ * Display local debug windows and private synthetic messages without treating probes as OTPs. */
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -274,7 +276,9 @@ export function VerificationDebuggerPage({
     for (const item of safeMessages) {
       if (seenMessageIds.current.has(item.id)) continue;
       seenMessageIds.current.add(item.id);
-      arrived.push(item);
+      // 传输探针仅留在收件列表，不弹出空验证码。
+      // Transport probes stay in the inbox without opening an empty OTP dialog.
+      if (/^[0-9]{6}$/.test(item.code)) arrived.push(item);
     }
     if (arrived.length) updateCodeQueue(current => [...current, ...arrived]);
   }, [activeSession?.id, messages.data, safeMessages, updateCodeQueue]);
@@ -319,6 +323,7 @@ export function VerificationDebuggerPage({
         try {
           await mutate<void>(`${API_ROOT}/sessions`, "DELETE", undefined, signal);
         } catch {
+          // 失效窗口仍由服务端管理，并按短期 TTL 过期。
           // The invalid session remains server-owned and expires with its short TTL.
         }
         throw new Error("服务端返回的会话不符合固定测试号码或本地回环地址要求，已拒绝显示配置。");

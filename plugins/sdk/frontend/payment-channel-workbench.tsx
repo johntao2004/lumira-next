@@ -1,8 +1,11 @@
+/** 复用支付配置和订单界面，隔离供应商草稿与迟到响应。
+ * Share payment settings and order UI while isolating provider drafts and late responses. */
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { Alert, App, Button, Card, Input, InputNumber, Modal, QRCode, Space, Spin, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Input, InputNumber, Modal, QRCode, Popconfirm, Space, Spin, Select, Tag, Typography } from "antd";
+import { useSessionScope } from "@/platform/auth/use-session-scope";
 import { api, mutate } from "@/platform/api/client";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { FormDrawer } from "@/platform/components/form-drawer";
@@ -77,7 +80,8 @@ export type PaymentChannelMessages = Record<string, string> & {
 export type PaymentSettingField = {
   key: string;
   labelKey: string;
-  kind: "text" | "textarea" | "secret";
+  kind: "text" | "textarea" | "secret" | "select";
+  options?: readonly { value: string; labelKey: string }[];
   required?: boolean;
   maxLength?: number;
   helpKey?: string;
@@ -229,7 +233,7 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
     readOnlyPreview = false,
     subjectMaxLength = 127,
   } = props;
-  const { locale } = usePreferences();
+  const { locale, t } = usePreferences();
   const lang = (locale in translations ? locale : "en") as PaymentLocale;
   const messages = translations[lang] ?? translations.en;
   const text = (key: string) => messages[key] ?? messages.requestFailed;
@@ -239,6 +243,21 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
   const [request, setRequest] = useListRequest();
   const [settingsForm] = Form.useForm<Record<string, string>>();
   const [createForm] = Form.useForm<{ amountFen?: number; subject?: string }>();
+  const operationSignal = useSessionScope();
+  const currentProvider = useRef(providerId);
+  currentProvider.current = providerId;
+  const settingsSaving = useRef<symbol | null>(null);
+  const providerGeneration = useRef(0);
+  useEffect(() => {
+    providerGeneration.current += 1;
+    settingsSaving.current = null;
+    settingsForm.resetFields();
+    setSettingsSnapshot(null);
+    setSecretInputValues({});
+    setSettingsPending(false);
+    setSettingsError(null);
+  }, [providerId, settingsForm]);
+  const [settingsSnapshot, setSettingsSnapshot] = useState<{ owner: string; data: ProviderSettings } | null>(null);
   const [settingsPending, setSettingsPending] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [createPending, setCreatePending] = useState(false);
@@ -264,11 +283,21 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
     queryFn: ({ signal }) => api<ProviderSettings>(apiBase + "/settings", { signal }),
   });
 
+  // 首次加载绑定草稿版本；后台刷新不能覆盖用户输入或升级旧草稿版本。
+  // Bind the draft to its first snapshot; background refresh cannot overwrite input or rebase its version.
   useEffect(() => {
-    if (!settingsQuery.data) return;
+    if (!providerId || !canRead) {
+      settingsForm.resetFields();
+      setSettingsSnapshot(null);
+      setSecretInputValues({});
+      return;
+    }
+    if (!settingsQuery.data || settingsSnapshot?.owner === providerId) return;
+    settingsForm.resetFields();
     settingsForm.setFieldsValue(settingsQuery.data.values ?? {});
+    setSettingsSnapshot({ owner: providerId, data: settingsQuery.data });
     setSecretInputValues({});
-  }, [settingsForm, settingsQuery.data]);
+  }, [canRead, providerId, settingsForm, settingsQuery.data, settingsSnapshot?.owner]);
 
   useEffect(() => {
     if (section !== "orders") return;
@@ -301,8 +330,10 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
   }, [ordersQuery.data, qrOrder]);
 
   async function saveSettings(values: Record<string, string>) {
-    const current = settingsQuery.data;
-    if (!current || !providerId || !canUpdateSettings || !mayWrite) return;
+    const signal = operationSignal();
+    const owner = providerId;
+    const current = settingsSnapshot?.owner === owner ? settingsSnapshot.data : null;
+    if (!current || !owner || !canUpdateSettings || !mayWrite || signal.aborted || settingsSaving.current) return;
     const missingSecret = fields.some(field =>
       field.kind === "secret"
       && field.required
@@ -312,6 +343,10 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
       setSettingsError(text("requestFailed"));
       return;
     }
+    const attempt = Symbol(owner);
+    const generation = providerGeneration.current;
+    const isCurrent = () => !signal.aborted && currentProvider.current === owner && providerGeneration.current === generation;
+    settingsSaving.current = attempt;
     setSettingsPending(true);
     setSettingsError(null);
     try {
@@ -323,15 +358,47 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
         secrets: Object.fromEntries(secretFields
           .map(field => [field.key, secretInputValues[field.key] ?? ""] as const)
           .filter(([, value]) => value.trim() !== "")),
-      });
+      }, signal);
+      // 换号、切换供应商或卸载后的迟到响应不得影响新表单。
+      // Ignore late responses after account changes, provider switches or unmounting.
+      if (!isCurrent()) return;
+      settingsForm.resetFields();
+      settingsForm.setFieldsValue(saved.values ?? {});
+      setSettingsSnapshot({ owner, data: saved });
       setSecretInputValues({});
-      await client.setQueryData(paymentSettingsQueryKey(providerId), saved);
-      await client.invalidateQueries({ queryKey: paymentSettingsQueryKey(providerId) });
-      void message.success(text("saved"));
+      client.setQueryData(paymentSettingsQueryKey(owner), saved);
+      await client.invalidateQueries({ queryKey: paymentSettingsQueryKey(owner) });
+      if (isCurrent()) void message.success(text("saved"));
     } catch {
-      setSettingsError(text("requestFailed"));
+      if (isCurrent()) setSettingsError(text("requestFailed"));
     } finally {
-      setSettingsPending(false);
+      if (settingsSaving.current === attempt) settingsSaving.current = null;
+      if (isCurrent()) setSettingsPending(false);
+    }
+  }
+
+  async function reloadSettings() {
+    const signal = operationSignal();
+    const owner = providerId;
+    const generation = providerGeneration.current;
+    if (!owner || signal.aborted || settingsSaving.current) return;
+    const attempt = Symbol(owner);
+    settingsSaving.current = attempt;
+    setSettingsPending(true);
+    setSettingsError(null);
+    try {
+      const fresh = await api<ProviderSettings>(apiBase + "/settings", { signal });
+      if (signal.aborted || currentProvider.current !== owner || providerGeneration.current !== generation) return;
+      settingsForm.resetFields();
+      settingsForm.setFieldsValue(fresh.values ?? {});
+      setSettingsSnapshot({ owner, data: fresh });
+      setSecretInputValues({});
+      client.setQueryData(paymentSettingsQueryKey(owner), fresh);
+    } catch {
+      if (!signal.aborted && currentProvider.current === owner && providerGeneration.current === generation) setSettingsError(text("requestFailed"));
+    } finally {
+      if (settingsSaving.current === attempt) settingsSaving.current = null;
+      if (!signal.aborted && currentProvider.current === owner && providerGeneration.current === generation) setSettingsPending(false);
     }
   }
 
@@ -522,18 +589,22 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
   if (section === "settings") {
     if (!providerId) return <Alert type="error" showIcon message={text("requestFailed")} />;
     if (!canRead) return <Alert type="warning" showIcon message={text("forbidden")} />;
-    const secretConfigured = settingsQuery.data?.secrets ?? {};
+    const snapshot = settingsSnapshot?.owner === providerId ? settingsSnapshot.data : null;
+    const secretConfigured = snapshot?.secrets ?? {};
     return (
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
-        <Card title={text("settingsTitle")} extra={settingsQuery.data && (
-          <Tag color={settingsQuery.data.configured ? "success" : "warning"}>
-            {settingsQuery.data.configured ? text("ready") : text("notReady")}
+        <Card title={text("settingsTitle")} extra={snapshot && (
+          <Tag color={snapshot.configured ? "success" : "warning"}>
+            {snapshot.configured ? text("ready") : text("notReady")}
           </Tag>
         )}>
+          <Popconfirm title={t("reloadSettingsHint")} okText={t("reloadSettings")} cancelText={t("cancel")} onConfirm={reloadSettings} disabled={settingsPending}>
+            <Button disabled={settingsPending}>{t("reloadSettings")}</Button>
+          </Popconfirm>
           <FeedbackBubble id="payment-settings-error" content={settingsError} />
           {settingsQuery.isLoading ? <Spin /> : null}
           {settingsQuery.error ? <Alert type="error" showIcon message={text("loadFailed")} action={<Button onClick={() => void settingsQuery.refetch()}>{text("query")}</Button>} /> : null}
-          {!settingsQuery.error && settingsQuery.data && (
+          {!settingsQuery.error && snapshot && (
             <Form
               form={settingsForm}
               layout="vertical"
@@ -561,6 +632,8 @@ export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
                         placeholder={configured ? text("secretKeepHint") : text("secretNotConfigured")}
                         onChange={event => setSecretInputValues(current => ({ ...current, [field.key]: event.target.value }))}
                       />
+                    ) : field.kind === "select" ? (
+                      <Select options={field.options?.map(option => ({ value: option.value, label: text(option.labelKey) }))} />
                     ) : field.kind === "textarea" ? (
                       <Input.TextArea maxLength={field.maxLength} autoSize={{ minRows: 4, maxRows: 10 }} />
                     ) : (

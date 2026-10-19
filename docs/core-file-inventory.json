@@ -662,5 +662,53 @@
   "scripts/ci-reliability-load.mjs": {
     "responsibility": "在严格绑定的独立CI项目执行有界混合身份负载及服务/数据库故障，记录资源并强制恢复。\nRuns bounded mixed-identity load and faults only in the bound disposable CI project, records resources and restores services.",
     "category": "build-boundary"
+  },
+  "apps/web/src/platform/forms/inferred-defaults.ts": {
+    "responsibility": "从明确上下文补充默认值并保留手工编辑。\nSuggest defaults from explicit context while preserving manual edits.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/platform/forms/reload-draft.ts": {
+    "responsibility": "确认重载成功后才丢弃编辑草稿。\nDiscard an editing draft only after a confirmed successful reload.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/platform/forms/use-settings-draft.ts": {
+    "responsibility": "固定草稿与版本，只由保存或确认重载替换。\nPin draft values and version until save or confirmed reload.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/settings/wechat-page.tsx": {
+    "responsibility": "编辑微信配置快照与显式密钥动作。\nEdit WeChat configuration snapshots and explicit secret actions.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/settings/captcha-page.tsx": {
+    "responsibility": "编辑验证码策略并保留冲突草稿。\nEdit CAPTCHA policy while preserving conflicting drafts.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/settings/registration-page.tsx": {
+    "responsibility": "编辑注册策略及授权范围内的默认角色。\nEdit registration policy and permitted default-role assignments.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/settings/smtp-page.tsx": {
+    "responsibility": "从已保存配置编辑 SMTP，并谨慎联动标准端口。\nEdit saved SMTP settings and conservatively suggest standard ports.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/settings/sms-page.tsx": {
+    "responsibility": "编辑短信供应商配置，保留用户自定端点和地区。\nEdit SMS provider settings while preserving custom endpoints and regions.",
+    "category": "frontend-core"
+  },
+  "apps/web/src/features/account/profile-values-drawer.tsx": {
+    "responsibility": "按打开周期固定自定义资料草稿与字段版本。\nPin custom profile drafts and schema versions for each opening.",
+    "category": "frontend-core"
+  },
+  "plugins/sdk/frontend/payment-channel-workbench.tsx": {
+    "responsibility": "复用支付配置和订单界面，隔离供应商草稿与迟到响应。\nShare payment settings and order UI while isolating provider drafts and late responses.",
+    "category": "frontend-core"
+  },
+  "plugins/sdk/examples/verification-debugger/frontend/debugger-page.tsx": {
+    "responsibility": "显示本地调试窗口及私有合成消息，不把传输探针当验证码。\nDisplay local debug windows and private synthetic messages without treating probes as OTPs.",
+    "category": "frontend-core"
+  },
+  "scripts/ci-browser-extra-components.mjs": {
+    "responsibility": "隔离 CI 组件及短信验证。\nIsolated CI component and SMS verification.",
+    "category": "verification"
   }
 }

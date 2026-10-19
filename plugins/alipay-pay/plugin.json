@@ -2,7 +2,7 @@
   "formatVersion": 2,
   "id": "alipay-pay",
   "name": "支付宝扫码支付",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "sdkVersion": "1",
   "entryClass": "com.lumira.plugins.alipaypay.LumiraPlugin",
   "backend": "backend/plugin.jar",
@@ -14,7 +14,7 @@
     },
     {
       "id": "payment-core",
-      "version": "1.0.6"
+      "version": "1.0.7"
     }
   ],
   "permissions": [

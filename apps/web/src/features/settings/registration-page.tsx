@@ -1,8 +1,11 @@
+/** 编辑注册策略及授权范围内的默认角色。
+ * Edit registration policy and permitted default-role assignments. */
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSettingsDraft } from "@/platform/forms/use-settings-draft";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Checkbox, Input, Pagination, Select, Space, Spin, Switch, Tag, Typography } from "antd";
+import { Button, Popconfirm, Alert, Checkbox, Input, Pagination, Select, Space, Spin, Switch, Tag, Typography } from "antd";
 import { api, mutate } from "@/platform/api/client";
 import { listRequestParams, type PageResult } from "@/platform/api/pagination";
 import { AsyncButton } from "@/platform/components/async-button";
@@ -72,6 +75,7 @@ export function RegistrationPage({ canWrite, canReadRoles, canAssignDefaultRole 
   const [rolePage, setRolePage] = useState(1);
   const [rolePageSize, setRolePageSize] = useState(20);
   const [saved, setSaved] = useState(false);
+
   const query = useQuery({
     queryKey: ["settings", "registration"],
     queryFn: ({ signal }) => api<RegistrationSettings>("/platform/settings/registration", { signal }),
@@ -92,30 +96,39 @@ export function RegistrationPage({ canWrite, canReadRoles, canAssignDefaultRole 
   const channels = Form.useWatch("channels", form) ?? [];
   const selectedRoleId = Form.useWatch("defaultRoleId", form);
 
+  const { snapshot, revision, commit: setSnapshot, reload, operationSignal } = useSettingsDraft(query.data,
+    () => query.refetch({ throwOnError: true }), () => { form.resetFields(); setSaved(false); });
+  // 草稿与首次读到的版本绑定，后台刷新只更新状态提示。
+  // Bind drafts to their initial version; background refresh updates status only.
   useEffect(() => {
-    if (!query.data) return;
+    if (!snapshot) return;
     form.setFieldsValue({
-      enabled: query.data.enabled,
-      channels: query.data.channels,
-      defaultRoleId: query.data.defaultRoleId,
+      enabled: snapshot.enabled,
+      channels: snapshot.channels,
+      defaultRoleId: snapshot.defaultRoleId,
     });
-  }, [form, query.data]);
+  }, [form, snapshot, revision]);
 
   async function save(values: RegistrationSettingsForm) {
-    if (!canWrite || !query.data) return;
+    if (!canWrite || !snapshot) return;
+    const signal = operationSignal();
+    if (signal.aborted) return;
     await action.run(async () => {
       const result = await mutate<RegistrationSettings>("/platform/settings/registration", "PUT", {
-        version: query.data!.version,
+        version: snapshot.version,
         enabled: values.enabled,
         channels: values.channels ?? [],
-        defaultRoleId: canAssignDefaultRole ? (values.defaultRoleId || null) : query.data!.defaultRoleId,
-      });
+        defaultRoleId: canAssignDefaultRole ? (values.defaultRoleId || null) : snapshot.defaultRoleId,
+      }, signal);
+      if (signal.aborted) return;
+      setSnapshot(result);
       client.setQueryData(["settings", "registration"], result);
       form.setFieldsValue({
         enabled: result.enabled,
         channels: result.channels,
         defaultRoleId: result.defaultRoleId,
       });
+      if (signal.aborted) return;
       setSaved(true);
     });
   }
@@ -255,6 +268,9 @@ export function RegistrationPage({ canWrite, canReadRoles, canAssignDefaultRole 
         </section>
       </div>
 
+      <Popconfirm title={t("reloadSettingsHint")} okText={t("reloadSettings")} cancelText={t("cancel")} onConfirm={() => action.run(reload)} disabled={action.pending}>
+        <Button disabled={action.pending}>{t("reloadSettings")}</Button>
+      </Popconfirm>
       <FeedbackBubble id="registration-settings-error" content={action.error ? t(action.error) : undefined} />
       <FeedbackBubble kind="success" id="registration-settings-saved" content={saved ? t("registrationSaved") : undefined} />
       <Space className="form-actions auth-config-actions" wrap>

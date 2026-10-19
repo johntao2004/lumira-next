@@ -2,6 +2,7 @@
  * Verify real login and permission components in disposable CI, never saved or production data. */
 import assert from 'node:assert/strict';
 import { verifyReliabilityLoad } from './ci-reliability-load.mjs';
+import { verifyExtraComponents, verifyRegistrationSameValueReload, verifySettingsDraftConflict, installDebuggerExample, verifyDebuggerQueue } from './ci-browser-extra-components.mjs';
 import { verifyDynamicPlugins } from './ci-browser-dynamic-plugins.mjs';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -193,6 +194,10 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   assert.equal((await write(member,'/api/platform/modules','GET')).status(),403);
   await record('role removal removes UI and direct API access after refresh',memberPage);
   if(config.mode === 'immutable') {
+    stage='extra-components-and-draft';currentPage=page;
+    await verifyExtraComponents({page,admin,member,write,record});
+    await verifySettingsDraftConflict({page,admin,write,record});
+    await verifyRegistrationSameValueReload({page,admin,write,record});
     stage='bounded-load-and-fault-recovery';currentPage=page;
     await admin.tracing.stop({path:`${work}/private-trace-before-load-admin.zip`});
     await member.tracing.stop({path:`${work}/private-trace-before-load-member.zip`});
@@ -207,6 +212,10 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   if(config.mode === 'dynamic') {
     stage='dynamic-plugin-lifecycle';currentPage=page;
     await verifyDynamicPlugins({admin,page,member,write,record});
+    stage='verification-debugger-otp';
+    const debuggerManifest=JSON.parse(readFileSync('plugins/sdk/examples/verification-debugger/plugin.json','utf8'));
+    await installDebuggerExample({page,admin,write,archivePath:`plugins/sdk/examples/verification-debugger/dist/verification-debugger-${debuggerManifest.version}.lumira-plugin.zip`});
+    await verifyDebuggerQueue({page,admin,member,write,record,adminPassword});
   }
   stage='session-revocation';
   assert.equal((await write(admin,`/api/platform/online-users/user/${user.id}`,'DELETE')).status(),200);
@@ -236,9 +245,9 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   // 不序列化可能含凭据的错误正文、请求、HTML 或 trace。
   // Do not serialize arbitrary errors, request bodies, HTML or network traces containing credentials.
   writeFileSync(`${out}/results.json`,JSON.stringify({status:'failed',stage,checks,errorType:error.name,actualNumber:typeof error.actual==='number'?error.actual:undefined,expectedNumber:typeof error.expected==='number'?error.expected:undefined,sourceLocation:error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/)?.[0]},null,2));
-  if(currentPage) await currentPage.screenshot({path:`${out}/failure.png`,fullPage:true,mask:[currentPage.locator('input'),currentPage.locator('textarea')]}).catch(()=>{});
+  if(currentPage) await currentPage.screenshot({path:`${out}/failure.png`,fullPage:true,mask:[currentPage.locator('input'),currentPage.locator('textarea'),currentPage.locator('.verification-debugger-page'),currentPage.getByRole('dialog',{name:'收到本地测试验证码',exact:true})]}).catch(()=>{});
   for(const [index,failedPage] of contexts.flatMap(ctx=>ctx.pages()).entries()) {
-    await failedPage.screenshot({path:`${out}/failure-page-${index}.png`,fullPage:true,mask:[failedPage.locator('input'),failedPage.locator('textarea')]}).catch(()=>{});
+    await failedPage.screenshot({path:`${out}/failure-page-${index}.png`,fullPage:true,mask:[failedPage.locator('input'),failedPage.locator('textarea'),failedPage.locator('.verification-debugger-page'),failedPage.getByRole('dialog',{name:'收到本地测试验证码',exact:true})]}).catch(()=>{});
   }
   console.error(`Browser acceptance failed at ${stage}; ${error.name}`);
   process.exitCode=1;

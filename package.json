@@ -10,7 +10,7 @@
     "dev": "pnpm --dir apps/web dev",
     "build": "pnpm --dir apps/web build",
     "typecheck": "pnpm --dir apps/web typecheck",
-    "test": "pnpm check:quality && python3 scripts/module-boundaries-smoke.py && node --test tests/*.test.mjs && pnpm test:ai-model-discovery && pnpm test:ai-chat-history && pnpm test:ai-chat-share && pnpm test:authentication-method-flow && pnpm test:captcha-policy && pnpm test:role-permissions && pnpm test:route-permissions && pnpm test:authorization-signature && pnpm test:authorization-cache-refresh",
+    "test": "pnpm check:quality && python3 scripts/module-boundaries-smoke.py && node --test tests/*.test.mjs && pnpm test:ai-model-discovery && pnpm test:ai-chat-history && pnpm test:ai-chat-share && pnpm test:authentication-method-flow && pnpm test:captcha-policy && pnpm test:role-permissions && pnpm test:route-permissions && pnpm test:authorization-signature && pnpm test:authorization-cache-refresh && pnpm test:verification-debugger",
     "test:java": "node scripts/office-worker-test.mjs",
     "test:ai-model-discovery": "node --experimental-strip-types --test apps/web/src/features/ai/model-discovery.test.ts apps/web/src/features/ai/model-input-formats.test.ts",
     "test:ai-chat-history": "node --experimental-strip-types --test apps/web/src/features/ai/chat-history.test.ts",
@@ -48,7 +48,8 @@
     "check:quality": "pnpm check:react && pnpm check:naming && pnpm check:core-comments && pnpm check:duplicates",
     "test:crud": "node scripts/crud-browser-smoke.mjs && node scripts/user-editor-browser-smoke.mjs",
     "check:core-comments": "python3 scripts/check-core-comments.py",
-    "check:react": "node scripts/check-react-standard.mjs"
+    "check:react": "node scripts/check-react-standard.mjs",
+    "test:verification-debugger": "node --test plugins/sdk/examples/verification-debugger/tests/*.test.mjs"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",

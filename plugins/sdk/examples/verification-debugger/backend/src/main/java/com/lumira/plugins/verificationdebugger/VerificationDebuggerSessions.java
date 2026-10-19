@@ -19,10 +19,17 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Short-lived fake credentials and owner-private OTP messages. */
+/**
+ * 短期假凭据及所有者私有的合成验证码与传输消息。 Short-lived fake credentials and owner-private synthetic OTP and
+ * transport messages.
+ */
 final class VerificationDebuggerSessions implements AutoCloseable {
     static final String ALLOWED_RECIPIENT = "+15555550123";
     static final String DEBUG_SENDER = "LumiraDebug";
+    // 仅接受宿主的固定合成传输测试，不把任意正文当作验证码。
+    // Accept only the host synthetic transport probe, never arbitrary text as an OTP.
+    static final String TRANSPORT_TEST_MESSAGE =
+            "Lumira local SMS transport test. No account code is included.";
     static final String MESSAGE_TEMPLATE = "Lumira verification code: {code}";
 
     private static final Duration SESSION_TTL = Duration.ofMinutes(10);
@@ -239,9 +246,24 @@ final class VerificationDebuggerSessions implements AutoCloseable {
         if (!ALLOWED_RECIPIENT.equals(payload.to()) || !DEBUG_SENDER.equals(payload.sender()))
             return 403;
         Matcher matcher = MESSAGE_CODE.matcher(payload.message());
-        if (!matcher.matches()) return 400;
+        boolean transportTest = TRANSPORT_TEST_MESSAGE.equals(payload.message());
+        if (!transportTest && !matcher.matches()) return 400;
         if (!session.allowSend(now)) return 429;
-        appendWebhook(session, payload.to(), payload.message(), matcher.group(1), now);
+        if (transportTest) {
+            append(
+                    session.id,
+                    now,
+                    new Message(
+                            UUID.randomUUID(),
+                            now,
+                            payload.to(),
+                            payload.message(),
+                            "",
+                            "transport-test",
+                            false));
+        } else {
+            appendWebhook(session, payload.to(), payload.message(), matcher.group(1), now);
+        }
         return 202;
     }
 

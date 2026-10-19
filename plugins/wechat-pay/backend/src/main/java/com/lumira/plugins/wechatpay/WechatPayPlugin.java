@@ -29,7 +29,7 @@ public final class WechatPayPlugin extends PluginEntry {
         @Bean
         PlatformModule wechatPayModule() {
             return new PlatformModule(
-                    "wechat-pay", "微信扫码支付", "1.0.6", List.of("platform", "payment-core"));
+                    "wechat-pay", "微信扫码支付", "1.0.7", List.of("platform", "payment-core"));
         }
     }
 }

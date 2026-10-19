@@ -1,4 +1,7 @@
+/** 编辑短信供应商配置，保留用户自定端点和地区。
+ * Edit SMS provider settings while preserving custom endpoints and regions. */
 "use client";
+import { useRef, useState } from "react";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { Input, InputNumber, Select, Switch, Tooltip } from "antd";
@@ -33,14 +36,18 @@ function SmsFields() {
   const providerRules = [{ required: enabled === true, message: t("smsSelectProvider") }, { validator: async (_: unknown, value: SmsProvider) => {
     if (enabled === true && !smsIsSelectableProvider(value)) throw new Error(t("smsSelectProvider"));
   } }];
+  const endpointEdited = useRef(false);
   const selectProvider = (next: SmsProvider) => {
+    endpointEdited.current = false;
     form.setFieldsValue({ data: smsProviderDefaults(next, next === "alibaba_intl" || next === "twilio" ? "international" : "domestic"), credentials: { action: "KEEP", value: undefined } });
   };
   const selectMarket = (next: SmsMarket) => {
-    if (provider === "huawei") {
+    // 市场联动只更新未手改的默认端点，地区选择保持原值。
+    // Market changes update only untouched default endpoints and preserve selected regions.
+    const endpoint = form.getFieldValue(["data", "endpoint"]);
+    if (provider === "huawei" && !endpointEdited.current && (!endpoint || endpoint === smsProviderDefaults(provider, market).endpoint)) {
       form.setFieldValue(["data", "endpoint"], smsProviderDefaults(provider, next).endpoint);
     }
-    if (provider === "tencent") form.setFieldValue(["data", "region"], "ap-guangzhou");
   };
   const senderLabel = provider === "huawei" ? t("smsChannel") : provider === "twilio" ? t("smsTwilioSender") : provider === "webhook" ? t("smsSender") : provider === "alibaba_intl" && market === "international" ? "Sender ID" : t("smsSignName");
   return <>
@@ -62,7 +69,7 @@ function SmsFields() {
       </Form.Item>}
       <Form.Item name={["data", "endpoint"]} label={provider === "huawei" ? t("smsHuaweiEndpoint") : t("smsServiceEndpoint")}
         rules={provider === "webhook" || provider === "huawei" ? required : undefined}>
-        <Input maxLength={2000} autoComplete="off" readOnly={provider !== "webhook" && provider !== "huawei"} />
+        <Input maxLength={2000} autoComplete="off" onChange={() => { endpointEdited.current = true; }} readOnly={provider !== "webhook" && provider !== "huawei"} />
       </Form.Item>
       {provider !== "webhook" && <Form.Item name={["data", "accessKeyId"]}
         label={provider === "tencent" ? "SecretId" : provider === "huawei" ? "APP_Key" : provider === "twilio" ? t("smsTwilioApiKey") : "AccessKey ID"}
@@ -87,6 +94,7 @@ function SmsFields() {
   </>;
 }
 export function SmsPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?: () => void | Promise<void> }) {
-  return <SettingsSection<SmsData> section="sms" formName="settings-sms" canWrite={canWrite} showSecondaryActions={false} initialExtras={initialExtras} onSaved={onSaved}
-    renderExtras={snapshot => <Credentials snapshot={snapshot} />}><SmsFields /></SettingsSection>;
+  const [savedGeneration, setSavedGeneration] = useState(0);
+  return <SettingsSection<SmsData> section="sms" formName="settings-sms" canWrite={canWrite} showSecondaryActions={false} initialExtras={initialExtras} onSaved={async () => { setSavedGeneration(value => value + 1); await onSaved?.(); }}
+    renderExtras={snapshot => <Credentials snapshot={snapshot} />}><SmsFields key={savedGeneration} /></SettingsSection>;
 }

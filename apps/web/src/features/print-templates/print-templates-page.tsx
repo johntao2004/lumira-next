@@ -1,4 +1,5 @@
 "use client";
+import { inferredFileName } from "@/platform/forms/inferred-defaults";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -76,6 +77,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
   const [metadataDirty, setMetadataDirty] = useState(false);
   const [pendingSourceReview, setPendingSourceReview] = useState(false);
   const [testFillOpen, setTestFillOpen] = useState(false);
+  const createNameDefault = useRef<string | null>(null);
+  const createNameEdited = useRef(false);
   const [createForm] = PlatformForm.useForm<CreateValues>();
   const [editForm] = PlatformForm.useForm<{ name: string; category: string; tags: string[] }>();
   const initializedTemplateId = useRef<string | null>(null);
@@ -164,6 +167,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
       return Upload.LIST_IGNORE;
     }
     createAction.setError(null);
+    const inferred = inferredFileName(createForm.getFieldValue("name"), createNameDefault.current, createNameEdited.current, file.name, 120);
+    if (inferred !== null) { createForm.setFieldValue("name", inferred); createNameDefault.current = inferred; }
     setCreateFile(file);
     return false;
   };
@@ -197,6 +202,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
       setCreateFile(null);
       setCreateFileList([]);
       createForm.resetFields();
+      createNameDefault.current = null;
+      createNameEdited.current = false;
       setSelectedId(result.id);
       await invalidateLists(result.id);
       void message.success(t("templateCreateSuccess"));
@@ -325,6 +332,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
         setCreateFile(null);
         setCreateFileList([]);
         createForm.resetFields();
+        createNameDefault.current = null;
+        createNameEdited.current = false;
         createAction.setError(null);
       }}
       formId="print-template-create"
@@ -337,6 +346,7 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
         layout="vertical"
         disabled={createAction.pending}
         initialValues={{ tags: [], bindingMode: "auto" }}
+        onValuesChange={(changed) => { if (Object.hasOwn(changed, "name")) createNameEdited.current = true; }}
         onFinish={create}
       >
         <Alert type="info" showIcon title={t("templateCreateHint")} />

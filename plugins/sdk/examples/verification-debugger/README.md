@@ -48,6 +48,8 @@ Authorization: Bearer <secretKey>
 
 `/send` 兼容宿主现有 webhook 形状 `{to,sender,message}`，使用生成的 `bearerToken`。要把宿主真实验证码流程接到私有收件箱，需在隔离环境中手动将短信设置的 endpoint、token、sender、模板和市场配置为会话响应给出的值；消息模板固定为 `Lumira verification code: {code}`。身份服务仍负责真实验证码生成、加密入队和校验。本插件不会更改宿主短信配置、`SmsSender`、验证码校验或 `SecretStore`。完成演示后，在“模块管理”停用插件；如果宿主短信设置仍指向已关闭的 loopback endpoint，发送会失败关闭，不会假报成功或改用其他供应商。
 
+宿主“本地短信测试”另可发送固定全文 `Lumira local SMS transport test. No account code is included.`。它使用相同假凭据、合成号码、固定签名、限流和过期规则，只记为 `transport-test` 收件（`code` 为空），不弹验证码框，也不能完成身份验证。除此精确文本外仍只接受六位 OTP 模板，任意其他正文拒绝。
+
 接入 `/send` 后，可以分别验证登录验证码、注册验证码、短信找回密码、绑定手机号以及重新验证敏感操作（包括微信绑定/解绑和 MFA 管理）中的短信 OTP。以上业务仍调用原身份服务 OTP 生成、队列和校验流程；插件只接收匹配固定模板的合成号码消息，不替换业务服务。
 
 `POST /api/plugins/verification-debugger/fixtures` 提供 `success`、`auth-failure`、`rate-limit`、`timeout`、`malformed` 五种示例，展示协议请求/响应形状，不执行真实调用。`success` 只有在当前人已开启窗口时，才会添加固定合成验证码 `135790` 以检查收件箱 UI；这不是身份服务产生的验证码。

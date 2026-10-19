@@ -1,11 +1,14 @@
+/** 编辑微信配置快照与显式密钥动作。
+ * Edit WeChat configuration snapshots and explicit secret actions. */
 "use client";
 
 import "./authentication-settings-panels.css";
 import "./wechat-page.css";
 
 import { useEffect, useState } from "react";
+import { useSettingsDraft } from "@/platform/forms/use-settings-draft";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Input, InputNumber, Select, Spin, Switch, Tag, Typography } from "antd";
+import { Button, Popconfirm, Alert, Input, InputNumber, Select, Spin, Switch, Tag, Typography } from "antd";
 import { api, mutate } from "@/platform/api/client";
 import type { WechatSettings, WechatSettingsUpdate } from "@/platform/auth/api-types";
 import { AsyncButton } from "@/platform/components/async-button";
@@ -33,6 +36,7 @@ export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?:
   const client = useQueryClient();
   const [form] = Form.useForm<WechatSettingsForm>();
   const [saved, setSaved] = useState(false);
+
   const submit = useSubmitAction({ errorKeys: settingErrors, onError: async key => {
     if (key === "staleRecord") await query.refetch();
   } });
@@ -43,23 +47,29 @@ export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?:
   const enabled = Form.useWatch("enabled", form);
   const secretAction = Form.useWatch("appSecretAction", form) ?? "KEEP";
 
+  const { snapshot, revision, commit: setSnapshot, reload, operationSignal } = useSettingsDraft(query.data,
+    () => query.refetch({ throwOnError: true }), () => { form.resetFields(); setSaved(false); });
+  // 草稿与首次读到的版本绑定，后台刷新只更新状态提示。
+  // Bind drafts to their initial version; background refresh updates status only.
   useEffect(() => {
-    if (!query.data) return;
+    if (!snapshot) return;
     form.setFieldsValue({
-      enabled: query.data.enabled,
-      appId: query.data.appId,
-      publicOrigin: query.data.publicOrigin,
-      timeoutSeconds: query.data.timeoutSeconds,
+      enabled: snapshot.enabled,
+      appId: snapshot.appId,
+      publicOrigin: snapshot.publicOrigin,
+      timeoutSeconds: snapshot.timeoutSeconds,
       appSecretAction: "KEEP",
       appSecretValue: undefined,
     });
-  }, [form, query.data]);
+  }, [form, snapshot, revision]);
 
   async function save(values: WechatSettingsForm) {
-    if (!canWrite || !query.data) return;
+    if (!canWrite || !snapshot) return;
+    const signal = operationSignal();
+    if (signal.aborted) return;
     await submit.run(async () => {
       const payload: WechatSettingsUpdate = {
-        version: query.data!.version,
+        version: snapshot.version,
         enabled: values.enabled,
         appId: values.appId.trim(),
         publicOrigin: normalizeOrigin(values.publicOrigin),
@@ -69,7 +79,9 @@ export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?:
           ...(values.appSecretAction === "REPLACE" ? { value: values.appSecretValue } : {}),
         },
       };
-      const next = await mutate<WechatSettings>("/platform/settings/wechat", "PUT", payload);
+      const next = await mutate<WechatSettings>("/platform/settings/wechat", "PUT", payload, signal);
+      if (signal.aborted) return;
+      setSnapshot(next);
       client.setQueryData(["settings", "wechat"], next);
       form.setFieldsValue({
         enabled: next.enabled,
@@ -80,6 +92,7 @@ export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?:
         appSecretValue: undefined,
       });
       await client.invalidateQueries({ queryKey: ["auth-methods"] });
+      if (signal.aborted) return;
       setSaved(true);
       await onSaved?.();
     });
@@ -124,6 +137,9 @@ export function WechatPage({ canWrite, onSaved }: { canWrite: boolean; onSaved?:
           </Form.Item>}
         </div>
       </SettingsEnabledControls>
+      <Popconfirm title={t("reloadSettingsHint")} okText={t("reloadSettings")} cancelText={t("cancel")} onConfirm={() => submit.run(reload)} disabled={submit.pending}>
+        <Button disabled={submit.pending}>{t("reloadSettings")}</Button>
+      </Popconfirm>
       <FeedbackBubble id="settings-wechat-error" content={submit.error ? t(submit.error) : undefined} />
       <FeedbackBubble kind="success" id="settings-wechat-saved" content={saved ? t("settingsSaved") : undefined} />
       {!canWrite && <Typography.Text type="secondary">{t("settingsReadOnly")}</Typography.Text>}

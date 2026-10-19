@@ -29,19 +29,19 @@ const plugins = [
   },
   {
     id: 'payment-core',
-    version: '1.0.6',
+    version: '1.0.7',
     backend: 'plugins/payment-core/backend/src/main/java/com/lumira/plugins/paymentcore/PaymentCoreModuleConfiguration.java',
     migration: 'plugins/payment-core/migrations/V4__plugin_initialization.sql',
   },
   {
     id: 'wechat-pay',
-    version: '1.0.6',
+    version: '1.0.7',
     backend: 'plugins/wechat-pay/backend/src/main/java/com/lumira/plugins/wechatpay/WechatPayPlugin.java',
     migration: 'plugins/wechat-pay/migrations/V2__plugin_initialization.sql',
   },
   {
     id: 'alipay-pay',
-    version: '1.0.6',
+    version: '1.0.7',
     backend: 'plugins/alipay-pay/backend/src/main/java/com/lumira/plugins/alipaypay/AlipayModuleConfiguration.java',
     migration: 'plugins/alipay-pay/migrations/V2__plugin_initialization.sql',
   },
@@ -83,7 +83,7 @@ test('plugin initialization keeps one final SQL and the published migration iden
     const manifest = JSON.parse(read(`plugins/${id}/plugin.json`));
     assert.equal(
       manifest.dependencies.find(({ id: dependencyId }) => dependencyId === 'payment-core')?.version,
-      '1.0.6',
+      plugins.find(plugin => plugin.id === 'payment-core').version,
       `${id} pins the finalized payment-core package`,
     );
   }
