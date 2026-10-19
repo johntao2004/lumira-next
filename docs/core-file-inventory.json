@@ -638,5 +638,9 @@
   "scripts/ci-browser-dynamic-plugins.mjs": {
     "responsibility": "使用独立动态 QA 部署验证真实插件组件停启、保留卸载、重装和普通会话拒绝，不改变生产固定图。\nVerifies real plugin component toggling, preserve-data uninstall, reinstall and ordinary-session denial in separate mutable QA without changing the production graph.",
     "category": "build-and-boundaries"
+  },
+  "scripts/verify-isolated-migrations.py": {
+    "responsibility": "在显式一次性 QA 集群创建专用空库，运行六项初始化/迁移回归并独立清理所有测试库。\nCreates dedicated empty databases in explicit disposable QA, runs six initialization/migration regressions and cleans every test database independently.",
+    "category": "build-and-boundaries"
   }
 }

@@ -67,6 +67,14 @@ jobs:
             chmod +x "$RUNNER_TEMP/pg-bin/$command"
           done
           echo "$RUNNER_TEMP/pg-bin" >> "$GITHUB_PATH"
+      - name: Verify six isolated initialization and migration cases
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+          LUMIRA_RECOVERY_QA: "1"
+        run: python3 scripts/verify-isolated-migrations.py
       - name: Verify non-superuser deployment and plugin initialization
         env:
           PGHOST: 127.0.0.1

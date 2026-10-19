@@ -25,3 +25,9 @@ The sanitized result is passed only after verification and cleanup. Upload only 
 这是小数据停机恢复演练，不是生产容量、跨区域灾备、PITR、RPO/RTO 保证，也不证明外部邮件/短信恰好一次。Office 文档转换与浏览器交互由独立 CI 门禁验证。角色保留在同一 QA 集群，真实灾备仍须按运维流程单独安全恢复角色与密钥。PG 18 会展平一个已知纯 AND 约束分组，比较器只归一化该精确子表达式，不忽略其他约束差异。
 
 This small offline drill does not establish production capacity, cross-region recovery, PITR or RPO/RTO commitments. External delivery is not exactly-once. Roles remain in the same QA cluster; real disaster recovery must separately restore roles and keys securely. Office and browser acceptance have separate gates.
+
+## 专用迁移测试 / Isolated migration cases
+
+常规 Java 套件中六项会破坏 public schema 的测试仅在专用数据库变量存在时启用。CI 使用 `LUMIRA_RECOVERY_QA=1 python3 scripts/verify-isolated-migrations.py` 创建五个独立空库、设置 baseline 防误用标记，运行六项测试并清理。这覆盖当前 B52/插件初始化与幂等、权限最终化及历史校验保护，不证明任意历史生产库升级兼容。
+
+Six destructive initialization/migration cases require dedicated databases. CI provisions five empty QA databases and a baseline guard marker, runs the six cases and cleans up. This verifies current baseline/plugin initialization and history protection, not arbitrary historical production upgrades.
