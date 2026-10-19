@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { verifyDynamicPlugins } from './ci-browser-dynamic-plugins.mjs';
 import { randomBytes } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { chromium, expect as baseExpect } from '@playwright/test';
 const expect = baseExpect.configure({ timeout: 20000 });
@@ -135,6 +136,46 @@ try {
   assert.equal((await write(member,'/api/platform/users','GET')).status(),403);
   assert.equal((await write(member,'/api/platform/modules','GET')).status(),403);
   await record('ordinary user cannot render admin controls or read direct APIs',memberPage);
+  stage='office-http-and-scoped-export';
+  const exportInput={scope:'filtered',page:1,pageSize:100,search:'',fields:['username'],filters:{},filterModes:{},fieldLabels:{username:'Username'},statusLabels:{true:'Enabled',false:'Disabled'}};
+  // 解析真实 worker 返回的 XLSX，不能只凭状态码或 ZIP 魔数宣称导出成功。
+  // Parse the real worker XLSX; status or ZIP magic alone does not establish a valid export.
+  async function spreadsheet(response) {
+    assert.equal(response.status(),200);
+    const data=await response.body();
+    assert.ok(data.length>0);
+    return JSON.parse(execFileSync('python3',['-c',`import io,json,sys,zipfile,xml.etree.ElementTree as E
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ assert all(name in z.namelist() for name in ['[Content_Types].xml','xl/workbook.xml','xl/_rels/workbook.xml.rels','xl/worksheets/sheet1.xml'])
+ ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+ shared=[]
+ if 'xl/sharedStrings.xml' in z.namelist():
+  shared=[''.join(n.text or '' for n in item.iter() if n.tag.endswith('}t')) for item in E.fromstring(z.read('xl/sharedStrings.xml'))]
+ rows=[]
+ for row in E.fromstring(z.read('xl/worksheets/sheet1.xml')).findall('.//s:row',ns):
+  cells=[]
+  for cell in row.findall('s:c',ns):
+   value=cell.find('s:v',ns)
+   if cell.get('t')=='s': text=shared[int(value.text)]
+   elif cell.get('t')=='inlineStr': text=''.join(n.text or '' for n in cell.iter() if n.tag.endswith('}t'))
+   else: text=value.text if value is not None else ''
+   cells.append(text)
+  rows.append(cells)
+ print(json.dumps(rows))`],{input:data,timeout:15000,encoding:'utf8'}));
+  }
+  const importFields=await write(admin,'/api/platform/users/import/fields','GET');assert.equal(importFields.status(),200);
+  const importKeys=(await importFields.json()).map(field=>field.key);assert.ok(importKeys.includes('username'));
+  assert.deepEqual(await spreadsheet(await write(admin,'/api/platform/users/import/template.xlsx','GET')),[importKeys]);
+  const fullExport=await spreadsheet(await write(admin,'/api/platform/users/export.xlsx','POST',exportInput));
+  assert.deepEqual(fullExport[0],['Username']);
+  assert.ok(fullExport.some(row=>row[0]==='admin') && fullExport.some(row=>row[0]===username));
+  assert.equal((await write(member,'/api/platform/users/export.xlsx','POST',exportInput)).status(),403);
+  const exporterResponse=await write(admin,'/api/platform/roles','POST',{code:`${username}_export`,name:'CI Self Export',enabled:true,dataScope:'SELF',authorities:['platform:users:access','platform:users:export']});
+  assert.equal(exporterResponse.status(),201);const exporter=await exporterResponse.json();
+  assert.equal((await write(admin,`/api/platform/users/${user.id}/roles`,'PUT',{version:(await (await write(admin,`/api/platform/users/${user.id}`,'GET')).json()).version,roleIds:[exporter.id]})).status(),200);
+  const ownExport=await spreadsheet(await write(member,'/api/platform/users/export.xlsx','POST',exportInput));
+  assert.deepEqual(ownExport,[['Username'],[username]]);
+  await record('real Office template and XLSX exports succeed; SELF export excludes admin and ordinary export is denied');
   const roleResponse=await write(admin,'/api/platform/roles','POST',{code:username,name:'CI Module Reader',enabled:true,dataScope:'ALL',authorities:['platform:modules:access']});
   assert.equal(roleResponse.status(),201);const role=await roleResponse.json();
   assert.equal((await write(admin,`/api/platform/users/${user.id}/roles`,'PUT',{version:(await (await write(admin,`/api/platform/users/${user.id}`,'GET')).json()).version,roleIds:[role.id]})).status(),200);
