@@ -598,5 +598,17 @@
   "apps/web/src/features/roles/role-permission-picker.tsx": {
     "responsibility": "权限目录与树选择的显式授权边界。\nExplicit grant boundaries for the permission catalog and tree selection.",
     "category": "frontend-core"
+  },
+  "backend/src/main/java/com/lumira/platform/common/DatabasePrivilegeConfiguration.java": {
+    "responsibility": "在生产迁移前拒绝集群特权及可切换的特权身份。\nRejects cluster privileges and switchable privileged identities before production migration.",
+    "category": "host-core"
+  },
+  "scripts/verify-deployment-role.py": {
+    "responsibility": "在临时数据库验证真实初始化脚本、非超级角色及插件迁移兼容性。\nVerifies real initialization, non-superuser roles and plugin migration compatibility in a temporary database.",
+    "category": "build-boundary"
+  },
+  "deploy/database/10-application-role.sh": {
+    "responsibility": "为新数据库卷建立独立非超级应用角色。\nCreates a separate non-superuser application role for new database volumes.",
+    "category": "deployment"
   }
 }

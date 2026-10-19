@@ -10,6 +10,8 @@
 
 换电脑后的分支构建、本地配置和重复验收步骤见[跨机器测试说明](docs/cloud-development.md)。
 
+生产 Compose 新卷使用独立数据库 bootstrap 与非超级应用角色，必填密钥环；已有卷需先核验与迁移角色，见[数据库部署角色](docs/database-deployment-roles.md)。
+
 ## 技术基线
 
 Umi Max 4.7.20 / Mako / React 19.2.8 / Ant Design 6.6.3 / TypeScript 7.0.2；Java 25 LTS / Spring Boot 4.1.1 / PostgreSQL 18.6（“大象数据库”）。当前是本机 Homebrew PostgreSQL，不是 ElephantSQL 云服务；生产可使用兼容的托管 PostgreSQL。前端依赖固定版本，pnpm 锁文件纳入版本控制，后端优先使用 Boot BOM。

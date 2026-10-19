@@ -229,3 +229,16 @@ test("edge deployment uses the patched target and remains covered by CI", () => 
   assert.match(workflow, /lumira-edge:ci caddy validate/);
   assert.match(workflow, /image-ref: lumira-edge:ci/);
 });
+
+// 部署必须显式传入持久密钥，并把初始化管理员留在数据库容器内。
+// Deployment explicitly supplies persistent keys and confines bootstrap credentials to the database container.
+test("production deployment separates bootstrap credentials and enforces role checks", () => {
+  const compose = readFileSync("deploy/compose.yml", "utf8");
+  const server = compose.split("  server:\n")[1].split("  office-worker:\n")[0];
+  assert.match(compose, /POSTGRES_USER: lumira_bootstrap/);
+  assert.match(compose, /10-application-role\.sh/);
+  assert.match(server, /LUMIRA_DB_REQUIRE_UNPRIVILEGED: "true"/);
+  assert.match(server, /LUMIRA_SECRET_KEYS: \$\{LUMIRA_SECRET_KEYS:\?/);
+  assert.match(server, /LUMIRA_SECRET_ACTIVE_KEY:/);
+  assert.doesNotMatch(server, /LUMIRA_DB_BOOTSTRAP_PASSWORD/);
+});
