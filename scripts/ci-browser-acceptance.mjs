@@ -244,7 +244,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
 } catch(error) {
   // 不序列化可能含凭据的错误正文、请求、HTML 或 trace。
   // Do not serialize arbitrary errors, request bodies, HTML or network traces containing credentials.
-  writeFileSync(`${out}/results.json`,JSON.stringify({status:'failed',stage,checks,errorType:error.name,actualNumber:typeof error.actual==='number'?error.actual:undefined,expectedNumber:typeof error.expected==='number'?error.expected:undefined,sourceLocation:error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/)?.[0]},null,2));
+  writeFileSync(`${out}/results.json`,JSON.stringify({status:'failed',stage,checks,errorType:error.name,actualNumber:typeof error.actual==='number'?error.actual:undefined,expectedNumber:typeof error.expected==='number'?error.expected:undefined,sourceLocation:error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/)?.[0],sourceLocations:[...new Set(error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/g)??[])]},null,2));
   if(currentPage) await currentPage.screenshot({path:`${out}/failure.png`,fullPage:true,mask:[currentPage.locator('input'),currentPage.locator('textarea'),currentPage.locator('.verification-debugger-page'),currentPage.getByRole('dialog',{name:'收到本地测试验证码',exact:true})]}).catch(()=>{});
   for(const [index,failedPage] of contexts.flatMap(ctx=>ctx.pages()).entries()) {
     await failedPage.screenshot({path:`${out}/failure-page-${index}.png`,fullPage:true,mask:[failedPage.locator('input'),failedPage.locator('textarea'),failedPage.locator('.verification-debugger-page'),failedPage.getByRole('dialog',{name:'收到本地测试验证码',exact:true})]}).catch(()=>{});

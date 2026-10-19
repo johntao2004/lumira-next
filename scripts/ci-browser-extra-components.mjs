@@ -29,7 +29,7 @@ export async function verifyExtraComponents({page,admin,member,write,record}) {
     await record('Swagger renders, expands, searches and resets without execution controls',page);
 
     await page.goto('/dashboard/smtp');
-    const form=page.locator('#settings-smtp');
+    const form=page.locator('form.settings-form');
     const enabled=form.getByRole('switch',{name:'启用邮件服务',exact:true});
     if(!await enabled.isChecked())await enabled.click(); // 仅改未保存界面；unsaved UI only
     const port=form.getByRole('spinbutton',{name:'端口',exact:true});
@@ -116,7 +116,7 @@ export async function verifyDebuggerQueue({admin,page,write,record,adminPassword
     // 真实账号流程生成 OTP、加密入队，再由 worker 调用本地接收器。
     // Real account flow creates OTP, encrypts durable delivery, worker calls local receiver.
     await phonePage.goto('/dashboard/account-authentication-security');
-    await phonePage.getByRole('button',{name:'账号手机',exact:true}).click();
+    await phonePage.locator('.account-settings-row').filter({has:phonePage.locator('.account-settings-row-label').filter({hasText:/^账号手机$/})}).getByRole('button',{name:/编\s*辑/}).click();
     const drawer=phonePage.getByRole('dialog',{name:'账号手机',exact:true});
     await drawer.getByLabel('账号手机',{exact:true}).fill('+15555550123');
     await drawer.getByLabel('当前密码',{exact:true}).fill(adminPassword);
@@ -172,7 +172,7 @@ export async function verifySettingsDraftConflict({page,admin,write,record}) {
   let changed=false;
   try {
     await page.goto('/dashboard/captcha');
-    const form=page.locator('#settings-captcha');
+    const form=page.locator('form.captcha-settings-form');
     const enabled=form.getByRole('switch',{name:'启用 CAPTCHA 服务',exact:true});
     await enabled.click();
     const type=form.getByRole('combobox',{name:'验证类型',exact:true});
