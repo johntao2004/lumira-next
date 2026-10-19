@@ -197,11 +197,13 @@ test("pnpm audit rejects new advisories and changed dependency paths", () => {
 // Pin verified scanner versions and retain both image failure gates and source-report review.
 test("CI pins Trivy releases without weakening scan gates", () => {
   const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
-  assert.equal((workflow.match(/aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25/g) ?? []).length, 5);
-  assert.equal((workflow.match(/version: v0\.75\.0/g) ?? []).length, 5);
-  assert.equal((workflow.match(/exit-code: "1"/g) ?? []).length, 4);
+  assert.equal((workflow.match(/aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25/g) ?? []).length, 6);
+  assert.equal((workflow.match(/version: v0\.75\.0/g) ?? []).length, 6);
+  assert.equal((workflow.match(/exit-code: "1"/g) ?? []).length, 5);
   assert.match(workflow, /node scripts\/verify-trivy-report\.mjs/);
   assert.match(workflow, /name: Populate Maven dependency cache/);
+  assert.match(workflow, /image-ref: postgres:18\.6/);
+  assert.match(workflow, /docker image inspect postgres:18\.6/);
   assert.match(workflow, /docker builder prune --all --force/);
   assert.doesNotMatch(workflow, /docker (?:system|volume) prune/);
   assert.match(workflow, /skip-dirs: \.runtime,\*\*\/target/);

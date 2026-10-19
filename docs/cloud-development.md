@@ -165,7 +165,7 @@ node scripts/stop.mjs
 显式构建后，模块管理导入以下本地 ZIP，并按安装预检提示安装、启用：
 
 - `plugins/sdk/examples/runtime-observer/dist/runtime-observer-1.0.2.lumira-plugin.zip`
-- `plugins/sdk/examples/verification-debugger/dist/verification-debugger-1.0.5.lumira-plugin.zip`
+- `plugins/sdk/examples/verification-debugger/dist/verification-debugger-1.0.6.lumira-plugin.zip`
 
 用 QA 角色分别检查每个权限。运行展示屏的 `platform:runtime-observer:access` 页面权限与 `platform:runtime-observer:read` 操作权限分开授予；页面每块数据还要求相应宿主全局读取权限，如监控、模块或事件队列读取。验证调试器的页面访问权限与 `read`、`control`、`fixture` 三项操作权限独立保存：查看会话/消息需要 `read`，创建或结束会话需要 `control`，协议 fixture 需要 `control` 和 `fixture`。检查只授予页面或只授予操作时，另一类请求不会被隐式放行。
 

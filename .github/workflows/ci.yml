@@ -63,7 +63,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/pg-bin"
           for command in psql createdb dropdb pg_dump pg_restore; do
-            printf '#!/usr/bin/env bash\nexec docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGOPTIONS -e PGCONNECT_TIMEOUT -e LUMIRA_DB_PASSWORD -e LUMIRA_DB_APP_USER -e LUMIRA_DB_MIGRATION_USER -e LUMIRA_DB_MIGRATION_PASSWORD -e POSTGRES_DB -v /tmp:/tmp postgres:18.6 %s "$@"\n' "$command" > "$RUNNER_TEMP/pg-bin/$command"
+            printf '#!/usr/bin/env bash\nexec docker run --rm -i --network host -e PGHOST -e PGPORT -e PGDATABASE -e PGUSER -e PGPASSWORD -e PGOPTIONS -e PGCONNECT_TIMEOUT -e LUMIRA_DB_PASSWORD -e LUMIRA_DB_APP_USER -e LUMIRA_DB_MIGRATION_USER -e LUMIRA_DB_MIGRATION_PASSWORD -e POSTGRES_DB -v /tmp:/tmp postgres:18.6 %s "$@"\n' "$command" > "$RUNNER_TEMP/pg-bin/$command"
             chmod +x "$RUNNER_TEMP/pg-bin/$command"
           done
           echo "$RUNNER_TEMP/pg-bin" >> "$GITHUB_PATH"
@@ -75,6 +75,14 @@ jobs:
           PGPASSWORD: ci-only
           LUMIRA_RECOVERY_QA: "1"
         run: python3 scripts/verify-isolated-migrations.py
+      - name: Verify read-only key inventory on isolated PostgreSQL
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+          LUMIRA_DISPOSABLE_QA: "true"
+        run: python3 scripts/verify-key-inventory.py
       - name: Verify non-superuser deployment and plugin initialization
         env:
           PGHOST: 127.0.0.1
@@ -194,6 +202,18 @@ jobs:
         with:
           version: v0.75.0
           image-ref: lumira-edge:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Record deployed PostgreSQL image digest
+        run: |
+          docker pull postgres:18.6
+          docker image inspect postgres:18.6 --format '{{json .RepoDigests}}'
+      - name: Scan deployed PostgreSQL image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: postgres:18.6
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"

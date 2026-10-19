@@ -35,13 +35,13 @@ const plugins = [
   },
   {
     id: 'wechat-pay',
-    version: '1.0.7',
+    version: '1.0.8',
     backend: 'plugins/wechat-pay/backend/src/main/java/com/lumira/plugins/wechatpay/WechatPayPlugin.java',
     migration: 'plugins/wechat-pay/migrations/V2__plugin_initialization.sql',
   },
   {
     id: 'alipay-pay',
-    version: '1.0.7',
+    version: '1.0.8',
     backend: 'plugins/alipay-pay/backend/src/main/java/com/lumira/plugins/alipaypay/AlipayModuleConfiguration.java',
     migration: 'plugins/alipay-pay/migrations/V2__plugin_initialization.sql',
   },

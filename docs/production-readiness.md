@@ -17,7 +17,7 @@
 
 ## 支持的部署边界
 
-生产组合见 `deploy/compose.yml` 与 `deploy/*` 的实际定义。网关与静态站点共享补丁 Caddy 构建阶段；CI 分别构建并扫描 server、web、office-worker、edge 四种应用镜像，阻断有可用修复的 HIGH/CRITICAL 漏洞，并验证网关配置。该门禁不代表所有严重级别、外部 PostgreSQL 镜像或真实部署实例均已扫描；最终结果以对应提交的实际 CI 为准。部署前逐一核验固定插件批准图及其摘要、密钥配置、数据库权限、Office worker 私网和健康依赖；缺少安全所需配置应失败或关闭对应能力，不能默认放开。当前扩展信任模型允许插件执行代码，不接收未审查的任意第三方插件。
+生产组合见 `deploy/compose.yml` 与 `deploy/*` 的实际定义。网关与静态站点共享补丁 Caddy 构建阶段；CI 分别构建并扫描 server、web、office-worker、edge 四种应用镜像，阻断有可用修复的 HIGH/CRITICAL 漏洞，并验证网关配置。同时扫描标准部署 PostgreSQL 18.6 镜像并记录解析摘要。该门禁不代表所有严重级别或真实部署实例均已扫描；最终结果以对应提交的实际 CI 为准。部署前逐一核验固定插件批准图及其摘要、密钥配置、数据库权限、Office worker 私网和健康依赖；缺少安全所需配置应失败或关闭对应能力，不能默认放开。当前扩展信任模型允许插件执行代码，不接收未审查的任意第三方插件。
 
 备份需包含 PostgreSQL、尚未迁完的 legacy 文件卷、不可变发行包及批准图；解密密钥单独保管。恢复不仅比较行数，还要验证登录权限、文件读取、插件批准图、审计/事件和必需服务。多副本滚动升级、PITR、跨区域灾备、外部服务真实凭据联调需在实际部署环境另行取得证据。
 
@@ -42,3 +42,5 @@ Security and Passkey policy reads use the authoritative database without pre-com
 有界持续负载、强停与短时数据库暂停的执行门槛见 [可靠性验收](reliability-acceptance.md)，实际通过以当前提交 CI 报告为准。
 
 See the bounded reliability gate for execution thresholds; only the current commit CI report establishes a pass.
+
+部署前先执行[只读配置预检](deployment-preflight.md)，然后完成现场门槛。

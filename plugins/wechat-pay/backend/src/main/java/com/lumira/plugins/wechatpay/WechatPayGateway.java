@@ -389,9 +389,11 @@ public final class WechatPayGateway implements PaymentGatewayPort, AutoCloseable
                             refundFen,
                             requiredProviderTime(response, "success_time"),
                             status);
-            case "PROCESSING" ->
+            // 异常退款仍可继续成功，保留原退款号等待查询，不允许盲目重发。
+            // Abnormal refunds may later succeed; retain the original refund ID for reconciliation.
+            case "PROCESSING", "ABNORMAL" ->
                     new RefundResult(RefundState.PENDING, providerRefundNo, 0, null, status);
-            case "CLOSED", "ABNORMAL" ->
+            case "CLOSED" ->
                     new RefundResult(RefundState.FAILED, providerRefundNo, 0, null, status);
             default -> throw new IllegalArgumentException("WeChat Pay refund state is unsupported");
         };

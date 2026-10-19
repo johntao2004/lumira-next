@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const alipayPayManifest = {
   id: "alipay-pay",
-  version: "1.0.7",
+  version: "1.0.8",
   required: false,
   dependencies: ["platform", "payment-core"],
   routes: [

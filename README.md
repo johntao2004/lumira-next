@@ -122,3 +122,5 @@ Outbox 提供按事件类型显式注册的消费器边界、虚拟线程并发�
 账户修改密码回归：`python3 scripts/password-smoke.py` 使用自动清理的临时账号验证，不修改管理员密码。
 
 可观测性、HTTP 安全头、备份恢复演练、供应链扫描与架构护栏见 [运维手册](docs/operations.md)。
+
+生产部署前执行[只读配置预检](docs/deployment-preflight.md)，按[生产准入](docs/production-readiness.md)完成目标环境验证。
