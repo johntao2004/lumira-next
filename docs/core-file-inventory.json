@@ -622,5 +622,9 @@
   "scripts/verify-backup-restore.py": {
     "responsibility": "以临时数据库验证导出后并发变化不会污染恢复比较。\nUses temporary databases to verify that post-export changes cannot pollute recovery comparisons.",
     "category": "recovery"
+  },
+  "backend/src/main/java/com/lumira/platform/common/DatabaseMigrationConnection.java": {
+    "responsibility": "隔离宿主迁移连接与默认业务数据源。\nSeparate the host migration connection from the default runtime data source.",
+    "category": "host-core"
   }
 }

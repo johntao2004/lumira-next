@@ -240,5 +240,7 @@ test("production deployment separates bootstrap credentials and enforces role ch
   assert.match(server, /LUMIRA_DB_REQUIRE_UNPRIVILEGED: "true"/);
   assert.match(server, /LUMIRA_SECRET_KEYS: \$\{LUMIRA_SECRET_KEYS:\?/);
   assert.match(server, /LUMIRA_SECRET_ACTIVE_KEY:/);
+  assert.match(server, /LUMIRA_DB_MIGRATION_USER: lumira_migrator/);
+  assert.match(server, /LUMIRA_DB_MIGRATION_PASSWORD:/);
   assert.doesNotMatch(server, /LUMIRA_DB_BOOTSTRAP_PASSWORD/);
 });

@@ -8,6 +8,7 @@ services:
       POSTGRES_USER: lumira_bootstrap
       POSTGRES_PASSWORD: ${LUMIRA_DB_BOOTSTRAP_PASSWORD:?Set a separate database bootstrap password}
       LUMIRA_DB_PASSWORD: ${LUMIRA_DB_PASSWORD:?Set application database password}
+      LUMIRA_DB_MIGRATION_PASSWORD: ${LUMIRA_DB_MIGRATION_PASSWORD:?Set a separate migration password}
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./database/10-application-role.sh:/docker-entrypoint-initdb.d/10-application-role.sh:ro
@@ -24,6 +25,8 @@ services:
     environment:
       LUMIRA_DB_URL: jdbc:postgresql://database:5432/lumira_next
       LUMIRA_DB_USER: lumira_next
+      LUMIRA_DB_MIGRATION_USER: lumira_migrator
+      LUMIRA_DB_MIGRATION_PASSWORD: ${LUMIRA_DB_MIGRATION_PASSWORD:?Set a separate migration password}
       LUMIRA_DB_REQUIRE_UNPRIVILEGED: "true"
       LUMIRA_SECRET_KEYS: ${LUMIRA_SECRET_KEYS:?Set a persistent encryption key ring}
       LUMIRA_SECRET_ACTIVE_KEY: ${LUMIRA_SECRET_ACTIVE_KEY:-primary}

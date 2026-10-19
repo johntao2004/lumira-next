@@ -63,7 +63,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/pg-bin"
           for command in psql createdb dropdb pg_dump pg_restore; do
-            printf '#!/usr/bin/env bash\nexec docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGOPTIONS -e PGCONNECT_TIMEOUT -e LUMIRA_DB_PASSWORD -e LUMIRA_DB_APP_USER -e POSTGRES_DB -v /tmp:/tmp postgres:18.6 %s "$@"\n' "$command" > "$RUNNER_TEMP/pg-bin/$command"
+            printf '#!/usr/bin/env bash\nexec docker run --rm -i --network host -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGOPTIONS -e PGCONNECT_TIMEOUT -e LUMIRA_DB_PASSWORD -e LUMIRA_DB_APP_USER -e LUMIRA_DB_MIGRATION_USER -e LUMIRA_DB_MIGRATION_PASSWORD -e POSTGRES_DB -v /tmp:/tmp postgres:18.6 %s "$@"\n' "$command" > "$RUNNER_TEMP/pg-bin/$command"
             chmod +x "$RUNNER_TEMP/pg-bin/$command"
           done
           echo "$RUNNER_TEMP/pg-bin" >> "$GITHUB_PATH"
@@ -107,6 +107,26 @@ jobs:
           docker builder prune --all --force
           docker image prune --force
           df -h
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Real browser acceptance against disposable production images
+        timeout-minutes: 12
+        run: bash scripts/run-ci-browser.sh
+      - name: Upload safe browser acceptance evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .runtime/browser-ci/evidence/
+          if-no-files-found: error
+          retention-days: 7
       - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

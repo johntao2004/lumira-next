@@ -1783,9 +1783,17 @@ public class PluginRuntime
             // Apply only forward migrations, with a distinct table per plugin.
             progress.accept("migrate " + id);
             Path migrations = a.directory().resolve("migrations");
-            if (Files.isDirectory(migrations))
-                PluginPermissionMigrationRunner.migrate(
-                        host.getBean(DataSource.class), id, migrations);
+            if (Files.isDirectory(migrations)) {
+                var migrationConnection =
+                        host.getBean(com.lumira.platform.common.DatabaseMigrationConnection.class);
+                try {
+                    PluginPermissionMigrationRunner.migrate(
+                            migrationConnection.source(), id, migrations);
+                } finally {
+                    migrationConnection.protectHistory(
+                            "plugin_" + id.replace('-', '_') + "_schema_history");
+                }
+            }
             progress.accept("health check " + id);
             entry.checkHealth();
             manager.startPlugin(id);
