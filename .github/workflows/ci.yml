@@ -120,7 +120,9 @@ jobs:
   images:
     # 构建四种应用镜像；实际扫描结果仍由该次 CI 提供。
     # Build all four application images; scan evidence belongs to the actual CI run.
-    runs-on: ubuntu-latest
+    # 固定到锁定 Playwright 支持的系统，避免 latest 漂移破坏浏览器安装。
+    # Pin the OS supported by the locked Playwright version instead of a drifting latest image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f deploy/server.Dockerfile -t lumira-server:ci .
