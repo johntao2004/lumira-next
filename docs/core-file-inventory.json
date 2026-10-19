@@ -626,5 +626,9 @@
   "backend/src/main/java/com/lumira/platform/common/DatabaseMigrationConnection.java": {
     "responsibility": "隔离宿主迁移连接与默认业务数据源。\nSeparate the host migration connection from the default runtime data source.",
     "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/organizations/OrganizationService.java": {
+    "responsibility": "以动作范围和版本约束组织成员关系变更，保留未改变的关系。\nConstrain membership changes by action scope and versions while preserving unchanged relationships.",
+    "category": "host-core"
   }
 }

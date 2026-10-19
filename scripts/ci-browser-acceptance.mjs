@@ -49,7 +49,7 @@ async function uiLogin(page, name, password) {
 }
 async function uiLogout(page) {
   await page.locator('.pro-account-trigger').click();
-  await page.getByRole('menuitem', {name:'退出',exact:true}).click();
+  await page.getByRole('menuitem', {name:'退出登录',exact:true}).click();
   await expect(page).toHaveURL(/\/user\/login/);
 }
 async function record(name, page) {
@@ -66,7 +66,7 @@ try {
   assert.ok(challengeId);
   await expect(page.getByLabel('新密码',{exact:true})).toBeVisible();
   assert.equal((await admin.request.get('/api/auth/me')).status(),401);
-  assert.equal((await admin.request.get('/api/platform/users')).status(),401);
+  assert.equal((await write(admin,'/api/platform/users','GET')).status(),401);
   await page.goto('/dashboard/users');
   await expect(page).toHaveURL(/\/user\/login/);
   await expect(page.getByLabel('新密码',{exact:true})).toBeVisible();
@@ -90,7 +90,9 @@ try {
   const replayPassword=secret();
   const replay = await write(admin,'/api/auth/login/password-change','POST',{challengeId:restarted.challengeId,newPassword:replayPassword,confirmPassword:replayPassword});
   assert.ok([400,401,403,409].includes(replay.status()), `Replay status ${replay.status()}`);
+  stage = 'logout-after-bootstrap';
   await uiLogout(page);
+  stage = 'normal-login-after-bootstrap';
   const normal = await uiLogin(page,'admin',adminPassword);
   assert.equal(normal.state,'COMPLETE');
   await expect(page).toHaveURL(/\/dashboard\//);
@@ -127,8 +129,8 @@ try {
   await expect(memberPage).toHaveURL(/\/dashboard\//);
   await memberPage.goto('/dashboard/users');
   await expect(memberPage.getByRole('button',{name:'新增用户',exact:true})).toHaveCount(0);
-  assert.equal((await member.request.get('/api/platform/users')).status(),403);
-  assert.equal((await member.request.get('/api/platform/modules')).status(),403);
+  assert.equal((await write(member,'/api/platform/users','GET')).status(),403);
+  assert.equal((await write(member,'/api/platform/modules','GET')).status(),403);
   await record('ordinary user cannot render admin controls or read direct APIs',memberPage);
   const roleResponse=await write(admin,'/api/platform/roles','POST',{code:username,name:'CI Module Reader',enabled:true,dataScope:'ALL',authorities:['platform:modules:access']});
   assert.equal(roleResponse.status(),201);const role=await roleResponse.json();
@@ -138,12 +140,12 @@ try {
   await memberPage.getByRole('tab',{name:'可管理模块',exact:true}).click();
   await expect(memberPage.locator('.modules-card').filter({hasText:'feedback'}).getByRole('switch')).toBeDisabled();
   await expect(memberPage.getByRole('button',{name:'卸载插件',exact:true})).toHaveCount(0);
-  assert.equal((await member.request.get('/api/platform/modules')).status(),200);
+  assert.equal((await write(member,'/api/platform/modules','GET')).status(),200);
   await record('read-only role grant is visible in existing browser session',memberPage);
   assert.equal((await write(admin,`/api/platform/users/${user.id}/roles`,'PUT',{version:(await (await write(admin,`/api/platform/users/${user.id}`,'GET')).json()).version,roleIds:[]})).status(),200);
   await memberPage.reload();
   await expect(memberPage.getByRole('tab',{name:'可管理模块',exact:true})).toHaveCount(0);
-  assert.equal((await member.request.get('/api/platform/modules')).status(),403);
+  assert.equal((await write(member,'/api/platform/modules','GET')).status(),403);
   await record('role removal removes UI and direct API access after refresh',memberPage);
   stage='session-revocation';
   assert.equal((await write(admin,`/api/platform/online-users/user/${user.id}`,'DELETE')).status(),200);

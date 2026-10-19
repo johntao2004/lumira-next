@@ -170,3 +170,7 @@ page-only, action-only, unrelated-page, sibling-action, and complete page/action
 regressions use a disposable database and verify archived-source conversion to normal grants,
 scoped/global outcomes, preservation of unrelated stored grants, revocation without resurrection,
 and explicit scoped operations.
+
+### 组织成员关系的目的范围
+
+`users:assign-organizations` 是范围动作。提交仍要求目标用户在页面与动作的有效范围内、用户版本匹配；新增和移除的组织还必须位于该动作的有效组织范围。GLOBAL/ALL 沿用现有 SQL 范围函数，角色预览使用同一目标角色与版本。原有未改变的成员关系不因当前操作者范围收窄被隐式删除；显式移除仍需目的组织权限。该规则为防御性最小权限约束，不能替代真实部署的角色矩阵验收。

@@ -232,6 +232,33 @@ public class OrganizationRepository {
                 == 1;
     }
 
+    // 使用分配动作而非组织页面权限，并保持角色预览的同一目标版本。
+    // Use assignment-action scope rather than page access, preserving the preview role version.
+    public void requireMembershipChangesWithinScope(
+            Set<UUID> changed, String actor, AuthorizationContextProjectionPort.Snapshot context) {
+        if (changed.isEmpty()) return;
+        String visible =
+                context != null && context.previewActive()
+                        ? "platform_role_preview_visible_organizations(:actor,:permission,:targetRoleId,:targetRoleVersion)"
+                        : "platform_visible_organizations(:actor,:permission)";
+        var query =
+                jdbc.sql("SELECT count(*) FROM " + visible + " WHERE organization_id IN (:ids)")
+                        .param("actor", actor)
+                        .param(
+                                "permission",
+                                com.lumira.platform.common.PlatformOperation
+                                        .USER_ASSIGN_ORGANIZATIONS
+                                        .permission())
+                        .param("ids", changed);
+        if (context != null && context.previewActive()) {
+            query.param("targetRoleId", context.targetRoleId())
+                    .param("targetRoleVersion", context.targetRoleVersion());
+        }
+        if (query.query(Long.class).single() != changed.size()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+        }
+    }
+
     public List<UUID> memberships(UUID userId) {
         return jdbc.sql(
                         "SELECT organization_id FROM platform_user_organization WHERE user_id=:id ORDER BY organization_id")

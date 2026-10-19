@@ -12,6 +12,10 @@ import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.annotation.JsonDeserialize;
 
+/**
+ * 在事务和授权快照内维护组织树与用户成员关系，检查动作涉及的目标范围。 Maintain organization trees and memberships within
+ * transactions and authorization snapshots, checking action targets.
+ */
 @Service
 public class OrganizationService {
     public record Input(
@@ -213,9 +217,25 @@ public class OrganizationService {
                 || input.organizationIds().size() > 100
                 || input.organizationIds().stream().anyMatch(Objects::isNull))
             fail(HttpStatus.BAD_REQUEST, "invalidOrganization");
+        validateContextBoundary();
+        var context = currentAuthorization(actor);
+        var previous = new HashSet<>(repository.memberships(id));
+        var changed = membershipChanges(previous, input.organizationIds());
+        // 只对增删目的组织复核动作范围，原有未变成员关系不因范围收窄被静默删除。
+        // Recheck action scope for additions/removals; unchanged memberships survive scope
+        // narrowing.
+        repository.requireMembershipChangesWithinScope(changed, actor, context);
         for (var organizationId : input.organizationIds()) repository.find(organizationId);
         repository.memberships(id, input.organizationIds());
         audit.append(actor, "user.organizations", id);
         return new Membership(version + 1, repository.memberships(id));
+    }
+
+    static Set<UUID> membershipChanges(Set<UUID> previous, Set<UUID> requested) {
+        var changed = new HashSet<>(previous);
+        for (var id : requested) {
+            if (!changed.add(id)) changed.remove(id);
+        }
+        return Set.copyOf(changed);
     }
 }

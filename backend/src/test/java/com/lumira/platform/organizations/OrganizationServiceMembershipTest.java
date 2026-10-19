@@ -71,4 +71,18 @@ class OrganizationServiceMembershipTest {
         assertEquals("invalidOrganization", error.getReason());
         verify(repository, never()).memberships(eq(userId), anySet());
     }
+
+    @Test
+    void membershipDeltaContainsOnlyAdditionsAndRemovals() {
+        var retained = UUID.randomUUID();
+        var removed = UUID.randomUUID();
+        var added = UUID.randomUUID();
+        assertEquals(
+                Set.of(removed, added),
+                OrganizationService.membershipChanges(
+                        Set.of(retained, removed), Set.of(retained, added)));
+        assertEquals(
+                Set.of(),
+                OrganizationService.membershipChanges(Set.of(retained), Set.of(retained)));
+    }
 }
