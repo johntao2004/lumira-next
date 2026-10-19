@@ -1,35 +1,33 @@
 package com.lumira.platform.settings;
 
-import com.lumira.platform.common.ExpiringValue;
 import com.lumira.platform.identity.api.PasskeyPolicyPort;
-import java.time.Duration;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-/** WebAuthn policy with a short cache for login and registration options. */
+/**
+ * 每次从数据库权威读取安全策略并参与调用方现有事务，避免跨实例陈旧值及回滚后缓存污染。 Reads authoritative policy from the database to avoid
+ * stale nodes and rollback-polluted caches.
+ */
 @Service
 public class PasskeySettingsService implements PasskeyPolicyPort {
     public record View(long version, PasskeySettings data) {}
 
-    private static final Duration CACHE_TTL = Duration.ofSeconds(2);
     private final SettingStore store;
     private final ObjectMapper mapper;
-    private final ExpiringValue<View> cache;
 
     public PasskeySettingsService(SettingStore store, ObjectMapper mapper) {
         this.store = store;
         this.mapper = mapper;
-        this.cache = new ExpiringValue<>(CACHE_TTL, this::load);
     }
 
     @Transactional(readOnly = true)
     public View read() {
-        return cache.refresh();
+        return load();
     }
 
     public PasskeySettings current() {
-        return cache.get().data();
+        return load().data();
     }
 
     @Override
@@ -71,7 +69,6 @@ public class PasskeySettingsService implements PasskeyPolicyPort {
                         changeReason,
                         sourceVersion);
         View result = new View(saved.version(), data);
-        cache.put(result);
         return result;
     }
 

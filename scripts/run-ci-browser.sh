@@ -39,6 +39,11 @@ cleanup() {
   status=$?
   # 日志和原始 trace 可能含合成凭据，不自动上传。
   # Logs and raw traces may include synthetic secrets; never upload them automatically.
+  database_id=$("${compose[@]}" ps --all --quiet database) || status=1
+  if [[ $database_id =~ ^[a-f0-9]{12,64}$ ]]; then
+    paused=$(docker inspect --format '{{.State.Paused}}' "$database_id") || status=1
+    if [[ $paused == true ]]; then "${compose[@]}" unpause database || status=1; fi
+  elif [[ -n $database_id ]]; then status=1; fi
   "${compose[@]}" logs --no-color > "$work/private-services.log" 2>&1 || true
   if ! "${compose[@]}" down --volumes --remove-orphans; then status=1; fi
   exit "$status"

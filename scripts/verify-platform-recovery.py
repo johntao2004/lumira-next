@@ -39,6 +39,7 @@ MIGRATOR = "qa_restore_mig_" + RUN
 JAR = ROOT / "backend/target/platform-server-0.1.0-SNAPSHOT.jar"
 assert JAR.is_file()
 KEY = "primary=" + base64.b64encode(secrets.token_bytes(32)).decode()
+NEXT_KEY = "rotated=" + base64.b64encode(secrets.token_bytes(32)).decode()
 PASSWORD = "Qa9!" + secrets.token_urlsafe(24)
 BOOT = "Qa9!" + secrets.token_urlsafe(24)
 PORT = int(ENV.get("LUMIRA_RECOVERY_QA_PORT", "18092"))
@@ -143,7 +144,7 @@ def login(c, password):
     )
 
 
-def start(db, files):
+def start(db, files, key=KEY, active="primary"):
     global PROCESS
     probe = socket.socket()
     probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -159,7 +160,8 @@ def start(db, files):
         "LUMIRA_PORT": str(PORT),
         "LUMIRA_BIND": "127.0.0.1",
         "LUMIRA_BOOTSTRAP_PASSWORD": BOOT,
-        "LUMIRA_SECRET_KEYS": KEY,
+        "LUMIRA_SECRET_KEYS": key,
+        "LUMIRA_SECRET_ACTIVE_KEY": active,
         "LUMIRA_COOKIE_SECURE": "false",
         "LUMIRA_DB_REQUIRE_UNPRIVILEGED": "true",
     }
@@ -408,17 +410,18 @@ try:
     helper = WORK / "RestoreSecretProbe.java"
     helper.write_text(
         """import com.lumira.platform.common.SecretKeys; import com.lumira.platform.settings.SecretStore; import java.util.Arrays; import org.springframework.jdbc.core.simple.JdbcClient; import org.springframework.jdbc.datasource.DriverManagerDataSource; import org.springframework.jdbc.datasource.DataSourceTransactionManager; import org.springframework.transaction.support.TransactionTemplate;
-class RestoreSecretProbe {public static void main(String[] args){var e=System.getenv();var ds=new DriverManagerDataSource(e.get("QA_URL"),e.get("LUMIRA_DB_USER"),e.get("LUMIRA_DB_PASSWORD"));var store=new SecretStore(JdbcClient.create(ds),new SecretKeys(e.get("LUMIRA_SECRET_KEYS"),"primary"));byte[] expected="synthetic recovery evidence".getBytes(java.nio.charset.StandardCharsets.UTF_8);if(args[0].equals("seed"))new TransactionTemplate(new DataSourceTransactionManager(ds)).executeWithoutResult(s->store.save("qa:restore",0,expected));byte[] actual;try{actual=store.reveal("qa:restore").orElseThrow();}catch(IllegalStateException failure){if(args[0].equals("wrong-key") && "Secret cannot be decrypted".equals(failure.getMessage())){System.exit(42);return;}throw failure;}if(!Arrays.equals(actual,expected))throw new IllegalStateException();Arrays.fill(actual,(byte)0);Arrays.fill(expected,(byte)0);}}
+class RestoreSecretProbe {public static void main(String[] args){var e=System.getenv();var ds=new DriverManagerDataSource(e.get("QA_URL"),e.get("LUMIRA_DB_USER"),e.get("LUMIRA_DB_PASSWORD"));var store=new SecretStore(JdbcClient.create(ds),new SecretKeys(e.get("LUMIRA_SECRET_KEYS"),e.getOrDefault("LUMIRA_SECRET_ACTIVE_KEY","primary")));byte[] expected="synthetic recovery evidence".getBytes(java.nio.charset.StandardCharsets.UTF_8);if(args[0].equals("seed"))new TransactionTemplate(new DataSourceTransactionManager(ds)).executeWithoutResult(s->store.save("qa:restore",0,expected));byte[] actual;try{actual=store.reveal("qa:restore").orElseThrow();}catch(IllegalStateException failure){if(args[0].equals("wrong-key") && "Secret cannot be decrypted".equals(failure.getMessage())){System.exit(42);return;}throw failure;}if(!Arrays.equals(actual,expected))throw new IllegalStateException();if(args[0].equals("rotate"))new TransactionTemplate(new DataSourceTransactionManager(ds)).executeWithoutResult(s->store.save("qa:restore",store.state("qa:restore").version(),actual));Arrays.fill(actual,(byte)0);Arrays.fill(expected,(byte)0);}}
 """
     )
 
-    def secret(db, mode, key=KEY):
+    def secret(db, mode, key=KEY, active="primary"):
         run(
             ["java", "--class-path", cp, str(helper), mode],
             {
                 **APP,
                 "QA_URL": f'jdbc:postgresql://127.0.0.1:{ENV["PGPORT"]}/{db}',
                 "LUMIRA_SECRET_KEYS": key,
+                "LUMIRA_SECRET_ACTIVE_KEY": active,
             },
         )
 
@@ -581,8 +584,34 @@ class RestoreSecretProbe {public static void main(String[] args){var e=System.ge
     assert sourcePackages, "No trusted plugin artifacts captured"
     assert sourcePackages == packageHashes(WORK / "plugins-target")
     check("plugin artifacts are restored into a separate matching directory")
+    # 轮换先保留旧钥读旧密文，再以新活动钥重写；退休旧钥必须先证明所有保留值可读。
+    # Read old envelopes with a dual ring, rewrap under the new active key, then retire the old key.
+    secret(TARGET, "verify", KEY + "," + NEXT_KEY, "rotated")
+    try:
+        secret(TARGET, "wrong-key", NEXT_KEY, "rotated")
+    except subprocess.CalledProcessError as error:
+        assert error.returncode == 42
+    else:
+        raise AssertionError(
+            "Retiring the old key prematurely must reject old envelopes"
+        )
+    secret(TARGET, "rotate", KEY + "," + NEXT_KEY, "rotated")
+    assert (
+        sql(
+            TARGET,
+            "SELECT split_part(ciphertext, ':', 2) FROM platform_secret WHERE secret_context='qa:restore'",
+        )
+        == "rotated"
+    )
+    secret(TARGET, "verify", NEXT_KEY, "rotated")
     for attempt in range(2):
-        start(TARGET, targetFiles)
+        start(
+            TARGET,
+            targetFiles,
+            KEY + "," + NEXT_KEY if attempt == 0 else NEXT_KEY,
+            "rotated",
+        )
+        secret(TARGET, "verify", NEXT_KEY, "rotated")
         admin = client()
         assert login(admin, PASSWORD)[0] == 200
         assert request(admin, "/platform/users")[0] == 200
@@ -666,6 +695,9 @@ class RestoreSecretProbe {public static void main(String[] args){var e=System.ge
         stop()
     check(
         "restored application and second restart preserve admin/member permissions, PostgreSQL and legacy files, feedback and exactly one recovered event inbox effect; new writes work"
+    )
+    check(
+        "dual key rotation rewraps stored secret; premature retirement fails and new-key-only restarts remain readable"
     )
     REPORT["tableAndSequenceCount"] = len(baseline)
 except BaseException as error:

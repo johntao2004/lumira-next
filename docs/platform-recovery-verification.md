@@ -10,9 +10,12 @@ Use only a disposable PostgreSQL 18 QA cluster. The explicit opt-in creates and 
 - 停止源应用并确认其数据库连接已断开后，保留 owner/ACL 导出并恢复到新库；不使用 `--no-owner`。
 - 对比全部 public 表内容摘要、序列状态及配置、表/模式 owner 与 ACL、默认 ACL、约束所属表与定义、索引、函数和触发器。
 - 使用发行 JAR 内真实 SecretStore 验证原始密钥解密；不同密钥必须产生指定的解密异常，其他进程故障不能冒充正确拒绝。
+- 双钥环读取旧密文，提前移除旧钥必须失败；使用新活动钥重写真实 SecretStore 值，再仅使用新钥启动及再次重启，确认配置恢复可用。此合成上下文不代表自动迁完所有真实密文。
 - 独立复制 legacy 文件与插件制品，核对制品摘要。目标实际启动与再次重启后验证普通账号权限、个人文件隔离、legacy 文件读回并迁入 PostgreSQL、新写入和反馈。
 - 在源端捕获 PENDING 反馈事件，恢复后核对 DELIVERED 与一份通知记录，第二次重启不能增加同事件通知。此结论限同库消费者效果。
 - 验证恢复后的序列递增、唯一/检查/外键约束、未来迁移默认 DML 授权与运行账号持久对象 DDL/TRUNCATE 拒绝。
+
+The key rotation probe reads an old envelope with both keys, rejects premature old-key retirement, rewraps a synthetic SecretStore value and restarts with only the new key. It does not automatically rotate all production secrets.
 
 The drill exercises real HTTP and the packaged application, owner-preserving database recovery, original-key decryption, legacy and PostgreSQL files, trusted plugin artifacts, ordinary-user permissions, a pending database event and two restarts. It also checks restored schema behavior and runtime SQL privilege boundaries.
 

@@ -1,35 +1,33 @@
 package com.lumira.platform.settings;
 
-import com.lumira.platform.common.ExpiringValue;
 import com.lumira.platform.identity.api.SecurityPolicyPort;
-import java.time.Duration;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-/** Security policy with a short, bounded cache for login hot paths. */
+/**
+ * 每次从数据库权威读取安全策略并参与调用方现有事务，避免跨实例陈旧值及回滚后缓存污染。 Reads authoritative policy from the database to avoid
+ * stale nodes and rollback-polluted caches.
+ */
 @Service
 public class SecuritySettingsService implements SecurityPolicyPort {
     public record View(long version, SecuritySettings data) {}
 
-    private static final Duration CACHE_TTL = Duration.ofSeconds(2);
     private final SettingStore store;
     private final ObjectMapper mapper;
-    private final ExpiringValue<View> cache;
 
     public SecuritySettingsService(SettingStore store, ObjectMapper mapper) {
         this.store = store;
         this.mapper = mapper;
-        this.cache = new ExpiringValue<>(CACHE_TTL, this::load);
     }
 
     @Transactional(readOnly = true)
     public View read() {
-        return cache.refresh();
+        return load();
     }
 
     public SecuritySettings current() {
-        return cache.get().data();
+        return load().data();
     }
 
     @Override
@@ -52,7 +50,6 @@ public class SecuritySettingsService implements SecurityPolicyPort {
                         expectedVersion,
                         changeReason);
         View result = new View(saved.version(), data);
-        cache.put(result);
         return result;
     }
 

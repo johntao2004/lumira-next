@@ -642,5 +642,25 @@
   "scripts/verify-isolated-migrations.py": {
     "responsibility": "在显式一次性 QA 集群创建专用空库，运行六项初始化/迁移回归并独立清理所有测试库。\nCreates dedicated empty databases in explicit disposable QA, runs six initialization/migration regressions and cleans every test database independently.",
     "category": "build-and-boundaries"
+  },
+  "backend/src/main/java/com/lumira/platform/common/GuardedSockets.java": {
+    "responsibility": "连接时地址校验、固定目标及截止资源回收。\nValidates and pins connect targets and tracks deadline resources.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/sms/SmsGateway.java": {
+    "responsibility": "短信外部协议响应分类与总截止，模糊结果不重发。\nClassifies SMS responses with total deadlines; ambiguous outcomes are not retried.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/settings/SecuritySettingsService.java": {
+    "responsibility": "权威数据库安全策略读取与版本写入。\nAuthoritative database security policy reads and versioned writes.",
+    "category": "host-core"
+  },
+  "backend/src/main/java/com/lumira/platform/settings/PasskeySettingsService.java": {
+    "responsibility": "权威数据库通行密钥策略读取与版本写入。\nAuthoritative database passkey policy reads and versioned writes.",
+    "category": "host-core"
+  },
+  "scripts/ci-reliability-load.mjs": {
+    "responsibility": "在严格绑定的独立CI项目执行有界混合身份负载及服务/数据库故障，记录资源并强制恢复。\nRuns bounded mixed-identity load and faults only in the bound disposable CI project, records resources and restores services.",
+    "category": "build-boundary"
   }
 }

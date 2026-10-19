@@ -146,7 +146,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - name: Real browser acceptance against disposable production images
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           bash scripts/run-ci-browser.sh
           LUMIRA_BROWSER_CI_MODE=dynamic bash scripts/run-ci-browser.sh

@@ -1,6 +1,7 @@
 /** 在一次性 CI 部署上验证真实登录和权限组件，不访问已有或生产数据。
  * Verify real login and permission components in disposable CI, never saved or production data. */
 import assert from 'node:assert/strict';
+import { verifyReliabilityLoad } from './ci-reliability-load.mjs';
 import { verifyDynamicPlugins } from './ci-browser-dynamic-plugins.mjs';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -191,6 +192,18 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   await expect(memberPage.getByRole('tab',{name:'可管理模块',exact:true})).toHaveCount(0);
   assert.equal((await write(member,'/api/platform/modules','GET')).status(),403);
   await record('role removal removes UI and direct API access after refresh',memberPage);
+  if(config.mode === 'immutable') {
+    stage='bounded-load-and-fault-recovery';currentPage=page;
+    await admin.tracing.stop({path:`${work}/private-trace-before-load-admin.zip`});
+    await member.tracing.stop({path:`${work}/private-trace-before-load-member.zip`});
+    try {
+      await verifyReliabilityLoad({admin,member,page,memberPage,userId:user.id,username,expectedDisplayName:`${username}_updated`});
+    } finally {
+      await admin.tracing.start({screenshots:true,snapshots:true,sources:false});
+      await member.tracing.start({screenshots:true,snapshots:true,sources:false});
+    }
+    await record('10-minute bounded synthetic load and scoped server/database recovery',page);
+  }
   if(config.mode === 'dynamic') {
     stage='dynamic-plugin-lifecycle';currentPage=page;
     await verifyDynamicPlugins({admin,page,member,write,record});

@@ -28,3 +28,17 @@
 默认平台合成数据的停机恢复集成门禁见 [平台恢复验收](platform-recovery-verification.md)。该门禁使用当前发行包和独立 QA 数据库，不能替代实际部署的备份保管、跨集群角色恢复、PITR 或 RPO/RTO 验收。
 
 The default-platform synthetic-data offline recovery gate is documented separately; it does not replace deployment-specific backup custody, cross-cluster role recovery, PITR or RPO/RTO acceptance.
+
+## 外部副作用与策略一致性 / External effects and policy consistency
+
+自定义短信 webhook 的非成功响应不能证明接收方未处理。除明确认证拒绝外，这些响应归为不确定状态，不自动重发；真正未建立连接的异常仍按连接失败处理。发送总截止覆盖响应体并主动关闭资源，慢滴流不能无限占用发送槽。真实 HTTP 合成接收器与 PostgreSQL 门禁覆盖已消费请求后断响应、302/408/429/500/503 和不重复发送，不能等同真实供应商端到端认证。
+
+A webhook error does not prove that no external effect occurred. Ambiguous outcomes stop automatic retries; clear connection failures retain retry semantics. Total deadlines include body reads and close tracked resources. Synthetic receiver/database tests do not certify real provider integrations.
+
+安全及 Passkey 策略由数据库权威读取，不发布事务提交前的本地缓存；双独立数据源回归验证提交立即可见和回滚隔离。同版本固定图双实例探测仍不是跨图滚动升级、跨地域 HA 或容量承诺。
+
+Security and Passkey policy reads use the authoritative database without pre-commit local caches. Separate data-source tests verify visibility and rollback. Same-release fixed-graph probes do not establish rolling upgrades, cross-region HA or capacity guarantees.
+
+有界持续负载、强停与短时数据库暂停的执行门槛见 [可靠性验收](reliability-acceptance.md)，实际通过以当前提交 CI 报告为准。
+
+See the bounded reliability gate for execution thresholds; only the current commit CI report establishes a pass.
