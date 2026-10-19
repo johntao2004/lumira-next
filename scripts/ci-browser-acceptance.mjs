@@ -202,8 +202,9 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
       ['captcha-draft',()=>verifySettingsDraftConflict({page,admin,write,record})],
       ['registration-reload',()=>verifyRegistrationSameValueReload({page,admin,write,record})]];
     for(const [name,run] of probes) {
-      try {await run();} catch(error) {
+      try {await page.bringToFront();await run();} catch(error) {
         probeFailures.push({name,errorType:error.name,locations:error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/g)??[]});
+        writeFileSync(`${out}/component-progress.json`,JSON.stringify({status:'incomplete',checks,probeFailures},null,2));
         await page.screenshot({path:`${out}/probe-${name}.png`,fullPage:true,mask:[page.locator('input,textarea,.ant-select-selection-item,.verification-debugger-page')]}).catch(()=>{});
       }
     }

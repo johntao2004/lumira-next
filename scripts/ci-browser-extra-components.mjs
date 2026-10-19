@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import {expect as baseExpect} from '@playwright/test';
 const expect=baseExpect.configure({timeout:20000});
-const responseFor=(page,path,method)=>page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method);
+const responseFor=(page,path,method)=>{const pending=page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method);pending.catch(()=>{});return pending;};
 async function choose(page,control,label){
   await control.click();
   // 虚拟列表另有隐藏无障碍选项；只点击唯一可视内容。
@@ -100,6 +100,17 @@ export async function installDebuggerExample({page,admin,write,archivePath}) {
   const response=await installed;assert.equal(response.status(),200);const op=await response.json();
   await expect.poll(async()=>{const r=await admin.request.get(`${root}/operations/${op.id}`,{headers:{'X-Lumira-Authorization-Context-Revision':revision}});assert.equal(r.status(),200);return(await r.json()).status;},{timeout:60000}).toBe('SUCCEEDED');
   await expect(page.getByRole('dialog',{name:'安装插件',exact:true})).toHaveCount(0);
+  // 安装不会自动授予新权限；使用完整安装管理员的正常角色委派接口。
+  // Installation grants no new authority. Use the full install administrator's normal role-delegation API.
+  assert.equal((await write(admin,'/api/plugins/verification-debugger/status','GET')).status(),403);
+  const me=await admin.request.get('/api/auth/me');assert.equal(me.status(),200);const actor=await me.json();
+  const authorities=['access','read','control','fixture'].map(action=>`platform:verification-debugger:${action}`);
+  const created=await write(admin,'/api/platform/roles','POST',{code:'ci_verification_debugger',name:'CI Verification Debugger',enabled:true,dataScope:'ALL',authorities});
+  assert.equal(created.status(),201);const role=await created.json();
+  const assignments=await write(admin,`/api/platform/users/${actor.userId}/roles`,'GET');assert.equal(assignments.status(),200);const current=await assignments.json();
+  const assigned=await write(admin,`/api/platform/users/${actor.userId}/roles`,'PUT',{version:current.version,roleIds:[...current.roleIds,role.id]});assert.equal(assigned.status(),200);
+  const fresh=await admin.request.get('/api/auth/me');assert.equal(fresh.status(),200);const identityAfter=await fresh.json();
+  for(const authority of authorities)assert.ok(identityAfter.globalAuthorities.includes(authority));
   const status=await write(admin,'/api/plugins/verification-debugger/status','GET');assert.equal(status.status(),200);
   assert.deepEqual(await status.json(),{enabled:true,receiverReady:true,allowedRecipient:'+15555550123'});
 }
@@ -229,7 +240,7 @@ export async function verifyRegistrationSameValueReload({page,admin,write,record
   await expect(enabled).toBeChecked();
   const reloaded=responseFor(page,path,'GET');
   await pop.getByRole('button',{name:'重新载入配置',exact:true}).click();
-  const result=await reloaded;assert.equal(result.status(),200);
+  const result=await reloaded;assert.equal(result.status(),200);await expect(pop).toBeHidden();
   const fresh=await result.json();assert.equal(fresh.version,baseline.version);
   assert.equal(fresh.enabled,baseline.enabled);assert.deepEqual(fresh.channels,baseline.channels);assert.equal(fresh.defaultRoleId,baseline.defaultRoleId);
   await expect(enabled).not.toBeChecked();
@@ -249,6 +260,7 @@ export async function captchaReloadIncrement({page,admin,write,record,form,enabl
   const refreshed=responseFor(page,path,'GET');
   await page.locator('.ant-popconfirm:visible').getByRole('button',{name:'重新载入配置',exact:true}).click();
   assert.equal((await refreshed).status(),200);
+  await expect(page.locator('.ant-popconfirm:visible')).toHaveCount(0);
   await expect(enabled).not.toBeChecked();
   await expect(form.locator('.ant-select-selection-item').first()).toHaveText('滑块');
   // 按新快照保存，服务保持关闭。 / Save with the new snapshot while keeping the service disabled.
