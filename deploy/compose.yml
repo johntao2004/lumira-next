@@ -90,7 +90,10 @@ services:
     depends_on:
       - server
   edge:
-    image: caddy:2
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      target: edge
     restart: unless-stopped
     ports:
       - 127.0.0.1:8010:8010

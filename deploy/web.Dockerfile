@@ -21,8 +21,16 @@ RUN CGO_ENABLED=0 XCADDY_SKIP_CLEANUP=1 XCADDY_SETCAP=0 /go/bin/xcaddy build v2.
     && go version -m /out/caddy | grep -F 'go1.26.9' \
     && go version -m /out/caddy | grep -E '=>[[:space:]]+golang.org/x/net[[:space:]]+v0.60.0'
 
-FROM caddy:2.11.7-alpine
+FROM caddy:2.11.7-alpine AS patched-caddy
 COPY --from=caddy-build /out/caddy /usr/bin/caddy
+
+# 网关与静态站点共享已修补的二进制，各自保留配置职责。
+# Gateway and static site share the patched binary while keeping separate configuration.
+FROM patched-caddy AS edge
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+EXPOSE 8010
+
+FROM patched-caddy AS web
 COPY deploy/web.Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /workspace/csp.caddy /etc/caddy/csp.caddy
 COPY --from=build /workspace/apps/web/dist /srv

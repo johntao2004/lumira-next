@@ -197,9 +197,9 @@ test("pnpm audit rejects new advisories and changed dependency paths", () => {
 // Pin verified scanner versions and retain both image failure gates and source-report review.
 test("CI pins Trivy releases without weakening scan gates", () => {
   const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
-  assert.equal((workflow.match(/aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25/g) ?? []).length, 4);
-  assert.equal((workflow.match(/version: v0\.75\.0/g) ?? []).length, 4);
-  assert.equal((workflow.match(/exit-code: "1"/g) ?? []).length, 3);
+  assert.equal((workflow.match(/aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25/g) ?? []).length, 5);
+  assert.equal((workflow.match(/version: v0\.75\.0/g) ?? []).length, 5);
+  assert.equal((workflow.match(/exit-code: "1"/g) ?? []).length, 4);
   assert.match(workflow, /node scripts\/verify-trivy-report\.mjs/);
   assert.match(workflow, /name: Populate Maven dependency cache/);
   assert.match(workflow, /docker builder prune --all --force/);
@@ -213,4 +213,19 @@ test("Caddy build pins the HTTP/2 denial-of-service fix", () => {
   const dockerfile = readFileSync("deploy/web.Dockerfile", "utf8");
   assert.match(dockerfile, /--replace golang\.org\/x\/net=golang\.org\/x\/net@v0\.60\.0/);
   assert.match(dockerfile, /go version -m \/out\/caddy/);
+});
+
+// 两个入口都必须继承补丁基础阶段，网关也必须独立验证与扫描。
+// Both entry points must inherit the patched base; validate and scan the gateway independently.
+test("edge deployment uses the patched target and remains covered by CI", () => {
+  const dockerfile = readFileSync("deploy/web.Dockerfile", "utf8");
+  const compose = readFileSync("deploy/compose.yml", "utf8");
+  const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+  assert.match(dockerfile, /FROM patched-caddy AS edge/);
+  assert.match(dockerfile, /FROM patched-caddy AS web/);
+  assert.match(compose, /edge:\n    build:\n      context: \.\.\n      dockerfile: deploy\/web\.Dockerfile\n      target: edge/);
+  assert.doesNotMatch(compose, /image: caddy:/);
+  assert.match(workflow, /--target edge -t lumira-edge:ci/);
+  assert.match(workflow, /lumira-edge:ci caddy validate/);
+  assert.match(workflow, /image-ref: lumira-edge:ci/);
 });

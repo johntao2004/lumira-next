@@ -54,7 +54,7 @@ PGHOST=... PGUSER=<有 CREATEDB 权限的角色> PGPASSWORD=... scripts/backup-r
 ## 4. 供应链与 CI 门禁
 
 - `.github/dependabot.yml`：Maven、npm、GitHub Actions、Docker 基础镜像的更新 PR。
-- CI `images` 任务：构建生产镜像（server、web、office-worker，以当前 workflow 为准）并用 Trivy 扫描 HIGH/CRITICAL（仅报告已有修复版本的漏洞）；`dependencies` 任务扫描 `pom.xml` 与 pnpm 锁文件。发现问题会使 CI 失败，处理方式是升级依赖，或在评审中明确记录豁免理由。
+- CI `images` 任务：构建生产镜像（server、web、office-worker、edge，以当前 workflow 为准）并用 Trivy 扫描 HIGH/CRITICAL（仅报告已有修复版本的漏洞）；`dependencies` 任务扫描 `pom.xml` 与 pnpm 锁文件。发现问题会使 CI 失败，处理方式是升级依赖，或在评审中明确记录豁免理由。
 - CI `web` 任务现在也执行 `pnpm build`，保证生产构建持续可用。
 
 ## 5. 架构护栏
