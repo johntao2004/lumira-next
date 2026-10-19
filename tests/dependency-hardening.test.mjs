@@ -202,5 +202,7 @@ test("CI pins Trivy releases without weakening scan gates", () => {
   assert.equal((workflow.match(/exit-code: "1"/g) ?? []).length, 3);
   assert.match(workflow, /node scripts\/verify-trivy-report\.mjs/);
   assert.match(workflow, /name: Populate Maven dependency cache/);
+  assert.match(workflow, /docker builder prune --all --force/);
+  assert.doesNotMatch(workflow, /docker (?:system|volume) prune/);
   assert.match(workflow, /skip-dirs: \.runtime,\*\*\/target/);
 });
