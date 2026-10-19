@@ -133,14 +133,29 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - run: docker build -f deploy/database.Dockerfile -t lumira-database:ci .
+      - name: Verify non-root database startup and recovery
+        run: bash scripts/verify-database-image.sh lumira-database:ci
+      - name: Record deployed PostgreSQL image digest
+        run: |
+          docker image inspect lumira-database:ci --format '{{.Id}}'
+          printf '%s\n' 'base=postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336'
+      - name: Scan deployed PostgreSQL image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: lumira-database:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
       - run: docker build -f deploy/server.Dockerfile -t lumira-server:ci .
       - run: docker build -f deploy/web.Dockerfile -t lumira-web:ci .
       - run: docker build -f deploy/web.Dockerfile --target edge -t lumira-edge:ci .
       - name: Validate edge routing configuration
         run: docker run --rm lumira-edge:ci caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - run: docker build -f deploy/office-worker.Dockerfile -t lumira-office-worker:ci .
-      # 临时构建层已不再需要；保留四个已标记镜像，为漏洞数据库腾出空间。
-      # Discard temporary build layers, keeping all four tagged images and space for vulnerability databases.
+      # 临时构建层已不再需要；保留五个已标记镜像，为漏洞数据库腾出空间。
+      # Discard temporary build layers, keeping all five tagged images and space for vulnerability databases.
       - name: Reclaim disposable build cache before scanning
         run: |
           docker builder prune --all --force
@@ -205,18 +220,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - name: Record deployed PostgreSQL image digest
-        run: |
-          docker pull postgres:18.6
-          docker image inspect postgres:18.6 --format '{{json .RepoDigests}}'
-      - name: Scan deployed PostgreSQL image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          version: v0.75.0
-          image-ref: postgres:18.6
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+
   dependencies:
     runs-on: ubuntu-latest
     steps:

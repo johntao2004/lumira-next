@@ -202,8 +202,8 @@ test("CI pins Trivy releases without weakening scan gates", () => {
   assert.equal((workflow.match(/exit-code: "1"/g) ?? []).length, 5);
   assert.match(workflow, /node scripts\/verify-trivy-report\.mjs/);
   assert.match(workflow, /name: Populate Maven dependency cache/);
-  assert.match(workflow, /image-ref: postgres:18\.6/);
-  assert.match(workflow, /docker image inspect postgres:18\.6/);
+  assert.match(workflow, /image-ref: lumira-database:ci/);
+  assert.match(workflow, /docker image inspect lumira-database:ci/);
   assert.match(workflow, /docker builder prune --all --force/);
   assert.doesNotMatch(workflow, /docker (?:system|volume) prune/);
   assert.match(workflow, /skip-dirs: \.runtime,\*\*\/target/);
@@ -245,4 +245,22 @@ test("production deployment separates bootstrap credentials and enforces role ch
   assert.match(server, /LUMIRA_DB_MIGRATION_USER: lumira_migrator/);
   assert.match(server, /LUMIRA_DB_MIGRATION_PASSWORD:/);
   assert.doesNotMatch(server, /LUMIRA_DB_BOOTSTRAP_PASSWORD/);
+});
+
+// 数据库降权工具必须真实重建，不能跳过漏洞或测试密钥扫描。
+// Rebuild the database privilege-drop tool without skipping vulnerability or secret scanning.
+test('database image pins upstream gosu and preserves production PostgreSQL entrypoint', () => {
+  const image = readFileSync(new URL('../deploy/database.Dockerfile', import.meta.url), 'utf8');
+  const compose = readFileSync(new URL('../deploy/compose.yml', import.meta.url), 'utf8');
+  const browser = readFileSync(new URL('../scripts/run-ci-browser.sh', import.meta.url), 'utf8');
+  assert.match(image, /FROM golang:1\.26\.9-alpine3\.23/);
+  assert.match(image, /6456aaa0f3c854d199d0f037f068eb97515b7513/);
+  assert.match(image, /go mod verify/);
+  assert.match(image, /-mod=readonly/);
+  assert.match(image, /FROM postgres:18\.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336/);
+  assert.match(image, /--chmod=0755/);
+  assert.doesNotMatch(image, /^(ENTRYPOINT|CMD|USER|STOPSIGNAL) /m);
+  assert.match(image, /rm -f \/etc\/ssl\/private\/ssl-cert-snakeoil.key \/etc\/ssl\/certs\/ssl-cert-snakeoil.pem/);
+  assert.match(compose, /dockerfile: deploy\/database.Dockerfile/);
+  assert.match(browser, /database:\n    image: lumira-database:ci/);
 });

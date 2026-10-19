@@ -29,7 +29,7 @@ def comment_blocks(file, source):
                 if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
                     spans.append((offsets[first.lineno - 1] + first.col_offset, offsets[first.end_lineno - 1] + first.end_col_offset))
         spans.sort()
-    elif file.suffix == '.sh':
+    elif file.suffix in ('.sh', '.Dockerfile') or file.name == 'Dockerfile':
         spans = [(m.start(), m.end()) for m in re.finditer(r'(?m)^[ \t]*#(?!\!)[^\n]*', source)]
     else:
         token = r'""".*?"""|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`|/\*.*?\*/|//[^\n]*'
@@ -54,7 +54,7 @@ for relative in entries:
         comment_count += 1
         if not re.search(r'[\u4e00-\u9fff]', block) or not re.search(r'[A-Za-z]{3,}', block):
             errors.append(f'missing bilingual comment block: {relative}:{line}')
-    comments = [block for _, block in comment_blocks(file, source)] if file.suffix == '.sh' else re.findall(r'/\*.*?\*/|""".*?"""', source, re.S)
+    comments = [block for _, block in comment_blocks(file, source)] if file.suffix in ('.sh', '.Dockerfile') or file.name == 'Dockerfile' else re.findall(r'/\*.*?\*/|""".*?"""', source, re.S)
     if not any(re.search(r'[\u4e00-\u9fff]', c) and re.search(r'[A-Za-z]{3,}', c) for c in comments):
         errors.append('missing bilingual responsibility: ' + relative)
 if errors:

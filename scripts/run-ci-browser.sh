@@ -23,6 +23,8 @@ debug=false
 if [[ $LUMIRA_BROWSER_CI_MODE == dynamic ]]; then fixed=false; debug=true; fi
 cat > "$work/compose.override.yml" <<YAML
 services:
+  database:
+    image: lumira-database:ci
   server:
     image: lumira-server:ci
     environment:

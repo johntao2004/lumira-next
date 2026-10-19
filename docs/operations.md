@@ -54,7 +54,7 @@ PGHOST=... PGUSER=<有 CREATEDB 权限的角色> PGPASSWORD=... scripts/backup-r
 ## 4. 供应链与 CI 门禁
 
 - `.github/dependabot.yml`：Maven、npm、GitHub Actions、Docker 基础镜像的更新 PR。
-- CI `images` 任务：构建生产镜像（server、web、office-worker、edge，以当前 workflow 为准）并用 Trivy 扫描 HIGH/CRITICAL（仅报告已有修复版本的漏洞）；另对标准部署的 `postgres:18.6` 执行相同镜像门禁并记录解析摘要；`dependencies` 任务扫描 `pom.xml` 与 pnpm 锁文件。发现问题会使 CI 失败，处理方式是升级依赖，或在评审中明确记录豁免理由。
+- CI `images` 任务：构建生产镜像（server、web、office-worker、edge，以当前 workflow 为准）并用 Trivy 扫描 HIGH/CRITICAL（仅报告已有修复版本的漏洞）；另对标准部署的派生 `lumira-database:18.6` 执行相同镜像门禁并记录解析摘要；`dependencies` 任务扫描 `pom.xml` 与 pnpm 锁文件。发现问题会使 CI 失败，处理方式是升级依赖，或在评审中明确记录豁免理由。
 - CI `web` 任务现在也执行 `pnpm build`，保证生产构建持续可用。
 
 ## 5. 架构护栏
@@ -79,3 +79,13 @@ PGHOST=... PGUSER=<有 CREATEDB 权限的角色> PGPASSWORD=... scripts/backup-r
 该回退只向 Cloudflare 发送服务域名的 DNS 查询，不发送模型服务密钥。A/AAAA 并行查询有 3.7 秒总预算，结果最多缓存 60 秒、128 项；禁止重定向且响应大小有界。受限网络若需要此回退，应允许到 1.1.1.1:443 的出站连接；本流程不修改操作系统 DNS 或代理配置。
 
 已保存的模型密钥仅在同一服务类型和规范化地址下复用。修改连接信息必须替换或清除旧密钥；需要密钥的云端服务仍要求提供有效密钥。模型列表需在实际配置的服务上验证，临时验收输出保存在 `.runtime`。
+
+## 数据库发行镜像 / Database distribution image
+
+部署使用 `deploy/database.Dockerfile` 构建的 `lumira-database:18.6`，保留官方 PostgreSQL 18.6 及其入口/数据目录/停机信号。基底固定 digest `sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336`；仅将官方 gosu 1.19 commit `6456aaa0f3c854d199d0f037f068eb97515b7513` 用 Go 1.26.9 静态重编译，保留 go.sum 和构建元数据。CI 扫描真正部署的派生镜像，且以同镜像运行真实浏览器/三角色初始化和故障恢复。原始 PostgreSQL 镜像仍作为隔离后端测试的同版本引擎和命令行客户端，不是本项目生产发行镜像。
+
+CI79 对上游 gosu 旧 Go 标准库命中25项有修复的HIGH/CRITICAL及一个默认测试私钥；这是组件扫描发现，并非25条已实证可利用路径。没有以可达性分析豁免门禁。官方源码与说明：[gosu 1.19](https://github.com/tianon/gosu/tree/6456aaa0f3c854d199d0f037f068eb97515b7513)、[上游安全范围](https://github.com/tianon/gosu/blob/6456aaa0f3c854d199d0f037f068eb97515b7513/SECURITY.md)。最终是否通过以对应提交扫描结果为准。
+
+派生层删除 `/etc/ssl/private/ssl-cert-snakeoil.key` 和 `/etc/ssl/certs/ssl-cert-snakeoil.pem` 的默认测试材料。它不启用真实 TLS，不关闭部署已有 TLS；既有配置若引用这些测试路径，必须先配置受控真实证书并现场验收，不能依赖测试证书继续运行。历史基底层的公开测试材料不因此被擦除。参见 [PostgreSQL 18 SSL配置](https://www.postgresql.org/docs/18/runtime-config-connection.html#RUNTIME-CONFIG-CONNECTION-SSL)。
+
+The derived image keeps the upstream engine and entrypoint. It replaces only the pinned gosu helper, removes bundled test certificates, and retains high/critical vulnerability and secret gates. Actual TLS, existing-volume configuration and certificate custody still require deployment-site validation.

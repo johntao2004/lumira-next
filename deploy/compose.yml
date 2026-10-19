@@ -1,7 +1,10 @@
 name: lumira-next
 services:
   database:
-    image: postgres:18.6
+    image: lumira-database:18.6
+    build:
+      context: ..
+      dockerfile: deploy/database.Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_DB: lumira_next

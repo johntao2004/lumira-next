@@ -726,5 +726,13 @@
   "scripts/verify-key-inventory.py": {
     "responsibility": "只在随机隔离QA库验证真实初始化、只读角色及库存失败关闭。\nVerifies real initialization, read-only roles and fail-closed inventory in random disposable QA databases.",
     "category": "build-boundaries"
+  },
+  "deploy/database.Dockerfile": {
+    "responsibility": "保留PG18.6官方入口与目录，仅重编译gosu并移除默认测试证书。\nPreserves the official PostgreSQL 18.6 entrypoint and storage while rebuilding gosu and removing test certificates.",
+    "category": "build-boundaries"
+  },
+  "scripts/verify-database-image.sh": {
+    "responsibility": "在一次性容器中验证非root数据库启动、快停重启及逻辑恢复。\nChecks non-root database startup, fast restart and logical restore in a disposable container.",
+    "category": "build-boundaries"
   }
 }
