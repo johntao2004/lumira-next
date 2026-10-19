@@ -63,6 +63,15 @@ async function record(name, page) {
   checks.push(name);
   if (page) await page.screenshot({path:`${out}/${String(checks.length).padStart(2,'0')}.png`, fullPage:true, mask:[page.locator('input')]});
 }
+// 只提取类型、代码位置和预先白名单化控件状态，保留首错及清理错。
+// Extract only types, source locations and allowlisted control state, preserving primary and cleanup failures.
+function failureDetails(error) {
+  return {errorType:error.name,actualNumber:typeof error.actual==='number'?error.actual:undefined,
+    expectedNumber:typeof error.expected==='number'?error.expected:undefined,
+    locations:[...new Set(error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/g)??[])],
+    controlState:error.controlState,causes:error instanceof AggregateError?error.errors.map(failureDetails):undefined};
+}
+
 try {
   const admin = await context();
   const page = await admin.newPage(); currentPage = page;
@@ -203,7 +212,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
       ['registration-reload',()=>verifyRegistrationSameValueReload({page,admin,write,record})]];
     for(const [name,run] of probes) {
       try {await page.bringToFront();await run();} catch(error) {
-        probeFailures.push({name,errorType:error.name,locations:error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/g)??[]});
+        probeFailures.push({name,...failureDetails(error)});
         writeFileSync(`${out}/component-progress.json`,JSON.stringify({status:'incomplete',checks,probeFailures},null,2));
         await page.screenshot({path:`${out}/probe-${name}.png`,fullPage:true,mask:[page.locator('input,textarea,.ant-select-selection-item,.verification-debugger-page')]}).catch(()=>{});
       }
@@ -226,7 +235,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
     stage='verification-debugger-otp';
     const debuggerManifest=JSON.parse(readFileSync('plugins/sdk/examples/verification-debugger/plugin.json','utf8'));
     await installDebuggerExample({page,admin,write,archivePath:`plugins/sdk/examples/verification-debugger/dist/verification-debugger-${debuggerManifest.version}.lumira-plugin.zip`});
-    await verifyDebuggerQueue({page,admin,member,write,record,adminPassword});
+    await verifyDebuggerQueue({page,admin,member,write,record,adminPassword,uiLogin});
   }
   stage='session-revocation';
   assert.equal((await write(admin,`/api/platform/online-users/user/${user.id}`,'DELETE')).status(),200);
@@ -255,7 +264,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
 } catch(error) {
   // 不序列化可能含凭据的错误正文、请求、HTML 或 trace。
   // Do not serialize arbitrary errors, request bodies, HTML or network traces containing credentials.
-  writeFileSync(`${out}/results.json`,JSON.stringify({status:'failed',stage,checks,probeFailures,errorType:error.name,actualNumber:typeof error.actual==='number'?error.actual:undefined,expectedNumber:typeof error.expected==='number'?error.expected:undefined,sourceLocation:error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/)?.[0],sourceLocations:[...new Set(error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/g)??[])]},null,2));
+  writeFileSync(`${out}/results.json`,JSON.stringify({status:'failed',stage,checks,probeFailures,details:failureDetails(error),errorType:error.name,actualNumber:typeof error.actual==='number'?error.actual:undefined,expectedNumber:typeof error.expected==='number'?error.expected:undefined,sourceLocation:error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/)?.[0],sourceLocations:[...new Set(error.stack?.match(/ci-browser-[a-z-]+\.mjs:\d+:\d+/g)??[])]},null,2));
   if(currentPage) await currentPage.screenshot({path:`${out}/failure.png`,fullPage:true,mask:[currentPage.locator('input'),currentPage.locator('textarea'),currentPage.locator('.verification-debugger-page'),currentPage.getByRole('dialog',{name:'收到本地测试验证码',exact:true})]}).catch(()=>{});
   for(const [index,failedPage] of contexts.flatMap(ctx=>ctx.pages()).entries()) {
     await failedPage.screenshot({path:`${out}/failure-page-${index}.png`,fullPage:true,mask:[failedPage.locator('input'),failedPage.locator('textarea'),failedPage.locator('.verification-debugger-page'),failedPage.getByRole('dialog',{name:'收到本地测试验证码',exact:true})]}).catch(()=>{});

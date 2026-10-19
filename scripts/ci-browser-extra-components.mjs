@@ -14,6 +14,22 @@ async function choose(page,control,label){
   await expect(option).toHaveCount(1);await option.click();
 }
 
+// 精确确认按钮结构并记录无表单值的点击诊断，确认步骤不可跳过。
+// Verify the actual confirmation button and retain value-free click diagnostics; never bypass confirmation.
+async function confirmReload(page) {
+  const button=page.locator('.ant-popconfirm:visible .ant-popconfirm-buttons > button.ant-btn-primary');
+  try {
+    await expect(button).toHaveCount(1);await expect(button).toHaveText('重新载入配置');
+    await expect(button).toBeEnabled();await button.click();
+  } catch(error) {
+    error.controlState=await button.evaluateAll(nodes=>nodes.map(node=>{
+      const r=node.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+      return {disabled:node.disabled,visible:r.width>0&&r.height>0,hitTag:hit?.tagName,hitClass:typeof hit?.className==='string'?hit.className:undefined,hitInside:!!hit&&node.contains(hit)};
+    })).catch(()=>[]);
+    throw error;
+  }
+}
+
 export async function verifyExtraComponents({page,admin,member,write,record,only}) {
   const writes=[];const observe=r=>{const p=new URL(r.url()).pathname;if(p.startsWith('/api/platform/')&&!['GET','HEAD','OPTIONS'].includes(r.method()))writes.push(p);};
   page.on('request',observe);
@@ -119,12 +135,13 @@ export async function installDebuggerExample({page,admin,write,archivePath}) {
 // Requires writer's strict fixed transport-message branch, code=='' and no empty-code popup.
 // 仅用于全新动态 QA，不使用真实供应商、号码、凭据或 fixture 替代流程。
 // Only fresh dynamic QA. No real providers, numbers, credentials or fixtures endpoint.
-export async function verifyDebuggerQueue({admin,page,write,record,adminPassword,member}) {
+export async function verifyDebuggerQueue({admin,page,write,record,adminPassword,member,uiLogin}) {
   assert.equal(process.env.LUMIRA_BROWSER_CI_MODE,'dynamic');
   const root='/api/plugins/verification-debugger';
   const oldResponse=await write(admin,'/api/platform/settings/sms','GET');assert.equal(oldResponse.status(),200);
   const old=await oldResponse.json();assert.equal(old.data.enabled,false);assert.equal(old.credentialConfigured,false);
-  let configured=false,sessionStarted=false;
+  let configured=false,sessionStarted=false,otp;
+  const failures=[];
   const phonePage=await admin.newPage();
   try {
     await page.goto('/dashboard/verification-debugger');
@@ -146,19 +163,12 @@ export async function verifyDebuggerQueue({admin,page,write,record,adminPassword
     const request=responseFor(phonePage,'/api/account/phone/request','POST');
     await drawer.getByRole('button',{name:'发送验证码短信',exact:true}).click();
     assert.equal((await request).status(),202);
-    let otp;
     await expect.poll(async()=>{const r=await write(admin,`${root}/messages`,'GET');assert.equal(r.status(),200);const items=(await r.json()).items;otp=items.find(x=>x.recipient==='+15555550123'&&x.provider==='webhook'&&/^\d{6}$/.test(x.code));return Boolean(otp);},{timeout:30000}).toBe(true);
     assert.equal(otp.message,`Lumira verification code: ${otp.code}`);
     await page.bringToFront();
     const modal=page.getByRole('dialog',{name:'收到本地测试验证码',exact:true});
     await expect(modal).toBeVisible();await expect(modal.getByText(otp.code,{exact:true})).toBeVisible();
     await modal.getByRole('button',{name:'关闭',exact:true}).click();
-    await phonePage.bringToFront();
-    await drawer.getByLabel('短信验证码',{exact:true}).fill(otp.code);
-    const confirmed=responseFor(phonePage,'/api/account/phone/confirm','POST');
-    await drawer.getByRole('button',{name:'确认手机号',exact:true}).click();assert.equal((await confirmed).status(),204);
-    const verified=await write(admin,'/api/account/phone','GET');assert.equal(verified.status(),200);
-    const view=await verified.json();assert.equal(view.phone,'+15555550123');assert.ok(view.verifiedAt);
     // 独立传输测试只增加一条无验证码记录。
     // This exact HTTP test is separate from OTP delivery. It is allowed to add one non-code row.
     await page.bringToFront();
@@ -177,13 +187,30 @@ export async function verifyDebuggerQueue({admin,page,write,record,adminPassword
     const row=page.getByRole('row').filter({hasText:'transport-test'});await expect(row).toBeVisible();await expect(row.getByRole('button',{name:'查看验证码',exact:true})).toHaveCount(0);await expect(modal).toHaveCount(0);
     // 窗口凭据和验证码可见时不截图，只记录检查名称。
     // No screenshot while the window/token/OTP remains visible. Mark success without page argument.
-    await record('real phone OTP enqueue, private inbox UI and verification; explicit non-OTP transport test');
-  } finally {
+  } catch(error) {failures.push(error);} finally {
     // 结束接收器前恢复禁用配置，恢复异常必须使 CI 失败。
     // Restore disabled settings before ending the receiver. Exceptions must fail CI.
-    try {if(configured){const r=await write(admin,'/api/platform/settings/sms','GET');assert.equal(r.status(),200);const current=await r.json();const restored=await write(admin,'/api/platform/settings/sms','PUT',{version:current.version,data:old.data,credentials:{action:'CLEAR'}});assert.equal(restored.status(),200);}}
-    finally {try {if(sessionStarted){await page.getByRole('button',{name:'结束短信调试',exact:true}).click();await expect(page.getByRole('button',{name:'结束短信调试',exact:true})).toBeDisabled();}}finally{await phonePage.close();}}
+    try {if(configured){const r=await write(admin,'/api/platform/settings/sms','GET');assert.equal(r.status(),200);const current=await r.json();const restored=await write(admin,'/api/platform/settings/sms','PUT',{version:current.version,data:old.data,credentials:{action:'CLEAR'}});assert.equal(restored.status(),200);}}catch(error){failures.push(error);}
+    try {if(sessionStarted){await page.getByRole('button',{name:'结束短信调试',exact:true}).click();await expect(page.getByRole('button',{name:'结束短信调试',exact:true})).toBeDisabled();}}catch(error){failures.push(error);}
   }
+  try {
+    if(!failures.length) {
+    // 先清理调试配置，再确认手机；凭据变更必须撤销旧会话。
+    // Clean up debug configuration before confirming the phone; credential changes must revoke the old session.
+    await phonePage.bringToFront();
+    const drawer=phonePage.getByRole('dialog',{name:'账号手机',exact:true});
+    await drawer.getByLabel('短信验证码',{exact:true}).fill(otp.code);
+    const confirmed=responseFor(phonePage,'/api/account/phone/confirm','POST');
+    await drawer.getByRole('button',{name:'确认手机号',exact:true}).click();assert.equal((await confirmed).status(),204);
+    assert.equal((await admin.request.get('/api/auth/me')).status(),401);
+    assert.equal((await uiLogin(phonePage,'admin',adminPassword)).state,'COMPLETE');
+    await expect(phonePage).toHaveURL(url=>url.pathname.startsWith('/dashboard/'));
+    const verified=await write(admin,'/api/account/phone','GET');assert.equal(verified.status(),200);
+    const view=await verified.json();assert.equal(view.phone,'+15555550123');assert.ok(view.verifiedAt);
+    await record('real phone OTP enqueue, private inbox UI and verification revokes old session; explicit non-OTP transport test');
+    }
+  } catch(error){failures.push(error);} finally {try{await phonePage.close();}catch(error){failures.push(error);}}
+  if(failures.length)throw new AggregateError(failures,'Debugger checks or cleanup failed');
 }
 
 export async function verifySettingsDraftConflict({page,admin,write,record}) {
@@ -204,14 +231,12 @@ export async function verifySettingsDraftConflict({page,admin,write,record}) {
     // Real concurrent HTTP update, preserving disabled service and all existing action policies.
     const concurrent=await write(admin,path,'PUT',{version:original.version,data:{...original.data,type:'SLIDER'}});
     assert.equal(concurrent.status(),200);changed=true;
-    const refreshed=responseFor(page,path,'GET');
-    // 触发真实可见性监听，不拦截或替换网络响应。
-    // Exercise TanStack's real visibility listener, never intercept/replace network responses.
-    await page.evaluate(()=>window.dispatchEvent(new Event('visibilitychange')));
-    assert.equal((await refreshed).status(),200);
     await expect(enabled).toBeChecked();await expect(form.locator('.ant-select-selection-item').first()).toHaveText('图形文字');
+    // 冲突处理会真实重读配置；全局关闭窗口聚焦刷新。
+    // Conflict handling performs the real refetch; global window-focus refetch is disabled.
+    const refreshed=responseFor(page,path,'GET');
     const conflict=responseFor(page,path,'PUT');await form.getByRole('button',{name:/保\s*存/}).click();
-    assert.equal((await conflict).status(),409);
+    assert.equal((await conflict).status(),409);assert.equal((await refreshed).status(),200);
     await expect(enabled).toBeChecked();await expect(form.locator('.ant-select-selection-item').first()).toHaveText('图形文字');
     const actual=await write(admin,path,'GET');assert.equal(actual.status(),200);const current=await actual.json();assert.equal(current.data.enabled,false);assert.equal(current.data.type,'SLIDER');
     await record('real settings refetch and stale-version 409 preserve unsaved CAPTCHA draft',page);
@@ -239,7 +264,7 @@ export async function verifyRegistrationSameValueReload({page,admin,write,record
   // 确认前保留草稿。 / Keep the draft until confirmation.
   await expect(enabled).toBeChecked();
   const reloaded=responseFor(page,path,'GET');
-  await pop.getByRole('button',{name:'重新载入配置',exact:true}).click();
+  await confirmReload(page);
   const result=await reloaded;assert.equal(result.status(),200);await expect(pop).toBeHidden();
   const fresh=await result.json();assert.equal(fresh.version,baseline.version);
   assert.equal(fresh.enabled,baseline.enabled);assert.deepEqual(fresh.channels,baseline.channels);assert.equal(fresh.defaultRoleId,baseline.defaultRoleId);
@@ -250,7 +275,7 @@ export async function verifyRegistrationSameValueReload({page,admin,write,record
   await enabled.click();await expect(enabled).toBeChecked();
   await form.getByRole('button',{name:'重新载入配置',exact:true}).click();
   const again=responseFor(page,path,'GET');
-  await page.locator('.ant-popconfirm:visible').getByRole('button',{name:'重新载入配置',exact:true}).click();
+  await confirmReload(page);
   assert.equal((await again).status(),200);await expect(enabled).not.toBeChecked();
   await record('registration confirmed reload restores unchanged server values twice',page);
 }
@@ -258,7 +283,7 @@ export async function verifyRegistrationSameValueReload({page,admin,write,record
 export async function captchaReloadIncrement({page,admin,write,record,form,enabled,type,path}) {
   await form.getByRole('button',{name:'重新载入配置',exact:true}).click();
   const refreshed=responseFor(page,path,'GET');
-  await page.locator('.ant-popconfirm:visible').getByRole('button',{name:'重新载入配置',exact:true}).click();
+  await confirmReload(page);
   assert.equal((await refreshed).status(),200);
   await expect(page.locator('.ant-popconfirm:visible')).toHaveCount(0);
   await expect(enabled).not.toBeChecked();
