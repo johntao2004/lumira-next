@@ -16,10 +16,19 @@ RUN apk add --no-cache git
 RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
 # 修复 HTTP/2 SETTINGS 拒绝服务漏洞，并检查最终二进制确实采用补丁依赖。
 # Fix the HTTP/2 SETTINGS denial of service and verify the patched dependency in the final binary.
-RUN CGO_ENABLED=0 XCADDY_SKIP_CLEANUP=1 XCADDY_SETCAP=0 /go/bin/xcaddy build v2.11.7 --output /out/caddy \
-    --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
-    && go version -m /out/caddy | grep -F 'go1.26.9' \
-    && go version -m /out/caddy | grep -E '=>[[:space:]]+golang.org/x/net[[:space:]]+v0.60.0'
+# 官方校验服务可能瞬时失败；只做有界重试，不关闭模块校验或变更版本。
+# Bound retries for transient upstream checksum-service failures without disabling verification or changing versions.
+RUN set -eu; \
+    for attempt in 1 2 3; do \
+      rm -f /out/caddy; \
+      if CGO_ENABLED=0 XCADDY_SKIP_CLEANUP=1 XCADDY_SETCAP=0 timeout 600s /go/bin/xcaddy build v2.11.7 --output /out/caddy \
+          --replace golang.org/x/net=golang.org/x/net@v0.60.0; then break; fi; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep "$((attempt * 5))"; \
+    done; \
+    test -x /out/caddy; \
+    go version -m /out/caddy | grep -F 'go1.26.9'; \
+    go version -m /out/caddy | grep -E '=>[[:space:]]+golang.org/x/net[[:space:]]+v0.60.0'
 
 FROM caddy:2.11.7-alpine AS patched-caddy
 COPY --from=caddy-build /out/caddy /usr/bin/caddy

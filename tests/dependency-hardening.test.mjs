@@ -264,3 +264,14 @@ test('database image pins upstream gosu and preserves production PostgreSQL entr
   assert.match(compose, /dockerfile: deploy\/database.Dockerfile/);
   assert.match(browser, /database:\n    image: lumira-database:ci/);
 });
+
+// 校验服务瞬时故障只能有界重试，不能关闭供应链验证。
+// Checksum-service failures may be retried within bounds, never by disabling verification.
+test('Caddy build retries are bounded and preserve module verification', () => {
+  const image = readFileSync(new URL('../deploy/web.Dockerfile', import.meta.url), 'utf8');
+  assert.match(image, /for attempt in 1 2 3/);
+  assert.match(image, /timeout 600s/);
+  assert.match(image, /if \[ "\$attempt" -eq 3 \]; then exit 1/);
+  assert.match(image, /test -x \/out\/caddy/);
+  assert.doesNotMatch(image, /GOSUMDB=off|GOINSECURE|GONOSUMDB=\*/);
+});
