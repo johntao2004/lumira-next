@@ -610,5 +610,17 @@
   "deploy/database/10-application-role.sh": {
     "responsibility": "为新数据库卷建立独立非超级应用角色。\nCreates a separate non-superuser application role for new database volumes.",
     "category": "deployment"
+  },
+  "scripts/backup-restore-drill.py": {
+    "responsibility": "用同一快照和内容摘要验证数据库恢复。\nVerifies database recovery using one snapshot and content digests.",
+    "category": "recovery"
+  },
+  "scripts/backup-restore-drill.sh": {
+    "responsibility": "启动数据库恢复验证入口。\nStarts the database recovery verification entry point.",
+    "category": "recovery"
+  },
+  "scripts/verify-backup-restore.py": {
+    "responsibility": "以临时数据库验证导出后并发变化不会污染恢复比较。\nUses temporary databases to verify that post-export changes cannot pollute recovery comparisons.",
+    "category": "recovery"
   }
 }

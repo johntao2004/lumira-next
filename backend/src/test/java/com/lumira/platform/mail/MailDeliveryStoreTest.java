@@ -171,6 +171,97 @@ class MailDeliveryStoreTest {
     }
 
     @Test
+    void transactionStartDoesNotKeepAnExpiredLeaseAlive() {
+        UUID id = enqueue();
+        var claim = claim();
+        tx.executeWithoutResult(
+                status -> {
+                    jdbc.update(
+                            "UPDATE platform_mail_delivery SET lease_until=clock_timestamp()+interval '100 milliseconds' WHERE id=?",
+                            id);
+                    jdbc.execute("SELECT pg_sleep(0.2)");
+                    assertFalse(store.beginSending(claim));
+                });
+        assertEquals("LEASED", state(id));
+    }
+
+    @Test
+    void lockWaitCannotExtendSendingRenewalOrCompletionEligibility() throws Exception {
+        for (String operation : List.of("send", "renew", "complete")) {
+            UUID id = enqueue();
+            var claim = claim();
+            if (!operation.equals("send"))
+                assertTrue(tx.<Boolean>execute(status -> store.beginSending(claim)));
+            var locked = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            try (var executor = Executors.newFixedThreadPool(2)) {
+                var blocker =
+                        executor.submit(
+                                () ->
+                                        tx.executeWithoutResult(
+                                                status -> {
+                                                    jdbc.queryForObject(
+                                                            "SELECT id FROM platform_mail_delivery WHERE id=? FOR UPDATE",
+                                                            UUID.class,
+                                                            id);
+                                                    jdbc.update(
+                                                            "UPDATE platform_mail_delivery SET lease_until=clock_timestamp()+interval '100 milliseconds' WHERE id=?",
+                                                            id);
+                                                    locked.countDown();
+                                                    try {
+                                                        assertTrue(
+                                                                release.await(3, TimeUnit.SECONDS));
+                                                    } catch (InterruptedException interrupted) {
+                                                        throw new IllegalStateException(
+                                                                interrupted);
+                                                    }
+                                                }));
+                assertTrue(locked.await(2, TimeUnit.SECONDS));
+                var sending =
+                        executor.submit(
+                                () ->
+                                        tx.<Boolean>execute(
+                                                status ->
+                                                        switch (operation) {
+                                                            case "send" ->
+                                                                    store.beginSending(claim);
+                                                            case "renew" -> store.renewLease(claim);
+                                                            default ->
+                                                                    store.complete(
+                                                                            claim,
+                                                                            SmtpGateway.Result
+                                                                                    .ACCEPTED);
+                                                        }));
+                Thread.sleep(250);
+                release.countDown();
+                blocker.get(3, TimeUnit.SECONDS);
+                assertFalse(sending.get(3, TimeUnit.SECONDS));
+            } finally {
+                release.countDown();
+            }
+            assertEquals(operation.equals("send") ? "LEASED" : "SENDING", state(id));
+        }
+    }
+
+    @Test
+    void expiredCompletionDoesNotAcknowledgeOrRequeue() {
+        for (var result :
+                List.of(SmtpGateway.Result.ACCEPTED, SmtpGateway.Result.CONNECTION_FAILED)) {
+            UUID id = enqueue();
+            var claim = claim();
+            assertTrue(tx.<Boolean>execute(status -> store.beginSending(claim)));
+            jdbc.update(
+                    "UPDATE platform_mail_delivery SET lease_until=clock_timestamp()-interval '1 second' WHERE id=?",
+                    id);
+            assertFalse(tx.<Boolean>execute(status -> store.complete(claim, result)));
+            assertEquals("SENDING", state(id));
+            tx.executeWithoutResult(status -> store.recoverExpired());
+            assertEquals("UNCERTAIN", state(id));
+        }
+        assertTrue(store.claim().isEmpty());
+    }
+
+    @Test
     void connectionFailuresBackOffAndStopAtFiveAttempts() {
         UUID id = enqueue();
         for (int attempt = 1; attempt <= 5; attempt++) {

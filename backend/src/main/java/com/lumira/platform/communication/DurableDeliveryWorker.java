@@ -62,6 +62,7 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
     private final long defaultTimeoutMillis;
     private final ExecutorService workers;
     private final ScheduledExecutorService schedules;
+    private final ScheduledExecutorService leaseSchedules;
     private final Semaphore slots = new Semaphore(MAX_CONCURRENCY);
     private final AtomicBoolean stopped = new AtomicBoolean();
 
@@ -86,12 +87,22 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
         this.uncertainResult = uncertainResult;
         this.audit = audit;
         this.transaction = new TransactionTemplate(manager);
+        this.transaction.setTimeout(10);
         this.channel = channel;
         this.defaultTimeoutMillis = defaultTimeoutMillis;
         this.log = LoggerFactory.getLogger(getClass());
         this.workers =
                 Executors.newThreadPerTaskExecutor(
                         Thread.ofVirtual().name(channel + "-delivery-", 0).factory());
+        // 续租可能等待数据库；独立有界线程池不能阻塞网络截止中断。
+        // Renewal can wait on the database; its bounded pool must not block network deadlines.
+        this.leaseSchedules =
+                Executors.newScheduledThreadPool(
+                        MAX_CONCURRENCY,
+                        Thread.ofPlatform()
+                                .daemon()
+                                .name(channel + "-lease-renewal-", 0)
+                                .factory());
         this.schedules =
                 Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform()
@@ -160,17 +171,29 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
 
                 Thread current = Thread.currentThread();
                 AtomicBoolean leaseLost = new AtomicBoolean();
+                Object leaseStateLock = new Object();
+                boolean[] attemptActive = {true};
+                // 完成阶段不接受迟到续租中断，避免旧回调污染结果提交。
+                // Ignore late renewal interrupts after sending finishes so stale callbacks cannot
+                // disrupt completion.
+                Runnable loseLease =
+                        () -> {
+                            synchronized (leaseStateLock) {
+                                if (attemptActive[0]) {
+                                    leaseLost.set(true);
+                                    current.interrupt();
+                                }
+                            }
+                        };
                 var leaseRenewal =
-                        schedules.scheduleAtFixedRate(
+                        leaseSchedules.scheduleAtFixedRate(
                                 () -> {
                                     try {
                                         if (!store.renewLease(claim)) {
-                                            leaseLost.set(true);
-                                            current.interrupt();
+                                            loseLease.run();
                                         }
                                     } catch (RuntimeException error) {
-                                        leaseLost.set(true);
-                                        current.interrupt();
+                                        loseLease.run();
                                     }
                                 },
                                 LEASE_RENEWAL_SECONDS,
@@ -201,6 +224,9 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
                         result = uncertainResult.get();
                     }
                 } finally {
+                    synchronized (leaseStateLock) {
+                        attemptActive[0] = false;
+                    }
                     leaseRenewal.cancel(false);
                     synchronized (deadlineLock) {
                         deadlineState[0] = true;
@@ -254,6 +280,7 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
         if (stopped.compareAndSet(false, true)) {
             workers.shutdownNow();
             schedules.shutdownNow();
+            leaseSchedules.shutdownNow();
         }
     }
 }

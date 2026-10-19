@@ -14,7 +14,7 @@ public class MailDeliveryStore extends DurableDeliveryStore<OutgoingMail> {
         super(jdbc, keys, mapper, "mail", "platform_mail_delivery", OutgoingMail.class);
     }
 
-    @Transactional
+    @Transactional(timeout = 5)
     public boolean complete(Claim claim, SmtpGateway.Result result) {
         return completeResult(claim, result == null ? null : result.name());
     }

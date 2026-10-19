@@ -15,7 +15,7 @@ public class SmsDeliveryStore extends DurableDeliveryStore<OutgoingSms> {
         super(jdbc, keys, mapper, "sms", "platform_sms_delivery", OutgoingSms.class);
     }
 
-    @Transactional
+    @Transactional(timeout = 5)
     public boolean complete(Claim claim, SmsGateway.Result result) {
         return completeResult(claim, result == null ? null : result.name());
     }
