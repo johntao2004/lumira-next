@@ -10,6 +10,8 @@ const expect = baseExpect.configure({timeout:20000});
 // write must refresh /auth/me and send the current authorization revision, including GETs.
 export async function verifyDynamicPlugins({ admin, page, write, record, member }) {
   const root='/api/platform/modules/plugins';
+  const identity=await admin.request.get('/api/auth/me');assert.equal(identity.status(),200);
+  const revision=(await identity.json()).authorizationContext.revision;assert.ok(revision);
   const pluginList=await write(admin,root,'GET');assert.equal(pluginList.status(),200);
   const feedback=(await pluginList.json()).find(item=>item.id==='feedback');
   assert.ok(feedback?.installed && feedback.lifecycleChangesAllowed);
@@ -42,7 +44,10 @@ export async function verifyDynamicPlugins({ admin, page, write, record, member 
   await expect(card.getByRole('switch')).not.toBeChecked();
   await expect(other.getByRole('table')).toHaveCount(0);
   await expect(other.locator(assetSelector)).toHaveCount(0);
-  assert.equal((await write(admin,'/api/feedback','GET')).status(),404);
+  const disabledResponse=await write(admin,'/api/feedback','GET');
+  assert.equal(disabledResponse.status(),403);
+  const disabledError=await disabledResponse.json();
+  assert.equal(disabledError.detail,'无权访问或安全令牌已过期');
   await other.reload();await expect(other.getByRole('table')).toHaveCount(0);
   await card.getByRole('switch').click();
   await expect(card.getByRole('switch')).toBeChecked();
@@ -72,9 +77,16 @@ export async function verifyDynamicPlugins({ admin, page, write, record, member 
     const response=await responsePromise;assert.equal(response.status(),200);
     const operation=await response.json();assert.ok(operation.id);
     await expect.poll(async()=>{
-      const result=await write(admin,`${root}/operations/${operation.id}`,'GET');
+      // 图切换时仅操作查询可用，复用提交前已验证的普通会话版本，不请求被阻断的 csrf/me。
+      // Only operation reads remain available during graph changes; reuse the pre-submit normal-session revision.
+      const result=await admin.request.get(`${root}/operations/${operation.id}`,{headers:{'X-Lumira-Authorization-Context-Revision':revision}});
       assert.equal(result.status(),200);return (await result.json()).status;
     },{timeout:60000,intervals:[250,500,1000]}).toBe('SUCCEEDED');
+    await expect.poll(async()=>{
+      const response=await admin.request.get('/api/auth/me');
+      if(response.status()===503) {assert.equal((await response.json()).code,'pluginRuntimeNotReady');return false;}
+      assert.equal(response.status(),200);return true;
+    },{timeout:20000}).toBe(true);
   }
   await drawer.getByRole('button',{name:/确\s*认/}).click();
   const uninstall=page.waitForResponse(r=>new URL(r.url()).pathname===`${root}/feedback/uninstall`&&r.request().method()==='POST');
@@ -84,7 +96,9 @@ export async function verifyDynamicPlugins({ admin, page, write, record, member 
   await expect(other.getByRole('table')).toHaveCount(0);
   await expect(other.locator(assetSelector)).toHaveCount(0);
   await other.reload();await expect(other.getByRole('table')).toHaveCount(0);
-  assert.equal((await write(admin,'/api/feedback','GET')).status(),404);
+  assert.equal((await write(admin,'/api/feedback','GET')).status(),403);
+  const uninstalled=await write(admin,root,'GET');assert.equal(uninstalled.status(),200);
+  assert.equal((await uninstalled.json()).find(value=>value.id==='feedback').installed,false);
   const available=await write(admin,`${root}/frontend`,'GET');assert.equal(available.status(),200);
   assert.equal((await available.json()).some(value=>value.id==='feedback'),false);
   await record('preserve uninstall succeeds and removes frontend resource and endpoint',other);
