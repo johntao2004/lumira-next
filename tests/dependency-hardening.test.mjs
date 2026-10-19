@@ -192,3 +192,13 @@ test("pnpm audit rejects new advisories and changed dependency paths", () => {
     /dependency path changed/,
   );
 });
+
+// 固定已核实的扫描器版本，保持镜像阻断与源码报告复核两道门禁。
+// Pin verified scanner versions and retain both image failure gates and source-report review.
+test("CI pins Trivy releases without weakening scan gates", () => {
+  const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+  assert.equal((workflow.match(/aquasecurity\/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25/g) ?? []).length, 4);
+  assert.equal((workflow.match(/version: v0\.75\.0/g) ?? []).length, 4);
+  assert.equal((workflow.match(/exit-code: "1"/g) ?? []).length, 3);
+  assert.match(workflow, /node scripts\/verify-trivy-report\.mjs/);
+});

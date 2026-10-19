@@ -84,20 +84,23 @@ jobs:
       - run: docker build -f deploy/web.Dockerfile -t lumira-web:ci .
       - run: docker build -f deploy/office-worker.Dockerfile -t lumira-office-worker:ci .
       - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           image-ref: lumira-server:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           image-ref: lumira-web:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           image-ref: lumira-office-worker:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -117,7 +120,7 @@ jobs:
       - run: pnpm verify:dependency-patches
       - run: pnpm verify:pnpm-audit
       - name: Scan lockfiles and pom for known vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
