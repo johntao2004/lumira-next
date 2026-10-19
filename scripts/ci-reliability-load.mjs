@@ -155,15 +155,18 @@ export async function verifyReliabilityLoad({ admin, member, page, memberPage, u
       await until(slot*30000);if(stop)return;
       const output=await command(['stats','--no-stream','--format','{{json .}}',...Object.values(ids)],10000);
       const stats=output.trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));
+      assert.equal(stats.length,SERVICES.length,'Every bound container must have a resource sample');
+      assert.equal(new Set(stats.map(s=>s.ID)).size,SERVICES.length);
+      assert.ok(stats.every(s=>Object.values(ids).some(id=>id.startsWith(s.ID))));
       const freeBytes=os.freemem();
       assert.ok(freeBytes>=256*1024*1024,'Stop below 256 MiB free runner memory');
       assert.ok(stats.every(s=>Number(s.PIDs)<512),'Stop at excessive per-container process count');
       let database=null;
       if(!activeFault) {
-        const value=(await run(['exec','-T','database','psql','-U','lumira_bootstrap','-d','lumira_next','-Atc',"SELECT count(*)::text||'/'||current_setting('max_connections') FROM pg_stat_activity"])).trim();
-        const [connections,maximum]=value.split('/').map(Number);
+        const value=(await run(['exec','-T','database','psql','-U','lumira_bootstrap','-d','lumira_next','-Atc',"SELECT count(*) FILTER (WHERE backend_type='client backend')::text||'/'||current_setting('max_connections')||'/'||count(*)::text FROM pg_stat_activity"])).trim();
+        const [connections,maximum,totalBackends]=value.split('/').map(Number);
         assert.ok(Number.isFinite(connections)&&connections<maximum*0.8,'Stop before 80% database connection occupancy');
-        database={connections,maximum};
+        database={connections,maximum,totalBackends};
       }
       resources.push({atMs:elapsed(),freeBytes,database,containers:stats.map(s=>({id:s.ID,cpu:s.CPUPerc,memory:s.MemUsage,memoryPercent:s.MemPerc,pids:s.PIDs,network:s.NetIO,block:s.BlockIO}))});
     }
