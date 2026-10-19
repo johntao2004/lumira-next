@@ -14,8 +14,12 @@ RUN node scripts/generate-csp.mjs apps/web/dist/index.html /workspace/csp.caddy
 FROM golang:1.26.9-alpine3.23 AS caddy-build
 RUN apk add --no-cache git
 RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
+# 修复 HTTP/2 SETTINGS 拒绝服务漏洞，并检查最终二进制确实采用补丁依赖。
+# Fix the HTTP/2 SETTINGS denial of service and verify the patched dependency in the final binary.
 RUN CGO_ENABLED=0 XCADDY_SKIP_CLEANUP=1 XCADDY_SETCAP=0 /go/bin/xcaddy build v2.11.7 --output /out/caddy \
-    && go version -m /out/caddy | grep -F 'go1.26.9'
+    --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
+    && go version -m /out/caddy | grep -F 'go1.26.9' \
+    && go version -m /out/caddy | grep -E '=>[[:space:]]+golang.org/x/net[[:space:]]+v0.60.0'
 
 FROM caddy:2.11.7-alpine
 COPY --from=caddy-build /out/caddy /usr/bin/caddy

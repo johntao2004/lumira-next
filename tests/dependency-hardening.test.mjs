@@ -206,3 +206,11 @@ test("CI pins Trivy releases without weakening scan gates", () => {
   assert.doesNotMatch(workflow, /docker (?:system|volume) prune/);
   assert.match(workflow, /skip-dirs: \.runtime,\*\*\/target/);
 });
+
+// 镜像中的 Caddy 必须重建到补丁依赖，不能仅忽略扫描告警。
+// Rebuild Caddy with the patched dependency rather than suppressing scanner findings.
+test("Caddy build pins the HTTP/2 denial-of-service fix", () => {
+  const dockerfile = readFileSync("deploy/web.Dockerfile", "utf8");
+  assert.match(dockerfile, /--replace golang\.org\/x\/net=golang\.org\/x\/net@v0\.60\.0/);
+  assert.match(dockerfile, /go version -m \/out\/caddy/);
+});
