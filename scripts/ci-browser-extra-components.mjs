@@ -6,12 +6,19 @@ import assert from 'node:assert/strict';
 import {expect as baseExpect} from '@playwright/test';
 const expect=baseExpect.configure({timeout:20000});
 const responseFor=(page,path,method)=>page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method);
-async function choose(page,control,label){await control.click();await page.locator('.ant-select-dropdown:visible').getByText(label,{exact:true}).click();}
+async function choose(page,control,label){
+  await control.click();
+  // 虚拟列表另有隐藏无障碍选项；只点击唯一可视内容。
+  // Virtual lists also contain hidden accessibility options; click the unique visible content.
+  const option=page.locator('.ant-select-dropdown:visible .ant-select-item-option-content:visible').filter({hasText:new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`)});
+  await expect(option).toHaveCount(1);await option.click();
+}
 
-export async function verifyExtraComponents({page,admin,member,write,record}) {
+export async function verifyExtraComponents({page,admin,member,write,record,only}) {
   const writes=[];const observe=r=>{const p=new URL(r.url()).pathname;if(p.startsWith('/api/platform/')&&!['GET','HEAD','OPTIONS'].includes(r.method()))writes.push(p);};
   page.on('request',observe);
   try {
+    if(!only||only==='swagger') {
     const doc=responseFor(page,'/api/platform/api-docs','GET');
     await page.goto('/dashboard/api-docs');assert.equal((await doc).status(),200);
     const swagger=page.locator('.api-docs-swagger');
@@ -28,6 +35,8 @@ export async function verifyExtraComponents({page,admin,member,write,record}) {
     if(member)assert.equal((await write(member,'/api/platform/api-docs','GET')).status(),403);
     await record('Swagger renders, expands, searches and resets without execution controls',page);
 
+    }
+    if(!only||only==='smtp') {
     await page.goto('/dashboard/smtp');
     const form=page.locator('form.settings-form');
     const enabled=form.getByRole('switch',{name:'启用邮件服务',exact:true});
@@ -46,12 +55,13 @@ export async function verifyExtraComponents({page,admin,member,write,record}) {
     await record('SMTP inferred ports follow security; explicit custom and cleared values persist',page);
     await page.reload(); // 丢弃草稿，不保存或发送；discard edits, never save/send mail
 
+    }
     // 文件只暂存在浏览器，beforeUpload 返回 false。
     // These uploads are staged client-side only (beforeUpload returns false).
     for(const item of [
       {route:'dictionaries',button:'导入字典',form:'#dictionary-file-import',name:'名称',ext:'txt'},
       {route:'print-templates',button:'新建模板',form:'#print-template-create',name:'模板名称',ext:'xlsx'},
-    ]) {
+    ].filter(item=>!only||only===item.route)) {
       await page.goto(`/dashboard/${item.route}`);
       await page.getByRole('button',{name:item.button,exact:true}).click();
       const f=page.locator(item.form), input=f.locator('input[type=file]');

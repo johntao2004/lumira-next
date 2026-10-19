@@ -156,8 +156,10 @@ jobs:
       - name: Real browser acceptance against disposable production images
         timeout-minutes: 30
         run: |
-          bash scripts/run-ci-browser.sh
-          LUMIRA_BROWSER_CI_MODE=dynamic bash scripts/run-ci-browser.sh
+          status=0
+          bash scripts/run-ci-browser.sh || status=1
+          LUMIRA_BROWSER_CI_MODE=dynamic bash scripts/run-ci-browser.sh || status=1
+          exit "$status"
       - name: Upload safe browser acceptance evidence only
         if: always()
         uses: actions/upload-artifact@v4
