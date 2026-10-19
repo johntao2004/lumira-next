@@ -1,6 +1,7 @@
 /** 在一次性 CI 部署上验证真实登录和权限组件，不访问已有或生产数据。
  * Verify real login and permission components in disposable CI, never saved or production data. */
 import assert from 'node:assert/strict';
+import {verifyWechatDraft,verifyProfileDraft,verifyPaymentDrafts} from './ci-browser-draft-pages.mjs';
 import { verifyReliabilityLoad } from './ci-reliability-load.mjs';
 import { verifyExtraComponents, verifyRegistrationSameValueReload, verifySettingsDraftConflict, installDebuggerExample, verifyDebuggerQueue } from './ci-browser-extra-components.mjs';
 import { verifyDynamicPlugins } from './ci-browser-dynamic-plugins.mjs';
@@ -209,7 +210,9 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
     // Collect independent page failures without dropping assertions; fail the suite after all probes.
     const probes=[...['swagger','smtp','dictionaries','print-templates'].map(only=>[only,()=>verifyExtraComponents({page,admin,member,write,record,only})]),
       ['captcha-draft',()=>verifySettingsDraftConflict({page,admin,write,record})],
-      ['registration-reload',()=>verifyRegistrationSameValueReload({page,admin,write,record})]];
+      ['registration-reload',()=>verifyRegistrationSameValueReload({page,admin,write,record})],
+      ['wechat-draft',()=>verifyWechatDraft({page,admin,write,record})],
+      ['profile-draft',()=>verifyProfileDraft({page,admin,write,record})]];
     for(const [name,run] of probes) {
       try {await page.bringToFront();await run();} catch(error) {
         probeFailures.push({name,...failureDetails(error)});
@@ -232,6 +235,8 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   if(config.mode === 'dynamic') {
     stage='dynamic-plugin-lifecycle';currentPage=page;
     await verifyDynamicPlugins({admin,page,member,write,record});
+    stage='payment-drafts';
+    try {await verifyPaymentDrafts({page,admin,write,record});}catch(error){probeFailures.push({name:'payment-drafts',...failureDetails(error)});}
     stage='verification-debugger-otp';
     const debuggerManifest=JSON.parse(readFileSync('plugins/sdk/examples/verification-debugger/plugin.json','utf8'));
     await installDebuggerExample({page,admin,write,archivePath:`plugins/sdk/examples/verification-debugger/dist/verification-debugger-${debuggerManifest.version}.lumira-plugin.zip`});
@@ -260,6 +265,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   await expect(card.getByRole('button',{name:'卸载插件',exact:true})).toBeDisabled();
   await record('immutable production graph blocks switch and uninstall through UI and API',page);
   }
+  if(probeFailures.length)throw new AggregateError([], 'Independent component acceptance failed');
   writeFileSync(`${out}/results.json`,JSON.stringify({status:'passed',checks},null,2));
 } catch(error) {
   // 不序列化可能含凭据的错误正文、请求、HTML 或 trace。

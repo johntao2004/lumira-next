@@ -695,10 +695,6 @@
     "responsibility": "编辑短信供应商配置，保留用户自定端点和地区。\nEdit SMS provider settings while preserving custom endpoints and regions.",
     "category": "frontend-core"
   },
-  "apps/web/src/features/account/profile-values-drawer.tsx": {
-    "responsibility": "按打开周期固定自定义资料草稿与字段版本。\nPin custom profile drafts and schema versions for each opening.",
-    "category": "frontend-core"
-  },
   "plugins/sdk/frontend/payment-channel-workbench.tsx": {
     "responsibility": "复用支付配置和订单界面，隔离供应商草稿与迟到响应。\nShare payment settings and order UI while isolating provider drafts and late responses.",
     "category": "frontend-core"
@@ -710,5 +706,13 @@
   "scripts/ci-browser-extra-components.mjs": {
     "responsibility": "隔离 CI 组件及短信验证。\nIsolated CI component and SMS verification.",
     "category": "verification"
+  },
+  "apps/web/src/features/account/profile-drawer.tsx": {
+    "responsibility": "固定个人资料与字段草稿，隔离关闭和会话切换后的迟到响应。\nPin profile and field drafts, fencing late responses after closure or session changes.",
+    "category": "frontend-core"
+  },
+  "scripts/ci-browser-draft-pages.mjs": {
+    "responsibility": "在独立 QA 验证真实设置草稿、资料版本和路由隔离，不连接外部供应商。\nVerify real settings drafts, profile versions and route isolation in disposable QA without external providers.",
+    "category": "build-verification"
   }
 }

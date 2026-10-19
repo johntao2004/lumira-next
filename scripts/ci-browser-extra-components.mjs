@@ -5,8 +5,8 @@
 import assert from 'node:assert/strict';
 import {expect as baseExpect} from '@playwright/test';
 const expect=baseExpect.configure({timeout:20000});
-const responseFor=(page,path,method)=>{const pending=page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method);pending.catch(()=>{});return pending;};
-async function choose(page,control,label){
+export const responseFor=(page,path,method)=>{const pending=page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method);pending.catch(()=>{});return pending;};
+export async function choose(page,control,label){
   await control.click();
   // 虚拟列表另有隐藏无障碍选项；只点击唯一可视内容。
   // Virtual lists also contain hidden accessibility options; click the unique visible content.
@@ -16,7 +16,7 @@ async function choose(page,control,label){
 
 // 单选标签位于 content；按带标签的输入定位所属控件。
 // Single-select labels live in content; scope to the control owning the labelled input.
-async function expectSelected(control,label) {
+export async function expectSelected(control,label) {
   const root=control.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-select ")][1]');
   const value=root.locator('.ant-select-content');
   await expect(value).toHaveCount(1);await expect(value).toHaveText(label);
@@ -24,7 +24,7 @@ async function expectSelected(control,label) {
 
 // 精确确认按钮结构并记录无表单值的点击诊断，确认步骤不可跳过。
 // Verify the actual confirmation button and retain value-free click diagnostics; never bypass confirmation.
-async function confirmReload(page) {
+export async function confirmReload(page) {
   const button=page.locator('.ant-popconfirm:visible .ant-popconfirm-buttons > button.ant-btn-primary');
   try {
     await expect(button).toHaveCount(1);await expect(button).toHaveText('重新载入配置');
@@ -107,7 +107,7 @@ export async function verifyExtraComponents({page,admin,member,write,record,only
   } finally {page.off('request',observe);}
 }
 
-export async function installDebuggerExample({page,admin,write,archivePath}) {
+export async function installQAPlugin({page,admin,archivePath,id}) {
   assert.equal(process.env.LUMIRA_BROWSER_CI_MODE,'dynamic');
   const root='/api/platform/modules/plugins';
   await page.goto('/dashboard/modules');
@@ -115,15 +115,19 @@ export async function installDebuggerExample({page,admin,write,archivePath}) {
   const uploaded=responseFor(page,`${root}/import`,'POST');
   await page.getByLabel('导入插件',{exact:true}).setInputFiles(archivePath);
   assert.equal((await uploaded).status(),200);
-  const card=page.locator('.modules-card').filter({hasText:'verification-debugger'});
+  const card=page.locator('.modules-card').filter({hasText:id});
   const identity=await admin.request.get('/api/auth/me');assert.equal(identity.status(),200);
   const revision=(await identity.json()).authorizationContext.revision;
   await card.getByRole('button',{name:'安装插件',exact:true}).click();
-  const installed=responseFor(page,`${root}/verification-debugger/install`,'POST');
+  const installed=responseFor(page,`${root}/${id}/install`,'POST');
   await page.getByRole('dialog',{name:'安装插件',exact:true}).getByRole('button',{name:/确\s*认/}).click();
   const response=await installed;assert.equal(response.status(),200);const op=await response.json();
   await expect.poll(async()=>{const r=await admin.request.get(`${root}/operations/${op.id}`,{headers:{'X-Lumira-Authorization-Context-Revision':revision}});assert.equal(r.status(),200);return(await r.json()).status;},{timeout:60000}).toBe('SUCCEEDED');
   await expect(page.getByRole('dialog',{name:'安装插件',exact:true})).toHaveCount(0);
+}
+
+export async function installDebuggerExample({page,admin,write,archivePath}) {
+  await installQAPlugin({page,admin,archivePath,id:'verification-debugger'});
   // 安装不会自动授予新权限；使用完整安装管理员的正常角色委派接口。
   // Installation grants no new authority. Use the full install administrator's normal role-delegation API.
   assert.equal((await write(admin,'/api/plugins/verification-debugger/status','GET')).status(),403);

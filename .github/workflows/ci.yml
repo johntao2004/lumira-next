@@ -150,8 +150,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      - name: Build isolated debugger QA input
-        run: node scripts/build-plugins.mjs --no-host sdk/examples/verification-debugger
+      - name: Build isolated plugin QA inputs
+        run: node scripts/build-plugins.mjs --no-host payment-core alipay-pay wechat-pay sdk/examples/verification-debugger
       - run: pnpm exec playwright install --with-deps chromium
       - name: Real browser acceptance against disposable production images
         timeout-minutes: 30
