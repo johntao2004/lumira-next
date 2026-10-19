@@ -214,7 +214,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
       try {await page.bringToFront();await run();} catch(error) {
         probeFailures.push({name,...failureDetails(error)});
         writeFileSync(`${out}/component-progress.json`,JSON.stringify({status:'incomplete',checks,probeFailures},null,2));
-        await page.screenshot({path:`${out}/probe-${name}.png`,fullPage:true,mask:[page.locator('input,textarea,.ant-select-selection-item,.verification-debugger-page')]}).catch(()=>{});
+        await page.screenshot({path:`${out}/probe-${name}.png`,fullPage:true,mask:[page.locator('input,textarea,.ant-select-selection-item,.ant-select-content,.verification-debugger-page')]}).catch(()=>{});
       }
     }
     if(probeFailures.length)throw new AggregateError([], 'Independent component acceptance failed');

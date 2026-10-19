@@ -14,6 +14,14 @@ async function choose(page,control,label){
   await expect(option).toHaveCount(1);await option.click();
 }
 
+// 单选标签位于 content；按带标签的输入定位所属控件。
+// Single-select labels live in content; scope to the control owning the labelled input.
+async function expectSelected(control,label) {
+  const root=control.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-select ")][1]');
+  const value=root.locator('.ant-select-content');
+  await expect(value).toHaveCount(1);await expect(value).toHaveText(label);
+}
+
 // 精确确认按钮结构并记录无表单值的点击诊断，确认步骤不可跳过。
 // Verify the actual confirmation button and retain value-free click diagnostics; never bypass confirmation.
 async function confirmReload(page) {
@@ -231,13 +239,13 @@ export async function verifySettingsDraftConflict({page,admin,write,record}) {
     // Real concurrent HTTP update, preserving disabled service and all existing action policies.
     const concurrent=await write(admin,path,'PUT',{version:original.version,data:{...original.data,type:'SLIDER'}});
     assert.equal(concurrent.status(),200);changed=true;
-    await expect(enabled).toBeChecked();await expect(form.locator('.ant-select-selection-item').first()).toHaveText('图形文字');
+    await expect(enabled).toBeChecked();await expectSelected(type,'图形文字');
     // 冲突处理会真实重读配置；全局关闭窗口聚焦刷新。
     // Conflict handling performs the real refetch; global window-focus refetch is disabled.
     const refreshed=responseFor(page,path,'GET');
     const conflict=responseFor(page,path,'PUT');await form.getByRole('button',{name:/保\s*存/}).click();
     assert.equal((await conflict).status(),409);assert.equal((await refreshed).status(),200);
-    await expect(enabled).toBeChecked();await expect(form.locator('.ant-select-selection-item').first()).toHaveText('图形文字');
+    await expect(enabled).toBeChecked();await expectSelected(type,'图形文字');
     const actual=await write(admin,path,'GET');assert.equal(actual.status(),200);const current=await actual.json();assert.equal(current.data.enabled,false);assert.equal(current.data.type,'SLIDER');
     await record('real settings refetch and stale-version 409 preserve unsaved CAPTCHA draft',page);
     await captchaReloadIncrement({page,admin,write,record,form,enabled,type,path});
@@ -287,7 +295,7 @@ export async function captchaReloadIncrement({page,admin,write,record,form,enabl
   assert.equal((await refreshed).status(),200);
   await expect(page.locator('.ant-popconfirm:visible')).toHaveCount(0);
   await expect(enabled).not.toBeChecked();
-  await expect(form.locator('.ant-select-selection-item').first()).toHaveText('滑块');
+  await expectSelected(type,'滑块');
   // 按新快照保存，服务保持关闭。 / Save with the new snapshot while keeping the service disabled.
   await enabled.click();await choose(page,type,'图形文字');await enabled.click();
   const saved=responseFor(page,path,'PUT');
@@ -295,7 +303,7 @@ export async function captchaReloadIncrement({page,admin,write,record,form,enabl
   const result=await saved;assert.equal(result.status(),200);
   const snapshot=await result.json();assert.equal(snapshot.data.enabled,false);assert.equal(snapshot.data.type,'IMAGE_TEXT');
   await expect(enabled).not.toBeChecked();
-  await expect(form.locator('.ant-select-selection-item').first()).toHaveText('图形文字');
+  await expectSelected(type,'图形文字');
   const persisted=await write(admin,path,'GET');assert.equal(persisted.status(),200);
   const current=await persisted.json();assert.equal(current.version,snapshot.version);assert.equal(current.data.enabled,false);assert.equal(current.data.type,'IMAGE_TEXT');
   await record('CAPTCHA conflict reload adopts new snapshot and subsequent UI save succeeds',page);
