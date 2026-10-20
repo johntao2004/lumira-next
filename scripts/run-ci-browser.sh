@@ -20,7 +20,8 @@ env={'LUMIRA_DB_BOOTSTRAP_PASSWORD':secrets.token_urlsafe(32),'LUMIRA_DB_PASSWOR
 PY
 fixed=true
 debug=false
-if [[ $LUMIRA_BROWSER_CI_MODE == dynamic ]]; then fixed=false; debug=true; fi
+profile=production
+if [[ $LUMIRA_BROWSER_CI_MODE == dynamic ]]; then fixed=false; debug=true; profile=qa; fi
 cat > "$work/compose.override.yml" <<YAML
 services:
   database:
@@ -28,6 +29,7 @@ services:
   server:
     image: lumira-server:ci
     environment:
+      SPRING_PROFILES_ACTIVE: "$profile"
       LUMIRA_PLUGINS_FIXED_GRAPH: "$fixed"
       LUMIRA_SMS_DEBUG_ENABLED: "$debug"
   office-worker:

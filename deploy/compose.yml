@@ -26,6 +26,9 @@ services:
       context: ..
       dockerfile: deploy/server.Dockerfile
     environment:
+      # 正式配置启用开发调试强制关闭；独立 QA 必须显式覆盖。
+      # Production activates the development-debug deny gate; isolated QA must override explicitly.
+      SPRING_PROFILES_ACTIVE: production
       LUMIRA_DB_URL: jdbc:postgresql://database:5432/lumira_next
       LUMIRA_DB_USER: lumira_next
       LUMIRA_DB_MIGRATION_USER: lumira_migrator

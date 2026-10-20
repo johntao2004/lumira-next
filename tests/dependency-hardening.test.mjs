@@ -289,3 +289,14 @@ test('image contexts exclude scanner caches and free completed builders before O
   assert.ok(workflow.indexOf('name: Reclaim completed build cache before Office') < workflow.indexOf('docker build -f deploy/office-worker.Dockerfile'));
   assert.doesNotMatch(workflow, /docker (?:system|volume) prune/);
 });
+
+// 正式部署必须启用 profile 强制关闭，只有一次性动态 QA 可显式改为 qa。
+// Production must enable the profile deny gate; only disposable dynamic QA explicitly selects qa.
+test('production compose activates debug deny profile while isolated dynamic QA opts out', () => {
+  const compose = readFileSync('deploy/compose.yml', 'utf8');
+  const browser = readFileSync('scripts/run-ci-browser.sh', 'utf8');
+  assert.match(compose, /SPRING_PROFILES_ACTIVE: production/);
+  assert.match(browser, /profile=production/);
+  assert.match(browser, /dynamic.*profile=qa/);
+  assert.match(browser, /SPRING_PROFILES_ACTIVE: "\$profile"/);
+});

@@ -44,3 +44,10 @@ Security and Passkey policy reads use the authoritative database without pre-com
 See the bounded reliability gate for execution thresholds; only the current commit CI report establishes a pass.
 
 部署前先执行[只读配置预检](deployment-preflight.md)，然后完成现场门槛。
+
+
+### Production profile and isolated QA
+
+标准 Compose 显式启用 `production` profile，使验证调试器即使误设 debug 开关仍强制关闭。默认发行包本身不包含该示例。独立动态插件 QA 显式使用 `qa` profile；固定图 QA 保持 `production`。这不是租户隔离或恶意插件沙箱。原生 JAR 的生产参数测试不替代 Compose 中独立受限 Office、网关/TLS 与容器启动依赖验收。
+
+Standard Compose explicitly enables the `production` profile so the verification debugger remains disabled even if its debug flag is accidentally enabled. The default release excludes that example. Disposable dynamic-plugin QA explicitly selects `qa`; fixed-graph QA retains `production`. This is neither tenant isolation nor a hostile-plugin sandbox. Native JAR configuration tests do not replace acceptance of isolated Office, gateway/TLS, container limits, or Compose startup dependencies.
