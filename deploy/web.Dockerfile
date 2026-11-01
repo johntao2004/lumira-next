@@ -11,7 +11,7 @@ RUN ln -s ../apps/web/node_modules plugins/node_modules
 RUN corepack pnpm build
 COPY scripts/generate-csp.mjs scripts/generate-csp.mjs
 RUN node scripts/generate-csp.mjs apps/web/dist/index.html /workspace/csp.caddy
-FROM golang:1.26.9-alpine3.23 AS caddy-build
+FROM golang:1.27.3-alpine3.23 AS caddy-build
 RUN apk add --no-cache git
 RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
 RUN CGO_ENABLED=0 XCADDY_SKIP_CLEANUP=1 XCADDY_SETCAP=0 /go/bin/xcaddy build v2.11.7 --output /out/caddy \
