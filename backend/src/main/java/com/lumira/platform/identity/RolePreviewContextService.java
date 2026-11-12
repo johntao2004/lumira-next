@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -43,6 +44,22 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
     private static final int PREVIEW_MINUTES = 10;
     private static final String PREVIEW_PERMISSION = PlatformOperation.ROLE_PREVIEW.permission();
     private static final String ROLE_ACCESS_PERMISSION = PlatformPageId.ROLES.accessPermission();
+
+    private static final class BoundaryValidationMarker
+            implements org.springframework.transaction.support.TransactionSynchronization {
+        private final String sessionPrimaryId;
+        private final UUID actorId;
+
+        BoundaryValidationMarker(String sessionPrimaryId, UUID actorId) {
+            this.sessionPrimaryId = sessionPrimaryId;
+            this.actorId = actorId;
+        }
+
+        boolean matches(String sessionPrimaryId, UUID actorId) {
+            return Objects.equals(this.sessionPrimaryId, sessionPrimaryId)
+                    && Objects.equals(this.actorId, actorId);
+        }
+    }
 
     public record View(String revision, boolean rolePreviewSupported, Preview preview) {}
 
@@ -82,7 +99,43 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
             boolean limitedByActor,
             String blockedReason,
             String actorAuthorityDigest,
-            String roleAuthorityDigest) {}
+            String roleAuthorityDigest,
+            Set<String> globalAuthorities) {
+        StoredContext(
+                String sessionPrimaryId,
+                UUID actorId,
+                UUID revision,
+                String state,
+                UUID roleId,
+                String roleCode,
+                String roleName,
+                Long roleVersion,
+                String dataScope,
+                OffsetDateTime startedAt,
+                OffsetDateTime expiresAt,
+                boolean limitedByActor,
+                String blockedReason,
+                String actorAuthorityDigest,
+                String roleAuthorityDigest) {
+            this(
+                    sessionPrimaryId,
+                    actorId,
+                    revision,
+                    state,
+                    roleId,
+                    roleCode,
+                    roleName,
+                    roleVersion,
+                    dataScope,
+                    startedAt,
+                    expiresAt,
+                    limitedByActor,
+                    blockedReason,
+                    actorAuthorityDigest,
+                    roleAuthorityDigest,
+                    null);
+        }
+    }
 
     private record RoleSnapshot(
             UUID id,
@@ -116,6 +169,79 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         this.policyLock = policyLock;
     }
 
+    static final class SchemaRelationState {
+        private volatile Boolean effectiveAuthorityView;
+        private volatile Boolean globalAuthorityView;
+        private final Map<String, Boolean> relationCache =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
+        boolean isEffectiveAuthorityView(JdbcClient jdbc) {
+            Boolean cached = effectiveAuthorityView;
+            if (cached != null) return cached;
+            boolean isView = isViewRelation(jdbc, "platform_effective_authority");
+            effectiveAuthorityView = isView;
+            return isView;
+        }
+
+        boolean isGlobalAuthorityView(JdbcClient jdbc) {
+            Boolean cached = globalAuthorityView;
+            if (cached != null) return cached;
+            boolean isView = isViewRelation(jdbc, "platform_global_authority");
+            globalAuthorityView = isView;
+            return isView;
+        }
+
+        private boolean isViewRelation(JdbcClient jdbc, String relationName) {
+            return Boolean.TRUE.equals(
+                    jdbc.sql(
+                                    """
+                                    SELECT c.relkind = 'v'
+                                      FROM pg_class c
+                                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                                     WHERE c.relname = :relname
+                                       AND n.nspname = current_schema()
+                                    """)
+                            .param("relname", relationName)
+                            .query(Boolean.class)
+                            .optional()
+                            .orElse(false));
+        }
+
+        boolean hasRelation(JdbcClient jdbc, String relationName) {
+            return relationCache.computeIfAbsent(
+                    relationName,
+                    name ->
+                            Boolean.TRUE.equals(
+                                    jdbc.sql(
+                                                    """
+                                                    SELECT EXISTS (
+                                                        SELECT 1 FROM pg_class c
+                                                          JOIN pg_namespace n ON n.oid = c.relnamespace
+                                                         WHERE c.relname = :relname
+                                                           AND n.nspname = current_schema()
+                                                    )
+                                                    """)
+                                            .param("relname", name)
+                                            .query(Boolean.class)
+                                            .optional()
+                                            .orElse(false)));
+        }
+    }
+
+    private final SchemaRelationState schemaRelations = new SchemaRelationState();
+
+    private boolean isEffectiveAuthorityView() {
+        return schemaRelations.isEffectiveAuthorityView(jdbc);
+    }
+
+    private boolean isGlobalAuthorityView() {
+        return schemaRelations.isGlobalAuthorityView(jdbc);
+    }
+
+    boolean hasRelation(String relationName) {
+        return schemaRelations.hasRelation(jdbc, relationName);
+    }
+
     /** Called by CurrentAuthorityFilter after real authentication and MFA are verified. */
     @Transactional
     public RequestAuthorizationContext resolve(
@@ -123,13 +249,31 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
             String principalName,
             UUID actorId,
             Set<String> currentRealAuthorities) {
-        StoredContext stored = ensureAndLockContext(request, principalName, actorId);
+        return resolve(request, principalName, actorId, currentRealAuthorities, null);
+    }
+
+    @Transactional
+    public RequestAuthorizationContext resolve(
+            HttpServletRequest request,
+            String principalName,
+            UUID actorId,
+            Set<String> currentRealAuthorities,
+            Set<String> currentRealGlobalAuthorities) {
+        StoredContext stored =
+                ensureAndLockContext(
+                        request, principalName, actorId, currentRealGlobalAuthorities != null);
         String sessionPrimaryId = stored.sessionPrimaryId();
         Set<String> realAuthorities = Set.copyOf(currentRealAuthorities);
         ScopeSnapshot scopeSnapshot =
                 "ACTIVE".equals(stored.state())
                         ? scopeSnapshot(actorId)
-                        : new ScopeSnapshot(globalAuthorities(actorId), Map.of());
+                        : new ScopeSnapshot(
+                                currentRealGlobalAuthorities != null
+                                        ? Set.copyOf(currentRealGlobalAuthorities)
+                                        : (stored.globalAuthorities() != null
+                                                ? stored.globalAuthorities()
+                                                : globalAuthorities(actorId)),
+                                Map.of());
         Set<String> realGlobal = scopeSnapshot.globalAuthorities();
         Map<String, Set<String>> realScopes = scopeSnapshot.scopes();
 
@@ -183,6 +327,32 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         return authorization;
     }
 
+    RequestAuthorizationContext resolvePreloadedNoneContext(
+            HttpServletRequest request,
+            String principalName,
+            UUID actorId,
+            String sessionPrimaryId,
+            UUID revision,
+            Set<String> currentRealAuthorities,
+            Set<String> currentRealGlobalAuthorities) {
+        Set<String> realAuthorities = Set.copyOf(currentRealAuthorities);
+        Set<String> realGlobal = Set.copyOf(currentRealGlobalAuthorities);
+        return new RequestAuthorizationContext(
+                principalName,
+                actorId,
+                sessionPrimaryId,
+                realAuthorities,
+                realGlobal,
+                Map.of(),
+                realAuthorities,
+                realGlobal,
+                Map.of(),
+                revision.toString(),
+                request.getHeader(REVISION_HEADER),
+                true,
+                null);
+    }
+
     /** Run after the context row has committed so BLOCKED transitions survive rejected requests. */
     public void enforceRequestBoundary(
             HttpServletRequest request, RequestAuthorizationContext context) {
@@ -203,6 +373,10 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         boolean mayPreviewUnassigned =
                 context.realGlobalAuthorities().contains(PREVIEW_PERMISSION)
                         && context.realGlobalAuthorities().contains(ROLE_ACCESS_PERMISSION);
+        Map<String, Set<String>> realScopes =
+                context.realScopes().isEmpty()
+                        ? scopeSnapshot(context.actorId()).scopes()
+                        : context.realScopes();
         String search = page.search();
         long total =
                 jdbc.sql(
@@ -261,7 +435,9 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                                             rs.getString("data_scope"),
                                             rs.getBoolean("assigned"),
                                             limitedByActor(
-                                                    context,
+                                                    context.realAuthorities(),
+                                                    context.realGlobalAuthorities(),
+                                                    realScopes,
                                                     targetAuthorities,
                                                     rs.getString("data_scope")));
                                 })
@@ -308,7 +484,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                                started_at=:startedAt,expires_at=:expiresAt,limited_by_actor=:limited,
                                blocked_reason=NULL,actor_authority_digest=:actorDigest,
                                role_authority_digest=:roleDigest,updated_at=CURRENT_TIMESTAMP
-                         WHERE session_primary_id=:session AND actor_id=:actor
+                         WHERE session_primary_id=CAST(:session AS character(36)) AND actor_id=:actor
                         """)
                 .param("revision", nextRevision)
                 .param("roleId", target.id())
@@ -318,7 +494,14 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                 .param("dataScope", target.dataScope())
                 .param("startedAt", now)
                 .param("expiresAt", now.plusMinutes(PREVIEW_MINUTES))
-                .param("limited", limitedByActor(context, target.authorities(), target.dataScope()))
+                .param(
+                        "limited",
+                        limitedByActor(
+                                realAuthorities,
+                                realGlobal,
+                                realScopes,
+                                target.authorities(),
+                                target.dataScope()))
                 .param("actorDigest", actorDigest)
                 .param("roleDigest", roleDigest)
                 .param("session", stored.sessionPrimaryId())
@@ -343,7 +526,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                                role_version=NULL,data_scope=NULL,started_at=NULL,expires_at=NULL,
                                limited_by_actor=false,blocked_reason=NULL,actor_authority_digest=NULL,
                                role_authority_digest=NULL,updated_at=CURRENT_TIMESTAMP
-                         WHERE session_primary_id=:session AND actor_id=:actor
+                         WHERE session_primary_id=CAST(:session AS character(36)) AND actor_id=:actor
                         """)
                 .param("revision", UUID.randomUUID())
                 .param("session", stored.sessionPrimaryId())
@@ -436,14 +619,28 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
         String method = request.getMethod();
         if (isContextControl(path, method)) return;
 
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            for (var sync : TransactionSynchronizationManager.getSynchronizations()) {
+                if (sync instanceof BoundaryValidationMarker marker
+                        && marker.matches(context.sessionPrimaryId(), context.actorId())) {
+                    return;
+                }
+            }
+        }
+
         boolean writeBoundary = !TransactionSynchronizationManager.isCurrentTransactionReadOnly();
         // Write boundaries must retain the shared lock order: policy, then session. Read-only
         // transactions cannot issue locking SELECTs in PostgreSQL, so they re-read the same live
         // rows without locks and run the identical revision/state/expiry/digest checks below.
-        if (writeBoundary && policyLock != null) policyLock.lockForAuthentication();
-        StoredContext current =
-                readOrLockContextShared(
-                        context.sessionPrimaryId(), context.actorId(), writeBoundary);
+        StoredContext current;
+        if (writeBoundary && policyLock instanceof IdentityAuthenticationPolicyWriteLock) {
+            current = lockPolicyAndContextShared(context.sessionPrimaryId(), context.actorId());
+        } else {
+            if (writeBoundary && policyLock != null) policyLock.lockForAuthentication();
+            current =
+                    readOrLockContextShared(
+                            context.sessionPrimaryId(), context.actorId(), writeBoundary);
+        }
         boolean staticPluginAsset = "GET".equals(method) && safeFrontendAsset(path);
         String suppliedRevision =
                 staticPluginAsset
@@ -475,18 +672,73 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                     || !Objects.equals(digest(target.authorities()), current.roleAuthorityDigest()))
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "rolePreviewBlocked");
         }
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new BoundaryValidationMarker(context.sessionPrimaryId(), context.actorId()));
+        }
     }
 
-    private StoredContext readOrLockContextShared(String primaryId, UUID actorId, boolean lock) {
-        return jdbc.sql(
-                        """
-                        SELECT trim(session_primary_id) AS session_primary_id,actor_id,revision,state,
-                               role_id,role_code,role_name,role_version,data_scope,started_at,expires_at,
-                               limited_by_actor,blocked_reason,actor_authority_digest,role_authority_digest
-                          FROM platform_role_preview_context
-                         WHERE session_primary_id=:session AND actor_id=:actor
-                        """
-                                + (lock ? " FOR SHARE" : ""))
+    boolean canCombineReadOnlyNoneBoundary(RequestAuthorizationContext context) {
+        if (context == null
+                || context.previewActive()
+                || context.previewBlocked()
+                || context.sessionPrimaryId() == null
+                || context.actorId() == null) {
+            return false;
+        }
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            return false;
+        }
+        for (var sync : TransactionSynchronizationManager.getSynchronizations()) {
+            if (sync instanceof BoundaryValidationMarker marker
+                    && marker.matches(context.sessionPrimaryId(), context.actorId())) {
+                return false;
+            }
+        }
+        if (!(RequestContextHolder.getRequestAttributes()
+                instanceof ServletRequestAttributes attrs)) {
+            return false;
+        }
+        HttpServletRequest request = attrs.getRequest();
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        String method = request.getMethod();
+        if (isContextControl(path, method)) {
+            return false;
+        }
+        return !("GET".equals(method) && safeFrontendAsset(path));
+    }
+
+    boolean completeCombinedReadOnlyNoneBoundary(
+            RequestAuthorizationContext context, String stateAndRevision) {
+        if (!(RequestContextHolder.getRequestAttributes()
+                instanceof ServletRequestAttributes attrs)) {
+            return false;
+        }
+        String suppliedRevision = attrs.getRequest().getHeader(REVISION_HEADER);
+        if (stateAndRevision == null
+                || !stateAndRevision.equals("NONE:" + context.revision())
+                || !Objects.equals(context.revision(), suppliedRevision)) {
+            return false;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new BoundaryValidationMarker(context.sessionPrimaryId(), context.actorId()));
+        }
+        return true;
+    }
+
+    private static final String CONTEXT_COLUMNS =
+            """
+            trim(c.session_primary_id) AS session_primary_id,c.actor_id,c.revision,c.state,
+                   c.role_id,c.role_code,c.role_name,c.role_version,c.data_scope,c.started_at,c.expires_at,
+                   c.limited_by_actor,c.blocked_reason,c.actor_authority_digest,c.role_authority_digest
+            """;
+
+    private StoredContext queryStoredContext(String sql, String primaryId, UUID actorId) {
+        return jdbc.sql(sql)
                 .param("session", primaryId)
                 .param("actor", actorId)
                 .query(this::mapContext)
@@ -495,6 +747,40 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                         () ->
                                 new ResponseStatusException(
                                         HttpStatus.UNAUTHORIZED, "authenticationRequired"));
+    }
+
+    private StoredContext readOrLockContextShared(String primaryId, UUID actorId, boolean lock) {
+        return queryStoredContext(
+                "SELECT "
+                        + CONTEXT_COLUMNS
+                        + """
+                          FROM platform_role_preview_context c
+                         WHERE c.session_primary_id=CAST(:session AS character(36)) AND c.actor_id=:actor
+                        """
+                        + (lock ? " FOR SHARE" : ""),
+                primaryId,
+                actorId);
+    }
+
+    private StoredContext lockPolicyAndContextShared(String primaryId, UUID actorId) {
+        return queryStoredContext(
+                """
+                WITH policy_lock AS MATERIALIZED (
+                    SELECT id FROM platform_authentication_policy_lock WHERE id=1 FOR SHARE
+                )
+                SELECT
+                """
+                        + CONTEXT_COLUMNS
+                        + """
+                          FROM policy_lock pl
+                          JOIN platform_role_preview_context c
+                            ON pl.id=1
+                           AND c.session_primary_id=CAST(:session AS character(36))
+                           AND c.actor_id=:actor
+                           FOR SHARE OF c
+                        """,
+                primaryId,
+                actorId);
     }
 
     private void enforceRequestBoundaryInternal(
@@ -545,6 +831,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                         "/api/platform/navigation",
                         "/api/account/profile",
                         "/api/account/profile-values",
+                        "/api/account/profile-fields",
                         "/api/account/avatar",
                         "/api/account/files",
                         "/api/account/files/usage",
@@ -555,7 +842,11 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                         "/api/account/role-preview",
                         "/api/account/role-preview/roles")
                 .contains(path)) return true;
-        if (path.matches("/api/account/role-preview/resource-tickets/[0-9a-fA-F-]{36}")
+        if (path.matches(
+                        "/api/account/profile-dictionaries/[A-Za-z][A-Za-z0-9_]{0,63}/items(?:/[0-9a-fA-F-]{36})?")
+                || path.matches(
+                        "/api/platform/users/[0-9a-fA-F-]{36}/profile-dictionaries/[A-Za-z][A-Za-z0-9_]{0,63}/items(?:/[0-9a-fA-F-]{36})?")
+                || path.matches("/api/account/role-preview/resource-tickets/[0-9a-fA-F-]{36}")
                 || path.matches("/api/account/files/[0-9a-fA-F-]{36}")
                 || path.matches("/api/platform/users")
                 || path.matches("/api/platform/users/[0-9a-fA-F-]{36}")
@@ -587,13 +878,29 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
 
     private StoredContext ensureAndLockContext(
             HttpServletRequest request, String principalName, UUID actorId) {
+        return ensureAndLockContext(request, principalName, actorId, false);
+    }
+
+    private StoredContext ensureAndLockContext(
+            HttpServletRequest request,
+            String principalName,
+            UUID actorId,
+            boolean skipGlobalAuthoritiesQuery) {
         var session = request.getSession(false);
         if (session == null)
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "authenticationRequired");
+        // Normal admissions can overlap, while transitions still require the conflicting exclusive
+        // row lock. Restrict the shared read to NONE: upgrading concurrent ACTIVE readers to update
+        // locks could deadlock when either reader needs to block an invalid preview.
+        var normal =
+                contextForAdmission(
+                        session.getId(), principalName, actorId, true, !skipGlobalAuthoritiesQuery);
+        if (normal.isPresent()) return normal.get();
         var existing = activeContextForUpdate(session.getId(), principalName, actorId);
         if (existing.isPresent()) return existing.get();
 
-        // The common NONE path above is one locking read. On first use, use a separate INSERT
+        // The common NONE path above is one shared locking read. On first use, use a separate
+        // INSERT
         // command and then SELECT: PostgreSQL's statement snapshot cannot see a row inserted by
         // an unreferenced data-modifying CTE in the same command. ON CONFLICT also serializes two
         // first requests for the same session; the following command sees the committed winner.
@@ -603,7 +910,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                         SELECT primary_id,:actor,:revision,'NONE'
                           FROM spring_session
                          WHERE session_id=CAST(:session AS character(36)) AND principal_name=:principal
-                           AND expiry_time > (extract(epoch FROM clock_timestamp())*1000)::bigint
+                            AND expiry_time > (extract(epoch FROM clock_timestamp())*1000)::bigint
                         ON CONFLICT(session_primary_id) DO NOTHING
                         """)
                 .param("session", session.getId())
@@ -611,7 +918,9 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                 .param("actor", actorId)
                 .param("revision", UUID.randomUUID())
                 .update();
-        return activeContextForUpdate(session.getId(), principalName, actorId)
+        return contextForAdmission(
+                        session.getId(), principalName, actorId, true, !skipGlobalAuthoritiesQuery)
+                .or(() -> activeContextForUpdate(session.getId(), principalName, actorId))
                 .orElseThrow(
                         () ->
                                 new ResponseStatusException(
@@ -620,47 +929,104 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
 
     private java.util.Optional<StoredContext> activeContextForUpdate(
             String sessionId, String principalName, UUID actorId) {
-        return jdbc.sql(
+        return contextForAdmission(sessionId, principalName, actorId, false, false);
+    }
+
+    private java.util.Optional<StoredContext> contextForAdmission(
+            String sessionId,
+            String principalName,
+            UUID actorId,
+            boolean normalOnly,
+            boolean loadGlobalAuthorities) {
+        String globalSubquery;
+        if (normalOnly && loadGlobalAuthorities) {
+            if (isGlobalAuthorityView()) {
+                globalSubquery =
                         """
-                        SELECT trim(c.session_primary_id) AS session_primary_id,c.actor_id,c.revision,c.state,
-                               c.role_id,c.role_code,c.role_name,c.role_version,c.data_scope,c.started_at,c.expires_at,
-                               c.limited_by_actor,c.blocked_reason,c.actor_authority_digest,c.role_authority_digest
+                        ,(SELECT coalesce(string_agg(DISTINCT sub.authority, chr(31) ORDER BY sub.authority), '')
+                             FROM (
+                                 SELECT a.authority
+                                   FROM platform_authority a
+                                  WHERE a.user_id = c.actor_id
+                                    AND a.authority NOT LIKE 'platform:__v50:%'
+                                    AND NOT EXISTS (
+                                        SELECT 1 FROM platform_permission_retired_authority ret
+                                         WHERE ret.authority = a.authority
+                                    )
+                                 UNION ALL
+                                 SELECT ra.authority
+                                   FROM platform_user_role ur
+                                   JOIN platform_role r ON r.id = ur.role_id AND r.enabled AND r.data_scope = 'ALL'
+                                   JOIN platform_role_authority ra ON ra.role_id = r.id
+                                  WHERE ur.user_id = c.actor_id
+                                    AND ra.authority NOT LIKE 'platform:__v50:%'
+                                    AND NOT EXISTS (
+                                        SELECT 1 FROM platform_permission_retired_authority ret
+                                         WHERE ret.authority = ra.authority
+                                    )
+                             ) sub) AS global_authorities
+                        """;
+            } else if (hasRelation("platform_global_authority")) {
+                globalSubquery =
+                        """
+                        ,(SELECT coalesce(string_agg(DISTINCT g.authority, chr(31) ORDER BY g.authority), '')
+                             FROM platform_global_authority g WHERE g.user_id = c.actor_id) AS global_authorities
+                        """;
+            } else {
+                globalSubquery = ", '' AS global_authorities ";
+            }
+        } else {
+            globalSubquery = " ";
+        }
+        String sql =
+                "SELECT "
+                        + CONTEXT_COLUMNS
+                        + globalSubquery
+                        + """
                           FROM spring_session s
                           JOIN platform_role_preview_context c
                             ON c.session_primary_id=s.primary_id
                          WHERE s.session_id=CAST(:session AS character(36)) AND s.principal_name=:principal
                            AND s.expiry_time > (extract(epoch FROM clock_timestamp())*1000)::bigint
                            AND c.actor_id=:actor
-                         FOR UPDATE OF c
-                        """)
+                        """
+                        + (normalOnly ? " AND c.state='NONE' FOR SHARE OF c" : " FOR UPDATE OF c");
+        return jdbc.sql(sql)
                 .param("session", sessionId)
                 .param("principal", principalName)
                 .param("actor", actorId)
-                .query(this::mapContext)
+                .query(
+                        (normalOnly && loadGlobalAuthorities)
+                                ? this::mapAdmissionContext
+                                : this::mapContext)
                 .optional();
     }
 
     private StoredContext lockContext(String primaryId, UUID actorId) {
-        return jdbc.sql(
-                        """
-                        SELECT trim(session_primary_id) AS session_primary_id,actor_id,revision,state,
-                               role_id,role_code,role_name,role_version,data_scope,started_at,expires_at,
-                               limited_by_actor,blocked_reason,actor_authority_digest,role_authority_digest
-                          FROM platform_role_preview_context
-                         WHERE session_primary_id=:session AND actor_id=:actor
-                         FOR UPDATE
-                        """)
-                .param("session", primaryId)
-                .param("actor", actorId)
-                .query(this::mapContext)
-                .optional()
-                .orElseThrow(
-                        () ->
-                                new ResponseStatusException(
-                                        HttpStatus.UNAUTHORIZED, "authenticationRequired"));
+        return queryStoredContext(
+                "SELECT "
+                        + CONTEXT_COLUMNS
+                        + """
+                          FROM platform_role_preview_context c
+                         WHERE c.session_primary_id=CAST(:session AS character(36)) AND c.actor_id=:actor
+                           FOR UPDATE
+                        """,
+                primaryId,
+                actorId);
+    }
+
+    private StoredContext mapAdmissionContext(java.sql.ResultSet rs, int row)
+            throws java.sql.SQLException {
+        String ga = rs.getString("global_authorities");
+        return readStoredContext(rs, ga != null ? splitAuthorities(ga) : null);
     }
 
     private StoredContext mapContext(java.sql.ResultSet rs, int row) throws java.sql.SQLException {
+        return readStoredContext(rs, null);
+    }
+
+    private StoredContext readStoredContext(java.sql.ResultSet rs, Set<String> globalAuthorities)
+            throws java.sql.SQLException {
         return new StoredContext(
                 rs.getString("session_primary_id").trim(),
                 rs.getObject("actor_id", UUID.class),
@@ -676,7 +1042,8 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                 rs.getBoolean("limited_by_actor"),
                 rs.getString("blocked_reason"),
                 trimToNull(rs.getString("actor_authority_digest")),
-                trimToNull(rs.getString("role_authority_digest")));
+                trimToNull(rs.getString("role_authority_digest")),
+                globalAuthorities);
     }
 
     private String invalidPreviewReason(
@@ -703,7 +1070,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
                         UPDATE platform_role_preview_context
                            SET state='BLOCKED',revision=:revision,blocked_reason=:reason,
                                updated_at=CURRENT_TIMESTAMP
-                         WHERE session_primary_id=:session AND revision=:expected
+                         WHERE session_primary_id=CAST(:session AS character(36)) AND revision=:expected
                         """)
                 .param("revision", UUID.randomUUID())
                 .param("reason", reason)
@@ -756,51 +1123,149 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
     }
 
     private Set<String> globalAuthorities(UUID actorId) {
-        return Set.copyOf(
-                jdbc.sql(
-                                """
-                        SELECT g.authority
-                          FROM platform_global_authority g
-                         WHERE g.user_id=:actor
-                         ORDER BY g.authority
-                        """)
-                        .param("actor", actorId)
-                        .query(String.class)
-                        .list());
+        if (isGlobalAuthorityView()) {
+            Set<String> result = new HashSet<>();
+            String sql =
+                    """
+                    SELECT a.authority
+                      FROM platform_authority a
+                     WHERE a.user_id=:actor
+                       AND a.authority NOT LIKE 'platform:__v50:%'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM platform_permission_retired_authority ret
+                            WHERE ret.authority = a.authority
+                       )
+                    UNION ALL
+                    SELECT ra.authority
+                      FROM platform_user_role ur
+                      JOIN platform_role r ON r.id=ur.role_id AND r.enabled AND r.data_scope='ALL'
+                      JOIN platform_role_authority ra ON ra.role_id=r.id
+                     WHERE ur.user_id=:actor
+                       AND ra.authority NOT LIKE 'platform:__v50:%'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM platform_permission_retired_authority ret
+                            WHERE ret.authority = ra.authority
+                       )
+                    """;
+            jdbc.sql(sql)
+                    .param("actor", actorId)
+                    .query(
+                            (org.springframework.jdbc.core.RowCallbackHandler)
+                                    rs -> {
+                                        String auth = rs.getString(1);
+                                        if (auth != null) result.add(auth);
+                                    });
+            return Set.copyOf(result);
+        }
+        if (hasRelation("platform_global_authority")) {
+            Set<String> result = new HashSet<>();
+            String sql =
+                    """
+                    SELECT g.authority
+                      FROM platform_global_authority g
+                     WHERE g.user_id=:actor
+                     ORDER BY g.authority
+                    """;
+            jdbc.sql(sql)
+                    .param("actor", actorId)
+                    .query(
+                            (org.springframework.jdbc.core.RowCallbackHandler)
+                                    rs -> {
+                                        String auth = rs.getString(1);
+                                        if (auth != null) result.add(auth);
+                                    });
+            return Set.copyOf(result);
+        }
+        return scopeSnapshot(actorId).globalAuthorities();
     }
 
     private Set<String> effectiveAuthorities(UUID actorId) {
-        return Set.copyOf(
-                jdbc.sql(
-                                "SELECT authority FROM platform_effective_authority WHERE user_id=:actor ORDER BY authority")
-                        .param("actor", actorId)
-                        .query(String.class)
-                        .list());
+        Set<String> result = new HashSet<>();
+        String sql =
+                isEffectiveAuthorityView()
+                        ? """
+                          SELECT a.authority
+                            FROM platform_authority a
+                           WHERE a.user_id=:actor
+                             AND a.authority NOT LIKE 'platform:__v50:%'
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM platform_permission_retired_authority ret
+                                  WHERE ret.authority = a.authority
+                             )
+                          UNION ALL
+                          SELECT ra.authority
+                            FROM platform_user_role ur
+                            JOIN platform_role r ON r.id=ur.role_id AND r.enabled
+                            JOIN platform_role_authority ra ON ra.role_id=r.id
+                           WHERE ur.user_id=:actor
+                             AND ra.authority NOT LIKE 'platform:__v50:%'
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM platform_permission_retired_authority ret
+                                  WHERE ret.authority = ra.authority
+                             )
+                          """
+                        : "SELECT authority FROM platform_effective_authority WHERE user_id=:actor ORDER BY authority";
+        jdbc.sql(sql)
+                .param("actor", actorId)
+                .query(
+                        (org.springframework.jdbc.core.RowCallbackHandler)
+                                rs -> {
+                                    String auth = rs.getString(1);
+                                    if (auth != null) result.add(auth);
+                                });
+        return Set.copyOf(result);
     }
 
     private ScopeSnapshot scopeSnapshot(UUID actorId) {
         Map<String, Set<String>> values = new HashMap<>();
         Set<String> global = new HashSet<>();
-        jdbc.sql(
-                        """
-                        WITH effective AS (
-                            SELECT authority FROM platform_effective_authority WHERE user_id=:actor
-                        ), scope_sources AS (
-                            SELECT a.authority,'ALL'::text AS data_scope
-                              FROM platform_authority a
-                              JOIN effective ON effective.authority=a.authority
-                             WHERE a.user_id=:actor
-                            UNION ALL
-                            SELECT ra.authority,r.data_scope
-                              FROM platform_user_role ur
-                              JOIN platform_role r ON r.id=ur.role_id AND r.enabled
-                              JOIN platform_role_authority ra ON ra.role_id=r.id
-                              JOIN effective ON effective.authority=ra.authority
-                             WHERE ur.user_id=:actor
-                        )
-                        SELECT authority,data_scope FROM scope_sources
-                         ORDER BY authority,data_scope
-                        """)
+        String sql =
+                isEffectiveAuthorityView()
+                        ? """
+                          WITH scope_sources AS (
+                              SELECT a.authority, 'ALL'::text AS data_scope
+                                FROM platform_authority a
+                               WHERE a.user_id=:actor
+                                 AND a.authority NOT LIKE 'platform:__v50:%'
+                                 AND NOT EXISTS (
+                                     SELECT 1 FROM platform_permission_retired_authority ret
+                                      WHERE ret.authority = a.authority
+                                 )
+                              UNION ALL
+                              SELECT ra.authority, r.data_scope
+                                FROM platform_user_role ur
+                                JOIN platform_role r ON r.id=ur.role_id AND r.enabled
+                                JOIN platform_role_authority ra ON ra.role_id=r.id
+                               WHERE ur.user_id=:actor
+                                 AND ra.authority NOT LIKE 'platform:__v50:%'
+                                 AND NOT EXISTS (
+                                     SELECT 1 FROM platform_permission_retired_authority ret
+                                      WHERE ret.authority = ra.authority
+                                 )
+                          )
+                          SELECT authority, data_scope FROM scope_sources
+                           ORDER BY authority, data_scope
+                          """
+                        : """
+                          WITH effective AS (
+                              SELECT authority FROM platform_effective_authority WHERE user_id=:actor
+                          ), scope_sources AS (
+                              SELECT a.authority,'ALL'::text AS data_scope
+                                FROM platform_authority a
+                                JOIN effective ON effective.authority=a.authority
+                               WHERE a.user_id=:actor
+                              UNION ALL
+                              SELECT ra.authority,r.data_scope
+                                FROM platform_user_role ur
+                                JOIN platform_role r ON r.id=ur.role_id AND r.enabled
+                                JOIN platform_role_authority ra ON ra.role_id=r.id
+                                JOIN effective ON effective.authority=ra.authority
+                               WHERE ur.user_id=:actor
+                          )
+                          SELECT authority,data_scope FROM scope_sources
+                           ORDER BY authority,data_scope
+                          """;
+        jdbc.sql(sql)
                 .param("actor", actorId)
                 .query(
                         (rs, row) ->
@@ -859,29 +1324,12 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
     }
 
     private boolean assigned(UUID actorId, UUID roleId) {
-        return jdbc.sql(
-                        "SELECT EXISTS(SELECT 1 FROM platform_user_role WHERE user_id=:actor AND role_id=:role)")
-                .param("actor", actorId)
-                .param("role", roleId)
-                .query(Boolean.class)
-                .single();
-    }
-
-    private boolean limitedByActor(
-            RequestAuthorizationContext context,
-            Set<String> targetAuthorities,
-            String targetScope) {
-        if (!context.realAuthorities().containsAll(targetAuthorities)) return true;
-        for (String permission : targetAuthorities) {
-            Set<String> scopes = context.realScopes().getOrDefault(permission, Set.of());
-            if (scopeRank(targetScope)
-                            > scopes.stream()
-                                    .mapToInt(RolePreviewContextService::scopeRank)
-                                    .max()
-                                    .orElse(0)
-                    && !context.realGlobalAuthorities().contains(permission)) return true;
-        }
-        return false;
+        return Boolean.TRUE.equals(
+                jdbc.sql(
+                                "SELECT EXISTS(SELECT 1 FROM platform_user_role WHERE user_id=:actor AND role_id=:role)")
+                        .param("actor", actorId)
+                        .param("role", roleId)
+                        .query(rs -> rs.next() && rs.getBoolean(1)));
     }
 
     private boolean limitedByActor(
@@ -938,7 +1386,7 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
 
     private static Set<String> splitAuthorities(String value) {
         if (value == null || value.isBlank()) return Set.of();
-        return Set.of(value.split(String.valueOf((char) 31)));
+        return Set.copyOf(new HashSet<>(Arrays.asList(value.split(String.valueOf((char) 31)))));
     }
 
     private void requireGlobalBootstrapOperator(UUID actorId) {
@@ -949,12 +1397,12 @@ public class RolePreviewContextService implements AuthorizationContextBoundaryPo
     }
 
     private boolean hasDirectPreviewGrant(UUID userId) {
-        return jdbc.sql(
-                        "SELECT EXISTS(SELECT 1 FROM platform_authority WHERE user_id=:user AND authority=:permission)")
-                .param("user", userId)
-                .param("permission", PREVIEW_PERMISSION)
-                .query(Boolean.class)
-                .single();
+        return Boolean.TRUE.equals(
+                jdbc.sql(
+                                "SELECT EXISTS(SELECT 1 FROM platform_authority WHERE user_id=:user AND authority=:permission)")
+                        .param("user", userId)
+                        .param("permission", PREVIEW_PERMISSION)
+                        .query(rs -> rs.next() && rs.getBoolean(1)));
     }
 
     private static RequestAuthorizationContext authorization(HttpServletRequest request) {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildUserEditorSavePlan } from "../apps/web/src/features/users/user-editor-save-plan.ts";
+import { buildUserEditorSavePlan } from "../plugins/directory/frontend/users/user-editor-save-plan.ts";
 
 const baseline = { displayName: "林一舟", enabled: true };
 const profileValues = {

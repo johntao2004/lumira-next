@@ -121,6 +121,7 @@ final class OfficeWorkerResponseGuard {
                         case "kind" -> 32;
                         case "reason", "issues[].field", "issues[].reason" -> 128;
                         case "preview.text" -> OfficeDocumentProcessor.MAX_PREVIEW_CODE_POINTS * 2;
+                        case "pdfPage.png" -> (OfficeWorkerProtocol.MAX_PDF_PNG_BYTES * 4 / 3) + 8;
                         case "dictionary.sha256" -> 64;
                         case "dictionary.items[].value",
                                 "dictionary.items[].label",
@@ -166,6 +167,7 @@ final class OfficeWorkerResponseGuard {
         return List.of(
                         "",
                         "preview",
+                        "pdfPage",
                         "dictionary",
                         "dictionary.items[]",
                         "issues[]",
@@ -212,12 +214,20 @@ final class OfficeWorkerResponseGuard {
                         case "status" -> 7;
                         case "reason" -> 8;
                         case "issues" -> 9;
+                        case "pdfPage" -> 10;
                         default -> -1;
                     };
             case "preview" ->
                     switch (field) {
                         case "text" -> 0;
                         case "truncated" -> 1;
+                        default -> -1;
+                    };
+            case "pdfPage" ->
+                    switch (field) {
+                        case "page" -> 0;
+                        case "pageCount" -> 1;
+                        case "png" -> 2;
                         default -> -1;
                     };
             case "dictionary" ->
@@ -264,6 +274,7 @@ final class OfficeWorkerResponseGuard {
     private static boolean nullablePath(String path) {
         return List.of(
                         "preview",
+                        "pdfPage",
                         "dictionary",
                         "inspection",
                         "documentPdf",
@@ -276,6 +287,8 @@ final class OfficeWorkerResponseGuard {
 
     private static boolean integerPath(String path) {
         return "status".equals(path)
+                || "pdfPage.page".equals(path)
+                || "pdfPage.pageCount".equals(path)
                 || "dictionary.items[].sortOrder".equals(path)
                 || "issues[].row".equals(path);
     }
@@ -290,6 +303,7 @@ final class OfficeWorkerResponseGuard {
             case "preview", "dictionary", "inspection" -> 0b11L;
             case "dictionary.items[]" -> 0b11_1111L;
             case "issues[]" -> 0b111L;
+            case "pdfPage" -> 0b111L;
             case "inspection.slots[]" -> 0b111L;
             case "workbook" -> 1L;
             default -> -1L;

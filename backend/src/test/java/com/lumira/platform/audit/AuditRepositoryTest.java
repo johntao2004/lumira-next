@@ -72,4 +72,26 @@ class AuditRepositoryTest {
                 jdbc.queryForList(
                         "SELECT id FROM platform_audit ORDER BY created_at,id", UUID.class));
     }
+
+    @Test
+    void appendsAndListsEventsCorrectly() {
+        var id = UUID.randomUUID();
+        var targetId = UUID.randomUUID();
+        repository.append(id, "admin", "dictionary.create", targetId);
+
+        var events = repository.list(new com.lumira.platform.common.PageRequest(1, 10, ""));
+        assertEquals(1, events.size());
+        var event = events.getFirst();
+        assertEquals(id, event.id());
+        assertEquals("admin", event.actor());
+        assertEquals("dictionary.create", event.action());
+        assertEquals(targetId, event.targetId());
+
+        var queryEvents =
+                repository.queryEvents(new com.lumira.platform.common.PageRequest(1, 10, ""));
+        assertEquals(1, queryEvents.size());
+        assertEquals(id, queryEvents.getFirst().id());
+        assertEquals(
+                1, repository.countEvents(new com.lumira.platform.common.PageRequest(1, 10, "")));
+    }
 }

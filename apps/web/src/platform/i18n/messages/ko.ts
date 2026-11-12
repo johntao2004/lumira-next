@@ -1,4 +1,5 @@
 export const messages = {
+    serverBusy: "시스템이 혼잡합니다. 이 요청은 처리되지 않았습니다. 잠시 후 다시 시도하세요.",
     rolePermissionDelegationDenied: "선택한 권한을 위임할 수 없습니다. 플랫폼 권한은 전역 범위로 보유해야 하며, 플러그인 권한은 전역 범위로 보유하거나 플러그인 설치 권한이 있어야 합니다.",
     rolePermissionUnavailable: "권한 목록이 변경되어 선택한 권한을 사용할 수 없습니다. 역할 편집기를 새로 고친 후 다시 시도하세요.",
     registrationRoleInUse: "이 역할은 새 계정의 기본 역할입니다. 삭제, 비활성화, 데이터 범위 확대 또는 공개 가입 허용 범위 밖의 권한 부여는 불가능합니다. 먼저 공개 가입 설정에서 다른 기본 역할을 선택하세요.",
@@ -140,6 +141,7 @@ export const messages = {
     pluginBusy: "A plugin operation is in progress",
     pluginFixedGraph: "이 배포에서는 릴리스로 모듈을 업데이트합니다. 온라인 가져오기, 설치, 활성화, 비활성화, 제거는 사용할 수 없습니다. 운영 담당자에게 문의하세요.",
     pluginClusterLifecycleUnsupported: "여러 런타임 노드가 실행 중이므로 온라인 모듈 변경이 거부되었습니다. 릴리스로 업데이트하세요.",
+    pluginClusterOperationActive: "클러스터 모듈 변경이 완료되지 않았습니다. 완료될 때까지 기다리거나 운영 담당자에게 복구를 요청하세요.",
     pluginGraphChanged: "실행 중인 모듈 그래프가 로드된 스냅샷과 다릅니다. 작업이 거부되었습니다. 운영 담당자에게 문의하세요.",
     pluginReleaseNodesActive: "모듈 릴리스를 적용하기 전에 이전 런타임 노드를 중지하세요.",
     pluginOperationLeaseLost: "이 런타임 노드는 더 이상 해당 작업을 소유하지 않습니다. 상태를 새로 고치세요.",
@@ -152,6 +154,7 @@ export const messages = {
     pluginDependencyCycle: "Circular plugin dependency",
     pluginVersionConflict: "Plugin version conflict",
     pluginStartFailed: "Plugin startup failed. Check runtime logs.",
+    pluginServiceOwnerConflict: "플러그인이 다른 플러그인의 서비스를 선언하거나 같은 서비스 유형을 중복 선언합니다.",
     pluginDrainTimeout: "Plugin calls are still active. Uninstall cancelled.",
     invalidPluginPackage: "Invalid plugin package",
     pluginDigestMismatch: "Plugin integrity check failed",

@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class AuditRepository implements AuditPort {
+public class AuditRepository implements AuditPort, com.lumira.platform.common.AuditQueryPort {
     public record Event(
             UUID id, String actor, String action, UUID targetId, OffsetDateTime createdAt) {}
 
@@ -18,8 +18,41 @@ public class AuditRepository implements AuditPort {
             " WHERE (:search='' OR strpos(lower(actor),lower(:search))>0 OR"
                     + " strpos(lower(action),lower(:search))>0)";
 
+    private static final String INSERT_SQL =
+            "INSERT INTO platform_audit(id,actor,action,target_id) VALUES(?,?,?,?)";
+
     public AuditRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
+    }
+
+    @Override
+    public List<com.lumira.platform.common.AuditQueryPort.Event> queryEvents(PageRequest page) {
+        var filter = filters(page);
+        var params = new HashMap<String, Object>();
+        params.put("search", page.search());
+        params.put("limit", page.pageSize());
+        params.put("offset", page.offset());
+        params.putAll(filter.parameters());
+        return jdbc.sql(
+                        "SELECT id,actor,action,target_id,created_at FROM platform_audit"
+                                + FILTER
+                                + filter.sql()
+                                + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset")
+                .params(params)
+                .query(
+                        (rs, n) ->
+                                new com.lumira.platform.common.AuditQueryPort.Event(
+                                        rs.getObject("id", UUID.class),
+                                        rs.getString("actor"),
+                                        rs.getString("action"),
+                                        rs.getObject("target_id", UUID.class),
+                                        rs.getObject("created_at", OffsetDateTime.class)))
+                .list();
+    }
+
+    @Override
+    public long countEvents(PageRequest page) {
+        return count(page);
     }
 
     /** Call inside the same transaction as the state change being recorded. */
@@ -30,13 +63,8 @@ public class AuditRepository implements AuditPort {
     /** Call inside the same transaction when another record must reference this exact audit row. */
     @Override
     public void append(UUID id, String actor, String action, UUID targetId) {
-        jdbc.sql(
-                        "INSERT INTO platform_audit(id,actor,action,target_id)"
-                                + " VALUES(:id,:actor,:action,:target)")
-                .param("id", Objects.requireNonNull(id))
-                .param("actor", actor)
-                .param("action", action)
-                .param("target", targetId)
+        jdbc.sql(INSERT_SQL)
+                .params(Objects.requireNonNull(id, "id"), actor, action, targetId)
                 .update();
     }
 
@@ -62,7 +90,7 @@ public class AuditRepository implements AuditPort {
         params.putAll(filter.parameters());
         return jdbc.sql("SELECT count(*) FROM platform_audit" + FILTER + filter.sql())
                 .params(params)
-                .query(Long.class)
+                .query((rs, n) -> rs.getLong(1))
                 .single();
     }
 

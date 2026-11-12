@@ -1,0 +1,8 @@
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: lumira-office
+handler: lumira-office
+scheduling:
+  nodeSelector:
+    lumira.io/office-runtime: "true"

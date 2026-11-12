@@ -1,0 +1,75 @@
+{
+  "formatVersion": 1,
+  "id": "monitoring",
+  "name": "运行监控",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.platform.monitoring.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "communication",
+      "version": "1.0.0"
+    },
+    {
+      "id": "events",
+      "version": "1.0.0"
+    },
+    {
+      "id": "notifications",
+      "version": "1.0.0"
+    },
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:monitoring:access",
+    "platform:api-docs:access"
+  ],
+  "routes": [
+    {
+      "id": "monitoring",
+      "label": "monitoring",
+      "permission": "platform:monitoring:access",
+      "group": "operations",
+      "order": 10,
+      "global": true
+    },
+    {
+      "id": "api-docs",
+      "label": "apiDocs",
+      "permission": "platform:api-docs:access",
+      "group": "operations",
+      "order": 20,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/monitoring/summary",
+      "authorities": [
+        "platform:monitoring:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/api-docs",
+      "authorities": [
+        "platform:api-docs:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ],
+  "dataSets": []
+}

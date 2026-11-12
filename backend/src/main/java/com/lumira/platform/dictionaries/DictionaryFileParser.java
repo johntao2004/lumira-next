@@ -4,6 +4,8 @@ import com.lumira.platform.common.ImportValidationException;
 import com.lumira.platform.common.ImportValidationException.Issue;
 import com.lumira.platform.common.OfficeArchiveBudget;
 import com.lumira.platform.common.OfficeWorkerClient;
+import com.lumira.platform.dictionaries.api.DictionaryDataset;
+import com.lumira.platform.dictionaries.api.DictionaryImportPort;
 import java.io.*;
 import java.nio.*;
 import java.nio.charset.*;
@@ -16,11 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Legacy TXT (tab separated), XLS and XLSX adapter into the shared dataset validator. */
 @Component
-public class DictionaryFileParser {
-    public static final int MAX_BYTES = 20 * 1024 * 1024;
+public class DictionaryFileParser implements DictionaryImportPort {
     static final int MAX_COLUMNS = 64;
-
-    public record Parsed(String sha256, List<DictionaryDataset.Entry> items) {}
 
     private record SourceRow(int number, List<String> cells) {}
 
@@ -152,6 +151,11 @@ public class DictionaryFileParser {
                     List.copyOf(items));
         } catch (ResponseStatusException ex) {
             throw ex;
+        } catch (DictionaryDataset.Invalid ex) {
+            throw new ResponseStatusException(
+                    ex.tooLarge() ? HttpStatus.PAYLOAD_TOO_LARGE : HttpStatus.BAD_REQUEST,
+                    ex.getMessage(),
+                    ex);
         } catch (OfficeArchiveBudget.Exceeded ex) {
             throw new ResponseStatusException(
                     HttpStatus.PAYLOAD_TOO_LARGE, "dictionaryDatasetTooLarge", ex);

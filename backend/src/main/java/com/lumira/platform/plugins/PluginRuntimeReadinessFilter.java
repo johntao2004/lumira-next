@@ -33,9 +33,7 @@ public final class PluginRuntimeReadinessFilter implements Filter, Ordered {
             throws IOException, ServletException {
         if (!(request instanceof HttpServletRequest httpRequest)
                 || !(response instanceof HttpServletResponse httpResponse)
-                || !httpRequest
-                        .getRequestURI()
-                        .startsWith(httpRequest.getContextPath() + "/api/")) {
+                || !isApiRequest(httpRequest)) {
             chain.doFilter(request, response);
             return;
         }
@@ -46,13 +44,30 @@ public final class PluginRuntimeReadinessFilter implements Filter, Ordered {
             chain.doFilter(request, response);
             return;
         }
-        if (runtime.isReadyForTraffic()) {
-            chain.doFilter(request, response);
-            return;
+        try (var scope = runtime.openTrafficScope()) {
+            if (runtime.isReadyForTraffic()) {
+                chain.doFilter(request, response);
+                return;
+            }
         }
         httpResponse.setStatus(HttpStatus.SERVICE_UNAVAILABLE.value());
         httpResponse.setContentType("application/json;charset=UTF-8");
         httpResponse.setHeader("Cache-Control", "no-store");
         httpResponse.getWriter().write("{\"code\":\"pluginRuntimeNotReady\"}");
+    }
+
+    private static boolean isApiRequest(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (contextPath == null || contextPath.isEmpty()) {
+            return uri.equals("/api") || uri.startsWith("/api/");
+        }
+        int cpLen = contextPath.length();
+        if (uri.startsWith(contextPath)) {
+            int remaining = uri.length() - cpLen;
+            if (remaining == 4 && uri.endsWith("/api")) return true;
+            return uri.startsWith("/api/", cpLen);
+        }
+        return false;
     }
 }

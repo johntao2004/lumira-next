@@ -2,7 +2,6 @@ package com.lumira.platform.common;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -68,78 +67,78 @@ class DeadlineExchangeTest {
     @Test
     void aDnsResolutionThatReturnsAfterTheDeadlineCannotDial() throws Exception {
         var releaseResolver = new CountDownLatch(1);
+        var resolverEntered = new CountDownLatch(1);
+        var workFinished = new CountDownLatch(1);
         try (var server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            server.setSoTimeout(150);
-            var resolverFinished = new CountDownLatch(1);
-            var accepted = new AtomicBoolean();
-            var acceptor =
-                    Thread.ofVirtual()
-                            .start(
-                                    () -> {
-                                        try (var connection = server.accept()) {
-                                            accepted.set(true);
-                                        } catch (SocketTimeoutException expected) {
-                                            // No late connection arrived.
-                                        } catch (IOException failure) {
-                                            throw new AssertionError(failure);
-                                        }
-                                    });
-
             try {
+                // Allow class loading and worker scheduling before exercising a blocked resolver.
                 HttpTimeoutException expired =
                         assertThrows(
                                 HttpTimeoutException.class,
                                 () ->
                                         DeadlineExchange.run(
-                                                Duration.ofMillis(80),
+                                                Duration.ofSeconds(2),
                                                 scope -> {
-                                                    var socket =
-                                                            scope.track(
-                                                                    new GuardedSockets
-                                                                            .GuardedSocket(
-                                                                            address -> true,
-                                                                            host -> {
-                                                                                boolean
-                                                                                        interrupted =
-                                                                                                false;
-                                                                                while (true) {
-                                                                                    try {
-                                                                                        releaseResolver
-                                                                                                .await();
-                                                                                        break;
-                                                                                    } catch (
-                                                                                            InterruptedException
-                                                                                                    ignored) {
-                                                                                        interrupted =
-                                                                                                true;
+                                                    try {
+                                                        var socket =
+                                                                scope.track(
+                                                                        new GuardedSockets
+                                                                                .GuardedSocket(
+                                                                                address -> true,
+                                                                                host -> {
+                                                                                    resolverEntered
+                                                                                            .countDown();
+                                                                                    boolean
+                                                                                            interrupted =
+                                                                                                    false;
+                                                                                    while (true) {
+                                                                                        try {
+                                                                                            releaseResolver
+                                                                                                    .await();
+                                                                                            break;
+                                                                                        } catch (
+                                                                                                InterruptedException
+                                                                                                        ignored) {
+                                                                                            interrupted =
+                                                                                                    true;
+                                                                                        }
                                                                                     }
-                                                                                }
-                                                                                resolverFinished
-                                                                                        .countDown();
-                                                                                if (interrupted)
-                                                                                    Thread
-                                                                                            .currentThread()
-                                                                                            .interrupt();
-                                                                                return new InetAddress
-                                                                                        [] {
-                                                                                    InetAddress
-                                                                                            .getLoopbackAddress()
-                                                                                };
-                                                                            },
-                                                                            scope));
-                                                    socket.connect(
-                                                            InetSocketAddress.createUnresolved(
-                                                                    "late.example",
-                                                                    server.getLocalPort()),
-                                                            1000);
-                                                    return null;
+                                                                                    if (interrupted)
+                                                                                        Thread
+                                                                                                .currentThread()
+                                                                                                .interrupt();
+                                                                                    return new InetAddress
+                                                                                            [] {
+                                                                                        InetAddress
+                                                                                                .getLoopbackAddress()
+                                                                                    };
+                                                                                },
+                                                                                scope));
+                                                        socket.connect(
+                                                                InetSocketAddress.createUnresolved(
+                                                                        "late.example",
+                                                                        server.getLocalPort()),
+                                                                1000);
+                                                        return null;
+                                                    } finally {
+                                                        workFinished.countDown();
+                                                    }
                                                 }));
-
                 assertTrue(expired.getMessage().contains("timed out"));
+                assertEquals(
+                        0, resolverEntered.getCount(), "The blocked resolver was never exercised");
                 releaseResolver.countDown();
-                assertTrue(resolverFinished.await(1, TimeUnit.SECONDS));
-                acceptor.join(500);
-                assertFalse(accepted.get());
+                assertTrue(workFinished.await(5, TimeUnit.SECONDS));
+                // Inspect the listening backlog only after the late worker has exited. An early
+                // acceptor timeout could otherwise miss a connection dialled after it stopped.
+                server.setSoTimeout(200);
+                assertThrows(
+                        SocketTimeoutException.class,
+                        () -> {
+                            try (var unexpected = server.accept()) {
+                                fail("A DNS result returned after cancellation must not dial");
+                            }
+                        });
             } finally {
                 releaseResolver.countDown();
             }

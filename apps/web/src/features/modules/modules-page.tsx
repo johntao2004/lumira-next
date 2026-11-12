@@ -19,7 +19,7 @@ import { useTabAnchor } from "@/platform/routing/use-tab-anchor";
 import { accountAvatarKey } from "@/platform/api/account-avatar-contract";
 import "./modules-page.css";
 
-const moduleErrorKeys = ["requiredModule", "moduleDependencyConflict", "invalidModuleChange", "staleRecord", "pluginFixedGraph", "pluginClusterLifecycleUnsupported", "pluginGraphChanged"] as const satisfies readonly MessageKey[];
+const moduleErrorKeys = ["requiredModule", "moduleDependencyConflict", "invalidModuleChange", "staleRecord", "pluginFixedGraph", "pluginClusterLifecycleUnsupported", "pluginClusterOperationActive", "pluginGraphChanged"] as const satisfies readonly MessageKey[];
 
 type ModuleInfo = ApiModuleInfo & { core: boolean; moduleDisplayName: string };
 type PluginManifestWithDependencies = PluginView["manifest"] & { dependencies?: readonly { id: string; version?: string }[] };
@@ -32,7 +32,7 @@ type ManagedModule = ApiModuleInfo & {
 };
 
 function isCoreModule(row: ApiModuleInfo) {
-  return Boolean(row.core ?? row.required) || row.id === "audit-console";
+  return Boolean(row.core ?? row.required);
 }
 
 function pluginDependencies(plugin: PluginView) {

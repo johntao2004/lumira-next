@@ -13,7 +13,8 @@ import com.lumira.platform.common.GlobalAuthenticationPolicyPort;
 import com.lumira.platform.common.PluginExtensionsPort;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.common.RoleAuthenticationPolicyPort;
-import com.lumira.platform.identity.CaptchaSettingsService.Mode;
+import com.lumira.platform.identity.api.CaptchaConfigurationPort;
+import com.lumira.platform.identity.api.CaptchaConfigurationPort.Mode;
 import com.lumira.platform.identity.api.PasskeyPolicyPort;
 import java.util.EnumMap;
 import java.util.List;
@@ -30,7 +31,7 @@ class AuthenticationPolicyCaptchaContractTest {
     @Test
     void publicMethodsReportsAlwaysActionsSeparatelyFromRiskActions() throws Exception {
         var data =
-                new CaptchaSettingsService.Data(
+                new CaptchaConfigurationPort.Data(
                         true,
                         "LOCAL",
                         "IMAGE_TEXT",
@@ -39,9 +40,9 @@ class AuthenticationPolicyCaptchaContractTest {
                                         CaptchaProofPort.Action.PASSWORD_LOGIN, Mode.ALWAYS,
                                         CaptchaProofPort.Action.PASSWORD_RECOVERY_REQUEST,
                                                 Mode.RISK)));
-        var settings = mock(CaptchaSettingsService.class);
+        var settings = mock(CaptchaConfigurationPort.class);
         when(settings.current())
-                .thenReturn(new CaptchaSettingsService.Snapshot(4, UUID.randomUUID(), data));
+                .thenReturn(new CaptchaConfigurationPort.Snapshot(4, UUID.randomUUID(), data));
         when(settings.readyFor(any())).thenReturn(true);
         @SuppressWarnings("unchecked")
         ObjectProvider<RoleAuthenticationPolicyPort> rolePolicies = mock(ObjectProvider.class);
@@ -92,14 +93,14 @@ class AuthenticationPolicyCaptchaContractTest {
     @Test
     void riskOnlyActionIsNotPublishedAsAlwaysRequired() throws Exception {
         var data =
-                new CaptchaSettingsService.Data(
+                new CaptchaConfigurationPort.Data(
                         true,
                         "LOCAL",
                         "IMAGE_TEXT",
                         actions(Map.of(CaptchaProofPort.Action.PASSWORD_LOGIN, Mode.RISK)));
-        var settings = mock(CaptchaSettingsService.class);
+        var settings = mock(CaptchaConfigurationPort.class);
         when(settings.current())
-                .thenReturn(new CaptchaSettingsService.Snapshot(2, UUID.randomUUID(), data));
+                .thenReturn(new CaptchaConfigurationPort.Snapshot(2, UUID.randomUUID(), data));
         when(settings.readyFor(any())).thenReturn(true);
         var captcha =
                 new CaptchaProofService(

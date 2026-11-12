@@ -5,6 +5,7 @@ import com.lumira.platform.common.CaptchaProofPort;
 import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.common.FixedWindowBuckets;
 import com.lumira.platform.common.RoleAuthenticationPolicyPort;
+import com.lumira.platform.identity.api.CaptchaConfigurationPort;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -109,7 +110,7 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
     private static final int MAX_SLIDER_DURATION_MS = CHALLENGE_TTL_SECONDS * 1000;
 
     private final JdbcClient jdbc;
-    private final CaptchaSettingsService settings;
+    private final CaptchaConfigurationPort settings;
     private final LocalCaptchaAssets assets;
     private final ClientAddressResolver addresses;
     private final PublicAuthCrypto publicAuthCrypto;
@@ -119,7 +120,7 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
 
     public CaptchaProofService(
             JdbcClient jdbc,
-            CaptchaSettingsService settings,
+            CaptchaConfigurationPort settings,
             LocalCaptchaAssets assets,
             ClientAddressResolver addresses,
             PublicAuthCrypto publicAuthCrypto,
@@ -150,19 +151,19 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
         var modes = snapshot.data().parsedActions();
         var requiredActions =
                 modes.entrySet().stream()
-                        .filter(entry -> entry.getValue() != CaptchaSettingsService.Mode.OFF)
+                        .filter(entry -> entry.getValue() != CaptchaConfigurationPort.Mode.OFF)
                         .map(entry -> entry.getKey().name())
                         .sorted()
                         .toList();
         var alwaysActions =
                 modes.entrySet().stream()
-                        .filter(entry -> entry.getValue() == CaptchaSettingsService.Mode.ALWAYS)
+                        .filter(entry -> entry.getValue() == CaptchaConfigurationPort.Mode.ALWAYS)
                         .map(entry -> entry.getKey().name())
                         .sorted()
                         .toList();
         boolean required =
                 modes.values().stream()
-                        .anyMatch(mode -> mode == CaptchaSettingsService.Mode.ALWAYS);
+                        .anyMatch(mode -> mode == CaptchaConfigurationPort.Mode.ALWAYS);
         String type = requiredActions.isEmpty() ? null : snapshot.data().type();
         boolean ready = settings.readyFor(snapshot.data());
         return new Contribution(
@@ -177,8 +178,9 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
 
     @Override
     public AccountMethods accountMethods(UUID userId) {
-        var snapshot = settings.current();
-        return new AccountMethods(Set.of(), "captcha:" + snapshot.revision());
+        UUID projected = AdmissionCredentialProjection.consumeCaptchaRevision(userId);
+        UUID revision = projected != null ? projected : settings.current().revision();
+        return new AccountMethods(Set.of(), "captcha:" + revision);
     }
 
     @Override
@@ -194,11 +196,12 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
         if (action == null) throw invalid("captchaActionInvalid");
         var snapshot = settings.current();
         var data = snapshot.data();
-        CaptchaSettingsService.Mode mode =
-                data.parsedActions().getOrDefault(action, CaptchaSettingsService.Mode.OFF);
+        CaptchaConfigurationPort.Mode mode =
+                data.parsedActions().getOrDefault(action, CaptchaConfigurationPort.Mode.OFF);
         boolean risk =
-                mode == CaptchaSettingsService.Mode.RISK && riskTriggered(requestFacts, accountId);
-        boolean required = mode == CaptchaSettingsService.Mode.ALWAYS || risk;
+                mode == CaptchaConfigurationPort.Mode.RISK
+                        && riskTriggered(requestFacts, accountId);
+        boolean required = mode == CaptchaConfigurationPort.Mode.ALWAYS || risk;
         var revisions = new ArrayList<String>();
         revisions.add(snapshot.revision().toString());
         revisions.add(action.name());
@@ -270,7 +273,7 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
                         .param("action", action.name())
                         .param("revision", policyRevision)
                         .param("attempt", expectedAttemptId)
-                        .query(Boolean.class)
+                        .query((rs, rowNum) -> rs.getBoolean(1))
                         .single();
         if (!valid) throw invalid("captchaProofExpired");
     }
@@ -716,7 +719,7 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
     private UUID registrationDefaultRole(Action action) {
         if (action != Action.REGISTRATION_COMPLETE) return null;
         return jdbc.sql("SELECT default_role_id FROM platform_registration_policy WHERE id=1")
-                .query(UUID.class)
+                .query((rs, rowNum) -> rs.getObject(1, UUID.class))
                 .optional()
                 .orElse(null);
     }
@@ -757,7 +760,7 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
                         "SELECT EXISTS(SELECT 1 FROM platform_rate_bucket WHERE bucket_key=:key AND window_start=date_trunc('minute',CURRENT_TIMESTAMP) AND attempts>=:threshold)")
                 .param("key", key)
                 .param("threshold", threshold)
-                .query(Boolean.class)
+                .query((rs, rowNum) -> rs.getBoolean(1))
                 .single();
     }
 
@@ -780,7 +783,7 @@ public class CaptchaProofService implements CaptchaProofPort, AuthenticationCapa
                         "session",
                         FixedWindowBuckets.key("mfa-session", request.getSession(false).getId())
                                 .substring(12))
-                .query(UUID.class)
+                .query((rs, rowNum) -> rs.getObject(1, UUID.class))
                 .optional()
                 .orElse(null);
     }

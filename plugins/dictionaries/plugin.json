@@ -1,0 +1,219 @@
+{
+  "formatVersion": 1,
+  "id": "dictionaries",
+  "name": "字典管理",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.dictionaries.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    },
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:dictionaries:access",
+    "platform:dictionaries:create",
+    "platform:dictionaries:update",
+    "platform:dictionaries:delete",
+    "platform:dictionaries:import",
+    "platform:dictionaries:export"
+  ],
+  "routes": [
+    {
+      "id": "dictionaries",
+      "label": "dictionaries",
+      "permission": "platform:dictionaries:access",
+      "operations": {
+        "create": "platform:dictionaries:create",
+        "update": "platform:dictionaries:update",
+        "delete": "platform:dictionaries:delete",
+        "import": "platform:dictionaries:import",
+        "export": "platform:dictionaries:export"
+      },
+      "group": "content-management",
+      "order": 20,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/dictionaries",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/dictionaries/{id1}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/dictionaries/{id1}/export",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:export"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/dictionaries/{id1}/items",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/dictionaries/{id1}/items/{id2}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/dictionaries/{id1}/items/{id2}/ancestors",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/dictionaries/preview",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:import"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/dictionaries/import",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:import"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/dictionaries/file-preview",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:import"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/dictionaries/file-import",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:import"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/dictionaries",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:create"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/dictionaries/{id1}/items",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:create"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/dictionaries/{id1}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:update"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/dictionaries/{id1}/items/{id2}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:update"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/dictionaries/{id1}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:delete"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/dictionaries/{id1}/items/{id2}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:dictionaries:access",
+        "platform:dictionaries:delete"
+      ],
+      "publicAccess": false,
+      "global": true
+    }
+  ],
+  "dataSets": []
+}

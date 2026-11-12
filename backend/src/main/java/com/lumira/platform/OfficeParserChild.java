@@ -7,6 +7,7 @@ import com.lumira.platform.common.OfficeArchiveBudget;
 import com.lumira.platform.common.OfficeDocumentProcessor;
 import com.lumira.platform.common.OfficeWorkerFailureReasons;
 import com.lumira.platform.common.OfficeWorkerProtocol;
+import com.lumira.platform.common.PdfPreviewProcessor;
 import com.lumira.platform.dictionaries.DictionaryFileParser;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,7 +50,12 @@ public final class OfficeParserChild {
                     write(
                             responsePath,
                             OfficeWorkerProtocol.Response.preview(
-                                    OfficeDocumentProcessor.preview(request.filename(), bytes)));
+                                    request.filename()
+                                                    .toLowerCase(java.util.Locale.ROOT)
+                                                    .endsWith(".pdf")
+                                            ? PdfPreviewProcessor.text(bytes)
+                                            : OfficeDocumentProcessor.preview(
+                                                    request.filename(), bytes)));
                 } catch (OfficeArchiveBudget.Exceeded error) {
                     write(
                             responsePath,
@@ -113,6 +119,12 @@ public final class OfficeParserChild {
             }
             try {
                 switch (request.operation()) {
+                    case OfficeWorkerProtocol.PDF_PAGE ->
+                            write(
+                                    responsePath,
+                                    OfficeWorkerProtocol.Response.pdfPage(
+                                            PdfPreviewProcessor.page(
+                                                    bytes, Integer.parseInt(request.structure()))));
                     case OfficeWorkerProtocol.DOCUMENT_INSPECT ->
                             write(
                                     responsePath,
@@ -219,6 +231,7 @@ public final class OfficeParserChild {
 
     private static boolean supportedOperation(String operation) {
         return OfficeWorkerProtocol.PREVIEW.equals(operation)
+                || OfficeWorkerProtocol.PDF_PAGE.equals(operation)
                 || OfficeWorkerProtocol.DICTIONARY.equals(operation)
                 || OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
                 || OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation)

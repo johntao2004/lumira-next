@@ -7,6 +7,7 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.SecretKeys;
+import com.lumira.plugins.authenticationconsole.WechatSettingsService;
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -39,35 +40,10 @@ class WechatSettingsChangeReasonDatabaseTest {
                         user,
                         password);
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute(
-                """
-                CREATE TABLE platform_setting(
-                    id uuid PRIMARY KEY,
-                    section varchar(100) NOT NULL UNIQUE,
-                    version bigint NOT NULL,
-                    payload jsonb NOT NULL,
-                    updated_by varchar(100) NOT NULL,
-                    updated_at timestamptz NOT NULL DEFAULT now())
-                """);
-        jdbc.execute(
-                """
-                CREATE TABLE platform_setting_revision(
-                    setting_id uuid NOT NULL,
-                    version bigint NOT NULL,
-                    payload jsonb NOT NULL,
-                    changed_by varchar(100) NOT NULL,
-                    change_reason varchar(1000) NOT NULL,
-                    created_at timestamptz NOT NULL DEFAULT now(),
-                    source_version bigint)
-                """);
-        jdbc.execute(
-                """
-                CREATE TABLE platform_secret(
-                    secret_context varchar(512) PRIMARY KEY,
-                    ciphertext text,
-                    version bigint NOT NULL DEFAULT 1,
-                    updated_at timestamptz NOT NULL DEFAULT now())
-                """);
+        for (var table :
+                java.util.List.of(
+                        "platform_setting", "platform_setting_revision", "platform_secret"))
+            jdbc.execute(com.lumira.platform.TestSchema.table(table));
         var client = JdbcClient.create(dataSource);
         var keys =
                 new SecretKeys(
@@ -86,13 +62,80 @@ class WechatSettingsChangeReasonDatabaseTest {
                         mock(AuditPort.class),
                         new ObjectMapper(),
                         client,
-                        "");
+                        new WechatConfigurationReader(
+                                new SettingStore(client, guard, mock(AuditPort.class)),
+                                new SecretStore(client, keys),
+                                keys,
+                                new ObjectMapper(),
+                                ""));
     }
 
     @AfterEach
     void tearDown() {
         if (admin != null && schema != null)
             admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+    }
+
+    @Test
+    void kernelProviderReaderRetainsConfigurationAndClearsOnlyItsBorrowedSecretBytes() {
+        var client = JdbcClient.create(jdbc.getDataSource());
+        var keys =
+                new SecretKeys(
+                        "primary=" + Base64.getEncoder().encodeToString(new byte[32]), "primary");
+        var guard = mock(AdministrationPort.class);
+        var store = new SettingStore(client, guard, mock(AuditPort.class));
+        var secrets = new SecretStore(client, keys);
+        var mapper = new ObjectMapper();
+        var reader =
+                new WechatConfigurationReader(
+                        store, secrets, keys, mapper, "http://localhost:18180");
+        var administration =
+                new WechatSettingsService(
+                        store,
+                        secrets,
+                        keys,
+                        guard,
+                        mock(AuthenticationPolicyWriteLock.class),
+                        mock(
+                                com.lumira.platform.identity.api.EffectiveAuthenticationPolicyPort
+                                        .class),
+                        mock(AuditPort.class),
+                        mapper,
+                        client,
+                        reader);
+        var plaintext = "Qa!WechatKernelReader";
+        administration.save(
+                "qa-admin",
+                new WechatSettingsService.Input(
+                        0,
+                        true,
+                        "qa_kernel_app",
+                        "http://localhost:18180",
+                        8,
+                        new WechatSettingsService.Credentials("REPLACE", plaintext),
+                        "QA independent reader"));
+        org.junit.jupiter.api.Assertions.assertTrue(reader.snapshot().ready());
+        assertEquals("qa_kernel_app", reader.currentAppId());
+        var secretState =
+                secrets.state(
+                        WechatConfigurationReader.context(store.find("wechat").orElseThrow().id()));
+        byte[] borrowed;
+        try (var configuration = reader.providerConfiguration()) {
+            borrowed = configuration.secret();
+            org.junit.jupiter.api.Assertions.assertArrayEquals(
+                    plaintext.getBytes(java.nio.charset.StandardCharsets.UTF_8), borrowed);
+        }
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new byte[borrowed.length], borrowed);
+        try (var reread = reader.providerConfiguration()) {
+            org.junit.jupiter.api.Assertions.assertArrayEquals(
+                    plaintext.getBytes(java.nio.charset.StandardCharsets.UTF_8), reread.secret());
+        }
+        assertEquals(
+                secretState,
+                secrets.state(
+                        WechatConfigurationReader.context(
+                                store.find("wechat").orElseThrow().id())));
+        assertEquals(1, reader.snapshot().version());
     }
 
     @Test

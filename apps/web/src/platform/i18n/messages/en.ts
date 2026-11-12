@@ -1,4 +1,5 @@
 export const messages = {
+    serverBusy: "The system is busy. Try again shortly; this request has not been processed.",
     rolePermissionDelegationDenied: "Your account cannot delegate the selected permissions. Platform permissions require global access; plugin permissions require global access or plugin installation permission.",
     rolePermissionUnavailable: "The permission catalog has changed and a selected permission is unavailable. Refresh the role editor and try again.",
     registrationRoleInUse: "This is the default role for new accounts. It cannot be deleted, disabled, given a broader data scope, or granted permissions outside the public registration allow-list. Select a different default role in Public registration settings first.",
@@ -140,6 +141,7 @@ export const messages = {
     pluginBusy: "A plugin operation is in progress",
     pluginFixedGraph: "This deployment updates modules through a release. Online import, install, enable, disable, and uninstall are disabled. Contact operations.",
     pluginClusterLifecycleUnsupported: "Online module changes are blocked while multiple runtime nodes are active. Update modules through a release.",
+    pluginClusterOperationActive: "A cluster module change is unfinished. Wait for it to complete or ask operations to recover it before changing modules.",
     pluginGraphChanged: "The running module graph differs from the loaded snapshot. The operation was rejected; contact operations.",
     pluginReleaseNodesActive: "Stop the old runtime nodes before applying a module release.",
     pluginOperationLeaseLost: "This runtime node no longer owns the operation. Refresh its status.",
@@ -152,6 +154,7 @@ export const messages = {
     pluginDependencyCycle: "Circular plugin dependency",
     pluginVersionConflict: "Plugin version conflict",
     pluginStartFailed: "Plugin startup failed. Check runtime logs.",
+    pluginServiceOwnerConflict: "The plugin declares a service owned by another plugin or duplicates a service type.",
     pluginDrainTimeout: "Plugin calls are still active. Uninstall cancelled.",
     invalidPluginPackage: "Invalid plugin package",
     pluginDigestMismatch: "Plugin integrity check failed",

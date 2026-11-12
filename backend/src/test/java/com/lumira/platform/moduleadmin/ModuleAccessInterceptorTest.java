@@ -109,9 +109,15 @@ class ModuleAccessInterceptorTest {
     }
 
     @Test
-    void auditConsoleIsFixedCoreAndSkipsStateLookup() throws Exception {
+    void auditConsoleUsesCurrentPluginStateForEveryRequest() throws Exception {
+        when(runtime.isEnabled("audit-console")).thenReturn(true, false);
         assertTrue(call("audit"));
-        verifyNoInteractions(runtime);
+        assertEquals(
+                503,
+                assertThrows(ResponseStatusException.class, () -> call("audit"))
+                        .getStatusCode()
+                        .value());
+        verify(runtime, times(2)).isEnabled("audit-console");
     }
 
     @Test

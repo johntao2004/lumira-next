@@ -1,8 +1,8 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "pluginId": "payment-core",
-  "version": "4",
-  "script": "V4__plugin_initialization.sql",
+  "version": "5",
+  "script": "V5__plugin_initialization.sql",
   "publishedMigrations": [
     {
       "version": "1",
@@ -27,6 +27,25 @@
       "description": "finalize legacy payment permissions",
       "script": "V4__finalize_legacy_payment_permissions.sql",
       "checksum": -1536523737
+    }
+  ],
+  "previousInitializations": [
+    {
+      "version": "4",
+      "description": "plugin initialization",
+      "script": "V4__plugin_initialization.sql",
+      "checksum": 1673123779
+    }
+  ],
+  "evolutions": [
+    {
+      "migration": {
+        "version": "5",
+        "description": "open payment provider identifiers",
+        "script": "V5__open_payment_provider_identifiers.sql",
+        "checksum": -326142887
+      },
+      "sql": "SET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '30s';\nALTER TABLE plugin_payment_core_settings DROP CONSTRAINT plugin_payment_core_settings_provider_id_check;\nALTER TABLE plugin_payment_core_settings ADD CONSTRAINT plugin_payment_core_settings_provider_id_check CHECK (provider_id ~ '^[a-z][a-z0-9-]{0,31}$');\nALTER TABLE plugin_payment_core_settings_history DROP CONSTRAINT plugin_payment_core_settings_history_provider_id_check;\nALTER TABLE plugin_payment_core_settings_history ADD CONSTRAINT plugin_payment_core_settings_history_provider_id_check CHECK (provider_id ~ '^[a-z][a-z0-9-]{0,31}$');\nALTER TABLE plugin_payment_core_order DROP CONSTRAINT plugin_payment_core_order_provider_id_check;\nALTER TABLE plugin_payment_core_order ADD CONSTRAINT plugin_payment_core_order_provider_id_check CHECK (provider_id ~ '^[a-z][a-z0-9-]{0,31}$');\n"
     }
   ]
 }

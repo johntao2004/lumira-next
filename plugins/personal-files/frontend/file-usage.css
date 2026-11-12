@@ -1,0 +1,39 @@
+.file-usage-card > .ant-pro-card-body {
+  padding-block: 20px 18px;
+}
+
+.file-usage-title.ant-typography {
+  margin: 0 0 14px;
+}
+
+.file-usage-meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+
+.file-usage-meters > section {
+  min-width: 0;
+}
+
+.file-usage-meters > section > div > .ant-typography {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.file-usage-hint.ant-typography {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 767px) {
+  .file-usage-card > .ant-pro-card-body {
+    padding-block: 16px;
+  }
+
+  .file-usage-meters {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+}

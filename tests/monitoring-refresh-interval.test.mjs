@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getMonitoringRefetchInterval, REALTIME_POLL_MS } from '../apps/web/src/features/monitoring/monitoring-refresh-interval.ts';
+import { getMonitoringRefetchInterval, REALTIME_POLL_MS } from '../plugins/monitoring/frontend/monitoring-refresh-interval.ts';
 
 test('monitoring polling backs off for current failures and returns to baseline after success resets the count', () => {
   let consecutiveFailures = 0;

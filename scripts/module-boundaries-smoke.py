@@ -15,6 +15,15 @@ def fail(message: str) -> None:
 
 
 PLUGIN_ROOTS = [p / "backend/src/main/java/com/lumira/platform" for p in (ROOT / "plugins").iterdir() if (p / "plugin.json").exists()]
+PLUGIN_ROOTS.append(ROOT / "plugins/directory/backend/src/main/java/com/lumira/plugins/directory")
+PLUGIN_ROOTS.append(ROOT / "plugins/file-retention/backend/src/main/java/com/lumira/plugins")
+PLUGIN_ROOTS.append(ROOT / "plugins/file-console/backend/src/main/java/com/lumira/plugins")
+PLUGIN_ROOTS.append(ROOT / "plugins/site-console/backend/src/main/java/com/lumira/plugins")
+PLUGIN_ROOTS.append(ROOT / "plugins/delivery-settings/backend/src/main/java/com/lumira/plugins")
+PLUGIN_ROOTS.append(ROOT / "plugins/profile-console/backend/src/main/java/com/lumira/plugins")
+PLUGIN_ROOTS.append(ROOT / "plugins/personal-files/backend/src/main/java/com/lumira/plugins")
+PLUGIN_ROOTS.append(ROOT / "plugins/authentication-console/backend/src/main/java/com/lumira/plugins")
+
 def java_relative(path):
     for base in [JAVA_ROOT, *PLUGIN_ROOTS]:
         if path.is_relative_to(base): return path.relative_to(base)
@@ -22,6 +31,8 @@ def java_relative(path):
 def java_path(relative):
     for base in [JAVA_ROOT, *PLUGIN_ROOTS]:
         if (base / relative).exists(): return base / relative
+    if relative == "navigation/NavigationMenuService.java":
+        return ROOT / "plugins/navigation-console/backend/src/main/java/com/lumira/plugins/navigationconsole/NavigationMenuService.java"
     return JAVA_ROOT / relative
 java_files = [p for base in [JAVA_ROOT, *PLUGIN_ROOTS] for p in base.rglob("*.java")]
 for path in java_files:
@@ -140,7 +151,7 @@ for name, owner in {**table_owners, **object_owners, **migration_owners}.items()
 # package to a different Maven module later must not change its HTTP contract.
 package_owners = {
     "identity": "identity",
-    "ai": "platform",
+    "ai": "ai",
     "audit": "audit-console",
     "feedback": "feedback",
     "sensitive": "sensitive-words",
@@ -152,6 +163,13 @@ package_owners = {
     "dictionaries": "dictionaries",
     "events": "events",
     "files": "files",
+    "fileretention": "file-retention",
+    "fileconsole": "file-console",
+    "siteconsole": "site-console",
+    "deliverysettings": "delivery-settings",
+    "profileconsole": "profile-console",
+    "authenticationconsole": "authentication-console",
+    "personalfiles": "personal-files",
     "moduleadmin": "platform",
     "plugins": "platform",
     "monitoring": "monitoring",
@@ -162,6 +180,8 @@ package_owners = {
     "settings": "settings",
     "users": "directory",
     "directory": "directory",
+    "templates": "directory",
+    "sessions": "directory",
     "web": "platform",
     "modules": "kernel",
     "content": "kernel",
@@ -221,7 +241,7 @@ for path in (JAVA_ROOT / "common").glob("*.java"):
         fail(f"kernel port leaks framework or persistence types: {path.relative_to(ROOT)}")
 
 for path in java_files:
-    if "/audit/" not in str(path) and "AuditRepository" in path.read_text():
+    if "/audit/" not in path.as_posix() and "AuditRepository" in path.read_text():
         fail(f"feature leaks the audit query repository instead of AuditPort: {path.relative_to(ROOT)}")
 
 # Public module APIs must compile without the web or persistence adapters.
@@ -269,7 +289,7 @@ for path in (JAVA_ROOT / "identity").glob("*.java"):
 # identity implementations.  This is what keeps later Maven extraction
 # mechanical instead of turning into a package rename exercise.
 for path in java_files:
-    if "/identity/" in str(path):
+    if "/identity/" in path.as_posix():
         continue
     source = path.read_text()
     for target in re.findall(r"(?:import\s+)?com\.lumira\.platform\.identity\.([A-Za-z0-9_.]+)", source):
@@ -278,21 +298,24 @@ for path in java_files:
 
 required_adapters = {
     "ProfileSchemaPort": "settings/ProfileSchemaReader.java",
-    "ProfileDictionaryPort": "dictionaries/DictionaryLookupService.java",
+    "ProfileDictionaryPort": "dictionaries/DictionaryKernelAdapter.java",
     "AvatarStatusPort": "files/AvatarRepository.java",
     "AccountOwnerPort": "identity/ProfileRepository.java",
-    "SecurityPolicyPort": "settings/SecuritySettingsService.java",
-    "PasskeyPolicyPort": "settings/PasskeySettingsService.java",
-    "MaintenancePolicyPort": "settings/MaintenanceService.java",
+    "CaptchaConfigurationPort": "identity/CaptchaConfigurationReader.java",
+    "SecurityPolicyPort": "settings/SecurityPolicyReader.java",
+    "PasskeyPolicyPort": "settings/PasskeyPolicyReader.java",
+    "MaintenancePolicyPort": "settings/MaintenanceReader.java",
     "ContentPolicyPort": "sensitive/SensitiveWordService.java",
     "FileContentPort": "files/FileService.java",
     "NotificationProducerPort": "notifications/NotificationService.java",
-    "DictionaryLookupPort": "dictionaries/DictionaryLookupService.java",
+    "DictionaryLookupPort": "dictionaries/DictionaryKernelAdapter.java",
     "UploadRateLimitPort": "files/FileUploadRateLimiter.java",
-    "MailConfigurationPort": "settings/SmtpSettingsService.java",
-    "SmsConfigurationPort": "settings/SmsSettingsService.java",
+    "MailConfigurationPort": "settings/SmtpConfigurationReader.java",
+    "SmsConfigurationPort": "settings/SmsConfigurationReader.java",
     "SecretStorePort": "settings/SecretStore.java",
-    "AiUserDirectoryPort": "users/AiUserDirectoryAdapter.java",
+    "DirectoryAiServicePort": "users/AiUserDirectoryAdapter.java",
+    "DirectoryTemplateServicePort": "users/TemplateUserDataAdapter.java",
+    "DirectoryRoleAssignmentServicePort": "roles/RoleService.java",
 }
 for port, relative in required_adapters.items():
     if port not in java_path(relative).read_text():
@@ -318,7 +341,7 @@ for relative in ("navigation/NavigationMenuService.java", "web/PlatformControlle
         fail(f"platform consumer depends on the module state storage implementation: {relative}")
 
 
-if "DictionaryLookupRepository" in java_path("settings/ProfileFieldsController.java").read_text():
+if "DictionaryLookupRepository" in (ROOT / "plugins/profile-console/backend/src/main/java/com/lumira/plugins/profileconsole/ProfileFieldsController.java").read_text():
     fail("settings controller depends on the dictionary storage implementation")
 
 if "ModuleStateStore" in java_path("moduleadmin/ModuleAdminController.java").read_text():
@@ -327,16 +350,32 @@ if "ModuleStateStore" in java_path("moduleadmin/ModuleAdminController.java").rea
 workspace = (WEB_ROOT / "platform/shell/workspace.tsx").read_text()
 if "const featurePages" in workspace:
     fail("workspace still owns the feature page map")
-for line in workspace.splitlines():
-    if 'from "@/features/' in line and not any(
-        allowed in line for allowed in ("@/features/account/", "@/features/notifications/notifications-button")
+for shell_file in WEB_ROOT.joinpath("platform/shell").rglob("*"):
+    if shell_file.suffix not in (".ts", ".tsx"):
+        continue
+    for feature_import in re.findall(
+        r'''(?:from\s*|import\s*\()\s*['"](@/features/[^'"]+)''', shell_file.read_text()
     ):
-        fail("workspace imports a business page directly")
+        if not feature_import.startswith("@/features/account/"):
+            fail(f"workspace imports a business implementation directly: {shell_file.relative_to(ROOT)}")
 
 registry = (WEB_ROOT / "platform/modules/registry.tsx").read_text()
 registry_contracts = (WEB_ROOT / "platform/modules/contracts.ts").read_text()
 manifest_paths = [*WEB_ROOT.joinpath("features").rglob("manifest.ts"), *ROOT.joinpath("plugins").glob("*/frontend/manifest.ts")]
 manifest_sources = "".join(path.read_text() for path in manifest_paths)
+
+# The host may catalogue plugin metadata, but must not compile an optional
+# plugin's implementation into its own bundle. Shared UI belongs in the SDK.
+plugin_root = (ROOT / "plugins").resolve()
+for source_path in [*WEB_ROOT.rglob("*.ts"), *WEB_ROOT.rglob("*.tsx")]:
+    if any(part in {".umi", ".umi-production", "node_modules"} for part in source_path.parts):
+        continue
+    for specifier in re.findall(r'(?:from\s*|import\s*\(\s*)["\']([^"\']+)["\']', source_path.read_text()):
+        if not specifier.startswith("."):
+            continue
+        target = (source_path.parent / specifier).resolve()
+        if target.is_relative_to(plugin_root) and target.name not in {"manifest", "manifest.ts"}:
+            fail(f"host imports optional plugin implementation: {source_path.relative_to(ROOT)} -> {specifier}")
 
 # Resource tables share one paging contract.  Catch a feature silently
 # reintroducing a divergent local default before it becomes another CRUD
@@ -378,7 +417,7 @@ for relative in (
     frontend_path = WEB_ROOT / "features" / relative
     if not frontend_path.exists():
         pkg, filename = relative.split("/",1)
-        frontend_path = ROOT / "plugins" / {"sensitive":"sensitive-words"}.get(pkg,pkg) / "frontend" / filename
+        frontend_path = ROOT / "plugins" / {"sensitive":"sensitive-words", "audit":"audit-console", "communication":"delivery-console"}.get(pkg,pkg) / "frontend" / filename
     source = frontend_path.read_text()
     if re.search(r'import\s+\{[^}]*Page[^}]*\}\s+from\s+["\']', source):
         fail(f"frontend module statically imports a page: {relative}")

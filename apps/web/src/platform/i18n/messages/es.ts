@@ -1,4 +1,5 @@
 export const messages = {
+    serverBusy: "El sistema está ocupado. Inténtelo de nuevo en un momento; esta solicitud no se ha procesado.",
     rolePermissionDelegationDenied: "Tu cuenta no puede delegar los permisos seleccionados. Los permisos de la plataforma requieren acceso global; los de los plugins requieren acceso global o permiso para instalar plugins.",
     rolePermissionUnavailable: "El catálogo de permisos ha cambiado y un permiso seleccionado ya no está disponible. Actualiza el editor de roles e inténtalo de nuevo.",
     registrationRoleInUse: "Este es el rol predeterminado de las cuentas nuevas. No se puede eliminar, desactivar, ampliar su ámbito de datos ni otorgarle permisos fuera de la lista permitida para el registro público. Primero selecciona otro rol predeterminado en la configuración de registro público.",
@@ -140,6 +141,7 @@ export const messages = {
     pluginBusy: "A plugin operation is in progress",
     pluginFixedGraph: "Esta implementación actualiza los módulos mediante una versión publicada. Se desactivaron la importación, instalación, activación, desactivación y eliminación en línea. Contacta con operaciones.",
     pluginClusterLifecycleUnsupported: "Se rechazaron los cambios en línea porque hay varios nodos activos. Actualiza los módulos mediante una versión publicada.",
+    pluginClusterOperationActive: "Hay un cambio de módulos del clúster sin finalizar. Espera a que termine o solicita su recuperación al equipo de operaciones.",
     pluginGraphChanged: "El grafo de módulos en ejecución no coincide con la instantánea cargada. Se rechazó la operación; contacta con operaciones.",
     pluginReleaseNodesActive: "Detén los nodos antiguos antes de aplicar una versión de los módulos.",
     pluginOperationLeaseLost: "Este nodo ya no es propietario de la operación. Actualiza su estado.",
@@ -152,6 +154,7 @@ export const messages = {
     pluginDependencyCycle: "Circular plugin dependency",
     pluginVersionConflict: "Plugin version conflict",
     pluginStartFailed: "Plugin startup failed. Check runtime logs.",
+    pluginServiceOwnerConflict: "El plugin declara un servicio de otro plugin o duplica un tipo de servicio.",
     pluginDrainTimeout: "Plugin calls are still active. Uninstall cancelled.",
     invalidPluginPackage: "Invalid plugin package",
     pluginDigestMismatch: "Plugin integrity check failed",

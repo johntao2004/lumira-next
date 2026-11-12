@@ -1,0 +1,164 @@
+[
+  {
+    "pageId": "file-retention",
+    "accessPermission": "platform:file-retention:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/file-retention",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "file-retention",
+    "accessPermission": "platform:file-retention:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/file-retention",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:file-retention:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:file-retention:update"
+    ]
+  },
+  {
+    "pageId": "file-retention",
+    "accessPermission": "platform:file-retention:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/settings/file-retention/rollback",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:file-retention:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:file-retention:update"
+    ]
+  },
+  {
+    "pageId": "file-retention",
+    "accessPermission": "platform:file-retention:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/file-retention/history",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "file-retention",
+    "accessPermission": "platform:file-retention:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/file-retention/history/1",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  }
+]

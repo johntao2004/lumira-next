@@ -35,7 +35,18 @@ final class PluginInitializationMigrationRunner {
             String pluginId,
             String version,
             String script,
-            List<PublishedMigration> publishedMigrations) {}
+            List<PublishedMigration> publishedMigrations,
+            List<PublishedMigration> previousInitializations,
+            List<Evolution> evolutions) {
+        Catalog {
+            previousInitializations =
+                    List.copyOf(
+                            previousInitializations == null ? List.of() : previousInitializations);
+            evolutions = List.copyOf(evolutions == null ? List.of() : evolutions);
+        }
+    }
+
+    record Evolution(PublishedMigration migration, String sql) {}
 
     private PluginInitializationMigrationRunner() {}
 
@@ -49,7 +60,7 @@ final class PluginInitializationMigrationRunner {
                     new ObjectMapper()
                             .readValue(directory.resolve(CATALOG).toFile(), Catalog.class);
             if (catalog == null
-                    || catalog.formatVersion() != 1
+                    || (catalog.formatVersion() != 1 && catalog.formatVersion() != 2)
                     || !pluginId.equals(catalog.pluginId())
                     || catalog.version() == null
                     || !catalog.version().matches("[1-9][0-9]*")
@@ -65,8 +76,11 @@ final class PluginInitializationMigrationRunner {
                         || !Files.isRegularFile(sql.getFirst())) throw invalid(pluginId);
             }
             int terminal = Integer.parseInt(catalog.version());
-            if (catalog.publishedMigrations().size() != terminal) throw invalid(pluginId);
-            for (int index = 0; index < terminal; index++) {
+            if (catalog.formatVersion() == 1
+                    && (catalog.publishedMigrations().size() != terminal
+                            || !catalog.previousInitializations().isEmpty()
+                            || !catalog.evolutions().isEmpty())) throw invalid(pluginId);
+            for (int index = 0; index < catalog.publishedMigrations().size(); index++) {
                 var entry = catalog.publishedMigrations().get(index);
                 if (!Integer.toString(index + 1).equals(entry.version())
                         || entry.checksum() == null
@@ -76,6 +90,8 @@ final class PluginInitializationMigrationRunner {
                         || !entry.script().matches("V" + entry.version() + "__[A-Za-z0-9_]+[.]sql"))
                     throw invalid(pluginId);
             }
+            if (catalog.formatVersion() == 2)
+                PluginEvolutionMigrationRunner.validateCatalog(pluginId, catalog);
             return catalog;
         } catch (IOException | NumberFormatException error) {
             throw new IllegalStateException(
@@ -88,25 +104,33 @@ final class PluginInitializationMigrationRunner {
         var catalog = readCatalog(pluginId, directory);
         String table = "plugin_" + pluginId.replace('-', '_') + "_schema_history";
         var jdbc = new JdbcTemplate(source);
+        String schema = jdbc.queryForObject("SELECT current_schema()", String.class);
+        if (schema == null || schema.isBlank()) throw invalid(pluginId);
+        String qualified = "\"" + schema.replace("\"", "\"\"") + "\"." + table;
         List<Map<String, Object>> history =
                 Boolean.TRUE.equals(
                                 jdbc.queryForObject(
                                         "SELECT to_regclass(?) IS NOT NULL",
                                         Boolean.class,
-                                        "public." + table))
+                                        qualified))
                         ? jdbc.queryForList(
-                                "SELECT version,description,type,script,checksum,success FROM public."
-                                        + table
+                                "SELECT version,description,type,script,checksum,success FROM "
+                                        + qualified
                                         + " ORDER BY installed_rank")
                         : List.of();
-        var applied = validatePublishedHistory(pluginId, catalog, history);
         var configuration =
                 Flyway.configure()
                         .dataSource(source)
+                        .defaultSchema(schema)
                         .table(table)
                         .baselineOnMigrate(true)
                         .baselineVersion("0")
                         .locations("filesystem:" + directory.toAbsolutePath());
+        if (catalog.formatVersion() == 2) {
+            PluginEvolutionMigrationRunner.migrate(pluginId, catalog, history, configuration);
+            return;
+        }
+        var applied = validatePublishedHistory(pluginId, catalog, history);
         if (!applied.isEmpty()) {
             configuration
                     .skipDefaultResolvers(true)
@@ -170,7 +194,7 @@ final class PluginInitializationMigrationRunner {
         return new IllegalStateException("publishedPluginHistoryMismatch:" + id);
     }
 
-    private static final MigrationExecutor VALIDATION_ONLY =
+    static final MigrationExecutor VALIDATION_ONLY =
             new MigrationExecutor() {
                 @Override
                 public List<Results> execute(Context context) throws SQLException {

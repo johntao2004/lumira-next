@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readTabAnchor, tabAnchorName, updateFragment } from '../apps/web/src/platform/routing/tab-anchor.ts';
+import { readTabAnchor, tabAnchorName, tabAnchorToPersist, updateFragment } from '../apps/web/src/platform/routing/tab-anchor.ts';
 
 test('refresh reads only available tab keys and falls back for invalid anchors', () => {
   assert.equal(readTabAnchor('#tab=trash', '', ['files', 'trash'], 'files'), 'trash');
@@ -31,4 +31,25 @@ test('fragment values are safely encoded and stable on repeated normalization', 
   const hash = updateFragment('', { [tabAnchorName('example')]: '用户 & 预览#1' });
   assert.equal(readTabAnchor(hash, 'example', ['用户 & 预览#1'], 'edit'), '用户 & 预览#1');
   assert.equal(updateFragment(hash, { [tabAnchorName('example')]: '用户 & 预览#1' }), hash);
+});
+
+
+test('optional plugin tabs keep their deep link while unavailable and restore when registered', () => {
+  const requested = '#tab=file-retention&inbox=open';
+  const missing = ['files', 'trash'];
+  const present = [...missing, 'file-retention'];
+  // No unavailable content is selected, and no fallback is persisted over the original intent.
+  assert.equal(readTabAnchor(requested, '', missing, 'files'), 'files');
+  assert.equal(tabAnchorToPersist(requested, '', missing, 'files', ['file-retention']), null);
+  assert.equal(readTabAnchor(requested, '', present, 'files'), 'file-retention');
+  assert.equal(tabAnchorToPersist(requested, '', present, 'files', ['file-retention']), 'file-retention');
+  const userChanged = updateFragment(requested, { tab: 'trash' });
+  assert.equal(tabAnchorToPersist(userChanged, '', present, 'files', ['file-retention']), 'trash');
+  assert.equal(new URLSearchParams(userChanged.slice(1)).get('inbox'), 'open');
+});
+
+test('only explicitly declared unavailable tabs defer normalization in their own scope', () => {
+  assert.equal(tabAnchorToPersist('#tab=unknown', '', ['files'], 'files', ['file-retention']), 'files');
+  assert.equal(tabAnchorToPersist('#tab=file-retention', '', ['files'], 'files'), 'files');
+  assert.equal(tabAnchorToPersist('#tab=file-retention&tab.nested=edit', 'nested', ['edit'], 'edit', ['file-retention']), 'edit');
 });

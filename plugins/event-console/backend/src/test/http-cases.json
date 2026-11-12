@@ -1,0 +1,135 @@
+[
+  {
+    "pageId": "event-outbox",
+    "accessPermission": "platform:event-outbox:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/event-outbox",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "event-outbox",
+    "accessPermission": "platform:event-outbox:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/event-outbox/00000000-0000-0000-0000-000000000001/trace",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": [],
+    "requiredPages": [
+      "event-outbox"
+    ]
+  },
+  {
+    "pageId": "event-outbox",
+    "accessPermission": "platform:event-outbox:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/event-outbox/operations/00000000-0000-0000-0000-000000000001/trace",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": [],
+    "requiredPages": [
+      "event-outbox",
+      "audit"
+    ]
+  },
+  {
+    "pageId": "event-outbox",
+    "accessPermission": "platform:event-outbox:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/event-outbox/00000000-0000-0000-0000-000000000001/replay",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:event-outbox:replay",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:event-outbox:replay"
+    ]
+  }
+]

@@ -35,7 +35,7 @@ try {
     const form = page.locator(`#${item.form}`);
     await form.locator('input[id="code"], input[id$="_code"]').fill(code);
     await form.locator('input[id="name"], input[id$="_name"]').fill(code);
-    const button = drawer.getByRole("button", { name: /^保\s*存$/ });
+    const button = drawer.locator(`button[form="${item.form}"]`).and(drawer.getByRole("button", { name: /^保\s*存$/ }));
 
     // Fail before committing, then retry the same editor. The entered data must survive.
     const url = `**/api${item.endpoint}`;

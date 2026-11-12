@@ -69,15 +69,54 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ScanResult evaluate(String text) {
         return new ScanResult(dictionary.scanSubmission(text).blocked());
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ScanResult evaluate(String actor, String text, String source) {
-        if (!modules.isEnabled("sensitive-words")) return new ScanResult(false);
-        var rolePolicies = policies.forActor(actor);
-        var result = scan(rolePolicies, text);
+        var txState = readOnlyTransactionState();
+        boolean enabled =
+                txState != null ? txState.enabled() : modules.isEnabled("sensitive-words");
+        if (!enabled) return new ScanResult(false);
+
+        String actorKey = actor == null ? "" : actor;
+        List<RoleContentPolicyRepository.Policy> rolePolicies = null;
+        Snapshot activeSnapshot = null;
+
+        if (txState != null && txState.policiesByActor().containsKey(actorKey)) {
+            rolePolicies = txState.policiesByActor().get(actorKey);
+            activeSnapshot = txState.snapshot();
+        } else {
+            var currentSnapshot =
+                    (txState != null && txState.snapshot() != null)
+                            ? txState.snapshot()
+                            : this.snapshot;
+            if (currentSnapshot != null) {
+                var combined = policies.forActorWithRevision(actor);
+                if (combined != null) {
+                    rolePolicies = combined.policies();
+                    if (combined.revision() == currentSnapshot.revision()) {
+                        activeSnapshot = currentSnapshot;
+                    } else {
+                        activeSnapshot = current();
+                    }
+                    if (txState != null) {
+                        txState.setSnapshot(activeSnapshot);
+                    }
+                }
+            }
+            if (rolePolicies == null) {
+                rolePolicies = policies.forActor(actor);
+            }
+            if (txState != null) {
+                txState.policiesByActor().put(actorKey, rolePolicies);
+            }
+        }
+
+        var result = scan(rolePolicies, text, txState, activeSnapshot);
         if (result.totalMatchCount() > 0)
             policies.record(
                     actor,
@@ -89,6 +128,7 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
     }
 
     @Override
+    @Transactional(readOnly = true)
     public boolean blocked(UUID roleId, String text, String source) {
         if (roleId == null
                 || text == null
@@ -149,7 +189,7 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
         var stored = snapshot;
         var loaded = words.matcherSnapshot(stored == null ? -1 : stored.revision());
         if (stored != null && loaded.revision() == stored.revision()) return stored;
-        snapshot =
+        var next =
                 new Snapshot(
                         loaded.revision(),
                         new SensitiveWordMatcher(
@@ -162,14 +202,92 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
                                                                 w.severity(),
                                                                 w.action()))
                                         .toList()));
-        return snapshot;
+        snapshot = next;
+        return next;
     }
 
     SensitiveWordMatcher.ScanResult scan(
             List<RoleContentPolicyRepository.Policy> rolePolicies, String text) {
+        return scan(rolePolicies, text, null, null);
+    }
+
+    private SensitiveWordMatcher.ScanResult scan(
+            List<RoleContentPolicyRepository.Policy> rolePolicies,
+            String text,
+            TransactionEvaluationState txState,
+            Snapshot preloadedSnapshot) {
         if (!rolePolicies.isEmpty() && rolePolicies.stream().allMatch(p -> "OFF".equals(p.mode())))
             return new SensitiveWordMatcher.ScanResult(List.of(), false, 0, false);
-        return current().matcher().scan(text);
+        Snapshot active;
+        if (preloadedSnapshot != null) {
+            active = preloadedSnapshot;
+        } else if (txState != null) {
+            active = txState.snapshot(this::current);
+        } else {
+            active = current();
+        }
+        return active.matcher().scan(text);
+    }
+
+    private TransactionEvaluationState readOnlyTransactionState() {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isActualTransactionActive()
+                || !org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isCurrentTransactionReadOnly()
+                || !org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isSynchronizationActive()) return null;
+        for (var sync :
+                org.springframework.transaction.support.TransactionSynchronizationManager
+                        .getSynchronizations()) {
+            if (sync instanceof TransactionEvaluationState current && current.owner() == this) {
+                return current;
+            }
+        }
+        var created = new TransactionEvaluationState();
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .registerSynchronization(created);
+        return created;
+    }
+
+    private final class TransactionEvaluationState
+            implements org.springframework.transaction.support.TransactionSynchronization {
+        private Boolean enabled;
+        private final Map<String, List<RoleContentPolicyRepository.Policy>> policiesByActor =
+                new HashMap<>();
+        private Snapshot snapshot;
+
+        RoleContentPolicyService owner() {
+            return RoleContentPolicyService.this;
+        }
+
+        boolean enabled() {
+            if (enabled == null) enabled = modules.isEnabled("sensitive-words");
+            return enabled;
+        }
+
+        Map<String, List<RoleContentPolicyRepository.Policy>> policiesByActor() {
+            return policiesByActor;
+        }
+
+        Snapshot snapshot() {
+            return snapshot;
+        }
+
+        Snapshot snapshot(java.util.function.Supplier<Snapshot> loader) {
+            if (snapshot == null) snapshot = loader.get();
+            return snapshot;
+        }
+
+        void setSnapshot(Snapshot snapshot) {
+            this.snapshot = snapshot;
+        }
+
+        @Override
+        public void afterCompletion(int status) {
+            enabled = null;
+            policiesByActor.clear();
+            snapshot = null;
+        }
     }
 
     private String mask(String word) {

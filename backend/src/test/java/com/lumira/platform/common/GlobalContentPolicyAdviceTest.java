@@ -140,4 +140,36 @@ class GlobalContentPolicyAdviceTest {
                 null);
         verifyNoInteractions(policy);
     }
+
+    @Test
+    void batchesAllBodyFieldsIntoSingleReadOnlyTransactionAndSkipsEmptyPayloads() throws Exception {
+        ObjectProvider<ContentPolicyPort> provider = mock(ObjectProvider.class);
+        when(provider.orderedStream()).thenAnswer(i -> java.util.stream.Stream.of(policy));
+        var txManager = mock(org.springframework.transaction.PlatformTransactionManager.class);
+        when(txManager.getTransaction(any()))
+                .thenReturn(new org.springframework.transaction.support.SimpleTransactionStatus());
+        var txAdvice =
+                new GlobalContentPolicyAdvice(provider, JsonMapper.builder().build(), txManager);
+
+        txAdvice.afterBodyRead(
+                new Body(null, null, "secretword", "secretword", null, null),
+                null,
+                parameter(Controller.class),
+                Body.class,
+                null);
+        verify(txManager, never()).getTransaction(any());
+
+        txAdvice.afterBodyRead(
+                new Body("标题", "<p>正文</p>", "secretword", null, Map.of("bio", "简介"), null),
+                null,
+                parameter(Controller.class),
+                Body.class,
+                null);
+        verify(txManager, times(1))
+                .getTransaction(
+                        argThat(org.springframework.transaction.TransactionDefinition::isReadOnly));
+        verify(txManager, times(1)).commit(any());
+        verify(provider, times(3)).orderedStream();
+        verify(policy, times(3)).evaluate(eq("qa"), anyString(), anyString());
+    }
 }

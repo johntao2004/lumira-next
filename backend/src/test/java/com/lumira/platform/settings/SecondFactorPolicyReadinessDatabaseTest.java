@@ -16,11 +16,12 @@ import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.common.PluginExtensionsPort;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.common.RoleAuthenticationPolicyPort;
+import com.lumira.platform.identity.RoleAuthenticationPolicyRepository;
 import com.lumira.platform.identity.api.AuthenticationMethodAvailabilityPort;
 import com.lumira.platform.identity.api.AuthenticationReachabilityPort;
 import com.lumira.platform.identity.api.SecondFactorProvider;
-import com.lumira.platform.roles.RoleAuthenticationPolicyRepository;
-import com.lumira.platform.roles.RoleAuthenticationPolicyService;
+import com.lumira.plugins.authenticationconsole.GlobalAuthenticationPolicyService;
+import com.lumira.plugins.directory.roles.RoleAuthenticationPolicyService;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -109,7 +110,9 @@ class SecondFactorPolicyReadinessDatabaseTest {
                         mock(AuthenticationPolicyWriteLock.class),
                         plugins,
                         mock(AuthenticationReachabilityPort.class),
-                        methodAvailability());
+                        methodAvailability(),
+                        new com.lumira.platform.settings.GlobalAuthenticationPolicyReader(
+                                JdbcClient.create(jdbc.getDataSource())));
 
         var error =
                 assertThrows(

@@ -1,0 +1,126 @@
+{
+  "formatVersion": 1,
+  "id": "notifications",
+  "name": "站内通知",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.platform.notifications.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "events",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:notifications:access",
+    "platform:notifications:create"
+  ],
+  "routes": [
+    {
+      "id": "notifications",
+      "label": "notificationCenter",
+      "permission": "platform:notifications:access",
+      "operations": {
+        "create": "platform:notifications:create"
+      },
+      "group": "communication",
+      "order": 10,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/account/notifications",
+      "authorities": [],
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/notifications/unread-count",
+      "authorities": [],
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/account/notifications/*/read",
+      "authorities": [],
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/account/notifications/read-all",
+      "authorities": [],
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/notifications",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:notifications:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/notifications/roles",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:notifications:access",
+        "platform:notifications:create"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/notifications/recipients",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:notifications:access",
+        "platform:notifications:create"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/notifications/recipients/*",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:notifications:access",
+        "platform:notifications:create"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/notifications",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:notifications:access",
+        "platform:notifications:create"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ],
+  "dataSets": []
+}

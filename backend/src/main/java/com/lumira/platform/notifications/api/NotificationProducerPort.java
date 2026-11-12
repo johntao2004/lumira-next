@@ -6,7 +6,17 @@ import java.util.UUID;
  * Producer-facing notification contract. Feature modules publish events through this port instead
  * of depending on the notification application service.
  */
-public interface NotificationProducerPort {
+public interface NotificationProducerPort extends com.lumira.platform.common.PluginServicePort {
+    @Override
+    default String ownerPluginId() {
+        return "notifications";
+    }
+
+    @Override
+    default String serviceType() {
+        return "notification-producer";
+    }
+
     void publishFeedback(
             UUID recipientId,
             UUID feedbackId,

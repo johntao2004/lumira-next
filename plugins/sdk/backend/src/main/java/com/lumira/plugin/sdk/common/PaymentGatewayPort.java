@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 /** Stable, lease-scoped adapter contract for an installed payment-channel plugin. */
-public interface PaymentGatewayPort {
+public interface PaymentGatewayPort extends com.lumira.platform.common.PluginServicePort {
     enum TradeState {
         PENDING,
         PAID,
@@ -81,6 +81,28 @@ public interface PaymentGatewayPort {
             Instant occurredAt) {}
 
     String id();
+
+    @Override
+    default String ownerPluginId() {
+        return id();
+    }
+
+    @Override
+    default String serviceType() {
+        return "payment-gateway";
+    }
+
+    default String displayName() {
+        return id();
+    }
+
+    /**
+     * Existing channels retain their published core callback. New channels override with their own
+     * literal route.
+     */
+    default String callbackPath() {
+        return "/api/plugins/payment-core/callbacks/" + id();
+    }
 
     /** Secret setting names understood by this adapter, including fields not configured yet. */
     default Set<String> secretFields() {

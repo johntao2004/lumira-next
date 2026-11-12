@@ -8,7 +8,9 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Locale;
+import java.util.concurrent.Semaphore;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -18,8 +20,20 @@ import org.springframework.web.server.ResponseStatusException;
  */
 final class FilePreviewReader {
     static final int MAX_PREVIEW_CODE_POINTS = OfficeDocumentProcessor.MAX_PREVIEW_CODE_POINTS;
+    private static final Semaphore ACTIVE_READS = new Semaphore(2);
 
     private FilePreviewReader() {}
+
+    static Admission admit() {
+        if (!ACTIVE_READS.tryAcquire())
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "unavailable");
+        return ACTIVE_READS::release;
+    }
+
+    interface Admission extends AutoCloseable {
+        @Override
+        void close();
+    }
 
     static FilePreview read(String filename, byte[] bytes) {
         return read(filename, bytes, 1);
@@ -39,7 +53,16 @@ final class FilePreviewReader {
                 var preview = OfficeWorkerClient.preview(filename, bytes);
                 return new FilePreview(preview.text(), preview.truncated());
             }
-            if (extension.equals("pdf")) return FilePreviewMedia.pdf(bytes, page);
+            if (extension.equals("pdf")) {
+                var rendered = OfficeWorkerClient.pdfPage(filename, bytes, page);
+                return new FilePreview(
+                        "",
+                        false,
+                        "data:image/png;base64,"
+                                + Base64.getEncoder().encodeToString(rendered.png()),
+                        rendered.page(),
+                        rendered.pageCount());
+            }
             if (extension.equals("png")
                     || extension.equals("jpg")
                     || extension.equals("jpeg")

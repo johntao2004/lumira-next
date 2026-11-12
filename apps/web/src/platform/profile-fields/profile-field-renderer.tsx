@@ -11,6 +11,7 @@ import { profileFieldValueValid } from "./validation";
 type Props = {
   fields: readonly ProfileFieldDefinition[];
   disabled?: boolean;
+  dictionaryEndpointPrefix?: string;
   dictionarySelections?: Readonly<Record<string, DictionarySelection>>;
 };
 
@@ -24,7 +25,7 @@ function optionsFor(field: ProfileFieldDefinition): ProfileFieldOption[] {
  * Render only the already-authorized fields supplied by the host endpoint.
  * It accepts labels/options as data and has no route, HTML, or script hooks.
  */
-export function ProfileFieldRenderer({ fields, disabled = false, dictionarySelections }: Props) {
+export function ProfileFieldRenderer({ fields, disabled = false, dictionarySelections, dictionaryEndpointPrefix }: Props) {
   const { t } = usePreferences();
   const renderField = (field: ProfileFieldDefinition) => {
     const options = optionsFor(field);
@@ -42,6 +43,7 @@ export function ProfileFieldRenderer({ fields, disabled = false, dictionarySelec
       {field.type === "SELECT" && field.dictionaryCode
         ? <DictionarySelect
             code={field.dictionaryCode}
+            endpoint={dictionaryEndpointPrefix ? `${dictionaryEndpointPrefix}/${encodeURIComponent(field.key)}/items` : undefined}
             disabled={disabled}
             currentSelection={selection ? {
               itemId: selection.itemId,

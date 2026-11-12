@@ -11,37 +11,37 @@ const plugins = [
   },
   {
     id: 'localization',
-    version: '1.0.12',
+    version: '1.0.13',
     backend: 'plugins/localization/backend/src/main/java/com/lumira/platform/localization/LocalizationModuleConfiguration.java',
     migration: 'plugins/localization/migrations/V3__plugin_initialization.sql',
   },
   {
     id: 'sensitive-words',
-    version: '1.0.10',
+    version: '1.0.11',
     backend: 'plugins/sensitive-words/backend/src/main/java/com/lumira/platform/sensitive/SensitiveWordsModuleConfiguration.java',
     migration: 'plugins/sensitive-words/migrations/V3__plugin_initialization.sql',
   },
   {
     id: 'mfa',
-    version: '1.0.10',
+    version: '1.0.11',
     backend: 'plugins/mfa/backend/src/main/java/com/lumira/platform/mfa/MfaModuleConfiguration.java',
     migration: 'plugins/mfa/migrations/V7__plugin_initialization.sql',
   },
   {
     id: 'payment-core',
-    version: '1.0.6',
+    version: '1.1.0',
     backend: 'plugins/payment-core/backend/src/main/java/com/lumira/plugins/paymentcore/PaymentCoreModuleConfiguration.java',
-    migration: 'plugins/payment-core/migrations/V4__plugin_initialization.sql',
+    migration: 'plugins/payment-core/migrations/V5__plugin_initialization.sql',
   },
   {
     id: 'wechat-pay',
-    version: '1.0.6',
+    version: '1.1.0',
     backend: 'plugins/wechat-pay/backend/src/main/java/com/lumira/plugins/wechatpay/WechatPayPlugin.java',
     migration: 'plugins/wechat-pay/migrations/V2__plugin_initialization.sql',
   },
   {
     id: 'alipay-pay',
-    version: '1.0.6',
+    version: '1.1.0',
     backend: 'plugins/alipay-pay/backend/src/main/java/com/lumira/plugins/alipaypay/AlipayModuleConfiguration.java',
     migration: 'plugins/alipay-pay/migrations/V2__plugin_initialization.sql',
   },
@@ -59,10 +59,10 @@ test('plugin initialization keeps one final SQL and the published migration iden
     const directory = `plugins/${plugin.id}/migrations`;
     const catalog = JSON.parse(read(`${directory}/initialization.json`));
     assert.equal(catalog.pluginId, plugin.id);
-    assert.equal(catalog.formatVersion, 1);
+    assert.ok([1, 2].includes(catalog.formatVersion));
     assert.equal(`${directory}/${catalog.script}`, plugin.migration);
     assert.deepEqual(readdirSync(directory).filter(name => name.endsWith('.sql')), [catalog.script]);
-    assert.equal(catalog.publishedMigrations.length, Number(catalog.version));
+    assert.equal(catalog.publishedMigrations.length + (catalog.evolutions?.length ?? 0), Number(catalog.version));
     catalog.publishedMigrations.forEach((entry, index) => {
       assert.equal(entry.version, String(index + 1));
       assert.match(entry.script, new RegExp(`^V${entry.version}__[a-z0-9_]+\\.sql$`));
@@ -83,7 +83,7 @@ test('plugin initialization keeps one final SQL and the published migration iden
     const manifest = JSON.parse(read(`plugins/${id}/plugin.json`));
     assert.equal(
       manifest.dependencies.find(({ id: dependencyId }) => dependencyId === 'payment-core')?.version,
-      '1.0.6',
+      '1.1.0',
       `${id} pins the finalized payment-core package`,
     );
   }
@@ -140,7 +140,7 @@ test('post-V51 installs keep published permission-only migrations inert by exact
 });
 
 test('payment-core finalizer preserves provider grants before retiring shared payment authorities', () => {
-  const sql = read('plugins/payment-core/migrations/V4__plugin_initialization.sql');
+  const sql = read('plugins/payment-core/migrations/V5__plugin_initialization.sql');
   const callsNormalizer = sql.indexOf('SELECT public.platform_normalize_legacy_permission_projections()');
   assert.ok(callsNormalizer > 0);
 

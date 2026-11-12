@@ -14,6 +14,122 @@ class PluginManifestCompatibilityTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
 
     @Test
+    void navigationConsolePreservesOnlyItsLegacyPagesAndActions() throws Exception {
+        var source =
+                java.nio.file.Files.readString(
+                        java.nio.file.Path.of("../plugins/navigation-console/plugin.json"));
+        var manifest = mapper.readValue(source, PluginManifest.class);
+        assertTrue(manifest.dataSets().isEmpty());
+        assertEquals(
+                Map.of(
+                        "create",
+                        "platform:navigation:create",
+                        "update",
+                        "platform:navigation:update",
+                        "delete",
+                        "platform:navigation:delete"),
+                manifest.routes().getFirst().operations());
+        for (var invalid :
+                List.of(
+                        source.replace("platform:navigation:delete", "platform:users:delete"),
+                        source.replace("platform:navigation:create", "platform:navigation:grant"),
+                        source.replace(
+                                "\"id\": \"navigation-console\"", "\"id\": \"other-console\""))) {
+            assertThrows(
+                    tools.jackson.databind.exc.ValueInstantiationException.class,
+                    () -> mapper.readValue(invalid, PluginManifest.class));
+        }
+    }
+
+    @Test
+    void deliveryConsoleOwnsOnlyItsLegacyPagesWithoutQueueDeletion() throws Exception {
+        var source =
+                java.nio.file.Files.readString(
+                        java.nio.file.Path.of("../plugins/delivery-console/plugin.json"));
+        var manifest = mapper.readValue(source, PluginManifest.class);
+        assertTrue(manifest.dataSets().isEmpty());
+        assertEquals(
+                List.of("platform:mail-deliveries:access", "platform:sms-deliveries:access"),
+                manifest.permissions());
+        assertTrue(
+                manifest.apiRules().stream()
+                        .allMatch(rule -> rule.global() && rule.method().equals("GET")));
+        for (var invalid :
+                List.of(
+                        source.replace(
+                                "platform:mail-deliveries:access",
+                                "platform:mail-deliveries:delete"),
+                        source.replace("platform:sms-deliveries:access", "platform:users:access"),
+                        source.replace(
+                                "\"id\": \"delivery-console\"", "\"id\": \"other-console\""))) {
+            assertThrows(
+                    tools.jackson.databind.exc.ValueInstantiationException.class,
+                    () -> mapper.readValue(invalid, PluginManifest.class));
+        }
+    }
+
+    @Test
+    void eventConsoleOwnsItsExactLegacyActionsAndPreservesQueueData() throws Exception {
+        var source =
+                java.nio.file.Files.readString(
+                        java.nio.file.Path.of("../plugins/event-console/plugin.json"));
+        var manifest = mapper.readValue(source, PluginManifest.class);
+        assertTrue(manifest.dataSets().isEmpty());
+        assertEquals(
+                Map.of("replay", "platform:event-outbox:replay"),
+                manifest.routes().getFirst().operations());
+        var replay =
+                manifest.apiRules().stream()
+                        .filter(rule -> rule.method().equals("POST"))
+                        .findFirst()
+                        .orElseThrow();
+        assertEquals(
+                List.of("platform:event-outbox:access", "platform:event-outbox:replay"),
+                replay.allAuthorities());
+        for (var invalid :
+                List.of(
+                        source.replace(
+                                "platform:event-outbox:replay", "platform:event-outbox:delete"),
+                        source.replace("platform:event-outbox:replay", "platform:users:delete"),
+                        source.replace("\"id\": \"event-console\"", "\"id\": \"other-console\""))) {
+            assertThrows(
+                    tools.jackson.databind.exc.ValueInstantiationException.class,
+                    () -> mapper.readValue(invalid, PluginManifest.class));
+        }
+    }
+
+    @Test
+    void auditQueryPluginPreservesOnlyItsLegacyPermissionAndOwnsNoStoredData() throws Exception {
+        var source =
+                java.nio.file.Files.readString(
+                        java.nio.file.Path.of("../plugins/audit-console/plugin.json"));
+        var manifest = mapper.readValue(source, PluginManifest.class);
+        assertEquals(List.of("platform:audit:access"), manifest.permissions());
+        assertTrue(manifest.dataSets().isEmpty());
+        assertEquals("/api/platform/audit", manifest.apiRules().getFirst().path());
+        assertTrue(manifest.apiRules().getFirst().global());
+        assertThrows(
+                tools.jackson.databind.exc.ValueInstantiationException.class,
+                () ->
+                        mapper.readValue(
+                                source.replace("platform:audit:access", "platform:users:access"),
+                                PluginManifest.class));
+        assertThrows(
+                tools.jackson.databind.exc.ValueInstantiationException.class,
+                () ->
+                        mapper.readValue(
+                                source.replace("platform:audit:access", "platform:audit:delete"),
+                                PluginManifest.class));
+        assertThrows(
+                tools.jackson.databind.exc.ValueInstantiationException.class,
+                () ->
+                        mapper.readValue(
+                                source.replace(
+                                        "\"id\": \"audit-console\"", "\"id\": \"other-query\""),
+                                PluginManifest.class));
+    }
+
+    @Test
     void oldApiRulesKeepAuthenticatedOnlyDisabledWhenFieldIsAbsent() {
         var rule =
                 mapper.readValue(

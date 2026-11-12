@@ -6,6 +6,22 @@ import org.junit.jupiter.api.Test;
 
 class ApiExceptionHandlerTest {
     @Test
+    void onlyPluginFencesAreReportedAsModuleUnavailable() {
+        var handler = new ApiExceptionHandler();
+        var problem =
+                handler.infrastructure(
+                        new org.springframework.dao.CannotSerializeTransactionException(
+                                "private SQL", new PluginWorkFencedException()));
+        assertEquals(503, problem.getStatus());
+        assertEquals("moduleUnavailable", problem.getDetail());
+        assertEquals(
+                500,
+                handler.infrastructure(
+                                new java.sql.SQLException("other serialization failure", "40001"))
+                        .getStatus());
+    }
+
+    @Test
     void infrastructureErrorsDoNotExposeDetails() {
         var handler = new ApiExceptionHandler();
         for (Exception error :

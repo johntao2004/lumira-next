@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { filterOpenApiDocument, OPENAPI_DOWNLOAD_FILENAME, readOnlyApiDocsConfig, serializeOpenApiDocument } from '../apps/web/src/features/monitoring/api-docs-spec.ts';
-import { monitoringManifest } from '../apps/web/src/features/monitoring/manifest.ts';
+import { filterOpenApiDocument, OPENAPI_DOWNLOAD_FILENAME, readOnlyApiDocsConfig, serializeOpenApiDocument } from '../plugins/monitoring/frontend/api-docs-spec.ts';
+import { monitoringManifest } from '../plugins/monitoring/frontend/manifest.ts';
 import { availableNavigation, routes } from '../apps/web/src/platform/shell/routes.ts';
 
 const spec = {
@@ -65,12 +65,14 @@ test('API documentation is in operations and requires its own global page-access
   );
   assert.equal(monitoringManifest.routes.find(route => route.id === 'api-docs').group, 'operations');
 
-  const regularAuditPages = availableNavigation(['platform:api-docs:access'], [], ['platform:monitoring:access'])
+  const regularAuditPages = availableNavigation(['platform:api-docs:access'], ['notifications', 'monitoring'], ['platform:monitoring:access'])
     .flatMap(group => group.pages.map(page => page.id));
   assert.ok(regularAuditPages.includes('monitoring'));
   assert.ok(!regularAuditPages.includes('api-docs'));
 
-  const globalAuditPages = availableNavigation([], [], ['platform:monitoring:access', 'platform:api-docs:access'])
+  const globalAuditPages = availableNavigation([], ['notifications', 'monitoring'], ['platform:monitoring:access', 'platform:api-docs:access'])
     .flatMap(group => group.pages.map(page => page.id));
   assert.ok(globalAuditPages.includes('api-docs'));
+  assert.ok(!availableNavigation([], [], ['platform:monitoring:access', 'platform:api-docs:access'])
+    .flatMap(group => group.pages.map(page => page.id)).includes('api-docs'));
 });

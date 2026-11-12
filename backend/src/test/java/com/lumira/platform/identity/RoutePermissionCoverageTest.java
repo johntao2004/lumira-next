@@ -3,6 +3,7 @@ package com.lumira.platform.identity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.lumira.platform.common.PlatformOperation;
@@ -47,17 +48,6 @@ class RoutePermissionCoverageTest {
     private static final String TEST_ID = "00000000-0000-0000-0000-000000000001";
     private static final UUID MATRIX_ACTOR_ID =
             UUID.fromString("f9b061a0-5423-4af7-ad1a-ff8b3dc99274");
-    private static final List<String> SETTING_HISTORY_SECTIONS =
-            List.of(
-                    "branding",
-                    "smtp",
-                    "sms",
-                    "profile-fields",
-                    "agreements",
-                    "watermark",
-                    "maintenance",
-                    "passkey",
-                    "file-retention");
     private static final AntPathMatcher ANT = new AntPathMatcher();
     private static final Pattern SECURITY_RULE =
             Pattern.compile(
@@ -347,16 +337,6 @@ class RoutePermissionCoverageTest {
                 "platform:registration:assign-default-role");
         assertOperations(
                 "GET",
-                "/api/platform/notifications/roles",
-                "notifications",
-                "platform:notifications:create");
-        assertOperations(
-                "GET",
-                "/api/platform/notifications/recipients",
-                "notifications",
-                "platform:notifications:create");
-        assertOperations(
-                "GET",
                 "/api/platform/settings/profile-fields/dictionaries",
                 "profile-fields",
                 "platform:profile-fields:read-dictionaries");
@@ -371,26 +351,24 @@ class RoutePermissionCoverageTest {
                 "profile-fields",
                 "platform:profile-fields:read-dictionaries");
 
-        var quotaPreview =
+        assertNull(
                 PlatformHttpPermissionPolicy.routeFor(
-                        "GET", "/api/platform/users/" + TEST_ID + "/file-quota/preview");
-        assertNotNull(quotaPreview);
-        assertEquals(PlatformPageId.USERS, quotaPreview.page());
-        assertEquals(List.of(PlatformOperation.USER_ASSIGN_ROLES), quotaPreview.operationsAny());
+                        "GET", "/api/platform/users/" + TEST_ID + "/file-quota"));
+        assertNull(
+                PlatformHttpPermissionPolicy.routeFor(
+                        "GET", "/api/platform/users/" + TEST_ID + "/file-quota/preview"));
+        assertOperations(
+                "GET",
+                "/api/platform/users/" + TEST_ID + "/file-quota/preview",
+                "users",
+                "platform:users:assign-roles");
 
-        var quotaSettingsRead =
-                PlatformHttpPermissionPolicy.routeFor("GET", "/api/platform/settings/file-quota");
-        assertNotNull(quotaSettingsRead);
-        assertEquals(PlatformPageId.FILES_ALL, quotaSettingsRead.page());
-        assertEquals(List.of(), quotaSettingsRead.operationsAny());
-
-        var quotaSettingsUpdate =
-                PlatformHttpPermissionPolicy.routeFor("PUT", "/api/platform/settings/file-quota");
-        assertNotNull(quotaSettingsUpdate);
-        assertEquals(PlatformPageId.FILES_ALL, quotaSettingsUpdate.page());
-        assertEquals(
-                List.of(PlatformOperation.FILES_ALL_UPDATE_QUOTA),
-                quotaSettingsUpdate.operationsAny());
+        // FileConsoleHttpPolicyCoverageTest freezes the optional owner's page/action scopes.
+        // The host must not retain a second route after that owner has been uninstalled.
+        assertNull(
+                PlatformHttpPermissionPolicy.routeFor("GET", "/api/platform/settings/file-quota"));
+        assertNull(
+                PlatformHttpPermissionPolicy.routeFor("PUT", "/api/platform/settings/file-quota"));
     }
 
     @Test
@@ -462,6 +440,51 @@ class RoutePermissionCoverageTest {
     private static void assertOperations(
             String method, String path, String pageId, String... expected) {
         var route = PlatformHttpPermissionPolicy.routeFor(method, path);
+        var owner =
+                switch (pageId) {
+                    case "users", "roles" -> "directory";
+                    case "profile-fields" -> "profile-console";
+                    case "security",
+                            "authentication",
+                            "passkey",
+                            "wechat",
+                            "captcha",
+                            "registration" ->
+                            "authentication-console";
+                    default -> null;
+                };
+        if (route == null && owner != null) {
+            // These business endpoints now belong to the independently loaded directory package.
+            try {
+                var manifest =
+                        new ObjectMapper()
+                                .readValue(
+                                        Files.readString(
+                                                Path.of("..", "plugins", owner, "plugin.json")),
+                                        com.lumira.platform.plugins.PluginManifest.class);
+                var container = org.springframework.http.server.PathContainer.parsePath(path);
+                var rule =
+                        manifest.apiRules().stream()
+                                .filter(
+                                        candidate ->
+                                                candidate.method().equals(method)
+                                                        && PathPatternParser.defaultInstance
+                                                                .parse(candidate.path())
+                                                                .matches(container))
+                                .findFirst()
+                                .orElseThrow();
+                var page =
+                        manifest.routes().stream()
+                                .filter(candidate -> candidate.id().equals(pageId))
+                                .findFirst()
+                                .orElseThrow();
+                assertTrue(rule.allAuthorities().contains(page.permission()), path);
+                assertEquals(List.of(expected), rule.authorities(), path);
+                return;
+            } catch (java.io.IOException failure) {
+                throw new AssertionError(failure);
+            }
+        }
         assertNotNull(route, method + " " + path);
         assertEquals(pageId, route.page().id(), path);
         assertEquals(
@@ -476,14 +499,7 @@ class RoutePermissionCoverageTest {
     }
 
     private static List<String> policyLookupPaths(Endpoint endpoint) {
-        if (!endpoint.source().startsWith("SettingHistoryController#"))
-            return List.of(endpoint.path());
-        return SETTING_HISTORY_SECTIONS.stream()
-                .map(
-                        section ->
-                                endpoint.path()
-                                        .replace("/settings/x/", "/settings/" + section + "/"))
-                .toList();
+        return List.of(endpoint.path());
     }
 
     private static List<HttpCase> loadCases() throws Exception {
@@ -582,6 +598,7 @@ class RoutePermissionCoverageTest {
         var scanner = new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
         var found = new TreeSet<String>();
+        var scannedControllers = new TreeSet<String>();
         var result = new ArrayList<Endpoint>();
         for (BeanDefinition definition : scanner.findCandidateComponents("com.lumira.platform")) {
             Class<?> type =
@@ -593,6 +610,7 @@ class RoutePermissionCoverageTest {
                     .getLocation()
                     .getPath()
                     .contains("/test-classes/")) continue;
+            scannedControllers.add(type.getName());
             for (Method method : type.getDeclaredMethods()) {
                 if (org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation(
                                 method, RequestMapping.class)
@@ -621,7 +639,27 @@ class RoutePermissionCoverageTest {
                 }
             }
         }
-        assertTrue(result.size() > 100, "Controller scan looks incomplete: " + result.size());
+        var expectedControllers = new TreeSet<String>();
+        try (var sources = Files.walk(Path.of("src/main/java/com/lumira/platform"))) {
+            for (var source : sources.filter(file -> file.toString().endsWith(".java")).toList()) {
+                String text = Files.readString(source);
+                if (!Pattern.compile(
+                                "@(?:org\\.springframework\\.web\\.bind\\.annotation\\.)?RestController\\b")
+                        .matcher(text)
+                        .find()) continue;
+                var declaration = Pattern.compile("\\bpackage\\s+([\\w.]+)\\s*;").matcher(text);
+                assertTrue(declaration.find(), "Controller source has no package: " + source);
+                expectedControllers.add(
+                        declaration.group(1)
+                                + "."
+                                + source.getFileName().toString().replace(".java", ""));
+            }
+        }
+        assertEquals(
+                expectedControllers,
+                scannedControllers,
+                "Classpath scan must cover every current kernel controller source");
+        assertFalse(result.isEmpty(), "Controller mapping scan is empty");
         return result;
     }
 

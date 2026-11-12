@@ -14,7 +14,7 @@ public class FileCleanup {
     private final FileRepository files;
     private final AuditPort audit;
     private final TransactionTemplate transaction;
-    private final FileRetentionPolicy retention;
+    private final FileRetentionReader retention;
     private final FileDeleteFinalizer deleteFinalizer;
 
     public FileCleanup(
@@ -31,7 +31,7 @@ public class FileCleanup {
             BlobStore blobs,
             AuditPort audit,
             PlatformTransactionManager manager,
-            FileRetentionPolicy retention) {
+            FileRetentionReader retention) {
         this.files = files;
         this.audit = audit;
         this.transaction = new TransactionTemplate(manager);
@@ -58,7 +58,7 @@ public class FileCleanup {
                 });
         if (retention != null) {
             var policy = retention.current();
-            if (policy.mode() == FileRetentionPolicy.Mode.AUTOMATIC) {
+            if (policy.mode() == com.lumira.platform.common.FileRetentionSettings.Mode.AUTOMATIC) {
                 transaction.executeWithoutResult(
                         status -> {
                             for (var id : files.expireTrashed(policy.retentionDays()))

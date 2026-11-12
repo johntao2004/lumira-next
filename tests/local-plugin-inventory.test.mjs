@@ -18,6 +18,17 @@ import {
 
 const temporaryRoots = [];
 
+test('per-authority scopes affect inventory identity while empty legacy defaults preserve it', () => {
+  const manifest = { id: 'scope-fixture', name: 'Scope fixture', apiRules: [{ method: 'GET', path: '/api/scope' }] };
+  const original = normalizePersistedPluginManifest(manifest);
+  assert.deepEqual(normalizePersistedPluginManifest({ ...manifest, apiRules: [{ ...manifest.apiRules[0], authorityScopes: {} }] }), original);
+  const scoped = normalizePersistedPluginManifest({ ...manifest, apiRules: [{ ...manifest.apiRules[0], authorityScopes: { 'platform:scope-fixture:read': 'scoped' } }] });
+  const global = normalizePersistedPluginManifest({ ...manifest, apiRules: [{ ...manifest.apiRules[0], authorityScopes: { 'platform:scope-fixture:read': 'global' } }] });
+  assert.notDeepEqual(scoped, global);
+  assert.notDeepEqual(original, scoped);
+  assert.throws(() => normalizePersistedPluginManifest({ ...manifest, apiRules: [{ ...manifest.apiRules[0], authorityScopes: { invalid: 'owner' } }] }), /authorityScopes/);
+});
+
 test.after(() => {
   for (const root of temporaryRoots) rmSync(root, { recursive: true, force: true });
 });
@@ -352,7 +363,17 @@ test('manifest comparison mirrors PluginManifest defaults for live diffuse-avata
   assert.deepEqual(normalized.dataSets, []);
 });
 
-test('database configuration requires a loopback Lumira database and separates credentials', () => {
+test('database configuration requires a loopback Lumira database and separates credentials', t => {
+  const inheritedClient = process.env.PSQL_BIN;
+  const inheritedContainer = process.env.LUMIRA_PSQL_DOCKER_CONTAINER;
+  t.after(() => {
+    if (inheritedClient === undefined) delete process.env.PSQL_BIN;
+    else process.env.PSQL_BIN = inheritedClient;
+    if (inheritedContainer === undefined) delete process.env.LUMIRA_PSQL_DOCKER_CONTAINER;
+    else process.env.LUMIRA_PSQL_DOCKER_CONTAINER = inheritedContainer;
+  });
+  delete process.env.PSQL_BIN;
+  delete process.env.LUMIRA_PSQL_DOCKER_CONTAINER;
   const config = {
     LUMIRA_DB_URL: 'jdbc:postgresql://127.0.0.1:5432/lumira_qa_plugin_transfer_test',
     LUMIRA_DB_USER: 'lumira_next',
@@ -370,6 +391,12 @@ test('database configuration requires a loopback Lumira database and separates c
   });
   assert.equal(parseLocalPluginDatabaseConfig({ ...config, PSQL_BIN: 'C:/tools/psql.exe' }).psqlBin, 'C:/tools/psql.exe');
   assert.equal(parseLocalPluginDatabaseConfig({ ...config, LUMIRA_PSQL_DOCKER_CONTAINER: 'local-pg-client' }).dockerContainer, 'local-pg-client');
+  process.env.PSQL_BIN = '/usr/lib/postgresql/18/bin/psql';
+  process.env.LUMIRA_PSQL_DOCKER_CONTAINER = 'qa-pg-client';
+  assert.equal(parseLocalPluginDatabaseConfig(config).psqlBin, process.env.PSQL_BIN);
+  assert.equal(parseLocalPluginDatabaseConfig(config).dockerContainer, 'qa-pg-client');
+  assert.equal(parseLocalPluginDatabaseConfig({ ...config, PSQL_BIN: '/custom/psql' }).psqlBin, '/custom/psql');
+  assert.equal(parseLocalPluginDatabaseConfig({ ...config, LUMIRA_PSQL_DOCKER_CONTAINER: 'explicit-pg' }).dockerContainer, 'explicit-pg');
   assert.throws(() => parseLocalPluginDatabaseConfig({
     ...config,
     LUMIRA_DB_URL: 'jdbc:postgresql://bookkin-db:5432/bookkin',

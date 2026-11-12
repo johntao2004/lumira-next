@@ -13,6 +13,7 @@ import com.lumira.platform.common.RegistrationRolePort;
 import com.lumira.platform.common.SmsSender;
 import com.lumira.platform.identity.api.AgreementSnapshotPort;
 import com.lumira.platform.identity.api.SmsPasswordRecoveryPort;
+import com.lumira.plugins.authenticationconsole.RegistrationSettingsService;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -67,9 +68,9 @@ class RegistrationSettingsChangeReasonDatabaseTest {
 
         var agreements = mock(AgreementSnapshotPort.class);
         when(agreements.current()).thenReturn(new AgreementSnapshotPort.Document(1, "", ""));
-        var maintenance = mock(MaintenanceService.class);
+        var maintenance = mock(MaintenanceReader.class);
         when(maintenance.read())
-                .thenReturn(new MaintenanceService.View(0, MaintenanceSettings.defaults()));
+                .thenReturn(new MaintenanceReader.View(0, MaintenanceSettings.defaults()));
         ObjectProvider<CaptchaProofPort> captcha =
                 (ObjectProvider<CaptchaProofPort>) mock(ObjectProvider.class);
         ObjectProvider<SmsPasswordRecoveryPort> smsRecovery =
@@ -86,7 +87,9 @@ class RegistrationSettingsChangeReasonDatabaseTest {
                         maintenance,
                         mock(AuditPort.class),
                         captcha,
-                        smsRecovery);
+                        smsRecovery,
+                        new com.lumira.platform.settings.RegistrationPolicyReader(
+                                JdbcClient.create(dataSource)));
     }
 
     @AfterEach

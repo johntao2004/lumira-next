@@ -10,6 +10,10 @@ public interface RoleAuthenticationPolicyPort {
 
     RolePolicy forRole(UUID roleId);
 
+    default boolean supportsUnifiedDatabaseProjection() {
+        return false;
+    }
+
     record RolePolicy(
             UUID roleId,
             long roleVersion,

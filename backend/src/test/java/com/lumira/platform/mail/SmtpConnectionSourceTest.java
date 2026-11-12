@@ -15,14 +15,9 @@ class SmtpConnectionSourceTest {
     private final SecretStore secrets = mock(SecretStore.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final UUID id = UUID.randomUUID();
-    private final SmtpSettingsService configuration =
-            new SmtpSettingsService(
-                    settings,
-                    secrets,
-                    mock(com.lumira.platform.common.SecretKeys.class),
-                    null,
-                    mapper,
-                    null);
+    private final SmtpConfigurationReader configuration =
+            new SmtpConfigurationReader(
+                    settings, secrets, mock(com.lumira.platform.common.SecretKeys.class), mapper);
     private final SmtpConnectionSource source = new SmtpConnectionSource(configuration);
 
     private void configure(boolean enabled, boolean auth) {

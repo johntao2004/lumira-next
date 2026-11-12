@@ -8,6 +8,13 @@ export function readTabAnchor(hash: string, scope: string, keys: readonly string
   return value !== null && keys.includes(value) ? value : fallback;
 }
 
+/** Preserve a requested optional tab across temporary plugin unavailability; rendering still uses available keys. */
+export function tabAnchorToPersist(hash: string, scope: string, keys: readonly string[], fallback: string, preserveUnavailable: readonly string[] = []): string | null {
+  const value = new URLSearchParams(hash.replace(/^#/, "")).get(tabAnchorName(scope));
+  if (value !== null && !keys.includes(value) && preserveUnavailable.includes(value)) return null;
+  return value !== null && keys.includes(value) ? value : fallback;
+}
+
 export function updateFragment(hash: string, changes: Record<string, string | null>): string {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   for (const [name, value] of Object.entries(changes)) {

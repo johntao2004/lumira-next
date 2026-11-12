@@ -15,13 +15,20 @@ import org.springframework.web.bind.annotation.RequestParam;
 /** Shared HTTP operations for provider-owned payment admin endpoints. */
 public abstract class PaymentChannelAdminController {
     private final PluginExtensionsPort extensions;
-    private final PaymentCoreAdminPort.Page ordersPage;
-    private final PaymentCoreAdminPort.Page settingsPage;
+    private final PaymentCoreAdminPort.PageContext ordersPage;
+    private final PaymentCoreAdminPort.PageContext settingsPage;
 
     protected PaymentChannelAdminController(
             PluginExtensionsPort extensions,
             PaymentCoreAdminPort.Page ordersPage,
             PaymentCoreAdminPort.Page settingsPage) {
+        this(extensions, (PaymentCoreAdminPort.PageContext) ordersPage, settingsPage);
+    }
+
+    protected PaymentChannelAdminController(
+            PluginExtensionsPort extensions,
+            PaymentCoreAdminPort.PageContext ordersPage,
+            PaymentCoreAdminPort.PageContext settingsPage) {
         this.extensions = extensions;
         this.ordersPage = ordersPage;
         this.settingsPage = settingsPage;

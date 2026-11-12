@@ -7,6 +7,10 @@ import java.util.UUID;
 public interface GlobalAuthenticationPolicyPort {
     Policy current();
 
+    default boolean supportsUnifiedDatabaseProjection() {
+        return false;
+    }
+
     record Policy(
             long version, UUID revision, Set<PrimaryMethod> enabledMethods, boolean mfaRequired) {
         public Policy {

@@ -10,6 +10,6 @@ import org.springframework.context.annotation.Configuration;
 public class MfaModuleConfiguration {
     @Bean
     PlatformModule mfaModule() {
-        return new PlatformModule("mfa", "二次认证与验证器", "1.0.10", List.of("identity"));
+        return new PlatformModule("mfa", "二次认证与验证器", "1.0.11", List.of("identity"));
     }
 }

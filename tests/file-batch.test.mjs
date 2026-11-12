@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canSelectFileForBatch, fileBatchOperations, permittedFileBatchOperations, selectBatchFiles, runFileBatch } from '../apps/web/src/features/files/file-batch.ts';
+import { canSelectFileForBatch, fileBatchOperations, permittedFileBatchOperations, selectBatchFiles, runFileBatch } from '../apps/web/src/platform/files/file-batch.ts';
 import { ApiError, clearAuthorizationContext, mutate } from '../apps/web/src/platform/api/client.ts';
 
 const file = (id, state = 'TRASHED', version = 7) => ({ id, state, version, originalName: `${id}.txt` });

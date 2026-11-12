@@ -1,8 +1,10 @@
 # Temporary password reset
 
 Administrators can issue a temporary password from a user row when the user cannot complete a
-self-service recovery. The operation requires `platform:users:reset-password`, an all-scope grant,
-and visibility of the target account under the same permission. It accepts the user's optimistic
+self-service recovery. The operation requires `platform:users:reset-password` and visibility of
+the target under both the Users page and reset permissions. The operator must hold the target's
+effective permissions globally. The public-registration feedback grants are exempt when the
+target holds them only at SELF scope. The operation accepts the user's optimistic
 version, refuses self-reset and the last recovery administrator, and records only a secret-free
 audit event. The one-time password is generated with the active security password policy, returned
 once with `Cache-Control: no-store`, and expires after 30 minutes.

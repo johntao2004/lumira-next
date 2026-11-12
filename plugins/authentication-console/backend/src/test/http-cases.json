@@ -1,0 +1,558 @@
+[
+  {
+    "pageId": "security",
+    "accessPermission": "platform:security:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/security",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "security",
+    "accessPermission": "platform:security:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/security",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:security:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:security:update"
+    ]
+  },
+  {
+    "pageId": "authentication",
+    "accessPermission": "platform:authentication:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/authentication",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "authentication",
+    "accessPermission": "platform:authentication:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/authentication",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:authentication:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:authentication:update"
+    ]
+  },
+  {
+    "pageId": "passkey",
+    "accessPermission": "platform:passkey:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/passkey",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "passkey",
+    "accessPermission": "platform:passkey:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/passkey",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:passkey:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:passkey:update"
+    ]
+  },
+  {
+    "pageId": "wechat",
+    "accessPermission": "platform:wechat:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/wechat",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "wechat",
+    "accessPermission": "platform:wechat:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/wechat",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:wechat:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:wechat:update"
+    ]
+  },
+  {
+    "pageId": "captcha",
+    "accessPermission": "platform:captcha:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/captcha",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "captcha",
+    "accessPermission": "platform:captcha:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/captcha",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:captcha:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:captcha:update"
+    ]
+  },
+  {
+    "pageId": "registration",
+    "accessPermission": "platform:registration:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/registration",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "registration",
+    "accessPermission": "platform:registration:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/registration/roles",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:registration:read-roles",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:registration:read-roles",
+      "platform:registration:assign-default-role"
+    ]
+  },
+  {
+    "pageId": "registration",
+    "accessPermission": "platform:registration:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/registration/roles",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:registration:assign-default-role",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:registration:read-roles",
+      "platform:registration:assign-default-role"
+    ]
+  },
+  {
+    "pageId": "registration",
+    "accessPermission": "platform:registration:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/registration",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:registration:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:registration:update"
+    ]
+  },
+  {
+    "pageId": "passkey",
+    "accessPermission": "platform:passkey:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/passkey/history",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "passkey",
+    "accessPermission": "platform:passkey:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/passkey/history/1",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "passkey",
+    "accessPermission": "platform:passkey:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/settings/passkey/rollback",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:passkey:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:passkey:update"
+    ]
+  }
+]

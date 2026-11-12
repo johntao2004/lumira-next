@@ -1,4 +1,5 @@
 export const messages = {
+    serverBusy: "系统繁忙，请稍后重试；本次请求尚未执行。",
     rolePermissionDelegationDenied: "当前账号无权委派所选权限。平台权限须在全局范围持有；插件权限须在全局范围持有，或具有插件安装权限。",
     rolePermissionUnavailable: "权限目录已变化，所选权限已不可用。请刷新角色编辑器后重试。",
     registrationRoleInUse: "该角色是新账号默认角色，不能删除、停用、扩大数据范围或增加公开注册范围外的权限。请先在公开注册设置中更换默认角色。",
@@ -140,6 +141,7 @@ export const messages = {
     pluginBusy: "插件操作正在进行，请稍后重试",
     pluginFixedGraph: "此部署通过发布更新模块，在线导入、安装、启用、停用和卸载已禁用。请联系运维。",
     pluginClusterLifecycleUnsupported: "当前有多个运行节点，在线模块变更已拒绝。请通过发布更新模块。",
+    pluginClusterOperationActive: "集群模块变更尚未完成，暂时不能修改模块。请等待变更完成或由运维恢复。",
     pluginGraphChanged: "运行中的模块图与已加载快照不一致，操作已拒绝。请联系运维检查部署。",
     pluginReleaseNodesActive: "模块发布更新需要先停止旧运行节点。",
     pluginOperationLeaseLost: "此运行节点已不再拥有该操作。请刷新操作状态。",
@@ -152,6 +154,7 @@ export const messages = {
     pluginDependencyCycle: "插件依赖存在循环",
     pluginVersionConflict: "插件版本冲突",
     pluginStartFailed: "插件启动失败，请检查运行日志",
+    pluginServiceOwnerConflict: "插件提供的服务与其归属不一致，或重复声明了同类服务",
     pluginDrainTimeout: "插件仍有执行中的操作，卸载已取消",
     invalidPluginPackage: "无效的插件安装包",
     pluginDigestMismatch: "插件文件校验失败",

@@ -32,11 +32,11 @@ class LocalizationAiServiceTest {
         var localization = mock(LocalizationService.class);
         when(localization.bundle("en"))
                 .thenReturn(bundle("Hello", previousToken), bundle("Updated source", currentToken));
-        var generation = mock(com.lumira.platform.common.AiTextGenerationPort.class);
+        var generation = mock(com.lumira.platform.common.AiTextGenerationServicePort.class);
         when(generation.available())
                 .thenReturn(
                         List.of(
-                                new com.lumira.platform.common.AiTextGenerationPort.Provider(
+                                new com.lumira.platform.common.AiTextGenerationServicePort.Provider(
                                         providerId, "Local provider", "model-a")));
         when(generation.chat(eq(providerId), eq("model-a"), anyList()))
                 .thenReturn("{\"custom.ai.runtime\":\"Bonjour\"}");

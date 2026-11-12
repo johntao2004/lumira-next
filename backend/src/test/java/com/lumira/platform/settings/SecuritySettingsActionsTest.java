@@ -12,7 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.PlatformPageId;
-import com.lumira.platform.dictionaries.api.DictionaryLookupPort;
+import com.lumira.plugins.authenticationconsole.PasskeySettingHistoryController;
+import com.lumira.plugins.authenticationconsole.PasskeySettingRollbackService;
+import com.lumira.plugins.authenticationconsole.PasskeySettingsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -28,31 +30,28 @@ class SecuritySettingsActionsTest {
         var administration = mock(AdministrationPort.class);
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
                 .when(administration)
-                .requirePageGlobal("reader", PlatformPageId.BRANDING);
+                .requirePageGlobal("reader", PlatformPageId.PASSKEY);
         var controller =
-                new SettingHistoryController(
-                        store,
-                        mock(SettingRollbackService.class),
-                        new ObjectMapper(),
+                new PasskeySettingHistoryController(
+                        new SettingHistoryReader(store, new ObjectMapper()),
+                        mock(PasskeySettingRollbackService.class),
                         administration);
         var actor = mock(Authentication.class);
         when(actor.getName()).thenReturn("reader");
 
-        assertThrows(
-                ResponseStatusException.class, () -> controller.history("branding", 1, 10, actor));
+        assertThrows(ResponseStatusException.class, () -> controller.history(1, 10, actor));
         verifyNoInteractions(store);
     }
 
     @Test
     void removedSecurityHistoryAndRestoreEndpointsDoNotReachStorage() throws Exception {
         var store = mock(SettingStore.class);
-        var rollback = mock(SettingRollbackService.class);
+        var rollback = mock(PasskeySettingRollbackService.class);
         var mvc =
                 MockMvcBuilders.standaloneSetup(
-                                new SettingHistoryController(
-                                        store,
+                                new PasskeySettingHistoryController(
+                                        new SettingHistoryReader(store, new ObjectMapper()),
                                         rollback,
-                                        new ObjectMapper(),
                                         mock(AdministrationPort.class)))
                         .build();
 
@@ -73,15 +72,11 @@ class SecuritySettingsActionsTest {
     void rollbackServiceCannotRestoreSecurityThroughAnInternalCaller() {
         var store = mock(SettingStore.class);
         var service =
-                new SettingRollbackService(
+                new PasskeySettingRollbackService(
                         store,
                         new ObjectMapper(),
-                        mock(MaintenanceService.class),
                         mock(PasskeySettingsService.class),
-                        mock(SmtpSettingsService.class),
-                        mock(SmsSettingsService.class),
-                        mock(AdministrationPort.class),
-                        mock(DictionaryLookupPort.class));
+                        mock(AdministrationPort.class));
 
         var error =
                 assertThrows(
@@ -89,7 +84,7 @@ class SecuritySettingsActionsTest {
                         () ->
                                 service.rollback(
                                         "security",
-                                        new SettingRollbackService.Input(3, 1, "Restore", null),
+                                        new PasskeySettingRollbackService.Input(3, 1, "Restore"),
                                         "admin"));
         assertEquals(HttpStatus.NOT_FOUND, error.getStatusCode());
         verifyNoInteractions(store);

@@ -1,4 +1,5 @@
 export const messages = {
+    serverBusy: "系統忙碌，請稍後重試；本次請求尚未執行。",
     rolePermissionDelegationDenied: "目前帳號無權委派所選權限。平台權限須在全域範圍持有；外掛權限須在全域範圍持有，或具有外掛安裝權限。",
     rolePermissionUnavailable: "權限目錄已變更，所選權限已無法使用。請重新整理角色編輯器後再試。",
     registrationRoleInUse: "此角色是新帳號預設角色，不能刪除、停用、擴大資料範圍或增加公開註冊範圍外的權限。請先在公開註冊設定中更換預設角色。",
@@ -140,6 +141,7 @@ export const messages = {
     pluginBusy: "A plugin operation is in progress",
     pluginFixedGraph: "此部署透過發布更新模組，線上匯入、安裝、啟用、停用和解除安裝已停用。請聯絡維運。",
     pluginClusterLifecycleUnsupported: "目前有多個執行節點，已拒絕線上模組變更。請透過發布更新模組。",
+    pluginClusterOperationActive: "叢集模組變更尚未完成，暫時無法修改模組。請等待變更完成或由維運復原。",
     pluginGraphChanged: "執行中的模組圖與已載入快照不一致，操作已拒絕。請聯絡維運檢查部署。",
     pluginReleaseNodesActive: "模組發布更新前，必須先停止舊執行節點。",
     pluginOperationLeaseLost: "此執行節點已不再擁有此操作。請重新整理操作狀態。",
@@ -152,6 +154,7 @@ export const messages = {
     pluginDependencyCycle: "Circular plugin dependency",
     pluginVersionConflict: "Plugin version conflict",
     pluginStartFailed: "Plugin startup failed. Check runtime logs.",
+    pluginServiceOwnerConflict: "外掛提供的服務與其歸屬不一致，或重複宣告了同類服務",
     pluginDrainTimeout: "Plugin calls are still active. Uninstall cancelled.",
     invalidPluginPackage: "Invalid plugin package",
     pluginDigestMismatch: "Plugin integrity check failed",

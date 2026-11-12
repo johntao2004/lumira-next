@@ -21,7 +21,6 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class PaymentCoreService implements PaymentCoreAdminPort {
-    static final Set<String> PROVIDERS = Set.of("wechat-pay", "alipay-pay");
 
     public record SettingsUpdate(
             long expectedVersion,
@@ -135,6 +134,69 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     @Override
     public PaymentCoreAdminPort.SettingsView settings(
             String actor, PaymentCoreAdminPort.Page page) {
+        return settings(actor, (PaymentCoreAdminPort.PageContext) page);
+    }
+
+    @Override
+    @Transactional
+    public PaymentCoreAdminPort.SettingsView updateSettings(
+            String actor,
+            PaymentCoreAdminPort.Page page,
+            PaymentCoreAdminPort.SettingsUpdate input) {
+        return updateSettings(actor, (PaymentCoreAdminPort.PageContext) page, input);
+    }
+
+    @Override
+    public PaymentCoreAdminPort.OrderPage listOrders(
+            String actor,
+            PaymentCoreAdminPort.Page page,
+            String provider,
+            String status,
+            int number,
+            int size) {
+        return listOrders(
+                actor, (PaymentCoreAdminPort.PageContext) page, provider, status, number, size);
+    }
+
+    @Override
+    public PaymentCoreAdminPort.OrderView createOrder(
+            String actor,
+            PaymentCoreAdminPort.Page page,
+            PaymentCoreAdminPort.CreateOrder input,
+            String clientIp) {
+        return createOrder(actor, (PaymentCoreAdminPort.PageContext) page, input, clientIp);
+    }
+
+    @Override
+    public PaymentCoreAdminPort.OrderView queryOrder(
+            String actor, PaymentCoreAdminPort.Page page, UUID id) {
+        return queryOrder(actor, (PaymentCoreAdminPort.PageContext) page, id);
+    }
+
+    @Override
+    public PaymentCoreAdminPort.OrderView closeOrder(
+            String actor, PaymentCoreAdminPort.Page page, UUID id) {
+        return closeOrder(actor, (PaymentCoreAdminPort.PageContext) page, id);
+    }
+
+    @Override
+    public PaymentCoreAdminPort.OrderView refundOrder(
+            String actor,
+            PaymentCoreAdminPort.Page page,
+            UUID id,
+            PaymentCoreAdminPort.RefundRequest input) {
+        return refundOrder(actor, (PaymentCoreAdminPort.PageContext) page, id, input);
+    }
+
+    @Override
+    public PaymentCoreAdminPort.OrderView queryRefund(
+            String actor, PaymentCoreAdminPort.Page page, UUID id) {
+        return queryRefund(actor, (PaymentCoreAdminPort.PageContext) page, id);
+    }
+
+    @Override
+    public PaymentCoreAdminPort.SettingsView settings(
+            String actor, PaymentCoreAdminPort.PageContext page) {
         requireGlobalOperation(actor, page, PaymentCoreAdminPort.Operation.READ);
         String providerId = requireBoundProvider(page, null);
         var value = settingsInternal(providerId);
@@ -150,7 +212,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     @Transactional
     public PaymentCoreAdminPort.SettingsView updateSettings(
             String actor,
-            PaymentCoreAdminPort.Page page,
+            PaymentCoreAdminPort.PageContext page,
             PaymentCoreAdminPort.SettingsUpdate input) {
         requireGlobalOperation(actor, page, PaymentCoreAdminPort.Operation.UPDATE);
         String providerId = requireBoundProvider(page, null);
@@ -174,7 +236,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     @Override
     public PaymentCoreAdminPort.OrderPage listOrders(
             String actor,
-            PaymentCoreAdminPort.Page page,
+            PaymentCoreAdminPort.PageContext page,
             String requestedProviderId,
             String status,
             int pageNumber,
@@ -201,7 +263,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     @Override
     public PaymentCoreAdminPort.OrderView createOrder(
             String actor,
-            PaymentCoreAdminPort.Page page,
+            PaymentCoreAdminPort.PageContext page,
             PaymentCoreAdminPort.CreateOrder input,
             String clientIp) {
         requireGlobalOperation(actor, page, PaymentCoreAdminPort.Operation.CREATE);
@@ -221,7 +283,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
 
     @Override
     public PaymentCoreAdminPort.OrderView queryOrder(
-            String actor, PaymentCoreAdminPort.Page page, UUID orderId) {
+            String actor, PaymentCoreAdminPort.PageContext page, UUID orderId) {
         requireGlobalOperation(actor, page, PaymentCoreAdminPort.Operation.MANAGE);
         var order = requireOrderForPage(page, orderId);
         return toSdk(queryOrderInternal(actor, order));
@@ -229,7 +291,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
 
     @Override
     public PaymentCoreAdminPort.OrderView closeOrder(
-            String actor, PaymentCoreAdminPort.Page page, UUID orderId) {
+            String actor, PaymentCoreAdminPort.PageContext page, UUID orderId) {
         requireGlobalOperation(actor, page, PaymentCoreAdminPort.Operation.MANAGE);
         var order = requireOrderForPage(page, orderId);
         return toSdk(closeOrderInternal(actor, order));
@@ -238,7 +300,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     @Override
     public PaymentCoreAdminPort.OrderView refundOrder(
             String actor,
-            PaymentCoreAdminPort.Page page,
+            PaymentCoreAdminPort.PageContext page,
             UUID orderId,
             PaymentCoreAdminPort.RefundRequest input) {
         requireGlobalOperation(actor, page, PaymentCoreAdminPort.Operation.REFUND);
@@ -250,7 +312,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
 
     @Override
     public PaymentCoreAdminPort.OrderView queryRefund(
-            String actor, PaymentCoreAdminPort.Page page, UUID orderId) {
+            String actor, PaymentCoreAdminPort.PageContext page, UUID orderId) {
         requireGlobalOperation(actor, page, PaymentCoreAdminPort.Operation.REFUND);
         requireOrderForPage(page, orderId);
         return toSdk(queryRefundResult(actor, orderId, true));
@@ -258,7 +320,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
 
     private void requireGlobalOperation(
             String actor,
-            PaymentCoreAdminPort.Page page,
+            PaymentCoreAdminPort.PageContext page,
             PaymentCoreAdminPort.Operation operation) {
         if (page == null || !page.supports(operation))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "paymentOperationUnavailable");
@@ -270,7 +332,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     }
 
     private static String requireBoundProvider(
-            PaymentCoreAdminPort.Page page, String requestedProvider) {
+            PaymentCoreAdminPort.PageContext page, String requestedProvider) {
         if (page == null)
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "paymentProviderNotFound");
         String boundProvider = page.providerId();
@@ -289,7 +351,7 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     }
 
     private PaymentCoreStore.Order requireOrderForPage(
-            PaymentCoreAdminPort.Page page, UUID orderId) {
+            PaymentCoreAdminPort.PageContext page, UUID orderId) {
         var order = requireOrder(orderId);
         if (page == null
                 || (page.providerId() != null && !page.providerId().equals(order.providerId())))
@@ -602,7 +664,8 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
         return OrderView.from(requireOrder(orderId));
     }
 
-    void acceptCallback(String providerId, Map<String, String> headers, String rawBody) {
+    @Override
+    public void acceptCallback(String providerId, Map<String, String> headers, String rawBody) {
         provider(providerId);
         if (headers == null || rawBody == null || rawBody.length() > 128 * 1024)
             throw badRequest("paymentNotificationInvalid");
@@ -748,15 +811,28 @@ public class PaymentCoreService implements PaymentCoreAdminPort {
     }
 
     private static void provider(String id) {
-        if (!PROVIDERS.contains(id))
+        if (id == null || !id.matches("[a-z][a-z0-9-]{0,31}"))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "paymentProviderNotFound");
     }
 
-    private static String callbackUrl(Map<String, String> values, String providerId) {
+    static boolean validCallbackPath(String providerId, String path) {
+        if (path == null) return false;
+        return path.matches(
+                        "/api/plugins/"
+                                + java.util.regex.Pattern.quote(providerId)
+                                + "/callbacks/[a-z0-9-]+")
+                || Set.of("wechat-pay", "alipay-pay").contains(providerId)
+                        && path.equals("/api/plugins/payment-core/callbacks/" + providerId);
+    }
+
+    private String callbackUrl(Map<String, String> values, String providerId) {
         String value = values.get("notifyUrl");
+        String path = gateway(providerId, PaymentGatewayPort::callbackPath);
+        if (!validCallbackPath(providerId, path))
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "paymentProviderContractInvalid");
         try {
             URI uri = URI.create(value == null ? "" : value);
-            String path = "/api/plugins/payment-core/callbacks/" + providerId;
             if (!"https".equalsIgnoreCase(uri.getScheme())
                     || uri.getHost() == null
                     || uri.getUserInfo() != null

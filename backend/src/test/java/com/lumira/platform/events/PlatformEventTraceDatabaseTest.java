@@ -8,6 +8,9 @@ import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.common.DurableEventPublisherPort;
 import com.lumira.platform.common.PlatformPageId;
+import com.lumira.plugins.eventconsole.PlatformEventOutboxAdminService;
+import com.lumira.plugins.eventconsole.PlatformEventReplayApprovalRepository;
+import com.lumira.plugins.eventconsole.PlatformEventTraceQuery;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -365,7 +368,9 @@ class PlatformEventTraceDatabaseTest {
         PlatformEventReplayApprovalRepository approvals =
                 new PlatformEventReplayApprovalRepository(JdbcClient.create(jdbc.getDataSource()));
         TestAudit audit = new TestAudit();
-        var admin = new PlatformEventOutboxAdminService(guard, store, approvals, audit);
+        var admin =
+                new PlatformEventOutboxAdminService(
+                        guard, new EventRecoveryAdapter(store), approvals, audit);
         var missingReason =
                 assertThrows(
                         ResponseStatusException.class,

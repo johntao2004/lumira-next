@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chatHistoryStorageKey, createChatHistory, decodeChatHistory, loadChatHistory, saveChatHistory } from '../apps/web/src/features/ai/chat-history.ts';
+import { chatHistoryStorageKey, createChatHistory, decodeChatHistory, loadChatHistory, saveChatHistory } from '../plugins/ai/frontend/chat-history.ts';
 
 function memoryStorage() {
   const entries = new Map();

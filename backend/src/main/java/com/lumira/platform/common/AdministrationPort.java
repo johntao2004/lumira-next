@@ -8,13 +8,21 @@ import java.util.UUID;
  * identity; consumers do not depend on that class.
  */
 public interface AdministrationPort {
-    Set<String> require(String actor, String permission);
+    default Set<String> require(String actor, String permission) {
+        return Set.of();
+    }
 
-    void requireUser(String actor, UUID target, String permission);
+    default void requireUser(String actor, UUID target, String permission) {}
 
-    void requireGlobal(String actor, String permission);
+    default void requireGlobal(String actor, String permission) {}
 
-    boolean hasGlobal(String actor, String permission);
+    default boolean hasGlobal(String actor, String permission) {
+        return false;
+    }
+
+    default boolean hasRequestGlobal(String actor, String permission) {
+        return hasGlobal(actor, permission);
+    }
 
     default Set<String> requirePage(String actor, PlatformPageId page) {
         Set<String> held = require(actor, page.accessPermission());
@@ -40,15 +48,32 @@ public interface AdministrationPort {
 
     default Set<String> requireOperationGlobal(String actor, PlatformOperation operation) {
         Set<String> held = requireOperation(actor, operation);
-        requireGlobal(actor, operation.page().accessPermission());
-        requireGlobal(actor, operation.permission());
+        // requireOperation already enforces GLOBAL declarations. Only strengthen scoped
+        // declarations here; repeating the same check adds database and boundary-lock work.
+        if (operation.page().scope() != PlatformOperation.Scope.GLOBAL)
+            requireGlobal(actor, operation.page().accessPermission());
+        if (operation.scope() != PlatformOperation.Scope.GLOBAL)
+            requireGlobal(actor, operation.permission());
         return held;
+    }
+
+    /**
+     * Opts a verified record-isolated writer into concurrent authorization. Implementations may
+     * retain the ordinary serialization; callers must still protect record versions and invariants
+     * inside the same transaction. The host only opts in operations with database concurrency
+     * tests. Do not upgrade this transaction to ordinary exclusive administration afterward;
+     * composite operations must select the exclusive path from the start.
+     */
+    default Set<String> requireConcurrentOperationGlobal(
+            String actor, PlatformOperation operation) {
+        return requireOperationGlobal(actor, operation);
     }
 
     /** A globally scoped action on a page whose own target visibility may be scoped. */
     default Set<String> requireOperationActionGlobal(String actor, PlatformOperation operation) {
         Set<String> held = requireOperation(actor, operation);
-        requireGlobal(actor, operation.permission());
+        if (operation.scope() != PlatformOperation.Scope.GLOBAL)
+            requireGlobal(actor, operation.permission());
         return held;
     }
 

@@ -7,8 +7,13 @@ import java.util.Set;
 import java.util.UUID;
 
 /** Typed, lease-scoped administrative access to the shared payment-core business service. */
-public interface PaymentCoreAdminPort {
+public interface PaymentCoreAdminPort extends com.lumira.platform.common.PluginServicePort {
     String ownerPluginId();
+
+    @Override
+    default String serviceType() {
+        return "payment-core-admin";
+    }
 
     enum Operation {
         READ,
@@ -19,7 +24,7 @@ public interface PaymentCoreAdminPort {
     }
 
     /** Trusted server-side page context; controllers must pass a constant, never request data. */
-    enum Page {
+    enum Page implements PageContext {
         PAYMENT_CORE_ORDERS(
                 "payment-core",
                 "payment-core-orders",
@@ -115,6 +120,72 @@ public interface PaymentCoreAdminPort {
         }
     }
 
+    sealed interface PageContext permits Page, ProviderPage {
+        String pluginId();
+
+        String routeId();
+
+        String providerId();
+
+        String accessPermission();
+
+        String operationPermission(Operation operation);
+
+        boolean supports(Operation operation);
+    }
+
+    enum PageKind {
+        ORDERS,
+        SETTINGS
+    }
+
+    /** Server-side constant for any channel; permission names remain owned by that channel. */
+    record ProviderPage(String providerId, PageKind kind) implements PageContext {
+        public ProviderPage {
+            if (providerId == null
+                    || !providerId.matches("[a-z][a-z0-9-]{0,31}")
+                    || "payment-core".equals(providerId)
+                    || kind == null) throw new IllegalArgumentException("paymentProviderNotFound");
+        }
+
+        public String pluginId() {
+            return providerId;
+        }
+
+        public String routeId() {
+            return providerId + "-" + segment();
+        }
+
+        public String accessPermission() {
+            return "platform:" + providerId + ":" + segment() + "-access";
+        }
+
+        public String operationPermission(Operation operation) {
+            if (!supports(operation))
+                throw new IllegalArgumentException("paymentOperationUnavailable");
+            return "platform:"
+                    + providerId
+                    + ":"
+                    + segment()
+                    + "-"
+                    + operation.name().toLowerCase(java.util.Locale.ROOT);
+        }
+
+        public boolean supports(Operation operation) {
+            return operation != null
+                    && (kind == PageKind.SETTINGS
+                            ? operation == Operation.READ || operation == Operation.UPDATE
+                            : operation == Operation.READ
+                                    || operation == Operation.CREATE
+                                    || operation == Operation.MANAGE
+                                    || operation == Operation.REFUND);
+        }
+
+        private String segment() {
+            return kind == PageKind.SETTINGS ? "settings" : "orders";
+        }
+    }
+
     record SettingsUpdate(
             long expectedVersion,
             Map<String, String> values,
@@ -195,4 +266,48 @@ public interface PaymentCoreAdminPort {
     OrderView refundOrder(String actor, Page page, UUID orderId, RefundRequest input);
 
     OrderView queryRefund(String actor, Page page, UUID orderId);
+
+    // Additive overloads preserve the published Page-based binary API for existing plugins.
+    default SettingsView settings(String actor, PageContext page) {
+        return settings(actor, legacy(page));
+    }
+
+    default SettingsView updateSettings(String actor, PageContext page, SettingsUpdate input) {
+        return updateSettings(actor, legacy(page), input);
+    }
+
+    default OrderPage listOrders(
+            String actor, PageContext page, String provider, String status, int number, int size) {
+        return listOrders(actor, legacy(page), provider, status, number, size);
+    }
+
+    default OrderView createOrder(
+            String actor, PageContext page, CreateOrder input, String clientIp) {
+        return createOrder(actor, legacy(page), input, clientIp);
+    }
+
+    default OrderView queryOrder(String actor, PageContext page, UUID id) {
+        return queryOrder(actor, legacy(page), id);
+    }
+
+    default OrderView closeOrder(String actor, PageContext page, UUID id) {
+        return closeOrder(actor, legacy(page), id);
+    }
+
+    default OrderView refundOrder(String actor, PageContext page, UUID id, RefundRequest input) {
+        return refundOrder(actor, legacy(page), id, input);
+    }
+
+    default OrderView queryRefund(String actor, PageContext page, UUID id) {
+        return queryRefund(actor, legacy(page), id);
+    }
+
+    default void acceptCallback(String providerId, Map<String, String> headers, String rawBody) {
+        throw new UnsupportedOperationException("paymentCallbackUnsupported");
+    }
+
+    private static Page legacy(PageContext page) {
+        if (page == null || page instanceof Page) return (Page) page;
+        throw new UnsupportedOperationException("paymentContextUnsupported");
+    }
 }

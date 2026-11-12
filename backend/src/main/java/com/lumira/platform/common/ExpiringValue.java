@@ -46,6 +46,10 @@ public final class ExpiringValue<T> {
         entry = new Entry<>(Objects.requireNonNull(value), clock.instant().plus(ttl));
     }
 
+    public synchronized void invalidate() {
+        entry = null;
+    }
+
     private boolean fresh(Entry<T> snapshot) {
         return snapshot != null && clock.instant().isBefore(snapshot.expiresAt());
     }

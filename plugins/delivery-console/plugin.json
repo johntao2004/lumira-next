@@ -1,0 +1,63 @@
+{
+  "formatVersion": 1,
+  "id": "delivery-console",
+  "name": "投递记录",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.deliveryconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "communication",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:mail-deliveries:access",
+    "platform:sms-deliveries:access"
+  ],
+  "routes": [
+    {
+      "id": "mail-deliveries",
+      "label": "deliveryRecords",
+      "permission": "platform:mail-deliveries:access",
+      "group": "communication",
+      "order": 40,
+      "global": true
+    },
+    {
+      "id": "sms-deliveries",
+      "label": "smsDeliveries",
+      "permission": "platform:sms-deliveries:access",
+      "group": "communication",
+      "order": 50,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/mail-deliveries",
+      "authorities": [
+        "platform:mail-deliveries:access"
+      ],
+      "publicAccess": false,
+      "global": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/sms-deliveries",
+      "authorities": [
+        "platform:sms-deliveries:access"
+      ],
+      "publicAccess": false,
+      "global": true
+    }
+  ],
+  "dataSets": []
+}

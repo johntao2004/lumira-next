@@ -498,13 +498,11 @@ class SmtpTlsTest {
             var store = new MailDeliveryStore(client, keys, mapper);
             var audit = new com.lumira.platform.audit.AuditRepository(client);
             var stored =
-                    new com.lumira.platform.settings.SmtpSettingsService(
+                    new com.lumira.platform.settings.SmtpConfigurationReader(
                             new com.lumira.platform.settings.SettingStore(client, null, null),
                             secrets,
                             keys,
-                            null,
-                            mapper,
-                            null);
+                            mapper);
             // Settings validation (correctly) refuses "localhost", so the stored host is 127.0.0.1;
             // the
             // fixture certificate is issued for "localhost", so only the connect target is swapped

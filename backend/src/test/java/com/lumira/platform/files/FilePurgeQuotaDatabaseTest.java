@@ -111,7 +111,7 @@ class FilePurgeQuotaDatabaseTest {
         var repository = new FileRepository(JdbcClient.create(jdbc.getDataSource()));
         var quota = new FileQuota(Long.MAX_VALUE, 1000);
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repository,
                         accounts,
                         blobs,
@@ -155,7 +155,7 @@ class FilePurgeQuotaDatabaseTest {
         doThrow(new java.io.IOException("temporary storage failure")).when(blobs).delete(target);
         var repository = new FileRepository(JdbcClient.create(jdbc.getDataSource()));
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repository,
                         accounts,
                         blobs,

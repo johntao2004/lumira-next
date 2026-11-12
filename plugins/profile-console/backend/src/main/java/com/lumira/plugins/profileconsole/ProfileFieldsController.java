@@ -1,0 +1,81 @@
+package com.lumira.plugins.profileconsole;
+
+import com.lumira.platform.common.*;
+import com.lumira.platform.identity.api.ProfileDictionaryPort;
+import com.lumira.platform.identity.api.ProfileFields;
+import com.lumira.platform.settings.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.ObjectMapper;
+
+@RestController
+@com.lumira.platform.modules.ModuleEndpoint("profile-console")
+public class ProfileFieldsController {
+    public record View(long version, ProfileFields data) {}
+
+    public record Input(long version, ProfileFields data, String changeReason) {}
+
+    private final ProfileSchemaReader schemas;
+    private final SettingStore store;
+    private final ObjectMapper mapper;
+    private final com.lumira.platform.common.AdministrationPort guard;
+    private final ProfileDictionaryPort dictionaries;
+
+    public ProfileFieldsController(
+            SettingStore store,
+            ObjectMapper mapper,
+            com.lumira.platform.common.AdministrationPort guard,
+            ProfileDictionaryPort dictionaries,
+            ProfileSchemaReader schemas) {
+        this.schemas = schemas;
+        this.store = store;
+        this.mapper = mapper;
+        this.guard = guard;
+        this.dictionaries = dictionaries;
+    }
+
+    @GetMapping("/api/platform/settings/profile-fields")
+    public View read(Authentication actor) {
+        guard.requirePageGlobal(actor.getName(), PlatformPageId.PROFILE_FIELDS);
+        return readDocument();
+    }
+
+    View readDocument() {
+        var schema = schemas.read();
+        return new View(schema.version(), schema.data());
+    }
+
+    @GetMapping("/api/platform/settings/profile-fields/dictionaries")
+    public PageResult<ProfileDictionaryPort.EnabledDictionary> dictionaries(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(defaultValue = "") String search,
+            Authentication actor) {
+        guard.requireOperationGlobal(
+                actor.getName(), PlatformOperation.PROFILE_FIELDS_READ_DICTIONARIES);
+        return dictionaries.listEnabled(new PageRequest(page, pageSize, search));
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    @PutMapping("/api/platform/settings/profile-fields")
+    public View write(
+            @BoundedBody(maxBytes = 1024 * 1024, errorCode = "invalidProfileFields") @RequestBody
+                    Input input,
+            Authentication auth) {
+        if (input == null || input.data() == null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalidProfileFields");
+        var data = input.data().withResolvedPlacements();
+        guard.requireOperationGlobal(auth.getName(), PlatformOperation.PROFILE_FIELDS_UPDATE);
+        ProfileFieldsValidation.validate(data, dictionaries);
+        var saved =
+                store.save(
+                        "profile-fields",
+                        mapper.writeValueAsString(data),
+                        auth.getName(),
+                        input.version(),
+                        input.changeReason());
+        return new View(saved.version(), data);
+    }
+}

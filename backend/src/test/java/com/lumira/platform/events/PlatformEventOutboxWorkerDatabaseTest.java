@@ -74,6 +74,35 @@ class PlatformEventOutboxWorkerDatabaseTest {
     }
 
     @Test
+    void onePollDrainsRealDatabaseBacklogWithExactlyOneEffectPerEvent() throws Exception {
+        for (int i = 0; i < 100; i++) append("backlog-" + i);
+        long started = System.nanoTime();
+        try (var worker = worker(event -> writeEffect(event.id()))) {
+            worker.poll();
+            long deadline = started + java.time.Duration.ofSeconds(20).toNanos();
+            while (jdbc.queryForObject(
+                                    "SELECT count(*) FROM platform_event_outbox WHERE status='DELIVERED'",
+                                    Integer.class)
+                            < 100
+                    && System.nanoTime() < deadline) Thread.sleep(25);
+            assertEquals(
+                    100,
+                    jdbc.queryForObject(
+                            "SELECT count(*) FROM platform_event_outbox WHERE status='DELIVERED'",
+                            Integer.class));
+            assertEquals(
+                    100,
+                    jdbc.queryForObject(
+                            "SELECT count(*) FROM event_consumer_effect WHERE effect_count=1",
+                            Integer.class));
+            System.out.println(
+                    "Outbox isolated backlog: 100 events committed in "
+                            + (System.nanoTime() - started) / 1_000_000
+                            + " ms");
+        }
+    }
+
+    @Test
     void consumerExceptionRollsBackDatabaseEffectsBeforeRecordingRetry() {
         var eventId = append("exception");
         var worker =

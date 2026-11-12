@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 const root = new URL("../", import.meta.url);
 function files(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
@@ -11,7 +12,7 @@ function files(dir) {
   );
 }
 test("new frontend does not import the retired Next runtime or legacy business implementation", () => {
-  for (const file of files(new URL("apps/web/src", root).pathname).filter((f) =>
+  for (const file of files(fileURLToPath(new URL("apps/web/src", root))).filter((f) =>
     /\.(ts|tsx)$/.test(f) && !f.includes(`${path.sep}.umi${path.sep}`),
   )) {
     const source = readFileSync(file, "utf8");
@@ -24,7 +25,7 @@ test("new frontend does not import the retired Next runtime or legacy business i
 });
 test("core module package is independent of identity and web adapters", () => {
   for (const file of files(
-    new URL("backend/src/main/java/com/lumira/platform/modules", root).pathname,
+    fileURLToPath(new URL("backend/src/main/java/com/lumira/platform/modules", root)),
   )) {
     assert.doesNotMatch(
       readFileSync(file, "utf8"),

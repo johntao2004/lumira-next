@@ -51,14 +51,40 @@ test('fixed runtime bundle contains only the locked descriptor and exact version
     writeFileSync(path.join(source, 'plugin.json'), JSON.stringify({ id: 'alpha', version: '1.2.3' }));
     writeFileSync(path.join(source, 'dist', 'alpha-1.2.3.lumira-plugin.zip'), 'approved bytes');
     writeFileSync(path.join(source, 'dist', 'alpha-old.lumira-plugin.zip'), 'excluded bytes');
+    writeFileSync(path.join(plugins, 'bootstrap.json'), JSON.stringify(['alpha']));
 
     const output = path.join(temp, 'bundle');
     const lock = writePluginRuntimeBundle(plugins, output);
     assert.equal(lock.plugins.length, 1);
     assert.deepEqual(JSON.parse(readFileSync(path.join(output, 'approved-graph.json'), 'utf8')), lock);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(output, 'bootstrap.json'), 'utf8')), ['alpha']);
     assert.equal(readFileSync(path.join(output, 'alpha', 'plugin.json'), 'utf8'), readFileSync(path.join(source, 'plugin.json'), 'utf8'));
     assert.equal(readFileSync(path.join(output, 'alpha', 'dist', 'alpha-1.2.3.lumira-plugin.zip'), 'utf8'), 'approved bytes');
     assert.equal(existsSync(path.join(output, 'alpha', 'dist', 'alpha-old.lumira-plugin.zip')), false);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('fixed bundle accepts an explicit empty business selection and rejects missing or unknown selections', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'lumira-plugin-bootstrap-'));
+  try {
+    const plugins = path.join(temp, 'plugins');
+    const source = path.join(plugins, 'alpha');
+    mkdirSync(path.join(source, 'dist'), { recursive: true });
+    writeFileSync(path.join(source, 'plugin.json'), JSON.stringify({ id: 'alpha', version: '1.0.0' }));
+    writeFileSync(path.join(source, 'dist', 'alpha-1.0.0.lumira-plugin.zip'), 'approved bytes');
+    const output = path.join(temp, 'bundle');
+    assert.throws(() => writePluginRuntimeBundle(plugins, output), /bootstrap/i);
+    assert.equal(existsSync(output), false);
+    for (const invalid of [['missing'], ['alpha', 'alpha'], [null], ['../outside'], {}]) {
+      writeFileSync(path.join(plugins, 'bootstrap.json'), JSON.stringify(invalid));
+      assert.throws(() => writePluginRuntimeBundle(plugins, output), /bootstrap/i);
+      assert.equal(existsSync(output), false);
+    }
+    writeFileSync(path.join(plugins, 'bootstrap.json'), '[]');
+    writePluginRuntimeBundle(plugins, output);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(output, 'bootstrap.json'), 'utf8')), []);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }

@@ -16,6 +16,17 @@ public interface ProfileDictionaryPort {
 
     record EnabledDictionary(String code, String name, boolean enabled) {}
 
+    /** Identity-owned selection API; implementations remain in the optional dictionary provider. */
+    default PageResult<Item> lookupItems(String code, PageRequest page) {
+        throw new UnsupportedOperationException("Dictionary item lookup is unavailable");
+    }
+
+    default Item lookupItem(String code, UUID id) {
+        throw new UnsupportedOperationException("Dictionary item lookup is unavailable");
+    }
+
+    record Item(UUID id, UUID parentId, String value, String label, int sortOrder) {}
+
     /** Current enabled option counts for several allow-listed dictionaries in one lookup. */
     default Map<String, Long> enabledOptionCounts(Collection<String> codes) {
         return Map.of();

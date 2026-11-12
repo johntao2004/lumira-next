@@ -1,2 +1,6 @@
 # Unified patches contain blank context lines with a required leading space.
 patches/*.patch whitespace=-blank-at-eol
+
+# These scripts run in Linux even when the checkout is on a Windows filesystem.
+*.sh text eol=lf
+backend/mvnw text eol=lf

@@ -7,6 +7,7 @@ import com.lumira.platform.TestSchema;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.SecretKeys;
+import com.lumira.plugins.deliverysettings.SmsSettingsService;
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.*;
@@ -141,7 +142,7 @@ class SmsSettingsPersistenceTest {
                     new SmsSettingsService(settings, secrets, keys, guard, mapper, audit).read();
             assertEquals(configured, reloaded.data());
             assertTrue(reloaded.credentialConfigured());
-            var loaded = service.load();
+            var loaded = new SmsConfigurationReader(settings, secrets, keys, mapper).load();
             try {
                 assertEquals(provider, loaded.settings().provider());
                 assertArrayEquals(
@@ -154,7 +155,9 @@ class SmsSettingsPersistenceTest {
             version = save(saved.version(), disabled, "KEEP", null).version();
             assertEquals(disabled, service.read().data());
             assertTrue(service.read().credentialConfigured());
-            assertThrows(ResponseStatusException.class, service::load);
+            assertThrows(
+                    ResponseStatusException.class,
+                    new SmsConfigurationReader(settings, secrets, keys, mapper)::load);
         }
         assertEquals(
                 12,

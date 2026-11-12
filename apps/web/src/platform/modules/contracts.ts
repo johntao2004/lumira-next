@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { FrontendModule, FrontendModuleManifest, FrontendPageContext, FrontendRoute } from "./types";
+import type { FrontendModule, FrontendModuleManifest, FrontendPageContext, FrontendRoute, RegisteredWorkspaceAction } from "./types";
 
 const moduleIdPattern = /^[a-z][a-z0-9-]{0,99}$/u;
 const routeIdPattern = /^[a-z][a-z0-9-]{0,63}$/u;
@@ -49,15 +49,27 @@ export function validateFrontendModule(module: FrontendModule): void {
   for (const pageId of Object.keys(module.pages)) {
     if (!routeIds.has(pageId)) throw new Error(`Uncatalogued frontend page: ${module.id}:${pageId}`);
   }
+  const actionIds = new Set<string>();
+  for (const action of module.workspaceActions ?? []) {
+    if (!routeIdPattern.test(action.id) || typeof action.component !== "function") {
+      throw new Error(`Invalid workspace action: ${module.id}:${action.id}`);
+    }
+    if (actionIds.has(action.id)) throw new Error(`Duplicate workspace action: ${module.id}:${action.id}`);
+    actionIds.add(action.id);
+  }
 }
 
 export type FrontendPageRegistry = {
   render: (section: string, context: FrontendPageContext) => ReactNode | null;
   owner: (section: string) => string | null;
+  registrationKey: (section: string) => string | null;
   registerPlugin: (module: FrontendModule) => () => void;
+  workspaceActions: () => readonly RegisteredWorkspaceAction[];
+  subscribeWorkspaceActions: (listener: () => void) => () => void;
 };
 
 type PluginRegistration = {
+  readonly key: string;
   readonly routeIds: readonly string[];
 };
 
@@ -88,10 +100,22 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
   const pageRenderers = new Map<string, FrontendModule["pages"][string]>();
   const pageOwners = new Map<string, string>();
   const staticModuleIds = new Set<string>();
+  const actionModules = new Map<string, readonly RegisteredWorkspaceAction[]>();
+  let generation = 0;
+  const registerActions = (module: FrontendModule) => {
+    const revision = ++generation;
+    actionModules.set(module.id, Object.freeze((module.workspaceActions ?? []).map(action => Object.freeze({
+      id: action.id,
+      component: action.component,
+      moduleId: module.id,
+      key: `${module.id}:${revision}:${action.id}`,
+    }))));
+  };
   for (const module of modules) {
     validateFrontendModule(module);
     if (staticModuleIds.has(module.id)) throw new Error(`Duplicate frontend module: ${module.id}`);
     staticModuleIds.add(module.id);
+    registerActions(module);
     for (const route of module.routes) {
       if (pageOwners.has(route.id)) throw new Error(`Duplicate frontend route: ${route.id}`);
       pageOwners.set(route.id, module.id);
@@ -102,7 +126,31 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
 
   const dynamicOwners = new Map<string, PluginRegistration>();
   const dynamicPages = new Map<string, DynamicPageRegistration>();
+  const listeners = new Set<() => void>();
+  const snapshot = () => Object.freeze([...actionModules.values()].flat());
+  let actions = snapshot();
+  const publishActions = () => {
+    // Embedded pages still observe every registration; unchanged header controls keep one snapshot.
+    const nextActions = snapshot();
+    if (nextActions.length !== actions.length || nextActions.some((action, index) => action !== actions[index])) {
+      actions = nextActions;
+    }
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        // Registration has committed. A broken observer must not prevent the
+        // caller receiving its disposer or stop other mounted shells updating.
+        console.error("Workspace action subscriber failed", error);
+      }
+    }
+  };
   return {
+    workspaceActions: () => actions,
+    subscribeWorkspaceActions(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
     render(section, context) {
       const renderer = pageRenderers.get(section);
       if (!renderer) return null;
@@ -139,6 +187,9 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
         },
       });
     },
+    registrationKey(section) {
+      return dynamicPages.get(section)?.owner.key ?? pageOwners.get(section) ?? null;
+    },
     owner(section) {
       return pageOwners.get(section) ?? null;
     },
@@ -152,7 +203,7 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
         if (pageOwners.has(routeId)) throw new Error(`Duplicate plugin route: ${routeId}`);
       }
 
-      const registration: PluginRegistration = { routeIds: Object.freeze(routeIds.slice()) };
+      const registration: PluginRegistration = { routeIds: Object.freeze(routeIds.slice()), key: `${module.id}:${++generation}` };
       dynamicOwners.set(module.id, registration);
       for (const route of module.routes) {
         const routeId = route.id;
@@ -160,6 +211,8 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
         pageOwners.set(routeId, module.id);
         pageRenderers.set(routeId, module.pages[routeId]);
       }
+      registerActions(module);
+      publishActions();
 
       let registered = true;
       return () => {
@@ -174,6 +227,8 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
           pageOwners.delete(routeId);
           pageRenderers.delete(routeId);
         }
+        actionModules.delete(module.id);
+        publishActions();
       };
     },
   };

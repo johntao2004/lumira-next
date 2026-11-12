@@ -15,7 +15,7 @@ import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.identity.api.LoginResponse;
 import com.lumira.platform.identity.api.MaintenancePolicyPort;
 import com.lumira.platform.identity.api.TemporaryPasswordResetPort;
-import com.lumira.platform.users.TemporaryPasswordResetController;
+import com.lumira.plugins.directory.users.TemporaryPasswordResetController;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -69,6 +69,7 @@ class TemporaryPasswordResetRouteSecurityTest {
                 username ->
                         switch (username) {
                             case "resetter" -> List.of("platform:users:access", RESET_PERMISSION);
+                            case "missing-page" -> List.of(RESET_PERMISSION);
                             case "wrong-authority" ->
                                     List.of("platform:users:access", "platform:users:update");
                             default -> List.of();
@@ -81,6 +82,19 @@ class TemporaryPasswordResetRouteSecurityTest {
                 .thenReturn(
                         new TemporaryPasswordResetPort.ResetResult(
                                 "OneTime-Secret!8247", Instant.parse("2026-10-11T10:30:00Z")));
+
+        mvc.perform(
+                        post("/api/platform/users/{id}/password-reset", USER_ID)
+                                .with(user("missing-page"))
+                                .header(
+                                        RolePreviewContextService.REVISION_HEADER,
+                                        CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
+                                .session(CurrentAuthorityFilterTestSupport.session())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"version\":9}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(resets);
 
         mvc.perform(
                         post("/api/platform/users/{id}/password-reset", USER_ID)
@@ -185,5 +199,12 @@ class TemporaryPasswordResetRouteSecurityTest {
         TemporaryPasswordResetController.class,
         ForcedPasswordChangeController.class
     })
-    static class TestWebConfiguration {}
+    static class TestWebConfiguration {
+        @org.springframework.context.annotation.Bean
+        com.lumira.platform.common.PluginAuthorizationPort directoryAuthorization()
+                throws Exception {
+            return com.lumira.platform.plugins.PluginManifestAuthorizationTestSupport.forPlugins(
+                    "directory");
+        }
+    }
 }

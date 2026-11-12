@@ -14,6 +14,80 @@ function module(id, routeIds, pages = Object.fromEntries(routeIds.map(routeId =>
   };
 }
 
+test('workspace actions publish immutable snapshots and follow registration ownership', () => {
+  const component = () => null;
+  const staticModule = { ...module('static', []), workspaceActions: [{ id: 'inbox', component }] };
+  const registry = createFrontendPageRegistry([staticModule]);
+  const initial = registry.workspaceActions();
+  assert.equal(registry.workspaceActions(), initial, 'snapshot identity is stable between mutations');
+  assert.ok(Object.isFrozen(initial) && Object.isFrozen(initial[0]));
+  let notifications = 0;
+  const unsubscribe = registry.subscribeWorkspaceActions(() => { notifications++; });
+  const plugin = { ...module('reports', []), workspaceActions: [{ id: 'inbox', component }] };
+  const removeOld = registry.registerPlugin(plugin);
+  const first = registry.workspaceActions();
+  assert.deepEqual(first.map(action => action.moduleId), ['static', 'reports']);
+  assert.equal(first[1].component, component);
+  removeOld();
+  assert.deepEqual(registry.workspaceActions(), initial);
+  const removeNew = registry.registerPlugin(plugin);
+  const second = registry.workspaceActions();
+  assert.notEqual(first[1].key, second[1].key, 'replacement must remount its component');
+  removeOld();
+  assert.equal(registry.workspaceActions(), second, 'stale cleanup cannot remove replacement actions');
+  assert.equal(notifications, 3);
+  unsubscribe();
+  removeNew();
+  assert.equal(notifications, 3);
+});
+
+test('invalid workspace controls cannot partially publish pages or actions', () => {
+  const registry = createFrontendPageRegistry([]);
+  const before = registry.workspaceActions();
+  let publications = 0;
+  registry.subscribeWorkspaceActions(() => { publications++; });
+  for (const workspaceActions of [
+    [{ id: 'bad id', component: () => null }],
+    [{ id: 'item', component: null }],
+    [{ id: 'item', component: () => null }, { id: 'item', component: () => null }],
+  ]) {
+    assert.throws(() => registry.registerPlugin({ ...module('reports', ['report']), workspaceActions }), /workspace action/);
+    assert.equal(registry.owner('report'), null);
+    assert.equal(registry.workspaceActions(), before);
+  }
+  assert.equal(publications, 0);
+});
+
+test('caller mutation cannot change registered action identities or cleanup', () => {
+  const original = () => 'original';
+  const action = { id: 'inbox', component: original };
+  const actions = [action];
+  const registry = createFrontendPageRegistry([]);
+  const remove = registry.registerPlugin({ ...module('reports', []), workspaceActions: actions });
+  action.id = 'changed';
+  action.component = () => 'changed';
+  actions.length = 0;
+  assert.equal(registry.workspaceActions()[0].id, 'inbox');
+  assert.equal(registry.workspaceActions()[0].component, original);
+  remove();
+  assert.deepEqual(registry.workspaceActions(), []);
+});
+
+test('a failed action observer cannot leak registrations or suppress other observers', t => {
+  const log = t.mock.method(console, 'error', () => {});
+  const registry = createFrontendPageRegistry([]);
+  let updates = 0;
+  registry.subscribeWorkspaceActions(() => { throw new Error('broken observer'); });
+  registry.subscribeWorkspaceActions(() => { updates++; });
+  const remove = registry.registerPlugin({ ...module('reports', []), workspaceActions: [{ id: 'inbox', component: () => null }] });
+  assert.equal(updates, 1);
+  assert.equal(registry.workspaceActions().length, 1);
+  remove();
+  assert.equal(updates, 2);
+  assert.equal(registry.workspaceActions().length, 0);
+  assert.equal(log.mock.callCount(), 2);
+});
+
 test('manifest metadata rejects duplicate routes and malformed tab aliases', () => {
   assert.throws(() => validateFrontendModuleManifest(module('sample', ['one', 'one'])), /Duplicate frontend route: one/);
   assert.throws(() => validateFrontendModuleManifest(module('sample', ['one', 'two'], undefined, [

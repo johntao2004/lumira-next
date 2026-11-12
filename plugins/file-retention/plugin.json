@@ -1,0 +1,116 @@
+{
+  "formatVersion": 1,
+  "id": "file-retention",
+  "name": "文件保留策略",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.fileretention.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "files",
+      "version": "1.0.0"
+    },
+    {
+      "id": "settings",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:file-retention:access",
+    "platform:file-retention:update"
+  ],
+  "routes": [
+    {
+      "id": "file-retention",
+      "label": "fileRetention",
+      "permission": "platform:file-retention:access",
+      "group": "administration",
+      "order": 195,
+      "global": true,
+      "operations": {
+        "update": "platform:file-retention:update"
+      }
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/file-retention",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:file-retention:access"
+      ],
+      "authorityScopes": {
+        "platform:file-retention:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/file-retention",
+      "authorities": [
+        "platform:file-retention:update"
+      ],
+      "allAuthorities": [
+        "platform:file-retention:access"
+      ],
+      "authorityScopes": {
+        "platform:file-retention:access": "global",
+        "platform:file-retention:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/file-retention/rollback",
+      "authorities": [
+        "platform:file-retention:update"
+      ],
+      "allAuthorities": [
+        "platform:file-retention:access"
+      ],
+      "authorityScopes": {
+        "platform:file-retention:access": "global",
+        "platform:file-retention:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/file-retention/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:file-retention:access"
+      ],
+      "authorityScopes": {
+        "platform:file-retention:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/file-retention/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:file-retention:access"
+      ],
+      "authorityScopes": {
+        "platform:file-retention:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    }
+  ],
+  "dataSets": []
+}

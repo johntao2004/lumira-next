@@ -4,7 +4,7 @@ Run after pnpm plugins:build and starting 8010. Requires JDK 25 and the local te
 from pathlib import Path
 import io,json,hashlib,zipfile,subprocess,os,time,uuid,threading
 from smoke_support import client,call,login,write,token,sql,config,wait_for_readiness
-ROOT=Path(__file__).resolve().parents[1];WORK=ROOT/'.runtime/plugin-work/fixtures';WORK.mkdir(parents=True,exist_ok=True)
+ROOT=Path(__file__).resolve().parents[1];WORK=Path(os.environ.get('LUMIRA_PLUGIN_SMOKE_WORK') or ROOT/'.runtime/plugin-work/fixtures');WORK.mkdir(parents=True,exist_ok=True)
 JAVA=Path(os.environ.get('JAVA_HOME','/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home'))/'bin'
 admin=client();assert login(admin,'admin',config['LUMIRA_BOOTSTRAP_PASSWORD'])==200
 P='/platform/modules/plugins';fixture_ids=[]
@@ -35,12 +35,15 @@ def modify(data,mutation):
  with zipfile.ZipFile(io.BytesIO(data)) as z:files={n:z.read(n) for n in z.namelist() if not n.endswith('/')}
  manifest=json.loads(files.pop('plugin.json'));mutation(manifest,files)
  manifest['files']={n:hashlib.sha256(v).hexdigest() for n,v in files.items()};files['plugin.json']=json.dumps(manifest,sort_keys=True).encode();return zipbytes(files)
-def fixture(id,deps=(),bundles=(),delay=0,fail=False,missing=False,private=False,protected=False,api_path=None):
+def fixture(id,deps=(),bundles=(),delay=0,fail=False,missing=False,private=False,protected=False,api_path=None,events=False):
  fixture_ids.append(id);dir=WORK/id;src=dir/'src';classes=dir/'classes';src.mkdir(parents=True,exist_ok=True);classes.mkdir(exist_ok=True)
  endpoint=api_path or '/api/plugins/'+id+'/status'
  package='com.lumira.plugins.'+id.replace('-','_');entry=package+'.ProbePlugin'
  mutation='@PostMapping("/api/plugins/'+id+'/mutate") public java.util.Map<String,String> mutate(){return java.util.Map.of("code","authorized");}' if protected else ''
  resources=''
+ if events:
+  resources='''@Bean com.lumira.platform.common.DurableEventConsumerPort consumer(org.springframework.jdbc.core.simple.JdbcClient jdbc){return new com.lumira.platform.common.DurableEventConsumerPort(){public String sourceType(){return "qa.plugin.events";}public String eventType(){return "created";}public void consume(Event e){jdbc.sql("INSERT INTO plugin_qa_plugin_events_effect(id) VALUES(:id)").param("id",e.id()).update();if(e.eventKey().endsWith("/slow"))jdbc.sql("SELECT pg_sleep(1.8)").query((rs,n)->true).single();}};}'''
+  resources+='''@Bean com.lumira.platform.common.DurableEventProducerPort producer(){return ()->java.util.List.of(new com.lumira.platform.common.DurableEventProducerPort.EventType("qa.plugin.events","created"));}'''
  if id=='qa-plugin-slow':
   marker=WORK/'tasks.log';closed=WORK/'closed.log';marker.unlink(missing_ok=True);closed.unlink(missing_ok=True)
   resources=f'@Bean Object task(com.lumira.plugin.sdk.PluginResources r){{r.schedule("tick",java.time.Duration.ofMillis(30),()->{{try{{java.nio.file.Files.writeString(java.nio.file.Path.of("{marker}"),"tick\\n",java.nio.file.StandardOpenOption.CREATE,java.nio.file.StandardOpenOption.APPEND);}}catch(Exception e){{throw new RuntimeException(e);}}}});r.own("listener",()->java.nio.file.Files.writeString(java.nio.file.Path.of("{closed}"),"closed"));return new Object();}}'
@@ -48,7 +51,8 @@ def fixture(id,deps=(),bundles=(),delay=0,fail=False,missing=False,private=False
 import com.lumira.plugin.sdk.PluginEntry;import com.lumira.platform.modules.ModuleEndpoint;import org.pf4j.PluginWrapper;import org.springframework.context.annotation.*;import org.springframework.web.bind.annotation.*;
 public class ProbePlugin extends PluginEntry {{public ProbePlugin(PluginWrapper w){{super(w);}}public Class<?> configuration(){{return Config.class;}}public void checkHealth(){{try{{Thread.sleep({delay});}}catch(InterruptedException e){{Thread.currentThread().interrupt();throw new IllegalStateException(e);}}}}
 @Configuration(proxyBeanMethods=false) public static class Config {{@Bean ProbeController probe(){{return new ProbeController();}} {resources}}}
-@ModuleEndpoint("{id}") @RestController public static class ProbeController {{@GetMapping("{endpoint}") public java.util.Map<String,String> status(@RequestParam(defaultValue="0") int delay)throws Exception{{Thread.sleep(Math.min(delay,5000));return java.util.Map.of("code",{"com.example.qa.api.PrivateValue.value()" if private else '"new-runtime-code"'},"loader",getClass().getClassLoader().getClass().getName());}} {mutation} {"public Object missing(){return new MissingClass();}" if missing else ''}}}
+public record ProbeResponse(String code,String loader) {{}}
+@ModuleEndpoint("{id}") @RestController public static class ProbeController {{@GetMapping("{endpoint}") public ProbeResponse status(@RequestParam(defaultValue="0") int delay)throws Exception{{Thread.sleep(Math.min(delay,5000));return new ProbeResponse({"com.example.qa.api.PrivateValue.value()" if private else '"new-runtime-code"'},getClass().getClassLoader().getClass().getName());}} {mutation} {"public Object missing(){return new MissingClass();}" if missing else ''}}}
 }}'''
  (src/'ProbePlugin.java').write_text(source)
  if missing:(src/'MissingClass.java').write_text(f'package {package};public class MissingClass {{}}')
@@ -67,14 +71,24 @@ public class ProbePlugin extends PluginEntry {{public ProbePlugin(PluginWrapper 
  probe=ROOT/'plugins/sdk/examples/hotplug-probe/dist/package/frontend/plugin.js'
  assert probe.exists(),'Build probe with pnpm plugins:build sdk/examples/hotplug-probe'
  files={'backend/plugin.jar':jar.read_bytes(),'frontend/plugin.js':probe.read_bytes().replace(b'hotplug-probe',id.encode()),'migrations/V1__fixture.sql':b'SELECT 1;' if not fail else b'INVALID MIGRATION;'};files.update(libs)
+ if events:files['migrations/V1__fixture.sql']=b'CREATE TABLE IF NOT EXISTS plugin_qa_plugin_events_effect(id uuid PRIMARY KEY);'
  for other,data in bundles:files['dependencies/'+other+'.lumira-plugin.zip']=data
  manifest={'formatVersion':1,'id':id,'name':id,'version':'1.0.0','sdkVersion':'1','entryClass':entry,'backend':'backend/plugin.jar','frontend':'frontend/plugin.js','dependencies':[{'id':'platform','version':'1.0.0'},*[{'id':d,'version':'1.0.0'} for d in deps]],'permissions':[],'routes':[{'id':id,'label':id,'permission':None,'group':'operations','order':999,'global':False}],'apiRules':[{'method':'GET','path':endpoint,'authorities':[],'publicAccess':True,'global':False}],'files':{n:hashlib.sha256(v).hexdigest() for n,v in files.items()}}
  if protected:
   perm=f'platform:{id}:read';manifest['permissions']=[perm];manifest['routes'][0]['permission']=perm;manifest['apiRules'][0].update(authorities=[perm],publicAccess=False);manifest['apiRules'].append({'method':'POST','path':f'/api/plugins/{id}/mutate','authorities':[perm],'publicAccess':False,'global':True})
  files['plugin.json']=json.dumps(manifest,sort_keys=True).encode();data=zipbytes(files);(dir/(id+'.lumira-plugin.zip')).write_bytes(data);return data
 
+def runtime_identity():
+ pid=os.environ.get('LUMIRA_SMOKE_BACKEND_PID')
+ if not pid:return subprocess.check_output(['node','scripts/status.mjs'],cwd=ROOT,text=True).splitlines()[:2]
+ assert pid.isdigit(),'Invalid QA backend PID'
+ proc=Path('/proc')/pid
+ env=dict(part.split(b'=',1) for part in (proc/'environ').read_bytes().split(b'\0') if b'=' in part)
+ assert env.get(b'LUMIRA_DB_URL',b'').decode()==config['LUMIRA_DB_URL'],'QA process database mismatch'
+ return [pid,(proc/'stat').read_text().rsplit(')',1)[1].split()[19]]
+
 def main():
- before_pid=subprocess.check_output(['node','scripts/status.mjs'],cwd=ROOT,text=True).splitlines()[:2]
+ before_pid=runtime_identity()
  baseline=sql("SELECT md5(string_agg(row_to_json(t)::text,'' ORDER BY id)) FROM platform_sensitive_word t WHERE NOT deleted")
  try:
   # Every existing plugin really removes its endpoints/assets and restores persistent data.
@@ -98,9 +112,9 @@ def main():
   row=next(x for x in jsoncall('/platform/modules') if x['id']=='qa-plugin-b');jsoncall('/platform/modules/qa-plugin-b/state','PUT',{'enabled':False,'version':row['stateVersion'],'reason':'Stopped consumer still retains dependency'})
   assert 'qa-plugin-b' in str(jsoncall(P+'/qa-plugin-lib/uninstall-plan','POST')['blockers'])
   operate('qa-plugin-a','uninstall');assert next(x for x in jsoncall(P) if x['id']=='qa-plugin-lib')['installed']
-  operate('qa-plugin-b','uninstall');assert not next(x for x in jsoncall(P) if x['id']=='qa-plugin-lib')['installed']
+  operate('qa-plugin-b','uninstall');assert next(x for x in jsoncall(P) if x['id']=='qa-plugin-lib')['installed']
   operate('qa-plugin-lib','install');operate('qa-plugin-a','install');operate('qa-plugin-a','uninstall');assert next(x for x in jsoncall(P) if x['id']=='qa-plugin-lib')['installed'];operate('qa-plugin-lib','uninstall')
-  print('PASS: complete offline dependencies, private JAR, stopped reverse consumers, shared/explicit retention, automatic cleanup')
+  print('PASS: complete offline dependencies, private JAR, stopped reverse consumers, all providers retained until explicit removal')
   # In-flight requests drain; serialized operations and state revisions reject races.
   slow=fixture('qa-plugin-slow',delay=1500);imports(slow);plan=jsoncall(P+'/qa-plugin-slow/install-plan','POST');csrf={**token(admin),'Content-Type':'application/json'};op=jsoncall(P+'/qa-plugin-slow/install','POST',{'revision':plan['revision']})
   # A concurrent write may reach the busy guard or the runtime readiness filter.
@@ -148,8 +162,8 @@ def main():
   imports(fixture('qa-plugin-api',api_path='/api/platform/modules'));assert 'pluginEndpointConflict' in str(jsoncall(P+'/qa-plugin-api/install-plan','POST')['blockers'])
   print('PASS: missing classes, immutable version conflicts, missing/version dependencies, route conflict, failed migration rollback')
   assert sql("SELECT md5(string_agg(row_to_json(t)::text,'' ORDER BY id)) FROM platform_sensitive_word t WHERE NOT deleted")==baseline
-  assert subprocess.check_output(['node','scripts/status.mjs'],cwd=ROOT,text=True).splitlines()[:2]==before_pid,'Platform restarted during hotplug'
-  print('PASS: original word baseline unchanged; backend/frontend process IDs unchanged')
+  assert runtime_identity()==before_pid,'Platform restarted during hotplug'
+  print('PASS: original word baseline unchanged; runtime identity unchanged')
  finally:
   wait_for_readiness()
   for id in reversed(list(dict.fromkeys(fixture_ids))):

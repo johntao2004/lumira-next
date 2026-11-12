@@ -38,12 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 class CurrentAuthorityFactorVersionTest {
     private static final UUID PRIMARY_EPOCH = new UUID(0, 0);
     private static final UUID FACTOR_EPOCH = new UUID(0, 0);
-    private static final String CONTEXT_QUERY =
-            """
-            SELECT u.id,a.authority FROM platform_user u
-              LEFT JOIN platform_effective_authority a ON a.user_id=u.id
-             WHERE u.username=:name AND u.enabled=true AND u.deleted_at IS NULL
-            """;
+    private static final String CONTEXT_QUERY = CurrentAuthorityFilter.CONTEXT_QUERY;
     private static final UUID USER_ID = UUID.randomUUID();
     private static final String CONTEXT_REVISION = "d32f39a4-7e85-41ef-9295-f810980501bb";
 

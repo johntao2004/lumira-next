@@ -8,13 +8,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PlatformOperation;
-import com.lumira.platform.mail.MailDeliveryTestService;
+import com.lumira.platform.mail.MailTransportProbeAdapter;
 import com.lumira.platform.mail.SmtpGateway;
-import com.lumira.platform.mail.SmtpTestController;
 import com.lumira.platform.sms.SmsConnectionSource;
-import com.lumira.platform.sms.SmsDeliveryTestService;
 import com.lumira.platform.sms.SmsGateway;
-import com.lumira.platform.sms.SmsTestController;
+import com.lumira.platform.sms.SmsTransportProbeAdapter;
+import com.lumira.plugins.deliverysettings.MailDeliveryTestService;
+import com.lumira.plugins.deliverysettings.SmsDeliveryTestService;
+import com.lumira.plugins.deliverysettings.SmsTestController;
+import com.lumira.plugins.deliverysettings.SmtpTestController;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -26,7 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 class DeliveryTestControllerSecurityTest {
     @Test
     void smtpTestIsPostOnlyAndRejectsANonWriterBeforeReadingSettings() throws Exception {
-        var settings = mock(SmtpSettingsService.class);
+        var settings = mock(com.lumira.platform.common.MailConfigurationPort.class);
         var gateway = mock(SmtpGateway.class);
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
@@ -37,7 +39,9 @@ class DeliveryTestControllerSecurityTest {
                 MockMvcBuilders.standaloneSetup(
                                 new SmtpTestController(
                                         new MailDeliveryTestService(
-                                                settings, gateway, guard, audit)))
+                                                new MailTransportProbeAdapter(settings, gateway),
+                                                guard,
+                                                audit)))
                         .build();
 
         mvc.perform(get("/api/platform/settings/smtp/test"))
@@ -52,7 +56,7 @@ class DeliveryTestControllerSecurityTest {
 
     @Test
     void smsTestIsPostOnlyAndRejectsANonWriterBeforeLoadingCredentials() throws Exception {
-        var settings = mock(SmsSettingsService.class);
+        var settings = mock(com.lumira.platform.common.SmsConfigurationPort.class);
         var source = mock(SmsConnectionSource.class);
         var gateway = mock(SmsGateway.class);
         var guard = mock(AdministrationPort.class);
@@ -64,7 +68,10 @@ class DeliveryTestControllerSecurityTest {
                 MockMvcBuilders.standaloneSetup(
                                 new SmsTestController(
                                         new SmsDeliveryTestService(
-                                                settings, source, gateway, guard, audit)))
+                                                new SmsTransportProbeAdapter(
+                                                        settings, source, gateway),
+                                                guard,
+                                                audit)))
                         .build();
 
         mvc.perform(get("/api/platform/settings/sms/test"))

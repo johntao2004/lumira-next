@@ -1,0 +1,81 @@
+{
+  "formatVersion": 1,
+  "id": "event-console",
+  "name": "事件管理",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.eventconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "events",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:event-outbox:access",
+    "platform:event-outbox:replay"
+  ],
+  "routes": [
+    {
+      "id": "event-outbox",
+      "label": "eventOutbox",
+      "permission": "platform:event-outbox:access",
+      "group": "operations",
+      "order": 40,
+      "global": true,
+      "operations": {
+        "replay": "platform:event-outbox:replay"
+      }
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/event-outbox",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:event-outbox:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/event-outbox/{eventId}/trace",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:event-outbox:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/event-outbox/operations/{auditId}/trace",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:event-outbox:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/event-outbox/{id}/replay",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:event-outbox:access",
+        "platform:event-outbox:replay"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ],
+  "dataSets": []
+}

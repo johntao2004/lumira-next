@@ -80,18 +80,13 @@ class ModuleAdminServiceTest {
                         .getStatusCode()
                         .value());
         when(states.change("audit-console", false, 0, "admin", "reason"))
-                .thenThrow(new ModuleStateStore.Rejected("requiredModule"));
+                .thenReturn(new ModuleStateStore.State("audit-console", false, 1));
         assertEquals(
-                409,
-                assertThrows(
-                                ResponseStatusException.class,
-                                () ->
-                                        service.change(
-                                                "admin",
-                                                "audit-console",
-                                                new ModuleAdminService.Change(false, 0L, "reason")))
-                        .getStatusCode()
-                        .value());
+                new ModuleAdminService.State("audit-console", false, 1),
+                service.change(
+                        "admin",
+                        "audit-console",
+                        new ModuleAdminService.Change(false, 0L, "reason")));
     }
 
     @Test
@@ -124,7 +119,7 @@ class ModuleAdminServiceTest {
                         .findFirst()
                         .orElseThrow();
         assertFalse(audit.required());
-        assertTrue(audit.core());
+        assertFalse(audit.core());
         assertTrue(audit.enabled());
         var optional =
                 service.list("admin").stream()

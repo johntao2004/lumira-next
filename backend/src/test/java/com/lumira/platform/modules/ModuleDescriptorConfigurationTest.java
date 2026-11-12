@@ -2,17 +2,12 @@ package com.lumira.platform.modules;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.lumira.platform.audit.AuditModuleConfiguration;
 import com.lumira.platform.communication.CommunicationModuleConfiguration;
-import com.lumira.platform.dictionaries.DictionariesModuleConfiguration;
-import com.lumira.platform.directory.DirectoryModuleConfiguration;
 import com.lumira.platform.events.EventsModuleConfiguration;
 import com.lumira.platform.feedback.FeedbackModuleConfiguration;
 import com.lumira.platform.files.FilesModuleConfiguration;
 import com.lumira.platform.identity.IdentityModuleConfiguration;
-import com.lumira.platform.localization.LocalizationModuleConfiguration;
 import com.lumira.platform.mfa.MfaModuleConfiguration;
 import com.lumira.platform.moduleadmin.PlatformModuleDescriptorConfiguration;
 import com.lumira.platform.monitoring.MonitoringModuleConfiguration;
@@ -32,10 +27,9 @@ class ModuleDescriptorConfigurationTest {
         new ApplicationContextRunner()
                 .withUserConfiguration(
                         ModuleConfiguration.class,
+                        DictionaryDescriptor.class,
                         IdentityModuleConfiguration.class,
                         PlatformModuleDescriptorConfiguration.class,
-                        DirectoryModuleConfiguration.class,
-                        DictionariesModuleConfiguration.class,
                         SettingsModuleConfiguration.class,
                         FilesModuleConfiguration.class,
                         EventsModuleConfiguration.class,
@@ -43,11 +37,9 @@ class ModuleDescriptorConfigurationTest {
                         NotificationsModuleConfiguration.class,
                         NotificationDescriptorTestConfiguration.class,
                         MonitoringModuleConfiguration.class,
-                        AuditModuleConfiguration.class,
                         FeedbackModuleConfiguration.class,
                         SensitiveWordsModuleConfiguration.class,
                         MfaModuleConfiguration.class,
-                        LocalizationModuleConfiguration.class,
                         CommunicationModuleConfiguration.class)
                 .run(
                         context -> {
@@ -59,11 +51,8 @@ class ModuleDescriptorConfigurationTest {
                                             "identity",
                                             "platform",
                                             "communication",
-                                            "audit-console",
                                             "feedback",
                                             "sensitive-words",
-                                            "localization",
-                                            "directory",
                                             "dictionaries",
                                             "settings",
                                             "files",
@@ -73,9 +62,18 @@ class ModuleDescriptorConfigurationTest {
                                             "monitoring",
                                             "mfa"),
                                     Set.copyOf(ids));
-                            assertTrue(registry.require("audit-console").core());
+                            assertFalse(ids.contains("audit-console"));
                             assertFalse(registry.require("feedback").core());
                             assertFalse(registry.require("mfa").core());
                         });
+    }
+
+    @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods = false)
+    static class DictionaryDescriptor {
+        @org.springframework.context.annotation.Bean
+        PlatformModule dictionariesModule() {
+            return new PlatformModule(
+                    "dictionaries", "字典管理", "1.0.0", List.of("identity", "platform"), false);
+        }
     }
 }

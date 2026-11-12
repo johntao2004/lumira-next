@@ -71,6 +71,8 @@ pnpm db:schema-smoke
 
 范围、接口及后续切换条件见 [架构与迁移说明](docs/architecture.md)。当前交付为可运行底座第一阶段，不是全量业务迁移结果，不应删除旧系统。
 
+Kubernetes 内部服务部署、HPA、数据库连接预算和固定插件图发布限制见 [Kubernetes 部署与容量边界](docs/kubernetes.md)。部署模板不代表已完成云端或万级 RPS 验收。
+
 算法选择、复杂度、密码升级策略和“最新最优”的验证边界见 [算法基线](docs/algorithm-baseline.md)。
 
 平台运维页面提供在线用户会话管理（`/dashboard/online-users`）和只读运行监控（`/dashboard/monitoring`）。前者复用 Spring Session 并要求全局用户权限，后者聚合用户、会话、模块、Outbox、邮件、通知和审计计数并要求全局审计读取权限；两者均支持服务端分页/权限隔离、刷新失败重试、八语言和移动端布局。

@@ -14,6 +14,7 @@ import { formatDateTime } from "@/platform/i18n/format";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { usePreferences } from "@/platform/providers";
 import { validPaymentText } from "./payment-input-validation";
+import { trustedPaymentQrUrl } from "./payment-qr-policy";
 
 export type PaymentLocale = "zh-CN" | "zh-TW" | "en" | "ja" | "ko" | "fr" | "es" | "de";
 
@@ -95,6 +96,7 @@ export type PaymentChannelWorkbenchProps = {
   canRefund: boolean;
   readOnlyPreview?: boolean;
   subjectMaxLength?: number;
+  validateQrCode?: (value: string) => boolean;
 };
 
 type ProviderSettings = {
@@ -159,34 +161,6 @@ function money(amountFen: number, locale: string) {
   return new Intl.NumberFormat(locale, { style: "currency", currency: "CNY" }).format(amountFen / 100);
 }
 
-function trustedQrUrl(order: PaymentOrder) {
-  if (!order.codeUrl || order.codeUrl.length > 512 || /[\u0000-\u0020]/.test(order.codeUrl)) return null;
-  try {
-    if (order.providerId === "wechat-pay") {
-      const url = new URL(order.codeUrl);
-      return url.protocol === "weixin:"
-          && url.hostname === "wxpay"
-          && !url.port
-          && !url.username
-          && !url.password
-          && ["/bizpayurl", "/bizpayurl/up"].includes(url.pathname)
-          && Boolean(url.search)
-          && !url.hash
-        ? order.codeUrl
-        : null;
-    }
-    const url = new URL(order.codeUrl);
-    if (order.providerId === "alipay-pay") {
-      return url.protocol === "https:" && url.hostname === "qr.alipay.com" && !url.username && !url.password
-        ? order.codeUrl
-        : null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function statusCopy(status: string, text: (key: string) => string) {
   switch (status) {
     case "PENDING": return text("statePending");
@@ -209,13 +183,15 @@ function refundStatusCopy(status: string | null, text: (key: string) => string) 
   }
 }
 
-function qrAvailable(order: PaymentOrder | null, now: number) {
+function paymentQrAvailable(order: PaymentOrder | null, now: number, validate: (order: PaymentOrder) => string | null) {
   if (!order || order.status !== "PENDING" || !order.codeUrl || !order.expiresAt) return false;
   const expiresAt = Date.parse(order.expiresAt);
-  return Number.isFinite(expiresAt) && expiresAt > now && Boolean(trustedQrUrl(order));
+  return Number.isFinite(expiresAt) && expiresAt > now && Boolean(validate(order));
 }
 
 export function PaymentChannelWorkbench(props: PaymentChannelWorkbenchProps) {
+  const trustedQrUrl = (order: PaymentOrder) => trustedPaymentQrUrl(order, order.providerId === props.providerId ? props.validateQrCode : undefined);
+  const qrAvailable = (order: PaymentOrder | null, now: number) => paymentQrAvailable(order, now, trustedQrUrl);
   const {
     providerId,
     section,

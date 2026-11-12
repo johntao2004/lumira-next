@@ -29,7 +29,7 @@ test('every built-in Tab route in a navigation group preserves its expansion sta
     'platform:security:access', 'platform:passkey:access', 'platform:smtp:access', 'platform:sms:access',
     'platform:users:access', 'platform:online-users:access', 'platform:mail-deliveries:access', 'platform:sms-deliveries:access',
   ];
-  const navigation = collapseTabbedNavigation(availableNavigation(permissions, [], permissions));
+  const navigation = collapseTabbedNavigation(availableNavigation(permissions, ["delivery-console", "directory", "site-console", "delivery-settings", "authentication-console"], permissions));
   const ids = navigation.map(group => group.id);
   for (const routes of [
     ['branding', 'watermark', 'agreements', 'maintenance'],
@@ -44,8 +44,9 @@ test('every built-in Tab route in a navigation group preserves its expansion sta
 });
 
 test('file retention keeps its settings permission but is no longer a settings sidebar entry', () => {
-  assert.equal(canAccessSection('file-retention', ['platform:file-retention:access']), true);
+  assert.equal(canAccessSection('file-retention', ['platform:file-retention:access'], ['file-retention']), true);
   assert.equal(canAccessSection('file-retention', []), false);
+  assert.equal(canAccessSection('file-retention', ['platform:file-retention:access']), false);
   const navigation = availableNavigation(['platform:file-retention:access'], [], ['platform:file-retention:access']);
   assert.equal(navigation.flatMap(group => group.pages).some(page => page.id === 'file-retention'), false);
 });

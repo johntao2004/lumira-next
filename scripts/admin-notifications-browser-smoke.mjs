@@ -45,9 +45,13 @@ try {
   assert.match(broadcastId, /^[a-f0-9-]{36}$/);
   assert.equal(result.recipientCount, 1);
   const row = page.getByRole("row").filter({ hasText: title });
-  await expect.poll(() => row.count()).toBeGreaterThan(0);
+  // Delivery is asynchronous and this page refreshes its inbox projection every ten seconds.
+  await expect.poll(() => row.count(), { timeout: 20_000 }).toBeGreaterThan(0);
   for (const notificationRow of await row.all()) await expect(notificationRow).toContainText(body);
-  const list = await context.request.get("/api/platform/notifications?page=1&pageSize=20&search=");
+  const identity = await (await context.request.get("/api/auth/me")).json();
+  const list = await context.request.get("/api/platform/notifications?page=1&pageSize=20&search=", {
+    headers: { "X-Lumira-Authorization-Context-Revision": identity.authorizationContext.revision },
+  });
   assert.equal(list.status(), 200, await list.text());
   const entries = await list.json();
   assert.ok(entries.items.some((item) => item.params.includes(title)));

@@ -11,6 +11,6 @@ public class SettingsModuleConfiguration {
     @Bean
     PlatformModule settingsModule() {
         return new PlatformModule(
-                "settings", "系统设置", "1.0.0", List.of("identity", "platform", "dictionaries"), true);
+                "settings", "系统设置", "1.0.0", List.of("identity", "platform"), true);
     }
 }

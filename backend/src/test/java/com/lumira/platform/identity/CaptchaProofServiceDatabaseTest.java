@@ -14,7 +14,8 @@ import com.lumira.platform.common.ClientAddressResolver;
 import com.lumira.platform.common.FixedWindowBuckets;
 import com.lumira.platform.common.RoleAuthenticationPolicyPort;
 import com.lumira.platform.common.SecretKeys;
-import com.lumira.platform.identity.CaptchaSettingsService.Mode;
+import com.lumira.platform.identity.api.CaptchaConfigurationPort;
+import com.lumira.platform.identity.api.CaptchaConfigurationPort.Mode;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
@@ -40,7 +41,7 @@ class CaptchaProofServiceDatabaseTest {
     private JdbcClient client;
     private TransactionTemplate transactions;
     private String schema;
-    private CaptchaSettingsService settings;
+    private CaptchaConfigurationPort settings;
     private CaptchaProofService service;
     private String source;
     private PublicAuthCrypto crypto;
@@ -74,10 +75,10 @@ class CaptchaProofServiceDatabaseTest {
 
         policyMode = new AtomicReference<>(Mode.ALWAYS);
         challengeType = new AtomicReference<>("IMAGE_TEXT");
-        settings = mock(CaptchaSettingsService.class);
+        settings = mock(CaptchaConfigurationPort.class);
         when(settings.current()).thenAnswer(invocation -> snapshot(policyMode.get()));
         when(settings.readyFor(any())).thenReturn(true);
-        when(settings.readiness()).thenReturn(new CaptchaSettingsService.Readiness(true, true));
+        when(settings.readiness()).thenReturn(new CaptchaConfigurationPort.Readiness(true, true));
         var localAssets = mock(LocalCaptchaAssets.class);
         when(localAssets.create(anyString(), any()))
                 .thenAnswer(
@@ -424,16 +425,16 @@ class CaptchaProofServiceDatabaseTest {
         return CaptchaRequestFacts.from(request, new ClientAddressResolver(""), crypto, false);
     }
 
-    private CaptchaSettingsService.Snapshot snapshot(Mode mode) {
+    private CaptchaConfigurationPort.Snapshot snapshot(Mode mode) {
         var actions = new EnumMap<CaptchaProofPort.Action, Mode>(CaptchaProofPort.Action.class);
         for (var action : CaptchaProofPort.Action.values()) actions.put(action, Mode.OFF);
         actions.put(CaptchaProofPort.Action.PASSWORD_RECOVERY_REQUEST, mode);
         Map<String, Mode> serialized = new java.util.LinkedHashMap<>();
         actions.forEach((action, value) -> serialized.put(action.name(), value));
         var data =
-                new CaptchaSettingsService.Data(
+                new CaptchaConfigurationPort.Data(
                         mode != Mode.OFF, "LOCAL", challengeType.get(), serialized);
-        return new CaptchaSettingsService.Snapshot(
+        return new CaptchaConfigurationPort.Snapshot(
                 1, UUID.fromString("11111111-1111-4111-8111-111111111111"), data);
     }
 

@@ -1,4 +1,5 @@
 export const messages = {
+    serverBusy: "システムが混雑しています。このリクエストは処理されていません。しばらくしてから再試行してください。",
     rolePermissionDelegationDenied: "選択した権限を委譲できません。プラットフォーム権限にはグローバルな保有が必要です。プラグイン権限にはグローバルな保有、またはプラグインのインストール権限が必要です。",
     rolePermissionUnavailable: "権限カタログが変更され、選択した権限が利用できなくなりました。ロール編集画面を更新して再試行してください。",
     registrationRoleInUse: "このロールは新規アカウントの既定ロールです。削除、無効化、データ範囲の拡大、公開登録の許可範囲外の権限付与はできません。先に公開登録設定で別の既定ロールを選択してください。",
@@ -140,6 +141,7 @@ export const messages = {
     pluginBusy: "A plugin operation is in progress",
     pluginFixedGraph: "この環境のモジュールはリリースで更新します。オンラインでのインポート、インストール、有効化、無効化、アンインストールはできません。運用担当者に連絡してください。",
     pluginClusterLifecycleUnsupported: "複数の実行ノードが稼働中のため、オンラインでのモジュール変更は拒否されました。リリースで更新してください。",
+    pluginClusterOperationActive: "クラスターのモジュール変更が未完了です。完了を待つか、運用担当者に復旧を依頼してください。",
     pluginGraphChanged: "実行中のモジュール構成が読み込み済みスナップショットと一致しません。操作を拒否しました。運用担当者に連絡してください。",
     pluginReleaseNodesActive: "モジュールをリリースする前に、旧実行ノードを停止してください。",
     pluginOperationLeaseLost: "この実行ノードは操作の所有者ではなくなりました。状態を再読み込みしてください。",
@@ -152,6 +154,7 @@ export const messages = {
     pluginDependencyCycle: "Circular plugin dependency",
     pluginVersionConflict: "Plugin version conflict",
     pluginStartFailed: "Plugin startup failed. Check runtime logs.",
+    pluginServiceOwnerConflict: "プラグインが別のプラグインのサービスを宣言しているか、同じ種類のサービスを重複して宣言しています。",
     pluginDrainTimeout: "Plugin calls are still active. Uninstall cancelled.",
     invalidPluginPackage: "Invalid plugin package",
     pluginDigestMismatch: "Plugin integrity check failed",

@@ -27,12 +27,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** Supplies current persisted grants and policy while leaving the security filter enabled. */
 final class CurrentAuthorityFilterTestSupport {
-    private static final String CONTEXT_QUERY =
-            """
-            SELECT u.id,a.authority FROM platform_user u
-              LEFT JOIN platform_effective_authority a ON a.user_id=u.id
-             WHERE u.username=:name AND u.enabled=true AND u.deleted_at IS NULL
-            """;
+    private static final String CONTEXT_QUERY = CurrentAuthorityFilter.CONTEXT_QUERY;
     private static final UUID USER_ID = UUID.fromString("5f7b427e-c0e8-4d75-9cc3-e078b3aa6400");
     private static final UUID POLICY_REVISION =
             UUID.fromString("8395eb54-cff1-4f95-8b51-8d82148c558b");

@@ -67,26 +67,6 @@ function traceContext(target) {
 traceContext(adminContext);
 traceContext(context);
 
-function readRetirement(fileIdValue, graceStartedAt) {
-  const output = sql(`
-    SELECT count(*)::text || '|' ||
-           count(*) FILTER (WHERE retire_after IS NULL)::text || '|' ||
-           count(*) FILTER (WHERE retire_after < ${sqlQuote(graceStartedAt)}::timestamptz + interval '24 hours')::text || '|' ||
-           coalesce(min(retire_after)::text, '') || '|' || coalesce(max(retire_after)::text, '')
-      FROM platform_file_blob_chunk WHERE file_id=${sqlQuote(fileIdValue)};
-  `);
-  const values = output.split('|');
-  assert.equal(values.length, 5, 'Retired chunk query must return one aggregate row');
-  const [chunkCount, missingCount, shortGraceCount, earliestRetireAfter, latestRetireAfter] = values;
-  return {
-    chunkCount: Number(chunkCount),
-    missingCount: Number(missingCount),
-    shortGraceCount: Number(shortGraceCount),
-    earliestRetireAfter,
-    latestRetireAfter,
-  };
-}
-
 async function waitUntilFileRemoved(timeoutMs = 70_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -97,20 +77,6 @@ async function waitUntilFileRemoved(timeoutMs = 70_000) {
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   assert.fail('The accelerated synthetic file was not physically cleaned within one 60-second sweep interval.');
-}
-
-async function waitUntilRetirementInitialized(graceStartedAt, timeoutMs = 70_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const retirement = readRetirement(fileId, graceStartedAt);
-    if (retirement.chunkCount > 0 && retirement.missingCount === 0) return retirement;
-    const response = await adminContext.request.get(`/api/account/files/${fileId}`, { headers: await authorizationHeaders(adminContext) });
-    if (response.status() === 404) return null;
-    assert.equal(response.status(), 200, await response.text());
-    assert.equal((await response.json()).state, 'DELETING', 'The synthetic file must remain fenced while the first blob retirement is scheduled');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  assert.fail('The scheduled cleanup did not initialize blob retirement within one bounded sweep interval.');
 }
 
 async function csrfHeaders(target = context) {
@@ -169,7 +135,7 @@ async function createTemporarySettingsActor(label) {
     name: `Retention ${label} QA`,
     enabled: true,
     dataScope: 'ALL',
-    authorities: ['platform:modules:read', 'platform:settings:read', 'platform:settings:write'],
+    authorities: ['platform:modules:access', 'platform:file-retention:access', 'platform:file-retention:update'],
   });
   assert.equal(roleResponse.status(), 201, `Could not create the isolated ${label} settings role (HTTP ${roleResponse.status()}).`);
   const role = await roleResponse.json();
@@ -375,16 +341,6 @@ async function cleanupFile() {
       continue;
     }
     if (file.state === 'DELETING') {
-      const graceStartedAt = sql('SELECT clock_timestamp()::text');
-      let retirement = readRetirement(fileId, graceStartedAt);
-      if (retirement.chunkCount > 0 && retirement.missingCount > 0) {
-        sql(`UPDATE platform_file SET updated_at=clock_timestamp()-interval '2 minutes' WHERE id=${sqlQuote(fileId)} AND state='DELETING'`);
-        retirement = await waitUntilRetirementInitialized(graceStartedAt);
-        if (!retirement) return;
-      }
-      if (retirement?.chunkCount > 0) {
-        sql(`UPDATE platform_file_blob_chunk SET retire_after=clock_timestamp()-interval '1 second' WHERE file_id=${sqlQuote(fileId)} AND retire_after IS NOT NULL`);
-      }
       sql(`UPDATE platform_file SET updated_at=clock_timestamp()-interval '2 minutes' WHERE id=${sqlQuote(fileId)} AND state='DELETING'`);
       await waitUntilFileRemoved();
       return;
@@ -404,8 +360,8 @@ try {
   await login(context, writer.username, writer.password);
   await login(otherContext, otherWriter.username, otherWriter.password);
   const writerIdentity = await (await context.request.get('/api/auth/me')).json();
-  assert.ok(writerIdentity.globalAuthorities.includes('platform:settings:read'));
-  assert.ok(writerIdentity.globalAuthorities.includes('platform:settings:write'));
+  assert.ok(writerIdentity.globalAuthorities.includes('platform:file-retention:access'));
+  assert.ok(writerIdentity.globalAuthorities.includes('platform:file-retention:update'));
   assert.equal(Number(sql("SELECT count(*) FROM platform_file WHERE state='TRASHED'")), 0, 'isolated retention test requires an empty trash');
   originalPolicy = await readPolicy();
   const beforeUsage = await (await adminContext.request.get('/api/account/files/usage', { headers: await authorizationHeaders(adminContext) })).json();
@@ -508,7 +464,6 @@ try {
   assert.equal(automaticWriteBaseline.version, snapshot.version, 'File-retention settings changed before the automatic-policy write');
   assert.ok(samePolicyData(automaticWriteBaseline.data, snapshot.data), 'File-retention settings changed before the automatic-policy write');
   recordPolicyWriteIntent(automaticWriteBaseline, { mode: 'AUTOMATIC', retentionDays: 30 });
-  const graceStartedAt = sql('SELECT clock_timestamp()::text');
   await savePolicyThroughUi({ mode: 'AUTOMATIC', retentionDays: 30 });
   snapshot = await readPolicy();
   assert.equal(snapshot.data.mode, 'AUTOMATIC');
@@ -518,37 +473,20 @@ try {
   file = await (await adminContext.request.get(`/api/account/files/${fileId}`, { headers: await authorizationHeaders(adminContext) })).json();
   assert.equal(file.state, 'DELETING', 'automatic save immediately queues already-expired files');
   usage = await (await adminContext.request.get('/api/account/files/usage', { headers: await authorizationHeaders(adminContext) })).json();
-  assert.equal(usage.chargedBytes, beforeUsage.chargedBytes + payload.length, 'queued deletion remains charged during the grace period');
+  assert.equal(usage.chargedBytes, beforeUsage.chargedBytes + payload.length, 'queued deletion remains charged until physical cleanup');
   assert.equal(usage.fileCount, beforeUsage.fileCount + 1);
   assert.equal(usage.pendingDeletingCount, beforeUsage.pendingDeletingCount + 1);
   assert.equal(usage.pendingDeletingBytes, beforeUsage.pendingDeletingBytes + payload.length);
 
-  const firstRetirement = readRetirement(fileId, graceStartedAt);
-  assert.ok(firstRetirement.chunkCount > 0, 'The QA file must have PostgreSQL blob chunks to verify the 24-hour grace');
-  let initializedRetirement = firstRetirement;
-  if (firstRetirement.missingCount > 0) {
-    sql(`UPDATE platform_file SET updated_at=clock_timestamp()-interval '2 minutes' WHERE id=${sqlQuote(fileId)} AND state='DELETING'`);
-    setStage('await first scheduled blob retirement');
-    initializedRetirement = await waitUntilRetirementInitialized(graceStartedAt);
-  }
-  assert.ok(initializedRetirement, 'The synthetic file must remain present until the first scheduled cleanup initializes chunk retirement');
-  assert.equal(initializedRetirement.chunkCount, firstRetirement.chunkCount, 'The scheduled first delete must retain every synthetic blob chunk');
-  assert.equal(initializedRetirement.missingCount, 0, 'Every PostgreSQL chunk must have a retire_after timestamp after the scheduled first delete');
-  assert.equal(initializedRetirement.shortGraceCount, 0, 'Every chunk must retain at least 24 hours from the pre-retirement database timestamp');
-
-  const retirementBeforeRepeat = readRetirement(fileId, graceStartedAt);
-
+  const pendingChunks = Number(sql(`SELECT count(*) FROM platform_file_blob_chunk WHERE file_id=${sqlQuote(fileId)}`));
+  assert.ok(pendingChunks > 0, 'The queued synthetic file must still have PostgreSQL chunks');
+  // Existing storage semantics delete fenced bytes immediately, including old
+  // retirement markers. Do not reintroduce the retired 24-hour grace contract.
+  sql(`UPDATE platform_file_blob_chunk SET retire_after=clock_timestamp()+interval '24 hours' WHERE file_id=${sqlQuote(fileId)}`);
   const repeatPurge = await adminContext.request.delete(`/api/account/files/${fileId}/purge?version=${file.version}`, { headers: await tokenHeaders(adminContext) });
   assert.equal(repeatPurge.status(), 409, 'A repeated purge while DELETING must be rejected');
-  const repeatedRetirement = readRetirement(fileId, graceStartedAt);
-  assert.deepEqual(repeatedRetirement, retirementBeforeRepeat, 'A rejected repeated purge must not change the grace timestamps');
-
-  sql(`UPDATE platform_file_blob_chunk SET retire_after=clock_timestamp()-interval '1 second' WHERE file_id=${sqlQuote(fileId)} AND retire_after IS NOT NULL`);
-  // FileCleanup only selects DELETING rows with updated_at older than one minute.
-  // Age this synthetic row so the next scheduled sweep can finalize it immediately.
+  assert.equal(Number(sql(`SELECT count(*) FROM platform_file_blob_chunk WHERE file_id=${sqlQuote(fileId)}`)), pendingChunks, 'Rejected repeated purge must leave queued chunks untouched');
   sql(`UPDATE platform_file SET updated_at=clock_timestamp()-interval '2 minutes' WHERE id=${sqlQuote(fileId)} AND state='DELETING'`);
-  const advancedChunks = Number(sql(`SELECT count(*) FROM platform_file_blob_chunk WHERE file_id=${sqlQuote(fileId)} AND retire_after<=clock_timestamp()`));
-  assert.equal(advancedChunks, firstRetirement.chunkCount, 'Only this synthetic file\'s chunks are advanced to trigger cleanup');
   setStage('await scheduled physical cleanup');
   await waitUntilFileRemoved();
   assert.equal(Number(sql(`SELECT count(*) FROM platform_file WHERE id=${sqlQuote(fileId)}`)), 0);
@@ -582,7 +520,7 @@ try {
   await assertPolicyRevisionOwnedBy(restoredByOtherCleanup, otherWriter, originalPolicy.data, otherContext);
   assert.deepEqual(errors, []);
   setStage('complete');
-  console.log('PASS: real UI saves, policy ownership/recovery races, manual retention, automatic cleanup, immutable 24-hour blob grace, and quota restoration.');
+  console.log('PASS: real UI saves, policy ownership/recovery races, manual retention, automatic cleanup, version-fenced physical blob deletion, and quota restoration.');
 } catch (error) {
   primaryError = error;
   console.error(`[file-retention] main flow failed at ${currentStage} (${error?.name ?? 'Error'}); recent API trace=${JSON.stringify(apiTrace.slice(-12))}`);

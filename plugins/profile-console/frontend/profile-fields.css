@@ -1,0 +1,181 @@
+/* Profile schema: keep order visible while editing one field at a time. */
+:root .profile-fields-settings .settings-form {
+  max-width: none;
+  container-name: profile-fields-form;
+  container-type: inline-size;
+}
+
+.profile-fields-workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  gap: 28px;
+  margin-bottom: 24px;
+  align-items: start;
+}
+
+.profile-fields-list,
+.profile-fields-detail {
+  min-width: 0;
+}
+
+.profile-fields-heading,
+.profile-fields-detail-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.profile-fields-hint {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.profile-fields-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-field-row {
+  display: flex;
+  align-items: center;
+  position: relative;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius-lg);
+  background: var(--ant-color-bg-container);
+  padding: 10px 6px;
+}
+
+.profile-field-row.is-selected {
+  border-color: var(--ant-color-primary);
+  background: var(--ant-color-primary-bg);
+}
+
+.profile-field-row.is-dragging {
+  z-index: 2;
+  box-shadow: var(--ant-box-shadow-secondary);
+}
+
+.profile-field-drag.ant-btn {
+  flex-shrink: 0;
+  cursor: grab;
+  touch-action: none;
+  color: var(--ant-color-text-tertiary);
+}
+
+.profile-field-drag.ant-btn:active {
+  cursor: grabbing;
+}
+
+.profile-field-select {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ant-color-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.profile-field-select:focus-visible {
+  outline: 2px solid var(--ant-color-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.profile-field-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.profile-field-position {
+  color: var(--ant-color-text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-field-meta {
+  display: block;
+  color: var(--ant-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-field-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.profile-field-tags .ant-tag,
+.profile-fields-detail-heading .ant-tag {
+  margin: 0;
+}
+
+.profile-fields-add {
+  margin-top: 12px;
+}
+
+.profile-fields-detail {
+  border-inline-start: 1px solid var(--ant-color-border-secondary);
+  padding-inline-start: 28px;
+}
+
+.profile-fields-detail-heading {
+  margin-bottom: 22px;
+}
+
+.profile-fields-detail-heading h5.ant-typography {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-field-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 20px;
+}
+
+.profile-field-editor-grid .ant-input-number,
+.profile-field-editor-grid .ant-select {
+  width: 100%;
+}
+
+@media (max-width: 1199px) {
+  .profile-fields-workspace {
+    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+    gap: 20px;
+  }
+  .profile-fields-detail {
+    padding-inline-start: 20px;
+  }
+  .profile-field-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container profile-fields-form (max-width: 820px) {
+  .profile-fields-workspace {
+    grid-template-columns: minmax(180px, 32%) minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  .profile-fields-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .profile-fields-detail {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--ant-color-border-secondary);
+    padding-inline-start: 0;
+    padding-block-start: 20px;
+  }
+}

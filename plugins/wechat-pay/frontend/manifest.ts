@@ -2,7 +2,7 @@ import type { FrontendModuleManifest } from "@/platform/modules/types";
 
 export const wechatPayManifest = {
   id: "wechat-pay",
-  version: "1.0.6",
+  version: "1.1.0",
   required: false,
   dependencies: ["platform", "payment-core"],
   routes: [

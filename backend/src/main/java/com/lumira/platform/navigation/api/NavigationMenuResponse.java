@@ -1,6 +1,5 @@
 package com.lumira.platform.navigation.api;
 
-import com.lumira.platform.navigation.NavigationMenuRepository;
 import java.time.OffsetDateTime;
 import java.util.*;
 
@@ -26,7 +25,7 @@ public record NavigationMenuResponse(
         long version,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
-    public static NavigationMenuResponse from(NavigationMenuRepository.Menu value) {
+    public static NavigationMenuResponse from(NavigationMenu value) {
         if (value == null) return null;
         return new NavigationMenuResponse(
                 value.id(),

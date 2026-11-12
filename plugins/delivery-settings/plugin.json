@@ -1,0 +1,275 @@
+{
+  "formatVersion": 1,
+  "id": "delivery-settings",
+  "name": "消息渠道配置管理",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.deliverysettings.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "settings",
+      "version": "1.0.0"
+    },
+    {
+      "id": "communication",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:smtp:access",
+    "platform:smtp:update",
+    "platform:smtp:test",
+    "platform:sms:access",
+    "platform:sms:update",
+    "platform:sms:test"
+  ],
+  "routes": [
+    {
+      "id": "smtp",
+      "label": "smtpSettings",
+      "permission": "platform:smtp:access",
+      "group": "communication",
+      "order": 20,
+      "global": true,
+      "operations": {
+        "update": "platform:smtp:update",
+        "test": "platform:smtp:test"
+      }
+    },
+    {
+      "id": "sms",
+      "label": "smsSettings",
+      "permission": "platform:sms:access",
+      "group": "communication",
+      "order": 30,
+      "global": true,
+      "operations": {
+        "update": "platform:sms:update",
+        "test": "platform:sms:test"
+      }
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/smtp",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:smtp:access"
+      ],
+      "authorityScopes": {
+        "platform:smtp:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/smtp",
+      "authorities": [
+        "platform:smtp:update"
+      ],
+      "allAuthorities": [
+        "platform:smtp:access"
+      ],
+      "authorityScopes": {
+        "platform:smtp:access": "global",
+        "platform:smtp:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/smtp/test",
+      "authorities": [
+        "platform:smtp:test"
+      ],
+      "allAuthorities": [
+        "platform:smtp:access"
+      ],
+      "authorityScopes": {
+        "platform:smtp:access": "global",
+        "platform:smtp:test": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/sms",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:sms:access"
+      ],
+      "authorityScopes": {
+        "platform:sms:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/sms",
+      "authorities": [
+        "platform:sms:update"
+      ],
+      "allAuthorities": [
+        "platform:sms:access"
+      ],
+      "authorityScopes": {
+        "platform:sms:access": "global",
+        "platform:sms:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/sms/test",
+      "authorities": [
+        "platform:sms:test"
+      ],
+      "allAuthorities": [
+        "platform:sms:access"
+      ],
+      "authorityScopes": {
+        "platform:sms:access": "global",
+        "platform:sms:test": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/smtp/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:smtp:access"
+      ],
+      "authorityScopes": {
+        "platform:smtp:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/smtp/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:smtp:access"
+      ],
+      "authorityScopes": {
+        "platform:smtp:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/smtp/rollback",
+      "authorities": [
+        "platform:smtp:update"
+      ],
+      "allAuthorities": [
+        "platform:smtp:access"
+      ],
+      "authorityScopes": {
+        "platform:smtp:access": "global",
+        "platform:smtp:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/sms/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:sms:access"
+      ],
+      "authorityScopes": {
+        "platform:sms:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/sms/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:sms:access"
+      ],
+      "authorityScopes": {
+        "platform:sms:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/sms/rollback",
+      "authorities": [
+        "platform:sms:update"
+      ],
+      "allAuthorities": [
+        "platform:sms:access"
+      ],
+      "authorityScopes": {
+        "platform:sms:access": "global",
+        "platform:sms:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    }
+  ],
+  "dataSets": [],
+  "permissionGroups": [
+    {
+      "id": "settings",
+      "title": "settings",
+      "permissions": [
+        {
+          "code": "platform:smtp:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:smtp:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:smtp:test",
+          "label": "permissionTest"
+        },
+        {
+          "code": "platform:sms:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:sms:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:sms:test",
+          "label": "permissionTest"
+        }
+      ]
+    }
+  ]
+}

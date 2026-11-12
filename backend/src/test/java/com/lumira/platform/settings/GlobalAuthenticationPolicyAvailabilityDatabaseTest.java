@@ -13,6 +13,7 @@ import com.lumira.platform.common.PluginExtensionsPort;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.identity.api.AuthenticationMethodAvailabilityPort;
 import com.lumira.platform.identity.api.AuthenticationReachabilityPort;
+import com.lumira.plugins.authenticationconsole.GlobalAuthenticationPolicyService;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -77,7 +78,9 @@ class GlobalAuthenticationPolicyAvailabilityDatabaseTest {
                         mock(AuthenticationPolicyWriteLock.class),
                         mock(PluginExtensionsPort.class),
                         mock(AuthenticationReachabilityPort.class),
-                        availability);
+                        availability,
+                        new com.lumira.platform.settings.GlobalAuthenticationPolicyReader(
+                                JdbcClient.create(jdbc.getDataSource())));
 
         var view = service.read("admin");
 
@@ -208,7 +211,9 @@ class GlobalAuthenticationPolicyAvailabilityDatabaseTest {
                 mock(AuthenticationPolicyWriteLock.class),
                 mock(PluginExtensionsPort.class),
                 reachability,
-                availability);
+                availability,
+                new com.lumira.platform.settings.GlobalAuthenticationPolicyReader(
+                        JdbcClient.create(jdbc.getDataSource())));
     }
 
     private void insertUser(UUID id, String username, boolean enabled, boolean deleted) {

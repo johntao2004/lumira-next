@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeProfileFieldSettings } from "../apps/web/src/features/settings/profile-field-submission.ts";
+import { mergeProfileFieldSettings } from "../plugins/profile-console/frontend/profile-field-submission.ts";
 
 test("a profile-field edit retains unregistered placement and public metadata across hosts", () => {
   const snapshot = {

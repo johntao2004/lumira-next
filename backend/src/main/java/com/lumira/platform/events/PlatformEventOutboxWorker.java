@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -28,10 +29,19 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
     private final ExecutorService workers =
             Executors.newThreadPerTaskExecutor(
                     Thread.ofVirtual().name("platform-event-", 0).factory());
-    private final Semaphore slots = new Semaphore(MAX_IN_FLIGHT);
+    private final int concurrency;
+    private final Semaphore slots;
     private final AtomicBoolean stopped = new AtomicBoolean();
 
     @Autowired
+    public PlatformEventOutboxWorker(
+            PlatformEventOutboxStore store,
+            PlatformEventConsumerRegistry registry,
+            PlatformTransactionManager transactionManager,
+            @Value("${lumira.events.concurrency:8}") int concurrency) {
+        this(store, registry, new TransactionTemplate(transactionManager), concurrency);
+    }
+
     public PlatformEventOutboxWorker(
             PlatformEventOutboxStore store,
             PlatformEventConsumerRegistry registry,
@@ -49,9 +59,21 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
             PlatformEventOutboxStore store,
             PlatformEventConsumerRegistry registry,
             TransactionTemplate transaction) {
+        this(store, registry, transaction, MAX_IN_FLIGHT);
+    }
+
+    PlatformEventOutboxWorker(
+            PlatformEventOutboxStore store,
+            PlatformEventConsumerRegistry registry,
+            TransactionTemplate transaction,
+            int concurrency) {
+        if (concurrency < 1 || concurrency > 64)
+            throw new IllegalArgumentException("Invalid event worker concurrency");
         this.store = store;
         this.registry = registry;
         this.transaction = transaction;
+        this.concurrency = concurrency;
+        this.slots = new Semaphore(concurrency);
     }
 
     @Scheduled(
@@ -59,7 +81,7 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
             initialDelayString = "${lumira.events.poll-initial-delay-ms:15000}")
     public void poll() {
         if (stopped.get()) return;
-        for (int i = 0; i < MAX_IN_FLIGHT && !stopped.get() && slots.tryAcquire(); i++) {
+        for (int i = 0; i < concurrency && !stopped.get() && slots.tryAcquire(); i++) {
             boolean submitted = false;
             try {
                 var claim = store.claim();
@@ -67,7 +89,16 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
                 workers.execute(
                         () -> {
                             try {
-                                process(claim.get());
+                                var next = claim;
+                                while (!stopped.get() && next.isPresent()) {
+                                    process(next.get());
+                                    if (stopped.get()) break;
+                                    next = store.claim();
+                                }
+                            } catch (RuntimeException failure) {
+                                log.warn(
+                                        "Platform event drain deferred ({})",
+                                        failure.getClass().getSimpleName());
                             } finally {
                                 slots.release();
                             }
@@ -94,7 +125,7 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
             return;
         }
         if (event == null) return;
-        var consumer = registry.resolveConsumer(event.sourceType(), event.eventType());
+        var consumer = registry.acquire(event.sourceType(), event.eventType());
         if (consumer.isEmpty()) {
             try {
                 if (!store.releaseWithoutConsumer(claim)) {
@@ -108,12 +139,12 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
             }
             return;
         }
-        try {
+        try (var lease = consumer.get()) {
             if (transaction == null) {
-                consumeAndAcknowledge(consumer.get(), event, claim);
+                consumeAndAcknowledge(lease.consumer(), event, claim);
             } else {
                 transaction.executeWithoutResult(
-                        status -> consumeAndAcknowledge(consumer.get(), event, claim));
+                        status -> consumeAndAcknowledge(lease.consumer(), event, claim));
             }
         } catch (AckFencedException fenced) {
             // The transaction rollback removes every consumer DB side effect before this point.

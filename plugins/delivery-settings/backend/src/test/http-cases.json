@@ -1,0 +1,400 @@
+[
+  {
+    "pageId": "smtp",
+    "accessPermission": "platform:smtp:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/smtp",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "smtp",
+    "accessPermission": "platform:smtp:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/smtp",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:smtp:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:smtp:update"
+    ]
+  },
+  {
+    "pageId": "smtp",
+    "accessPermission": "platform:smtp:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/settings/smtp/test",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:smtp:test",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:smtp:test"
+    ]
+  },
+  {
+    "pageId": "sms",
+    "accessPermission": "platform:sms:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/sms",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "sms",
+    "accessPermission": "platform:sms:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/sms",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:sms:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:sms:update"
+    ]
+  },
+  {
+    "pageId": "sms",
+    "accessPermission": "platform:sms:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/settings/sms/test",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:sms:test",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:sms:test"
+    ]
+  },
+  {
+    "pageId": "smtp",
+    "accessPermission": "platform:smtp:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/smtp/history",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "smtp",
+    "accessPermission": "platform:smtp:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/smtp/history/1",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "smtp",
+    "accessPermission": "platform:smtp:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/settings/smtp/rollback",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:smtp:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:smtp:update"
+    ]
+  },
+  {
+    "pageId": "sms",
+    "accessPermission": "platform:sms:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/sms/history",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "sms",
+    "accessPermission": "platform:sms:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/sms/history/1",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "sms",
+    "accessPermission": "platform:sms:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/settings/sms/rollback",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:sms:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:sms:update"
+    ]
+  }
+]

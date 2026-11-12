@@ -12,7 +12,7 @@ import org.springframework.stereotype.Repository;
 
 /** Internal metadata access. Every user-facing lookup is constrained by its resolved owner ID. */
 @Repository
-public class FileRepository {
+public class FileRepository implements com.lumira.platform.common.FileRetentionQueuePort {
     public record Entry(
             UUID id,
             UUID ownerId,
@@ -26,62 +26,9 @@ public class FileRepository {
             Instant updatedAt,
             Instant trashedAt) {}
 
-    public record ManagedEntry(
-            UUID id,
-            UUID ownerId,
-            String ownerUsername,
-            String ownerDisplayName,
-            String storageBackend,
-            String originalName,
-            String state,
-            Long sizeBytes,
-            String sha256,
-            long version,
-            Instant createdAt,
-            Instant updatedAt,
-            Instant trashedAt,
-            boolean protectedByReference) {
-        public ManagedEntry(
-                UUID id,
-                UUID ownerId,
-                String ownerUsername,
-                String ownerDisplayName,
-                String storageBackend,
-                String originalName,
-                String state,
-                Long sizeBytes,
-                String sha256,
-                long version,
-                Instant createdAt,
-                Instant updatedAt,
-                Instant trashedAt) {
-            this(
-                    id,
-                    ownerId,
-                    ownerUsername,
-                    ownerDisplayName,
-                    storageBackend,
-                    originalName,
-                    state,
-                    sizeBytes,
-                    sha256,
-                    version,
-                    createdAt,
-                    updatedAt,
-                    trashedAt,
-                    false);
-        }
-    }
-
     public record QuotaOwner(UUID userId, String username, String displayName, long version) {}
 
     private final JdbcClient jdbc;
-    private static final String MANAGED_PROJECTION =
-            "f.*,u.username AS owner_username,u.display_name AS owner_display_name,(EXISTS (SELECT"
-                    + " 1 FROM platform_account_media am WHERE am.avatar_file_id=f.id) OR EXISTS"
-                    + " (SELECT 1 FROM platform_feedback_file ff WHERE ff.file_id=f.id) OR EXISTS"
-                    + " (SELECT 1 FROM platform_branding_file bf WHERE bf.file_id=f.id)) AS"
-                    + " protected_by_reference";
     private static final RowMapper<Entry> MAPPER =
             (rs, n) ->
                     new Entry(
@@ -98,25 +45,6 @@ public class FileRepository {
                             rs.getTimestamp("trashed_at") == null
                                     ? null
                                     : rs.getTimestamp("trashed_at").toInstant());
-    private static final RowMapper<ManagedEntry> MANAGED_MAPPER =
-            (rs, n) ->
-                    new ManagedEntry(
-                            rs.getObject("id", UUID.class),
-                            rs.getObject("owner_id", UUID.class),
-                            rs.getString("owner_username"),
-                            rs.getString("owner_display_name"),
-                            rs.getString("storage_backend"),
-                            rs.getString("original_name"),
-                            rs.getString("state"),
-                            rs.getObject("size_bytes", Long.class),
-                            rs.getString("sha256"),
-                            rs.getLong("version"),
-                            rs.getTimestamp("created_at").toInstant(),
-                            rs.getTimestamp("updated_at").toInstant(),
-                            rs.getTimestamp("trashed_at") == null
-                                    ? null
-                                    : rs.getTimestamp("trashed_at").toInstant(),
-                            rs.getBoolean("protected_by_reference"));
 
     public FileRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
@@ -376,7 +304,8 @@ public class FileRepository {
                                 "createdAt",
                                 "created_at"),
                         java.util.Set.of("createdAt"));
-        return listPage(
+        return com.lumira.platform.common.JdbcPageQuery.query(
+                jdbc,
                 page,
                 "platform_file",
                 "*",
@@ -390,40 +319,6 @@ public class FileRepository {
     /**
      * Global file-center reads include an explicit owner projection and never expose file payloads.
      */
-    public PageResult<ManagedEntry> listManaged(PageRequest page) {
-        String where =
-                " WHERE f.state NOT IN ('TRASHED','DELETING') AND (:search='' OR"
-                        + " strpos(lower(f.original_name),lower(:search))>0 OR"
-                        + " strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR"
-                        + " strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
-        var filter =
-                PageFilterSql.build(
-                        page,
-                        java.util.Map.of(
-                                "originalName",
-                                "f.original_name",
-                                "ownerUsername",
-                                "CASE WHEN u.username IS NULL THEN '—' ELSE"
-                                        + " coalesce(u.display_name,u.username) || ' (' || u.username"
-                                        + " || ')' END",
-                                "sizeBytes",
-                                "f.size_bytes",
-                                "state",
-                                "f.state",
-                                "createdAt",
-                                "f.created_at"),
-                        java.util.Set.of("createdAt"));
-        return listPage(
-                page,
-                "platform_file f LEFT JOIN platform_user u ON u.id=f.owner_id",
-                MANAGED_PROJECTION,
-                where,
-                filter,
-                java.util.Map.of(),
-                "f.created_at DESC,f.id DESC",
-                MANAGED_MAPPER);
-    }
-
     public PageResult<Entry> listTrashOwned(UUID ownerId, PageRequest page) {
         String where =
                 " WHERE owner_id=:owner AND state='TRASHED' AND (:search='' OR"
@@ -439,7 +334,8 @@ public class FileRepository {
                                 "trashedAt",
                                 "trashed_at"),
                         java.util.Set.of("trashedAt"));
-        return listPage(
+        return com.lumira.platform.common.JdbcPageQuery.query(
+                jdbc,
                 page,
                 "platform_file",
                 "*",
@@ -450,124 +346,9 @@ public class FileRepository {
                 MAPPER);
     }
 
-    public PageResult<ManagedEntry> listManagedTrash(PageRequest page) {
-        String where =
-                " WHERE f.state='TRASHED' AND (:search='' OR"
-                        + " strpos(lower(f.original_name),lower(:search))>0 OR"
-                        + " strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR"
-                        + " strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
-        var filter =
-                PageFilterSql.build(
-                        page,
-                        java.util.Map.of(
-                                "originalName",
-                                "f.original_name",
-                                "ownerUsername",
-                                "CASE WHEN u.username IS NULL THEN '—' ELSE"
-                                        + " coalesce(u.display_name,u.username) || ' (' || u.username"
-                                        + " || ')' END",
-                                "sizeBytes",
-                                "f.size_bytes",
-                                "trashedAt",
-                                "f.trashed_at"),
-                        java.util.Set.of("trashedAt"));
-        return listPage(
-                page,
-                "platform_file f LEFT JOIN platform_user u ON u.id=f.owner_id",
-                MANAGED_PROJECTION,
-                where,
-                filter,
-                java.util.Map.of(),
-                "f.trashed_at DESC,f.id DESC",
-                MANAGED_MAPPER);
-    }
-
     /** Repository-owned SQL fragments preserve each caller's owner/state/filter scope. */
-    private <T> PageResult<T> listPage(
-            PageRequest page,
-            String from,
-            String projection,
-            String where,
-            PageFilterSql.Clause filter,
-            java.util.Map<String, Object> scope,
-            String order,
-            RowMapper<T> rowMapper) {
-        var countParams = new java.util.HashMap<>(scope);
-        countParams.put("search", page.search());
-        countParams.putAll(filter.parameters());
-        String source = " FROM " + from + where + filter.sql();
-        long total =
-                jdbc.sql("SELECT count(*)" + source).params(countParams).query(Long.class).single();
-        var listParams = new java.util.HashMap<>(countParams);
-        listParams.put("limit", page.pageSize());
-        listParams.put("offset", page.offset());
-        var items =
-                jdbc.sql(
-                                "SELECT "
-                                        + projection
-                                        + source
-                                        + " ORDER BY "
-                                        + order
-                                        + " LIMIT :limit OFFSET :offset")
-                        .params(listParams)
-                        .query(rowMapper)
-                        .list();
-        return new PageResult<>(items, total, page.page(), page.pageSize());
-    }
-
-    public Optional<ManagedEntry> findManaged(UUID id) {
-        return jdbc.sql(
-                        "SELECT "
-                                + MANAGED_PROJECTION
-                                + " FROM platform_file f LEFT JOIN platform_user u ON"
-                                + " u.id=f.owner_id WHERE f.id=:id")
-                .param("id", id)
-                .query(MANAGED_MAPPER)
-                .optional();
-    }
 
     /** Management deletion keeps the same reference protections as an owner deletion. */
-    public boolean requestManagedDelete(UUID id, long version) {
-        if (jdbc.sql("SELECT id FROM platform_file WHERE id=:id FOR UPDATE")
-                .param("id", id)
-                .query(UUID.class)
-                .optional()
-                .isEmpty()) return false;
-        return jdbc.sql(
-                                "UPDATE platform_file SET"
-                                        + " state='DELETING',version=version+1,updated_at=now() WHERE"
-                                        + " id=:id AND version=:version AND state='READY' AND NOT"
-                                        + " EXISTS(SELECT 1 FROM platform_account_media WHERE"
-                                        + " avatar_file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
-                                        + " platform_feedback_file WHERE file_id=:id) AND NOT"
-                                        + " EXISTS(SELECT 1 FROM platform_branding_file WHERE"
-                                        + " file_id=:id)")
-                        .param("id", id)
-                        .param("version", version)
-                        .update()
-                == 1;
-    }
-
-    public boolean requestManagedTrash(UUID id, long version) {
-        if (jdbc.sql("SELECT id FROM platform_file WHERE id=:id FOR UPDATE")
-                .param("id", id)
-                .query(UUID.class)
-                .optional()
-                .isEmpty()) return false;
-        return jdbc.sql(
-                                "UPDATE platform_file SET"
-                                        + " state='TRASHED',trashed_at=clock_timestamp(),version=version+1,updated_at=now()"
-                                        + " WHERE id=:id AND version=:version AND state='READY' AND NOT"
-                                        + " EXISTS(SELECT 1 FROM platform_account_media WHERE"
-                                        + " avatar_file_id=:id) AND NOT EXISTS(SELECT 1 FROM"
-                                        + " platform_feedback_file WHERE file_id=:id) AND NOT"
-                                        + " EXISTS(SELECT 1 FROM platform_branding_file WHERE"
-                                        + " file_id=:id)")
-                        .param("id", id)
-                        .param("version", version)
-                        .update()
-                == 1;
-    }
 
     /** Only the reserved upload version may publish metadata. */
     public boolean lockUpload(UUID id, UUID owner) {
@@ -671,22 +452,6 @@ public class FileRepository {
                 == 1;
     }
 
-    public boolean restoreManaged(UUID id, long version) {
-        if (jdbc.sql("SELECT id FROM platform_file WHERE id=:id FOR UPDATE")
-                .param("id", id)
-                .query(UUID.class)
-                .optional()
-                .isEmpty()) return false;
-        return jdbc.sql(
-                                "UPDATE platform_file SET"
-                                        + " state='READY',trashed_at=NULL,version=version+1,updated_at=now()"
-                                        + " WHERE id=:id AND version=:version AND state='TRASHED'")
-                        .param("id", id)
-                        .param("version", version)
-                        .update()
-                == 1;
-    }
-
     public boolean purgeOwned(UUID id, UUID ownerId, long version) {
         if (jdbc.sql("SELECT id FROM platform_file WHERE id=:id AND owner_id=:owner FOR UPDATE")
                 .param("id", id)
@@ -702,24 +467,6 @@ public class FileRepository {
                                         + " platform_branding_file WHERE file_id=:id)")
                         .param("id", id)
                         .param("owner", ownerId)
-                        .param("version", version)
-                        .update()
-                == 1;
-    }
-
-    public boolean purgeManaged(UUID id, long version) {
-        if (jdbc.sql("SELECT id FROM platform_file WHERE id=:id FOR UPDATE")
-                .param("id", id)
-                .query(UUID.class)
-                .optional()
-                .isEmpty()) return false;
-        return jdbc.sql(
-                                "UPDATE platform_file SET"
-                                        + " state='DELETING',trashed_at=NULL,version=version+1,updated_at=now()"
-                                        + " WHERE id=:id AND version=:version AND state='TRASHED' AND"
-                                        + " NOT EXISTS(SELECT 1 FROM platform_branding_file WHERE"
-                                        + " file_id=:id)")
-                        .param("id", id)
                         .param("version", version)
                         .update()
                 == 1;

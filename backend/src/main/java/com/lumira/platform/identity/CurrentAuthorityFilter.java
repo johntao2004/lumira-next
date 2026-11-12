@@ -13,8 +13,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -27,11 +31,22 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Re-evaluates live grants and authentication policy for every authenticated request. */
 final class CurrentAuthorityFilter extends OncePerRequestFilter {
-    private static final String CONTEXT_QUERY =
+    // Materialize only the unique actor. The scalar id lets PostgreSQL push the
+    // predicate into both grant-view branches instead of aggregating all users.
+    static final String CONTEXT_QUERY =
             """
-            SELECT u.id,a.authority FROM platform_user u
-              LEFT JOIN platform_effective_authority a ON a.user_id=u.id
-             WHERE u.username=:name AND u.enabled=true AND u.deleted_at IS NULL
+            WITH actor AS NOT MATERIALIZED (
+                SELECT u.id,u.primary_credential_revision,u.factor_credential_revision,
+                       (u.password_hash IS NOT NULL) AS password_present,
+                       EXISTS(SELECT 1 FROM platform_passkey_credential p WHERE p.user_id=u.id) AS passkey_present
+                  FROM platform_user u
+                 WHERE u.username=:name AND u.enabled=true AND u.deleted_at IS NULL
+            )
+            SELECT u.id,a.authority,u.primary_credential_revision,u.factor_credential_revision,
+                   u.password_present,u.passkey_present FROM actor u
+              LEFT JOIN LATERAL (
+                SELECT a.authority FROM platform_effective_authority a WHERE a.user_id=u.id
+              ) a ON true
             """;
 
     private final JdbcClient jdbc;
@@ -65,6 +80,36 @@ final class CurrentAuthorityFilter extends OncePerRequestFilter {
         return !path.startsWith("/api/");
     }
 
+    private CurrentContext buildCurrentContext(
+            HttpServletRequest request,
+            String username,
+            UUID userId,
+            EffectiveAuthenticationPolicyPort.EffectivePolicy policy,
+            Set<String> effAuths,
+            Set<String> globAuths,
+            String noneSessionPrimaryId,
+            UUID noneRevision) {
+        RequestAuthorizationContext authorization;
+        if (noneSessionPrimaryId != null && noneRevision != null && globAuths != null) {
+            authorization =
+                    rolePreviewContexts.resolvePreloadedNoneContext(
+                            request,
+                            username,
+                            userId,
+                            noneSessionPrimaryId,
+                            noneRevision,
+                            effAuths,
+                            globAuths);
+        } else if (globAuths != null) {
+            authorization =
+                    rolePreviewContexts.resolve(request, username, userId, effAuths, globAuths);
+        } else {
+            authorization = rolePreviewContexts.resolve(request, username, userId, effAuths);
+        }
+        var grants = effAuths.stream().sorted().map(SimpleGrantedAuthority::new).toList();
+        return new CurrentContext(userId, grants, policy, authorization);
+    }
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -92,37 +137,125 @@ final class CurrentAuthorityFilter extends OncePerRequestFilter {
                             // are read from one coherent point before the request reaches an
                             // application handler.
                             policyLock.lockForAuthentication();
+
+                            if (policies instanceof AuthenticationPolicyService authService
+                                    && authService.supportsUnifiedAdmission()) {
+                                try {
+                                    CurrentContext unified =
+                                            authService.supportsUnifiedSessionAdmission()
+                                                    ? authService.admitWithSession(
+                                                            authentication.getName(),
+                                                            session.getId(),
+                                                            (userId,
+                                                                    credentialEpoch,
+                                                                    policy,
+                                                                    effAuths,
+                                                                    globAuths,
+                                                                    noneSessionPrimaryId,
+                                                                    noneRevision) ->
+                                                                    buildCurrentContext(
+                                                                            request,
+                                                                            authentication
+                                                                                    .getName(),
+                                                                            userId,
+                                                                            policy,
+                                                                            effAuths,
+                                                                            globAuths,
+                                                                            noneSessionPrimaryId,
+                                                                            noneRevision))
+                                                    : authService.admit(
+                                                            authentication.getName(),
+                                                            (userId,
+                                                                    credentialEpoch,
+                                                                    policy,
+                                                                    effAuths,
+                                                                    globAuths) ->
+                                                                    buildCurrentContext(
+                                                                            request,
+                                                                            authentication
+                                                                                    .getName(),
+                                                                            userId,
+                                                                            policy,
+                                                                            effAuths,
+                                                                            globAuths,
+                                                                            null,
+                                                                            null));
+                                    return unified;
+                                } catch (DataAccessException
+                                        | IllegalArgumentException
+                                        | IllegalStateException fallback) {
+                                    // Failsafe: on any unexpected schema or mapping failure, fall
+                                    // back to sequential reads
+                                }
+                            }
+
                             UUID[] userId = {null};
+                            AdmissionCredentialProjection.CredentialEpoch[] credentials = {null};
                             var grants = new ArrayList<SimpleGrantedAuthority>();
+                            var authorityNames = new HashSet<String>();
                             jdbc.sql(CONTEXT_QUERY)
                                     .param("name", authentication.getName())
                                     .query(
                                             (RowCallbackHandler)
                                                     row -> {
                                                         userId[0] = row.getObject("id", UUID.class);
+                                                        if (credentials[0] == null) {
+                                                            credentials[0] =
+                                                                    new AdmissionCredentialProjection
+                                                                            .CredentialEpoch(
+                                                                            row.getObject(
+                                                                                    "primary_credential_revision",
+                                                                                    UUID.class),
+                                                                            row.getObject(
+                                                                                    "factor_credential_revision",
+                                                                                    UUID.class),
+                                                                            row.getBoolean(
+                                                                                    "password_present"),
+                                                                            row.getBoolean(
+                                                                                    "passkey_present"));
+                                                        }
                                                         String authority =
                                                                 row.getString("authority");
-                                                        if (authority != null)
+                                                        if (authority != null
+                                                                && authorityNames.add(authority)) {
                                                             grants.add(
                                                                     new SimpleGrantedAuthority(
                                                                             authority));
+                                                        }
                                                     });
                             if (userId[0] == null) return null;
-                            var policy = policies.resolve(userId[0]);
-                            var realAuthorities =
-                                    grants.stream()
-                                            .map(SimpleGrantedAuthority::getAuthority)
-                                            .collect(
-                                                    java.util.stream.Collectors
-                                                            .toUnmodifiableSet());
-                            var authorization =
-                                    rolePreviewContexts.resolve(
-                                            request,
-                                            authentication.getName(),
-                                            userId[0],
-                                            realAuthorities);
-                            return new CurrentContext(
-                                    userId[0], List.copyOf(grants), policy, authorization);
+                            var realAuthorities = Set.copyOf(authorityNames);
+                            return AdmissionCredentialProjection.within(
+                                    userId[0],
+                                    credentials[0],
+                                    () -> {
+                                        var policy = policies.resolve(userId[0]);
+                                        Set<String> projectedGlobal =
+                                                AdmissionCredentialProjection.getGlobalAuthorities(
+                                                        userId[0]);
+                                        RequestAuthorizationContext authorization =
+                                                projectedGlobal != null
+                                                        ? rolePreviewContexts.resolve(
+                                                                request,
+                                                                authentication.getName(),
+                                                                userId[0],
+                                                                realAuthorities,
+                                                                projectedGlobal)
+                                                        : null;
+                                        if (authorization == null) {
+                                            authorization =
+                                                    rolePreviewContexts.resolve(
+                                                            request,
+                                                            authentication.getName(),
+                                                            userId[0],
+                                                            realAuthorities);
+                                        }
+                                        return new CurrentContext(
+                                                userId[0],
+                                                List.copyOf(grants),
+                                                policy,
+                                                authorization);
+                                    });
                         });
         if (current == null) {
             reject(request, response);
@@ -191,11 +324,18 @@ final class CurrentAuthorityFilter extends OncePerRequestFilter {
                         .sorted()
                         .map(SimpleGrantedAuthority::new)
                         .toList();
-        var refreshed =
-                UsernamePasswordAuthenticationToken.authenticated(
-                        authentication.getPrincipal(), null, effectiveGrants);
-        refreshed.setDetails(authentication.getDetails());
-        context.setAuthentication(refreshed);
+        if (!(authentication instanceof UsernamePasswordAuthenticationToken)
+                || !authentication.isAuthenticated()
+                || authentication.getCredentials() != null
+                || !Objects.equals(authentication.getAuthorities(), effectiveGrants)) {
+            var refreshed =
+                    UsernamePasswordAuthenticationToken.authenticated(
+                            authentication.getPrincipal(), null, effectiveGrants);
+            refreshed.setDetails(authentication.getDetails());
+            var nextContext = SecurityContextHolder.createEmptyContext();
+            nextContext.setAuthentication(refreshed);
+            SecurityContextHolder.setContext(nextContext);
+        }
         var authorizationScope =
                 AuthenticationRequestContext.bind(
                         new AuthenticationRequestContext.Snapshot(

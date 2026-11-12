@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 import com.lumira.platform.common.AuditPort;
+import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import java.nio.charset.StandardCharsets;
@@ -52,6 +53,7 @@ class RolePreviewReadOnlyBoundaryDatabaseTest {
     private UUID contextRevision;
     private DataSourceTransactionManager transactions;
     private AdministrationGuard guard;
+    private RolePreviewContextService boundary;
     private MockHttpServletRequest request;
     private RequestAuthorizationContext authorization;
 
@@ -205,13 +207,13 @@ class RolePreviewReadOnlyBoundaryDatabaseTest {
 
         transactions = new DataSourceTransactionManager(dataSource);
         transactions.setEnforceReadOnly(true);
-        var realBoundary =
+        boundary =
                 new RolePreviewContextService(
                         client,
                         mock(AuditPort.class),
                         null,
                         new IdentityAuthenticationPolicyWriteLock(client));
-        guard = new AdministrationGuard(client, realBoundary);
+        guard = new AdministrationGuard(client, boundary);
     }
 
     @AfterEach
@@ -276,6 +278,98 @@ class RolePreviewReadOnlyBoundaryDatabaseTest {
                                         }));
         assertEquals(HttpStatus.CONFLICT, rejected.getStatusCode());
         assertEquals("authorizationContextChanged", rejected.getReason());
+    }
+
+    @Test
+    void administrationGuardRevalidatesWriteBoundaryWithCombinedPolicyAndSessionShareLock() {
+        var tx = new TransactionTemplate(transactions);
+        tx.setReadOnly(false);
+        Set<String> actual =
+                withRequestContext(
+                        () -> tx.execute(status -> guard.require("admin", READ_PERMISSION)));
+        assertEquals(Set.of(READ_PERMISSION), actual);
+    }
+
+    @Test
+    void preloadedNoneContextWithOrganizationRoleReportsNotLimitedByActor() {
+        UUID orgRoleId = UUID.randomUUID();
+        String accessPermission = "platform:users:access";
+        jdbc.update(
+                "INSERT INTO platform_role VALUES (?,?,?,true,1,'ORGANIZATION')",
+                orgRoleId,
+                "org-role",
+                "Org Role");
+        jdbc.update(
+                "INSERT INTO platform_role_authority VALUES (?,?)", orgRoleId, accessPermission);
+        jdbc.update("INSERT INTO platform_user_role VALUES (?,?)", actorId, orgRoleId);
+        jdbc.update(
+                "INSERT INTO platform_effective_authority VALUES (?,?)", actorId, accessPermission);
+
+        UUID noneRevision = UUID.randomUUID();
+        jdbc.update(
+                """
+                UPDATE platform_role_preview_context
+                   SET revision=?,state='NONE',role_id=NULL,role_code=NULL,role_name=NULL,
+                       role_version=NULL,data_scope=NULL,started_at=NULL,expires_at=NULL,
+                       limited_by_actor=false,blocked_reason=NULL,actor_authority_digest=NULL,
+                       role_authority_digest=NULL,updated_at=CURRENT_TIMESTAMP
+                 WHERE session_primary_id=? AND actor_id=?
+                """,
+                noneRevision,
+                sessionPrimaryId,
+                actorId);
+
+        Set<String> allAuthorities =
+                Set.of(READ_PERMISSION, PREVIEW_PERMISSION, ROLE_READ_PERMISSION, accessPermission);
+        Set<String> globalAuthorities =
+                Set.of(READ_PERMISSION, PREVIEW_PERMISSION, ROLE_READ_PERMISSION);
+
+        var noneRequest = new MockHttpServletRequest();
+        noneRequest.setMethod("GET");
+        noneRequest.setRequestURI("/api/platform/role-previews/candidates");
+        noneRequest.addHeader(RolePreviewContextService.REVISION_HEADER, noneRevision.toString());
+
+        RequestAuthorizationContext noneContext =
+                boundary.resolvePreloadedNoneContext(
+                        noneRequest,
+                        "admin",
+                        actorId,
+                        sessionPrimaryId,
+                        noneRevision,
+                        allAuthorities,
+                        globalAuthorities);
+
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(noneRequest));
+        try (var ignored =
+                AuthenticationRequestContext.bind(
+                        new AuthenticationRequestContext.Snapshot(
+                                "admin", actorId, null, noneContext))) {
+            var tx = new TransactionTemplate(transactions);
+            tx.setReadOnly(false);
+            tx.execute(
+                    status -> {
+                        var candidates =
+                                boundary.candidates(noneRequest, new PageRequest(1, 10, ""));
+                        var candidate =
+                                candidates.items().stream()
+                                        .filter(c -> orgRoleId.equals(c.id()))
+                                        .findFirst()
+                                        .orElseThrow();
+                        assertFalse(
+                                candidate.limitedByActor(),
+                                "candidates() must not be limited by actor");
+
+                        var enterView =
+                                boundary.enter(noneRequest, orgRoleId, 1L, noneRevision.toString());
+                        assertNotNull(enterView.preview());
+                        assertFalse(
+                                enterView.preview().limitedByActor(),
+                                "enter() must not be limited by actor");
+                        return null;
+                    });
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     private <T> T withRequestContext(java.util.function.Supplier<T> action) {

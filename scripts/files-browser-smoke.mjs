@@ -1,5 +1,5 @@
 import { chromium } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -53,16 +53,52 @@ async function authenticatedGet(url) {
 try {
   sql(`INSERT INTO platform_user(id,username,display_name,password_hash) SELECT '${owner}','${username}','Files QA',password_hash FROM platform_user WHERE username='${String(bootstrapUsername).replaceAll("'", "''")}'`);
   context = await browser.newContext({ baseURL: parsedBase.origin, viewport: { width: 1213, height: 886 } });
+  await context.addInitScript(() => {
+    const OriginalObserver = window.ResizeObserver;
+    const observations = [];
+    Object.defineProperty(window, '__lumiraQaResizeObservations', { value: observations });
+    window.ResizeObserver = class extends OriginalObserver {
+      constructor(callback) {
+        super((entries, observer) => {
+          for (const entry of entries) {
+            observations.push({ time: Math.round(performance.now()), target: entry.target.className?.baseVal ?? entry.target.className, width: entry.contentRect.width, height: entry.contentRect.height });
+          }
+          if (observations.length > 150) observations.splice(0, observations.length - 150);
+          callback(entries, observer);
+        });
+      }
+    };
+  });
   const token = await (await context.request.get('/api/auth/csrf')).json();
   assert.equal((await context.request.post('/api/auth/login', { form: { username, password }, headers: { [token.headerName]: token.token } })).status(), 200);
   const identityResponse = await context.request.get('/api/auth/me');
   assert.equal(identityResponse.status(), 200);
   const identity = await identityResponse.json();
-  const revision = identity.authorizationContext?.rolePreviewSupported === true ? identity.authorizationContext.revision : null;
+  const revision = identity.authorizationContext?.revision;
   if (typeof revision === 'string' && revision) authorizationHeaders = { 'X-Lumira-Authorization-Context-Revision': revision };
   const page = await context.newPage();
   const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => {
+    if (message.type() === 'error' && /depth|React|Uncaught application error/i.test(message.text())) {
+      mkdirSync('.runtime/browser-failures', { recursive: true });
+      appendFileSync('.runtime/browser-failures/files-react-console.log', message.text() + '\n');
+    }
+  });
+  page.on('pageerror', error => {
+    errors.push(error.message);
+    mkdirSync('.runtime/browser-failures', { recursive: true });
+    writeFileSync('.runtime/browser-failures/files-pageerror.txt', `${new Date().toISOString()} ${page.url()}\n${error.stack ?? error.message}`);
+    console.error('[files-pageerror]', error.stack ?? error.message);
+    void page.evaluate(() => window.__lumiraQaResizeObservations).then(observations => {
+      writeFileSync('.runtime/browser-failures/files-resize-observations.json', JSON.stringify(observations, null, 2));
+    }).catch(() => {});
+    void page.evaluate(() => window.__lumiraQaReactUpdates).then(updates => {
+      if (updates) writeFileSync('.runtime/browser-failures/files-react-updates.json', JSON.stringify(updates, null, 2));
+    }).catch(() => {});
+    void page.evaluate(() => window.__lumiraQaTableScroll).then(scroll => {
+      if (scroll) writeFileSync('.runtime/browser-failures/files-table-scroll.json', JSON.stringify(scroll, null, 2));
+    }).catch(() => {});
+  });
   await page.goto('/dashboard/files');
   await page.getByRole('heading', { name: t.myFiles, exact: true }).waitFor();
   const usage = page.getByRole('region', { name: t.fileUsage, exact: true });
@@ -141,22 +177,22 @@ try {
   assert.ok(purgeResponse, 'permanent-delete UI action returned no browser response');
   assert.equal(purgeResponse.status(), 204);
   await finalTrashRow.waitFor({ state: 'hidden' });
-  await usage.getByText('21 B / 1 GiB', { exact: true }).waitFor();
+  await usage.getByText('0 B / 1 GiB', { exact: true }).waitFor();
   const pendingUsage = await (await authenticatedGet('/api/account/files/usage')).json();
-  assert.equal(pendingUsage.chargedBytes, 21);
-  assert.equal(pendingUsage.fileCount, 1);
-  assert.equal(pendingUsage.pendingDeletingCount, 1);
-  assert.equal(pendingUsage.pendingDeletingBytes, 21);
+  assert.equal(pendingUsage.chargedBytes, 0);
+  assert.equal(pendingUsage.fileCount, 0);
+  assert.equal(pendingUsage.pendingDeletingCount, 0);
+  assert.equal(pendingUsage.pendingDeletingBytes, 0);
   await page.reload();
-  await page.getByRole('region', { name: t.fileUsage, exact: true }).getByText('21 B / 1 GiB', { exact: true }).waitFor({ timeout: 15000 });
+  await page.getByRole('region', { name: t.fileUsage, exact: true }).getByText('0 B / 1 GiB', { exact: true }).waitFor({ timeout: 15000 });
   const visibleFiles = await (await authenticatedGet('/api/account/files?pageSize=100')).json();
   const visibleTrash = await (await authenticatedGet('/api/account/files/trash?pageSize=100')).json();
-  assert.ok(!visibleFiles.items.some(item => item.id === fileId), 'Purge hides the pending file from the main list');
-  assert.ok(!visibleTrash.items.some(item => item.id === fileId), 'Purge hides the pending file from the trash list');
+  assert.ok(!visibleFiles.items.some(item => item.id === fileId), 'Purged file is absent from the main list');
+  assert.ok(!visibleTrash.items.some(item => item.id === fileId), 'Purged file is absent from the trash list');
 
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false);
   assert.deepEqual(errors, []);
-  console.log('PASS: owner isolation, upload/download, trash persistence after reload, quota retention, restore, confirmed purge, hidden DELETING file and 21 B charge across reload; 24-hour PostgreSQL grace remains pending');
+  console.log('PASS: owner isolation, upload/download, trash persistence after reload, quota retention, restore, confirmed PostgreSQL purge, physical bytes removed and quota released across reload');
 } finally {
   // This direct deletion only removes this script's private synthetic QA owner;
   // it is teardown, not evidence that the product cleanup worker completed.

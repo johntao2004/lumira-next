@@ -34,6 +34,19 @@ final class PasswordProofUserDetails
         return primaryCredentialRevision;
     }
 
+    /**
+     * Spring Security keeps the loaded user as the authentication principal and only replaces the
+     * object returned by {@code UserDetailsPasswordService}. The password proof is read from that
+     * principal after a legacy hash has already been replaced in the database, so the same instance
+     * must observe the upgraded encoding.
+     */
+    void useEncodedPassword(String encodedPassword) {
+        if (encodedPassword == null || encodedPassword.isBlank()) {
+            throw new IllegalArgumentException("Upgraded password encoding is required");
+        }
+        this.password = encodedPassword;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return authorities;

@@ -10,26 +10,27 @@ import { QueryFailure } from "./query-failure";
 
 type NamedResource={id:string;name?:string;label?:string;username?:string;displayName?:string;enabled?:boolean};
 type CurrentSelection={itemId:string;label:string;enabled:boolean};
-type ResourceSelectBase={endpoint:string;disabled?:boolean;excludeId?:string;id?:string;labelField?:"name"|"label";currentSelection?:CurrentSelection;optionLabel?:(item:NamedResource)=>string;max?:number};
+type ResourceSelectBase={endpoint:string;cacheScope?:string;disabled?:boolean;excludeId?:string;id?:string;labelField?:"name"|"label";currentSelection?:CurrentSelection;optionLabel?:(item:NamedResource)=>string;max?:number};
 type SingleResourceSelectProps=ResourceSelectBase&{multiple?:false;value?:string|null;onChange?:(value:string|null)=>void};
 type MultipleResourceSelectProps=ResourceSelectBase&{multiple:true;value?:string[]|null;onChange?:(value:string[])=>void};
 type ResourceSelectProps=SingleResourceSelectProps|MultipleResourceSelectProps;
 /** Paginated search with an independent lookup for an existing off-page selection. */
 export function ResourceSelect(props:ResourceSelectProps) {
-  const {endpoint,disabled,excludeId,id,labelField="name",currentSelection,optionLabel,max=10_000}=props;
+  const {endpoint,cacheScope,disabled,excludeId,id,labelField="name",currentSelection,optionLabel,max=10_000}=props;
   const value=props.value;
   const multiple=props.multiple===true;
   const onChange=props.onChange as ((value:string|null|string[])=>void)|undefined;
   const {t}=usePreferences();
   const [search,setSearch]=useState("");
+  const endpointKey=[endpoint,...(cacheScope===undefined?[]:[cacheScope])];
   const labels=useRef(new Map<string,{value:string;label:string;disabled?:boolean}>());
-  const query=useInfiniteQuery({queryKey:["resource-select",endpoint,search],initialPageParam:1,
+  const query=useInfiniteQuery({queryKey:["resource-select",...endpointKey,search],initialPageParam:1,
     queryFn:({pageParam,signal})=>api<PageResult<NamedResource>>(`${endpoint}?${new URLSearchParams({page:String(pageParam),pageSize:"20",search})}`,{signal}),
     getNextPageParam:page=>page.page*page.pageSize<page.total?page.page+1:undefined});
   const scalarValue=typeof value==="string"?value:undefined;
   const seededSelection=scalarValue&&currentSelection?.itemId===scalarValue?currentSelection:undefined;
-  const selected=useQuery({queryKey:["resource-select-detail",endpoint,scalarValue],enabled:!multiple&&!!scalarValue&&!seededSelection,queryFn:({signal})=>api<NamedResource>(`${endpoint}/${scalarValue}`,{signal})});
-  useEffect(() => { labels.current.clear(); }, [endpoint, labelField]);
+  const selected=useQuery({queryKey:["resource-select-detail",...endpointKey,scalarValue],enabled:!multiple&&!!scalarValue&&!seededSelection,queryFn:({signal})=>api<NamedResource>(`${endpoint}/${scalarValue}`,{signal})});
+  useEffect(() => { labels.current.clear(); }, [endpoint, labelField, cacheScope]);
   useEffect(() => {
     for (const item of query.data?.pages.flatMap(page=>page.items)??[]) {
       labels.current.set(item.id, { value:item.id, label:optionLabel?.(item)??item[labelField]??item.displayName??item.username??item.id, disabled:item.enabled===false });

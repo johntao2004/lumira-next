@@ -23,7 +23,6 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.server.PathContainer;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -35,15 +34,15 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-import org.springframework.web.util.pattern.PathPatternParser;
 import tools.jackson.databind.ObjectMapper;
 
-/** Single-instance orchestrator. Every published extension has an owned, drainable context. */
+/** Every published extension has an owned, drainable context and database transaction fences. */
 @Service
 public class PluginRuntime
         implements AutoCloseable,
                 PluginAuthorizationPort,
                 PluginExtensionsPort,
+                PluginServicesPort,
                 ModuleStateChangeGuard,
                 HealthIndicator {
     public record Installation(
@@ -102,19 +101,59 @@ public class PluginRuntime
     private record RuntimeRevisionSnapshot(
             String artifacts, String installations, String moduleStates) {}
 
-    private record RuntimeGraphSnapshot(String revision, String approvedRevision) {}
+    private record RuntimeGraphSnapshot(
+            String revision, String approvedRevision, long nodeLeaseDeadline) {}
+
+    private record TrafficReadiness(boolean ready, long nodeLeaseDeadline) {}
+
+    private record TrafficTransition(
+            Set<String> affected, String unchangedRevision, Set<String> approvals) {}
+
+    private record TrafficCheck(
+            String revision, TrafficTransition transition, boolean ready, long nodeLeaseDeadline) {}
+
+    /** One servlet dispatch only: no cross-request or background-worker readiness cache. */
+    final class TrafficScope implements AutoCloseable {
+        private final TrafficScope previous;
+        private final ModuleStateStore.Scope moduleScope;
+        private TrafficCheck check;
+        private boolean closed;
+
+        private TrafficScope(TrafficScope previous) {
+            this.previous = previous;
+            this.moduleScope = ModuleStateStore.openScope(null);
+        }
+
+        @Override
+        public void close() {
+            if (closed) return;
+            closed = true;
+            moduleScope.close();
+            if (previous == null) trafficScope.remove();
+            else {
+                // A nested dispatch can observe a newer graph; do not restore an older result.
+                previous.check = null;
+                trafficScope.set(previous);
+            }
+        }
+    }
 
     private static final class Handle {
+        final String owner;
         final AnnotationConfigApplicationContext context;
         final List<Published> mappings;
         final PluginOwnedResources resources;
+        String digest = "";
+        volatile long generation;
         boolean accepting = true;
         int calls;
 
         Handle(
+                String owner,
                 AnnotationConfigApplicationContext context,
                 List<Published> mappings,
                 PluginOwnedResources resources) {
+            this.owner = owner;
             this.context = context;
             this.mappings = mappings;
             this.resources = resources;
@@ -130,18 +169,35 @@ public class PluginRuntime
     private final ObjectMapper mapper;
     private final ModuleRegistry registry;
     private final ModuleStateStore states;
+    private final ObjectProvider<PluginDependenciesPort> configuredDependencies;
     private final AdministrationPort guard;
     private final AuditPort audit;
     private final ConfigurableApplicationContext host;
     private final ObjectProvider<RequestMappingHandlerMapping> mappingProvider;
     private final TransactionTemplate tx;
     private final Path root;
+    private final PluginArtifactStore artifactStore;
     private final DataSource dataSource;
+    private final ClusterOperationJournal clusterJournal;
+    private final ClusterRuntimeCoordinator clusterCoordinator;
+
+    @Value("${lumira.plugins.cluster-enabled:false}")
+    private boolean clusterEnabled;
+
+    private volatile boolean clusterFenced;
+    private boolean clusterColdRecovery;
+    private final ScheduledExecutorService clusterExecutor =
+            Executors.newSingleThreadScheduledExecutor(
+                    Thread.ofPlatform().name("lumira-plugin-cluster").factory());
     private final Path approvedGraphPath;
     private final boolean fixedGraph;
     private final UUID nodeId = UUID.randomUUID();
     private final PluginManager manager;
     private final Map<String, PluginArchive.Artifact> artifacts = new ConcurrentHashMap<>();
+
+    private record IndexedArtifact(PluginArchive.Artifact artifact, PluginHttpRuleIndex rules) {}
+
+    private final Map<String, IndexedArtifact> routeIndexes = new ConcurrentHashMap<>();
     private final Map<String, Handle> handles = new ConcurrentHashMap<>();
     private final ExecutorService executor =
             Executors.newSingleThreadExecutor(
@@ -151,10 +207,24 @@ public class PluginRuntime
                     Thread.ofPlatform().name("lumira-plugin-heartbeat").factory());
     private final Object lock = new Object();
     private volatile boolean busy;
+    private volatile TrafficTransition trafficTransition;
     private volatile boolean ready;
     private volatile boolean heartbeatHealthy;
     private volatile boolean nodeRegistered;
     private volatile String loadedGraphRevision = "";
+    private final ThreadLocal<TrafficScope> trafficScope = new ThreadLocal<>();
+
+    private record CachedSnapshot(
+            Set<String> excluded,
+            String sig,
+            String revision,
+            String artifacts,
+            String installations,
+            String moduleStates,
+            Map<String, Boolean> moduleEnabled) {}
+
+    private final ConcurrentHashMap<Set<String>, CachedSnapshot> snapshotCache =
+            new ConcurrentHashMap<>();
 
     public PluginRuntime(
             JdbcClient jdbc,
@@ -168,20 +238,28 @@ public class PluginRuntime
                     ObjectProvider<RequestMappingHandlerMapping> mappingProvider,
             PlatformTransactionManager transactions,
             @Value("${lumira.plugins.path:.runtime/plugins}") String path,
+            @Value("${lumira.plugins.artifacts-path:}") String artifactsPath,
             DataSource dataSource,
             @Value("${lumira.plugins.fixed-graph:false}") boolean fixedGraph,
             @Value("${lumira.plugins.approved-graph:plugins/approved-graph.json}")
-                    String approvedGraph) {
+                    String approvedGraph,
+            ObjectProvider<PluginDependenciesPort> configuredDependencies) {
         this.jdbc = jdbc;
+        clusterJournal = new ClusterOperationJournal(dataSource, mapper);
         this.mapper = mapper;
         this.registry = registry;
         this.states = states;
+        this.configuredDependencies = Objects.requireNonNull(configuredDependencies);
         this.guard = guard;
         this.audit = audit;
         this.host = host;
         this.mappingProvider = mappingProvider;
         tx = new TransactionTemplate(transactions);
+        tx.setIsolationLevel(Connection.TRANSACTION_READ_COMMITTED);
+        clusterCoordinator =
+                new ClusterRuntimeCoordinator(clusterJournal, tx, nodeId, new ClusterParticipant());
         root = Path.of(path).toAbsolutePath().normalize();
+        artifactStore = new PluginArtifactStore(root, artifactsPath);
         this.dataSource = dataSource;
         this.fixedGraph = fixedGraph;
         approvedGraphPath = Path.of(approvedGraph).toAbsolutePath().normalize();
@@ -273,11 +351,68 @@ public class PluginRuntime
             registerNode();
             startHeartbeat();
             try {
-                withClusterLifecycleLock(
-                        () -> {
-                            restoreUnderClusterLock();
-                            return null;
-                        });
+                boolean restoredNode = false;
+                while (!restoredNode) {
+                    if (clusterEnabled
+                            && (clusterJournal.blocksGraphChange()
+                                    || clusterCoordinator.hasPendingTerminal())) {
+                        clusterCoordinator.tick();
+                        if (clusterFenced)
+                            throw new IllegalStateException("pluginRuntimeNodeRetired");
+                        if (clusterJournal.blocksGraphChange()
+                                && !clusterCoordinator.hasPendingTerminal())
+                            TimeUnit.MILLISECONDS.sleep(200);
+                        continue;
+                    }
+                    restoredNode =
+                            withClusterLifecycleLock(
+                                    () -> {
+                                        if (clusterEnabled
+                                                && (clusterJournal.blocksGraphChange()
+                                                        || clusterCoordinator.hasPendingTerminal()))
+                                            return false;
+                                        String restored;
+                                        if (fixedGraph) {
+                                            restored =
+                                                    tx.execute(
+                                                            status -> {
+                                                                try {
+                                                                    return restoreUnderClusterLock();
+                                                                } catch (RuntimeException
+                                                                        | Error failure) {
+                                                                    throw failure;
+                                                                } catch (Exception failure) {
+                                                                    throw new IllegalStateException(
+                                                                            "pluginRestoreFailed",
+                                                                            failure);
+                                                                }
+                                                            });
+                                        } else restored = restoreUnderClusterLock();
+                                        // Traffic is published only after the actual metadata
+                                        // transaction
+                                        // commits.
+                                        loadedGraphRevision = Objects.requireNonNull(restored);
+                                        ready = true;
+                                        updateNodeState(true, loadedGraphRevision);
+                                        return true;
+                                    });
+                }
+                if (clusterEnabled)
+                    clusterExecutor.scheduleWithFixedDelay(
+                            () -> {
+                                try {
+                                    clusterCoordinator.tick();
+                                } catch (RuntimeException failure) {
+                                    System.getLogger(getClass().getName())
+                                            .log(
+                                                    System.Logger.Level.WARNING,
+                                                    "Plugin cluster control-plane tick failed",
+                                                    failure);
+                                }
+                            },
+                            0,
+                            250,
+                            TimeUnit.MILLISECONDS);
             } catch (Exception | Error failure) {
                 ready = false;
                 updateNodeState(false, "");
@@ -286,18 +421,25 @@ public class PluginRuntime
         }
     }
 
-    private void restoreUnderClusterLock() throws Exception {
-        Files.createDirectories(root.resolve("artifacts"));
-        Files.createDirectories(root.resolve("loaded"));
+    private String restoreUnderClusterLock() throws Exception {
+        clusterColdRecovery = false;
+        trafficTransition = null;
+        busy = false;
+        artifactStore.initialize();
         recoverExpiredOperations();
         boolean bootstrap =
                 jdbc.sql("SELECT count(*) FROM platform_plugin_bootstrap")
                                 .query(Integer.class)
                                 .single()
                         == 0;
+        List<String> bootstrapDefaults =
+                bootstrap && !fixedGraph
+                        ? bootstrapPluginIds(Path.of("plugins", "bootstrap.json"), mapper)
+                        : List.of();
         Map<String, ApprovedPlugin> approved =
                 fixedGraph ? readApprovedPackages(bootstrap) : Map.of();
-        if (fixedGraph) reconcileApprovedInstallations(approved, bootstrap);
+        Set<String> removedProviders =
+                fixedGraph ? reconcileApprovedInstallations(approved, bootstrap) : Set.of();
         for (var row :
                 jdbc.sql(
                                 "SELECT digest,manifest::text FROM platform_plugin_artifact ORDER BY created_at")
@@ -307,16 +449,11 @@ public class PluginRuntime
                     && approved.values().stream().noneMatch(p -> p.digest().equals(row.getKey())))
                 continue;
             var manifest = mapper.readValue(row.getValue(), PluginManifest.class);
-            var artifact =
-                    new PluginArchive.Artifact(
-                            row.getKey(),
-                            manifest,
-                            root.resolve("artifacts").resolve(row.getKey()));
-            PluginArchive.verifyStored(artifact);
+            var artifact = artifactStore.stored(row.getKey(), manifest);
             artifacts.put(manifest.id(), artifact);
         }
         if (bootstrap && !fixedGraph) {
-            for (String id : List.of("feedback", "localization", "sensitive-words")) {
+            for (String id : bootstrapDefaults) {
                 Path packageDirectory = approvedGraphPath.getParent();
                 Path manifestPath =
                         fixedGraph
@@ -354,22 +491,26 @@ public class PluginRuntime
                                                         "Missing installed artifact: "
                                                                 + installation.moduleId()));
                 var manifest = mapper.readValue(persisted, PluginManifest.class);
-                artifacts.put(
-                        manifest.id(),
-                        new PluginArchive.Artifact(
-                                installation.digest(),
-                                manifest,
-                                root.resolve("artifacts").resolve(installation.digest())));
+                artifacts.put(manifest.id(), artifactStore.stored(installation.digest(), manifest));
             }
         registerCatalog();
         if (bootstrap && !fixedGraph) {
+            Set<String> initialInstallations = bootstrapClosure(bootstrapDefaults);
             tx.executeWithoutResult(
                     status -> {
-                        for (var a : artifacts.values()) {
+                        fenceLifecycle(initialInstallations);
+                        for (String id : initialInstallations) {
+                            var a = artifacts.get(id);
                             jdbc.sql(
-                                            "INSERT INTO platform_plugin_installation(module_id,digest,installed,explicit_install) VALUES(:id,:digest,true,true) ON CONFLICT(module_id) DO NOTHING")
+                                            "INSERT INTO platform_plugin_installation(module_id,digest,installed,explicit_install) VALUES(:id,:digest,true,:explicit) ON CONFLICT(module_id) DO NOTHING")
                                     .param("id", a.manifest().id())
                                     .param("digest", a.digest())
+                                    .param("explicit", bootstrapDefaults.contains(id))
+                                    .update();
+                            jdbc.sql(
+                                            "INSERT INTO platform_module_state(id,module_id,enabled,version) VALUES(:uuid,:id,true,1) ON CONFLICT(module_id) DO NOTHING")
+                                    .param("uuid", UUID.randomUUID())
+                                    .param("id", a.manifest().id())
                                     .update();
                         }
                         jdbc.sql("INSERT INTO platform_plugin_bootstrap(id) VALUES(1)").update();
@@ -386,19 +527,22 @@ public class PluginRuntime
                     throw new IllegalStateException("Plugin restore failed: " + id, error);
                 }
             }
+        // Flyway owns independent plugin initialization history. Do not hold the recovery
+        // barrier across its connections; take it only for final reference validation/publication.
+        if (fixedGraph) verifyFixedReleaseCanPublish(removedProviders);
         String currentRevision = revision();
         requireApprovedGraph(currentRevision);
-        loadedGraphRevision = currentRevision;
-        ready = true;
-        updateNodeState(true, loadedGraphRevision);
+        return currentRevision;
     }
 
     private void registerNode() {
-        jdbc.sql(
-                        "INSERT INTO platform_plugin_runtime_node(node_id,started_at,heartbeat_at,ready,fixed_graph,graph_revision) VALUES(:id,now(),now(),false,:fixed,'')")
-                .param("id", nodeId)
-                .param("fixed", fixedGraph)
-                .update();
+        nodeProtocolWrite(
+                () ->
+                        jdbc.sql(
+                                        "INSERT INTO platform_plugin_runtime_node(node_id,started_at,heartbeat_at,ready,fixed_graph,graph_revision) VALUES(:id,now(),now(),false,:fixed,'')")
+                                .param("id", nodeId)
+                                .param("fixed", fixedGraph)
+                                .update());
         nodeRegistered = true;
         heartbeatHealthy = true;
     }
@@ -412,20 +556,23 @@ public class PluginRuntime
     }
 
     private void heartbeatTick() {
+        if (clusterFenced) return;
         try {
             recoverExpiredOperations();
             String currentRevision = revision();
-            boolean graphReady = ready && !busy && loadedGraphRevision.equals(currentRevision);
+            boolean graphReady = isReadyForTraffic();
             int updated =
-                    jdbc.sql(
-                                    "UPDATE platform_plugin_runtime_node SET heartbeat_at=now(),ready=:ready,graph_revision=:revision WHERE node_id=:id")
-                            .param("ready", graphReady)
-                            .param("revision", loadedGraphRevision)
-                            .param("id", nodeId)
-                            .update();
+                    nodeProtocolWrite(
+                            () ->
+                                    jdbc.sql(
+                                                    "UPDATE platform_plugin_runtime_node SET heartbeat_at=now(),ready=:ready,graph_revision=:revision WHERE node_id=:id")
+                                            .param("ready", graphReady)
+                                            .param("revision", loadedGraphRevision)
+                                            .param("id", nodeId)
+                                            .update());
             if (updated != 1) throw new IllegalStateException("pluginRuntimeNodeUnavailable");
             jdbc.sql(
-                            "UPDATE platform_plugin_operation SET lease_expires_at=now()+interval '45 seconds',updated_at=now() WHERE owner_node_id=:id AND status IN ('QUEUED','RUNNING')")
+                            "UPDATE platform_plugin_operation SET lease_expires_at=clock_timestamp()+interval '45 seconds',updated_at=clock_timestamp() WHERE owner_node_id=:id AND status IN ('QUEUED','RUNNING') AND lease_expires_at>clock_timestamp()")
                     .param("id", nodeId)
                     .update();
             jdbc.sql(
@@ -433,6 +580,7 @@ public class PluginRuntime
                     .param("id", nodeId)
                     .update();
             heartbeatHealthy = true;
+            if (clusterEnabled) clusterCoordinator.renewLease();
         } catch (RuntimeException failure) {
             heartbeatHealthy = false;
             System.getLogger(getClass().getName())
@@ -448,12 +596,33 @@ public class PluginRuntime
 
     private void updateNodeState(boolean nodeReady, String graphRevision) {
         if (!nodeRegistered) return;
-        jdbc.sql(
-                        "UPDATE platform_plugin_runtime_node SET heartbeat_at=now(),ready=:ready,graph_revision=:revision WHERE node_id=:id")
-                .param("ready", nodeReady)
-                .param("revision", graphRevision)
-                .param("id", nodeId)
-                .update();
+        nodeProtocolWrite(
+                () ->
+                        jdbc.sql(
+                                        "UPDATE platform_plugin_runtime_node SET heartbeat_at=now(),ready=:ready,graph_revision=:revision WHERE node_id=:id")
+                                .param("ready", nodeReady)
+                                .param("revision", graphRevision)
+                                .param("id", nodeId)
+                                .update());
+    }
+
+    private int nodeProtocolWrite(java.util.function.IntSupplier write) {
+        if (!clusterEnabled) return write.getAsInt();
+        return tx.execute(
+                status -> {
+                    jdbc.sql("SELECT set_config('lumira.cluster_protocol','2',true)")
+                            .query(String.class)
+                            .single();
+                    return write.getAsInt();
+                });
+    }
+
+    private boolean clusterEligible() {
+        return clusterEnabled
+                && !fixedGraph
+                && clusterJournal.protocolReady()
+                && handles.containsKey("cluster-runtime")
+                && isModuleEnabled("cluster-runtime");
     }
 
     private List<RuntimeNode> activeNodes() {
@@ -503,9 +672,17 @@ public class PluginRuntime
         return Map.copyOf(approved);
     }
 
-    private void reconcileApprovedInstallations(
+    private Set<String> reconcileApprovedInstallations(
             Map<String, ApprovedPlugin> approved, boolean bootstrap) {
-        if (!bootstrap && !approvedDatabaseMatches(approved)) {
+        Set<String> bootstrapSelection =
+                bootstrap ? approvedBootstrapSelection(approved) : Set.of();
+        Set<String> bootstrapInstallations =
+                bootstrap ? bootstrapClosure(bootstrapSelection) : Set.of();
+        for (String id : bootstrapInstallations)
+            if (!approved.containsKey(id))
+                throw new IllegalArgumentException("pluginBootstrapNotApproved:" + id);
+        boolean unchanged = !bootstrap && approvedDatabaseMatches(approved);
+        if (!bootstrap && !unchanged) {
             long otherLiveNodes =
                     jdbc.sql(
                                     "SELECT count(*) FROM platform_plugin_runtime_node WHERE node_id<>:id AND heartbeat_at>now()-interval '30 seconds' AND (ready OR graph_revision<>'')")
@@ -521,11 +698,43 @@ public class PluginRuntime
                         .orElse(null);
         if (priorApproval != null && !priorApproval.equals(revision()))
             throw conflict("pluginGraphApprovalMismatch");
+        // HPA/cold replacement of the same approved graph must neither rewrite metadata nor
+        // acquire exclusive fences that would conflict with healthy nodes' business transactions.
+        if (unchanged) return Set.of();
+        Set<String> removedProviders =
+                bootstrap ? Set.of() : requireApprovedRemovalAllowed(approved);
+        var installations = installationMap();
+        var enabledFlags = new HashMap<String, Boolean>();
+        jdbc.sql("SELECT module_id,enabled FROM platform_module_state")
+                .query((rs, n) -> Map.entry(rs.getString(1), rs.getBoolean(2)))
+                .list()
+                .forEach(entry -> enabledFlags.put(entry.getKey(), entry.getValue()));
+        var affected = new HashSet<String>();
+        for (var plugin : approved.values()) {
+            var current = installations.get(plugin.id());
+            if (bootstrap
+                    || current == null
+                    || !plugin.digest().equals(current.digest())
+                    || !enabledFlags.containsKey(plugin.id())
+                    || (!current.installed() && enabledFlags.get(plugin.id())))
+                affected.add(plugin.id());
+        }
+        installations.values().stream()
+                .filter(i -> !approved.containsKey(i.moduleId()))
+                .filter(
+                        i ->
+                                i.installed()
+                                        || i.explicitInstall()
+                                        || enabledFlags.getOrDefault(i.moduleId(), false))
+                .forEach(i -> affected.add(i.moduleId()));
         tx.executeWithoutResult(
                 status -> {
+                    fenceLifecycle(affected);
+                    if (!bootstrap) requireApprovedRemovalAllowed(approved);
                     Set<String> included = new HashSet<>();
                     for (ApprovedPlugin plugin : approved.values()) {
                         included.add(plugin.id());
+                        if (!affected.contains(plugin.id())) continue;
                         PluginArchive.Artifact artifact = artifacts.get(plugin.id());
                         if (artifact == null || !plugin.digest().equals(artifact.digest())) {
                             try {
@@ -540,14 +749,14 @@ public class PluginRuntime
                                 throw new IllegalStateException("approvedPluginImportFailed", e);
                             }
                         }
-                        Installation current = installationMap().get(plugin.id());
+                        Installation current = installations.get(plugin.id());
                         boolean installed =
                                 bootstrap
-                                        ? isBootstrapInstalled(plugin.id())
+                                        ? bootstrapInstallations.contains(plugin.id())
                                         : current != null && current.installed();
                         boolean explicit =
                                 bootstrap
-                                        ? isBootstrapInstalled(plugin.id())
+                                        ? bootstrapSelection.contains(plugin.id())
                                         : current != null && current.explicitInstall();
                         jdbc.sql(
                                         "INSERT INTO platform_plugin_installation(module_id,digest,installed,explicit_install) VALUES(:id,:digest,:installed,:explicit) ON CONFLICT(module_id) DO UPDATE SET digest=EXCLUDED.digest,installed=EXCLUDED.installed,explicit_install=EXCLUDED.explicit_install,updated_at=now()")
@@ -556,16 +765,10 @@ public class PluginRuntime
                                 .param("installed", installed)
                                 .param("explicit", explicit)
                                 .update();
-                        Boolean previousEnabled =
-                                jdbc.sql(
-                                                "SELECT enabled FROM platform_module_state WHERE module_id=:id")
-                                        .param("id", plugin.id())
-                                        .query(Boolean.class)
-                                        .optional()
-                                        .orElse(false);
+                        boolean previousEnabled = enabledFlags.getOrDefault(plugin.id(), false);
                         boolean enabled =
                                 bootstrap
-                                        ? isBootstrapInstalled(plugin.id())
+                                        ? bootstrapInstallations.contains(plugin.id())
                                         : installed && previousEnabled;
                         jdbc.sql(
                                         "INSERT INTO platform_module_state(id,module_id,enabled,version) VALUES(:uuid,:id,:enabled,1) ON CONFLICT(module_id) DO UPDATE SET enabled=EXCLUDED.enabled,version=platform_module_state.version+1,updated_at=now() WHERE platform_module_state.enabled IS DISTINCT FROM EXCLUDED.enabled")
@@ -574,10 +777,16 @@ public class PluginRuntime
                                 .param("enabled", enabled)
                                 .update();
                     }
-                    if (!included.isEmpty()) {
+                    var removed = new HashSet<>(affected);
+                    removed.removeAll(included);
+                    if (!removed.isEmpty()) {
                         jdbc.sql(
-                                        "UPDATE platform_plugin_installation SET installed=false,explicit_install=false,updated_at=now() WHERE module_id NOT IN (:ids)")
-                                .param("ids", included)
+                                        "UPDATE platform_plugin_installation SET installed=false,explicit_install=false,updated_at=now() WHERE module_id IN (:ids) AND (installed OR explicit_install)")
+                                .param("ids", removed)
+                                .update();
+                        jdbc.sql(
+                                        "UPDATE platform_module_state SET enabled=false,version=version+1,updated_at=now() WHERE module_id IN (:ids) AND enabled")
+                                .param("ids", removed)
                                 .update();
                     }
                     if (bootstrap) {
@@ -586,10 +795,78 @@ public class PluginRuntime
                                 .update();
                     }
                 });
+        return removedProviders;
     }
 
-    private static boolean isBootstrapInstalled(String id) {
-        return Set.of("feedback", "localization", "sensitive-words").contains(id);
+    private Set<String> requireApprovedRemovalAllowed(Map<String, ApprovedPlugin> approved) {
+        var removed = new TreeSet<String>();
+        installationMap().values().stream()
+                .filter(i -> i.installed() && !approved.containsKey(i.moduleId()))
+                .forEach(i -> removed.add(i.moduleId()));
+        if (removed.isEmpty()) return Set.of();
+        // Use the committed old graph, including dependents also omitted by the new image.
+        // Omission cannot turn a dependent chain into an implicit cascading uninstall.
+        for (var row :
+                jdbc.sql(
+                                "SELECT i.module_id,a.manifest::text FROM platform_plugin_installation i JOIN platform_plugin_artifact a ON a.digest=i.digest WHERE i.installed ORDER BY i.module_id")
+                        .query((rs, n) -> Map.entry(rs.getString(1), rs.getString(2)))
+                        .list()) {
+            var manifest = mapper.readValue(row.getValue(), PluginManifest.class);
+            if (!row.getKey().equals(manifest.id()))
+                throw new IllegalStateException("pluginStoredManifestMismatch:" + row.getKey());
+            for (var dependency : manifest.dependencies())
+                if (removed.contains(dependency.id()))
+                    throw conflict("pluginRequiredBy:" + row.getKey());
+        }
+        for (String id : removed) requireNoConfiguredReleaseReferences(id);
+        return Set.copyOf(removed);
+    }
+
+    private void requireNoConfiguredReleaseReferences(String id) {
+        var blockers = configuredBlockers(id);
+        if (!blockers.isEmpty()) throw conflict(blockers.getFirst());
+    }
+
+    private void verifyFixedReleaseCanPublish(Set<String> removedProviders) {
+        if (removedProviders.isEmpty()) return;
+        if (!TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("pluginReleasePublicationRequiresTransaction");
+        var connection =
+                org.springframework.jdbc.datasource.DataSourceUtils.getConnection(dataSource);
+        try {
+            AdministrationRecoveryBarrier.exclusive(connection);
+        } catch (java.sql.SQLException unavailable) {
+            throw new IllegalStateException("pluginReleaseRecoveryBarrierUnavailable", unavailable);
+        } finally {
+            org.springframework.jdbc.datasource.DataSourceUtils.releaseConnection(
+                    connection, dataSource);
+        }
+        for (String id : removedProviders) requireNoConfiguredReleaseReferences(id);
+    }
+
+    private Set<String> approvedBootstrapSelection(Map<String, ApprovedPlugin> approved) {
+        try {
+            var selection =
+                    new LinkedHashSet<>(
+                            bootstrapPluginIds(
+                                    approvedGraphPath.getParent().resolve("bootstrap.json"),
+                                    mapper));
+            for (String id : selection)
+                if (!approved.containsKey(id))
+                    throw new IllegalArgumentException("pluginBootstrapNotApproved:" + id);
+            return Set.copyOf(selection);
+        } catch (java.io.IOException unavailable) {
+            throw new IllegalStateException("pluginBootstrapManifestUnavailable", unavailable);
+        }
+    }
+
+    private Set<String> bootstrapClosure(Collection<String> roots) {
+        var initial = new LinkedHashSet<String>();
+        var graph = graph();
+        for (String id : roots) initial.addAll(graph.install(id));
+        initial.removeIf(
+                id -> !artifacts.containsKey(id)); // Kernel dependencies are already present.
+        return Set.copyOf(initial);
     }
 
     private boolean approvedDatabaseMatches(Map<String, ApprovedPlugin> approved) {
@@ -604,13 +881,23 @@ public class PluginRuntime
                             .single();
             if (present != 1) return false;
         }
-        for (Installation installation : installationMap().values()) {
+        var installations = installationMap();
+        for (Installation installation : installations.values()) {
             ApprovedPlugin packageEntry = approved.get(installation.moduleId());
-            if (installation.installed() && packageEntry == null) return false;
+            if ((installation.installed() || installation.explicitInstall())
+                    && packageEntry == null) return false;
             if (packageEntry != null && !packageEntry.digest().equals(installation.digest()))
                 return false;
         }
-        return true;
+        var ids = new HashSet<>(approved.keySet());
+        ids.addAll(installations.keySet());
+        return ids.isEmpty()
+                || jdbc.sql(
+                                        "SELECT count(*) FROM platform_module_state s WHERE s.module_id IN (:ids) AND s.enabled AND NOT EXISTS (SELECT 1 FROM platform_plugin_installation i WHERE i.module_id=s.module_id AND i.installed)")
+                                .param("ids", ids)
+                                .query(Integer.class)
+                                .single()
+                        == 0;
     }
 
     private static Path approvedArchivePath(Path packageDirectory, String id, String version) {
@@ -643,24 +930,13 @@ public class PluginRuntime
                                     .single();
                     if (fixedGraph) {
                         jdbc.sql(
-                                        "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by='approved-image' WHERE id=1")
+                                        "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by='approved-image' WHERE id=1 AND graph_revision IS DISTINCT FROM :revision")
                                 .param("revision", graphRevision)
                                 .update();
                     } else if (!approved.equals(graphRevision)) {
                         throw new IllegalStateException("pluginGraphApprovalMismatch");
                     }
                 });
-    }
-
-    private void approveGraphChange(String actor) {
-        String currentRevision = revision();
-        jdbc.sql(
-                        "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
-                .param("revision", currentRevision)
-                .param("actor", actor)
-                .update();
-        loadedGraphRevision = currentRevision;
-        updateNodeState(!busy, currentRevision);
     }
 
     private <T> T withClusterLifecycleLock(Callable<T> work) throws Exception {
@@ -689,41 +965,81 @@ public class PluginRuntime
     }
 
     private boolean graphMatchesLoadedSnapshot() {
-        return ready && !busy && heartbeatHealthy && loadedGraphRevision.equals(revision());
+        var snapshot = graphSnapshot();
+        return localRuntimeReady()
+                && !busy
+                && nodeLeaseCurrent(snapshot.nodeLeaseDeadline())
+                && loadedGraphRevision.equals(snapshot.revision());
     }
 
     private boolean localRuntimeReady() {
-        return ready && !busy && heartbeatHealthy;
+        return ready && heartbeatHealthy;
+    }
+
+    private void beginTrafficTransition(Set<String> affected) {
+        var snapshot = graphSnapshot(affected);
+        trafficTransition =
+                new TrafficTransition(
+                        Set.copyOf(affected),
+                        snapshot.revision(),
+                        Set.of(snapshot.approvedRevision()));
+    }
+
+    private void allowTransitionApproval(String revision) {
+        var transition = trafficTransition;
+        if (transition == null) return;
+        var approvals = new HashSet<>(transition.approvals());
+        approvals.add(revision);
+        trafficTransition =
+                new TrafficTransition(
+                        transition.affected(),
+                        transition.unchangedRevision(),
+                        Set.copyOf(approvals));
+    }
+
+    private boolean changing(String owner) {
+        var transition = trafficTransition;
+        return transition != null && transition.affected().contains(owner);
     }
 
     private boolean localRuntimeReady(RuntimeGraphSnapshot snapshot) {
         return localRuntimeReady()
+                && nodeLeaseCurrent(snapshot.nodeLeaseDeadline())
                 && snapshot.revision().equals(loadedGraphRevision)
                 && snapshot.revision().equals(snapshot.approvedRevision());
     }
 
     private void requireLifecycleChangeAllowed() {
         if (fixedGraph) throw conflict("pluginFixedGraph");
-        if (activeNodeCount() > 1) throw conflict("pluginClusterLifecycleUnsupported");
+        if (clusterJournal.blocksGraphChange()) throw conflict("pluginClusterOperationActive");
+        if (activeNodeCount() > 1 && !clusterEligible())
+            throw conflict("pluginClusterLifecycleUnsupported");
+        if (busy) throw conflict("pluginBusy");
         if (!graphMatchesLoadedSnapshot()) throw conflict("pluginGraphChanged");
     }
 
     private void requireOperationTopologyAllowed() {
         if (fixedGraph) throw conflict("pluginFixedGraph");
+        if (clusterJournal.blocksGraphChange()) throw conflict("pluginClusterOperationActive");
         if (activeNodeCount() > 1) throw conflict("pluginClusterLifecycleUnsupported");
-        if (!ready || !heartbeatHealthy || !loadedGraphRevision.equals(revision()))
+        var snapshot = graphSnapshot();
+        if (!localRuntimeReady()
+                || !nodeLeaseCurrent(snapshot.nodeLeaseDeadline())
+                || !loadedGraphRevision.equals(snapshot.revision()))
             throw conflict("pluginGraphChanged");
     }
 
     private String lifecycleBlockReason() {
         if (fixedGraph) return "pluginFixedGraph";
-        if (activeNodeCount() > 1) return "pluginClusterLifecycleUnsupported";
+        if (clusterJournal.blocksGraphChange()) return "pluginClusterOperationActive";
+        if (activeNodeCount() > 1 && !clusterEligible()) return "pluginClusterLifecycleUnsupported";
         if (busy) return "pluginBusy";
         return graphMatchesLoadedSnapshot() ? null : "pluginGraphChanged";
     }
 
     @Override
     public void requireChangeAllowed(String moduleId, boolean enabled) {
+        if (activeNodeCount() > 1) throw conflict("pluginClusterLifecycleUnsupported");
         requireLifecycleChangeAllowed();
     }
 
@@ -754,6 +1070,7 @@ public class PluginRuntime
 
     private String persistGraphApproval(String actor) {
         String currentRevision = revision();
+        allowTransitionApproval(currentRevision);
         int updated =
                 jdbc.sql(
                                 "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
@@ -772,8 +1089,14 @@ public class PluginRuntime
             ready = false;
             return;
         }
+        var transition = trafficTransition;
+        if (transition != null)
+            for (String id : transition.affected()) {
+                var handle = handles.get(id);
+                if (handle != null) handle.generation = storedGeneration(id);
+            }
         loadedGraphRevision = committedRevision;
-        ready = heartbeatHealthy && !busy;
+        ready = heartbeatHealthy;
         if (!nodeRegistered) return;
         try {
             heartbeatExecutor.execute(this::heartbeatTick);
@@ -788,6 +1111,9 @@ public class PluginRuntime
         if (!localRuntimeReady())
             return Health.down().withDetail("reason", "pluginRuntimeNotReady").build();
         try {
+            var transition = trafficTransition;
+            if (transition != null && isReadyForTraffic())
+                return Health.up().withDetail("changingPlugins", transition.affected()).build();
             RuntimeGraphSnapshot snapshot = graphSnapshot();
             String currentRevision = snapshot.revision();
             if (!currentRevision.equals(loadedGraphRevision))
@@ -824,12 +1150,62 @@ public class PluginRuntime
         }
     }
 
+    TrafficScope openTrafficScope() {
+        var scope = new TrafficScope(trafficScope.get());
+        trafficScope.set(scope);
+        return scope;
+    }
+
     public boolean isReadyForTraffic() {
         if (!localRuntimeReady()) return false;
+        var scope = trafficScope.get();
+        String revision = loadedGraphRevision;
+        var transition = trafficTransition;
+        if (scope != null
+                && scope.check != null
+                && revision.equals(scope.check.revision())
+                && transition == scope.check.transition()
+                && (!scope.check.ready() || nodeLeaseCurrent(scope.check.nodeLeaseDeadline())))
+            return scope.check.ready();
+        var result = checkTrafficReadiness();
+        if (scope != null)
+            scope.check =
+                    new TrafficCheck(
+                            revision, transition, result.ready(), result.nodeLeaseDeadline());
+        return result.ready();
+    }
+
+    private static boolean nodeLeaseCurrent(long deadline) {
+        return System.nanoTime() - deadline < 0;
+    }
+
+    private TrafficReadiness checkTrafficReadiness() {
         try {
-            return localRuntimeReady(graphSnapshot());
+            for (int attempt = 0; attempt < 2; attempt++) {
+                var transition = trafficTransition;
+                var snapshot = graphSnapshot();
+                if (localRuntimeReady(snapshot))
+                    return new TrafficReadiness(true, snapshot.nodeLeaseDeadline());
+                if (transition != null) {
+                    var unchanged = graphSnapshot(transition.affected());
+                    if (transition == trafficTransition)
+                        return new TrafficReadiness(
+                                localRuntimeReady()
+                                        && nodeLeaseCurrent(unchanged.nodeLeaseDeadline())
+                                        && unchanged
+                                                .revision()
+                                                .equals(transition.unchangedRevision())
+                                        && transition
+                                                .approvals()
+                                                .contains(unchanged.approvedRevision()),
+                                unchanged.nodeLeaseDeadline());
+                } else if (trafficTransition == null) {
+                    break;
+                }
+            }
+            return new TrafficReadiness(false, 0);
         } catch (RuntimeException failure) {
-            return false;
+            return new TrafficReadiness(false, 0);
         }
     }
 
@@ -840,15 +1216,20 @@ public class PluginRuntime
     }
 
     private void registerCatalog() {
-        for (String id : orderAll()) {
-            var m = artifacts.get(id).manifest();
-            registry.registerPlugin(
-                    new PlatformModule(
-                            m.id(),
-                            m.name(),
-                            m.version(),
-                            m.dependencies().stream().map(PluginManifest.Dependency::id).toList()));
-        }
+        registry.replacePlugins(
+                orderAll().stream()
+                        .map(
+                                id -> {
+                                    var m = artifacts.get(id).manifest();
+                                    return new PlatformModule(
+                                            m.id(),
+                                            m.name(),
+                                            m.version(),
+                                            m.dependencies().stream()
+                                                    .map(PluginManifest.Dependency::id)
+                                                    .toList());
+                                })
+                        .toList());
 
         var installedManifests =
                 orderAll().stream()
@@ -925,11 +1306,9 @@ public class PluginRuntime
     }
 
     private List<String> orderAll() {
-        var graph = graph();
-        var ids = new LinkedHashSet<String>();
-        for (String id : artifacts.keySet().stream().sorted().toList())
-            ids.addAll(graph.install(id));
-        return ids.stream().filter(artifacts::containsKey).toList();
+        return graph().catalogOrder(artifacts.keySet().stream().sorted().toList()).stream()
+                .filter(artifacts::containsKey)
+                .toList();
     }
 
     private PluginGraph graph() {
@@ -985,7 +1364,28 @@ public class PluginRuntime
                 .param("id", id)
                 .query(Boolean.class)
                 .optional()
-                .orElse(true);
+                .orElse(false);
+    }
+
+    private boolean isModuleEnabled(String moduleId) {
+        return states.isEnabled(moduleId);
+    }
+
+    private Map<String, Boolean> parseModuleStates(String json) {
+        if (json == null || json.isBlank() || json.equals("[]")) return Map.of();
+        try {
+            var tree = mapper.readTree(json);
+            if (!tree.isArray()) return Map.of();
+            var map = new HashMap<String, Boolean>();
+            for (var elem : tree) {
+                if (elem.isArray() && elem.size() >= 2) {
+                    map.put(elem.get(0).asText(), elem.get(1).asBoolean());
+                }
+            }
+            return Map.copyOf(map);
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 
     private String revision() {
@@ -994,46 +1394,184 @@ public class PluginRuntime
 
     /** Reads all revision inputs and its approval in one PostgreSQL statement snapshot. */
     private RuntimeGraphSnapshot graphSnapshot() {
+        return graphSnapshot(Set.of());
+    }
+
+    private static final String STEADY_STATE_GRAPH_SIG_QUERY =
+            """
+            WITH artifact_rows_meta AS (
+                SELECT (
+                    COALESCE((SELECT count(*) || ':' || COALESCE(sum(hashtext(module_id || ':' || version || ':' || digest)), 0)
+                        FROM platform_plugin_artifact), '0:0')
+                    || '|' ||
+                    COALESCE((SELECT count(*) || ':' || COALESCE(sum(hashtext(module_id || ':' || digest || ':' || installed::text || ':' || explicit_install::text)), 0)
+                        FROM platform_plugin_installation), '0:0')
+                    || '|' ||
+                    COALESCE((SELECT count(*) || ':' || COALESCE(sum(version), 0) || ':' || COALESCE(sum(hashtext(module_id || ':' || enabled::text || ':' || version::text)), 0)
+                        FROM platform_module_state), '0:0:0')
+                ) AS sig
+            )
+            SELECT
+                artifact_rows_meta.sig AS current_sig,
+                COALESCE((SELECT graph_revision
+                    FROM platform_plugin_graph_approval WHERE id = 1), '')
+                    AS approved_revision,
+                COALESCE((SELECT GREATEST(0,
+                    FLOOR(EXTRACT(EPOCH FROM (heartbeat_at + interval '30 seconds'
+                        - clock_timestamp())) * 1000000000))::bigint
+                    FROM platform_plugin_runtime_node WHERE node_id = :node), 0)
+                    AS node_lease_remaining_nanos
+            FROM artifact_rows_meta
+            """;
+
+    private record SteadyStateSig(
+            String currentSig, String approvedRevision, long nodeLeaseRemainingNanos) {}
+
+    private RuntimeGraphSnapshot graphSnapshot(Set<String> excluded) {
+        CachedSnapshot cached = snapshotCache.get(excluded);
+        String expectedSig = cached != null ? cached.sig() : "";
+        if (excluded.isEmpty()
+                && cached != null
+                && cached.sig() != null
+                && !cached.sig().isEmpty()) {
+            // Start the monotonic deadline before the round trip. A slow connection can shorten a
+            // confirmed lease, never extend it past the database's remaining heartbeat lifetime.
+            long queryStarted = System.nanoTime();
+            SteadyStateSig sigRow =
+                    jdbc.sql(STEADY_STATE_GRAPH_SIG_QUERY)
+                            .param("node", nodeId)
+                            .query(
+                                    (rs, row) ->
+                                            new SteadyStateSig(
+                                                    rs.getString("current_sig"),
+                                                    rs.getString("approved_revision"),
+                                                    rs.getLong("node_lease_remaining_nanos")))
+                            .single();
+            if (sigRow.currentSig() != null && sigRow.currentSig().equals(cached.sig())) {
+                ModuleStateStore.populateScope(cached.moduleEnabled());
+                return new RuntimeGraphSnapshot(
+                        cached.revision(),
+                        sigRow.approvedRevision(),
+                        queryStarted
+                                + Math.min(
+                                        NODE_STALE_AFTER.toNanos(),
+                                        sigRow.nodeLeaseRemainingNanos()));
+            }
+            expectedSig = "";
+        }
+        // Start the monotonic deadline before the round trip. A slow connection can shorten a
+        // confirmed lease, never extend it past the database's remaining heartbeat lifetime.
+        long queryStarted = System.nanoTime();
         return jdbc.sql(
                         """
-                            WITH artifact_rows AS (
-                                SELECT COALESCE(
-                                    jsonb_agg(jsonb_build_array(module_id, version, digest)
-                                        ORDER BY module_id, version, digest),
-                                    '[]'::jsonb)::text AS value
+                            WITH artifact_rows_meta AS MATERIALIZED (
+                                SELECT (
+                                    COALESCE((SELECT count(*) || ':' || COALESCE(sum(hashtext(module_id || ':' || version || ':' || digest)), 0)
+                                        FROM platform_plugin_artifact WHERE module_id NOT IN (:excluded)), '0:0')
+                                    || '|' ||
+                                    COALESCE((SELECT count(*) || ':' || COALESCE(sum(hashtext(module_id || ':' || digest || ':' || installed::text || ':' || explicit_install::text)), 0)
+                                        FROM platform_plugin_installation WHERE module_id NOT IN (:excluded)), '0:0')
+                                    || '|' ||
+                                    COALESCE((SELECT count(*) || ':' || COALESCE(sum(version), 0) || ':' || COALESCE(sum(hashtext(module_id || ':' || enabled::text || ':' || version::text)), 0)
+                                        FROM platform_module_state WHERE module_id NOT IN (:excluded)), '0:0:0')
+                                ) AS sig
+                            ), artifact_rows AS (
+                                SELECT CASE WHEN (SELECT sig FROM artifact_rows_meta) = :expectedSig THEN NULL
+                                    ELSE COALESCE(
+                                        jsonb_agg(jsonb_build_array(module_id, version, digest)
+                                            ORDER BY module_id, version, digest),
+                                        '[]'::jsonb)::text END AS value
                                 FROM platform_plugin_artifact
+                                WHERE module_id NOT IN (:excluded)
+                                    AND (:expectedSig = '' OR (SELECT sig FROM artifact_rows_meta) != :expectedSig)
                             ), installation_rows AS (
-                                SELECT COALESCE(
-                                    jsonb_agg(jsonb_build_array(module_id, digest, installed, explicit_install)
-                                        ORDER BY module_id),
-                                    '[]'::jsonb)::text AS value
+                                SELECT CASE WHEN (SELECT sig FROM artifact_rows_meta) = :expectedSig THEN NULL
+                                    ELSE COALESCE(
+                                        jsonb_agg(jsonb_build_array(module_id, digest, installed, explicit_install)
+                                            ORDER BY module_id),
+                                        '[]'::jsonb)::text END AS value
                                 FROM platform_plugin_installation
+                                WHERE module_id NOT IN (:excluded)
+                                    AND (:expectedSig = '' OR (SELECT sig FROM artifact_rows_meta) != :expectedSig)
                             ), module_rows AS (
-                                SELECT COALESCE(
-                                    jsonb_agg(jsonb_build_array(module_id, enabled, version)
-                                        ORDER BY module_id),
-                                    '[]'::jsonb)::text AS value
+                                SELECT CASE WHEN (SELECT sig FROM artifact_rows_meta) = :expectedSig THEN NULL
+                                    ELSE COALESCE(
+                                        jsonb_agg(jsonb_build_array(module_id, enabled, version)
+                                            ORDER BY module_id),
+                                        '[]'::jsonb)::text END AS value
                                 FROM platform_module_state
+                                WHERE module_id NOT IN (:excluded)
+                                    AND (:expectedSig = '' OR (SELECT sig FROM artifact_rows_meta) != :expectedSig)
                             )
-                            SELECT artifact_rows.value AS artifacts,
+                            SELECT
+                                artifact_rows_meta.sig AS current_sig,
+                                artifact_rows.value AS artifacts,
                                 installation_rows.value AS installations,
                                 module_rows.value AS module_states,
                                 COALESCE((SELECT graph_revision
                                     FROM platform_plugin_graph_approval WHERE id = 1), '')
-                                    AS approved_revision
-                            FROM artifact_rows CROSS JOIN installation_rows CROSS JOIN module_rows
+                                    AS approved_revision,
+                                COALESCE((SELECT GREATEST(0,
+                                    FLOOR(EXTRACT(EPOCH FROM (heartbeat_at + interval '30 seconds'
+                                        - clock_timestamp())) * 1000000000))::bigint
+                                    FROM platform_plugin_runtime_node WHERE node_id=:node), 0)
+                                    AS node_lease_remaining_nanos
+                            FROM artifact_rows_meta CROSS JOIN artifact_rows CROSS JOIN installation_rows CROSS JOIN module_rows
                             """)
+                .param("excluded", excluded.isEmpty() ? Set.of("-") : excluded)
+                .param("expectedSig", expectedSig)
+                .param("node", nodeId)
                 .query(
                         (rs, row) -> {
-                            String revision =
-                                    PluginArchive.digest(
-                                            mapper.writeValueAsBytes(
-                                                    new RuntimeRevisionSnapshot(
-                                                            rs.getString("artifacts"),
-                                                            rs.getString("installations"),
-                                                            rs.getString("module_states"))));
+                            String currentSig = rs.getString("current_sig");
+                            String revision;
+                            if (cached != null
+                                    && currentSig != null
+                                    && currentSig.equals(cached.sig())) {
+                                revision = cached.revision();
+                                if (excluded.isEmpty()) {
+                                    ModuleStateStore.populateScope(cached.moduleEnabled());
+                                }
+                            } else {
+                                String artifacts = rs.getString("artifacts");
+                                if (artifacts == null) artifacts = "[]";
+                                String installations = rs.getString("installations");
+                                if (installations == null) installations = "[]";
+                                String moduleStates = rs.getString("module_states");
+                                if (moduleStates == null) moduleStates = "[]";
+                                revision =
+                                        PluginArchive.digest(
+                                                mapper.writeValueAsBytes(
+                                                        new RuntimeRevisionSnapshot(
+                                                                artifacts,
+                                                                installations,
+                                                                moduleStates)));
+                                Map<String, Boolean> moduleEnabled =
+                                        parseModuleStates(moduleStates);
+                                if (currentSig != null) {
+                                    if (snapshotCache.size() > 16) snapshotCache.clear();
+                                    var newSnapshot =
+                                            new CachedSnapshot(
+                                                    Set.copyOf(excluded),
+                                                    currentSig,
+                                                    revision,
+                                                    artifacts,
+                                                    installations,
+                                                    moduleStates,
+                                                    moduleEnabled);
+                                    snapshotCache.put(Set.copyOf(excluded), newSnapshot);
+                                    if (excluded.isEmpty()) {
+                                        ModuleStateStore.populateScope(moduleEnabled);
+                                    }
+                                }
+                            }
                             return new RuntimeGraphSnapshot(
-                                    revision, rs.getString("approved_revision"));
+                                    revision,
+                                    rs.getString("approved_revision"),
+                                    queryStarted
+                                            + Math.min(
+                                                    NODE_STALE_AFTER.toNanos(),
+                                                    rs.getLong("node_lease_remaining_nanos")));
                         })
                 .single();
     }
@@ -1046,11 +1584,18 @@ public class PluginRuntime
 
     public List<View> views() {
         String lifecycleBlockReason = lifecycleBlockReason();
+        var installations = installationMap();
+        Map<String, Boolean> enabledFlags = new HashMap<>();
+        jdbc.sql("SELECT module_id,enabled FROM platform_module_state")
+                .query((rs, row) -> Map.entry(rs.getString(1), rs.getBoolean(2)))
+                .list()
+                .forEach(entry -> enabledFlags.put(entry.getKey(), entry.getValue()));
         return artifacts.values().stream()
                 .sorted(Comparator.comparing(a -> a.manifest().id()))
                 .map(
                         a -> {
-                            var i = installationMap().get(a.manifest().id());
+                            var i = installations.get(a.manifest().id());
+                            boolean flag = enabledFlags.getOrDefault(a.manifest().id(), false);
                             boolean in = i != null && i.installed();
                             return new View(
                                     a.manifest().id(),
@@ -1058,15 +1603,13 @@ public class PluginRuntime
                                     a.manifest().version(),
                                     a.digest(),
                                     in,
-                                    in && states.isEnabled(a.manifest().id()),
+                                    in && flag && registry.isLive(a.manifest().id()),
                                     i != null && i.explicitInstall(),
                                     !in
                                             ? "UNINSTALLED"
                                             : handles.containsKey(a.manifest().id())
                                                     ? "RUNNING"
-                                                    : storedEnabled(a.manifest().id())
-                                                            ? "FAILED"
-                                                            : "STOPPED",
+                                                    : flag ? "FAILED" : "STOPPED",
                                     a.manifest(),
                                     lifecycleBlockReason == null,
                                     lifecycleBlockReason);
@@ -1076,23 +1619,30 @@ public class PluginRuntime
 
     public List<View> frontend() {
         requireRuntimeReady();
-        return views().stream().filter(View::enabled).toList();
+        return views().stream().filter(View::enabled).filter(view -> !changing(view.id())).toList();
     }
 
     public List<View> importPackage(String actor, byte[] bytes) throws Exception {
         guard.requireGlobal(actor, PlatformPageId.MODULES.accessPermission());
         guard.requireGlobal(actor, PlatformOperation.MODULE_INSTALL.permission());
+        if (activeNodeCount() > 1) throw conflict("pluginClusterLifecycleUnsupported");
         requireLifecycleChangeAllowed();
         return withClusterLifecycleLock(
                 () -> {
                     synchronized (lock) {
                         requireLifecycleChangeAllowed();
+                        if (activeNodeCount() > 1)
+                            throw conflict("pluginClusterLifecycleUnsupported");
                         var before = new HashMap<>(artifacts);
                         try {
+                            AtomicReference<String> committedRevision = new AtomicReference<>();
                             tx.executeWithoutResult(
                                     status -> {
                                         try {
-                                            importArchive(bytes, 0);
+                                            var imported = importArchive(bytes, 0);
+                                            // Newly imported roots must be immediately installable;
+                                            // obsolete, uninstalled catalog entries need not be.
+                                            graph().install(imported);
                                             orderAll();
                                             registerCatalog();
                                             if (jdbc.sql(
@@ -1121,6 +1671,7 @@ public class PluginRuntime
                                                                                 java.nio.charset
                                                                                         .StandardCharsets
                                                                                         .UTF_8)));
+                                            committedRevision.set(persistGraphApproval(actor));
                                         } catch (ResponseStatusException e) {
                                             throw e;
                                         } catch (Exception e) {
@@ -1132,10 +1683,16 @@ public class PluginRuntime
                                                     e);
                                         }
                                     });
-                            approveGraphChange(actor);
+                            publishCommittedGraph(committedRevision.get());
                         } catch (Exception e) {
                             artifacts.clear();
                             artifacts.putAll(before);
+                            try {
+                                registerCatalog();
+                            } catch (Exception recovery) {
+                                e.addSuppressed(recovery);
+                                ready = false;
+                            }
                             throw e;
                         }
                         return views();
@@ -1143,9 +1700,9 @@ public class PluginRuntime
                 });
     }
 
-    private void importArchive(byte[] bytes, int depth) throws Exception {
+    private String importArchive(byte[] bytes, int depth) throws Exception {
         if (depth > 16) throw conflict("pluginDependencyCycle");
-        var a = PluginArchive.unpack(bytes, root.resolve("artifacts"), mapper);
+        var a = artifactStore.importArchive(bytes, mapper);
         for (String name : a.manifest().files().keySet())
             if (name.startsWith("dependencies/") && name.endsWith(".lumira-plugin.zip"))
                 importArchive(Files.readAllBytes(a.directory().resolve(name)), depth + 1);
@@ -1172,6 +1729,7 @@ public class PluginRuntime
                 .param("version", a.manifest().version())
                 .param("manifest", mapper.writeValueAsString(a.manifest()))
                 .update();
+        return a.manifest().id();
     }
 
     public Plan plan(String actor, String id, String kind) {
@@ -1201,8 +1759,14 @@ public class PluginRuntime
         var enable = new ArrayList<String>();
         var remove = new ArrayList<String>();
         var blockers = new ArrayList<String>();
+        var referenceBlockers = new ArrayList<String>();
         String lifecycleBlock = lifecycleBlockReason();
         if (lifecycleBlock != null) blockers.add(lifecycleBlock);
+        if (activeNodeCount() > 1 && (dataMode.equals("DELETE") || id.equals("cluster-runtime")))
+            blockers.add(
+                    id.equals("cluster-runtime")
+                            ? "requiredModule"
+                            : "pluginDataDeletionUnsupported");
         try {
             if (kind.equals("INSTALL")) {
                 if (!artifacts.containsKey(id))
@@ -1218,7 +1782,15 @@ public class PluginRuntime
                     }
                 }
             } else if (kind.equals("UNINSTALL")) {
-                remove.addAll(graph().uninstall(id));
+                try {
+                    remove.addAll(graph().uninstall(id));
+                } catch (IllegalArgumentException dependency) {
+                    blockers.add(dependency.getMessage());
+                }
+                // Installed consumers must not hide retained business references from preflight.
+                // Keep the removal list empty when graph validation blocks this explicit target.
+                if (installed(id)) referenceBlockers.addAll(configuredBlockers(id));
+                blockers.addAll(referenceBlockers);
                 if (dataMode.equals("DELETE")) {
                     if (!supported)
                         throw new IllegalArgumentException("pluginDataDeletionUnsupported");
@@ -1232,7 +1804,16 @@ public class PluginRuntime
         }
         String revision =
                 PluginArchive.digest(
-                        (revision() + id + kind + dataMode + mapper.writeValueAsString(data))
+                        (revision()
+                                        + id
+                                        + kind
+                                        + dataMode
+                                        + mapper.writeValueAsString(data)
+                                        + mapper.writeValueAsString(
+                                                referenceBlockers.stream()
+                                                        .distinct()
+                                                        .sorted()
+                                                        .toList()))
                                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return new Plan(
                 id, kind, revision, install, reuse, enable, remove, blockers, dataMode, supported,
@@ -1242,6 +1823,8 @@ public class PluginRuntime
     public Operation execute(String actor, String id, String kind, Execute input) {
         requireLifecyclePermission(actor, kind);
         requireRuntimeReady();
+        if (activeNodeCount() > 1 && clusterEligible())
+            return executeCluster(actor, id, kind, input);
         requireLifecycleChangeAllowed();
         synchronized (lock) {
             if (!ready || busy) throw conflict("pluginBusy");
@@ -1269,7 +1852,7 @@ public class PluginRuntime
                     .param("owner", nodeId)
                     .update();
             busy = true;
-            updateNodeState(false, loadedGraphRevision);
+            updateNodeState(true, loadedGraphRevision);
             try {
                 executor.submit(() -> runOperation(actor, op, plan));
             } catch (RuntimeException failure) {
@@ -1282,10 +1865,440 @@ public class PluginRuntime
         }
     }
 
+    private Operation executeCluster(String actor, String id, String kind, Execute input) {
+        try {
+            return withClusterLifecycleLock(
+                    () -> {
+                        synchronized (lock) {
+                            requireLifecycleChangeAllowed();
+                            var plan =
+                                    makePlan(
+                                            id,
+                                            kind,
+                                            input == null || input.dataMode() == null
+                                                    ? "PRESERVE"
+                                                    : input.dataMode());
+                            requireLifecyclePermissions(actor, plan);
+                            if (input == null || !plan.revision().equals(input.revision()))
+                                throw conflict("staleRecord");
+                            if (!plan.blockers().isEmpty())
+                                throw conflict(plan.blockers().getFirst());
+                            UUID operationId = UUID.randomUUID();
+                            var operation =
+                                    tx.execute(
+                                            status -> {
+                                                requireLifecyclePermissions(actor, plan);
+                                                UUID actorId =
+                                                        jdbc.sql(
+                                                                        "SELECT id FROM platform_user WHERE username=:actor AND enabled AND deleted_at IS NULL")
+                                                                .param("actor", actor)
+                                                                .query(UUID.class)
+                                                                .single();
+                                                var changed =
+                                                        clusterAffected(
+                                                                plan.install(),
+                                                                plan.enable(),
+                                                                plan.remove(),
+                                                                id);
+                                                var digests = new TreeMap<String, String>();
+                                                for (String item : changed)
+                                                    digests.put(item, artifacts.get(item).digest());
+                                                var decision =
+                                                        new ClusterOperationJournal.Decision(
+                                                                actorId,
+                                                                ClusterOperationJournal.Kind
+                                                                        .valueOf(kind),
+                                                                id,
+                                                                projectedRevision(plan),
+                                                                digests,
+                                                                plan.install(),
+                                                                plan.enable(),
+                                                                plan.remove());
+                                                String base = revision();
+                                                var participants = clusterJournal.activate(base);
+                                                return clusterJournal.begin(
+                                                        operationId,
+                                                        nodeId,
+                                                        UUID.randomUUID(),
+                                                        base,
+                                                        decision,
+                                                        participants,
+                                                        true);
+                                            });
+                            return clusterOperation(operation);
+                        }
+                    });
+        } catch (RuntimeException failure) {
+            throw failure;
+        } catch (Exception failure) {
+            throw new IllegalStateException("pluginClusterLifecycleBusy", failure);
+        }
+    }
+
+    private String projectedRevision(Plan plan) {
+        var installationChanges = new TreeMap<String, Installation>();
+        var flagChanges = new TreeMap<String, Boolean>();
+        if (plan.kind().equals("INSTALL")) {
+            for (String id : plan.install()) {
+                installationChanges.put(
+                        id,
+                        new Installation(
+                                id, artifacts.get(id).digest(), true, id.equals(plan.moduleId())));
+                flagChanges.put(id, true);
+            }
+            String id = plan.moduleId();
+            installationChanges.put(
+                    id, new Installation(id, artifacts.get(id).digest(), true, true));
+            for (String enabled : plan.enable()) flagChanges.put(enabled, true);
+        } else
+            for (String id : plan.remove()) {
+                installationChanges.put(
+                        id, new Installation(id, artifacts.get(id).digest(), false, false));
+                flagChanges.put(id, false);
+            }
+        return PluginGraphProjection.project(
+                jdbc, mapper, installationChanges.values(), flagChanges);
+    }
+
+    private static Set<String> clusterAffected(
+            List<String> install, List<String> enable, List<String> remove, String root) {
+        var affected = new HashSet<String>();
+        affected.addAll(install);
+        affected.addAll(enable);
+        affected.addAll(remove);
+        affected.add(root);
+        return Set.copyOf(affected);
+    }
+
+    private static Set<String> clusterAffected(ClusterOperationJournal.Operation operation) {
+        var d = operation.decision();
+        return clusterAffected(d.install(), d.enable(), d.remove(), d.moduleId());
+    }
+
+    private static Operation clusterOperation(ClusterOperationJournal.Operation operation) {
+        String status =
+                switch (operation.phase()) {
+                    case COMPLETED -> "SUCCEEDED";
+                    case ABORTED -> "FAILED";
+                    default -> "RUNNING";
+                };
+        return new Operation(
+                operation.id(),
+                operation.decision().moduleId(),
+                operation.decision().kind().name(),
+                status,
+                operation.phase().name(),
+                operation.failureCode(),
+                "PRESERVE");
+    }
+
+    private Plan clusterPlan(ClusterOperationJournal.Operation operation) {
+        var d = operation.decision();
+        return new Plan(
+                d.moduleId(),
+                d.kind().name(),
+                operation.baseRevision(),
+                d.install(),
+                List.of(),
+                d.enable(),
+                d.remove(),
+                List.of(),
+                "PRESERVE",
+                false,
+                List.of());
+    }
+
+    private final class ClusterParticipant implements ClusterRuntimeCoordinator.Participant {
+        @Override
+        public boolean recover(ClusterOperationJournal.Operation operation) throws Exception {
+            synchronized (lock) {
+                if (clusterFenced || ready || !handles.isEmpty() || !nodeRegistered) return false;
+                if (!Boolean.TRUE.equals(
+                        jdbc.sql(
+                                        "SELECT EXISTS(SELECT 1 FROM plugin_cluster_runtime_operation "
+                                                + "WHERE id=:id AND lease_expires_at<=clock_timestamp() "
+                                                + "AND phase NOT IN ('COMPLETED','ABORTED'))")
+                                .param("id", operation.id())
+                                .query(Boolean.class)
+                                .single())) return false;
+                String expected =
+                        operation.phase() == ClusterOperationJournal.Phase.COMMITTED
+                                ? operation.decision().targetRevision()
+                                : operation.baseRevision();
+                var snapshot = graphSnapshot();
+                if (!snapshot.revision().equals(expected)
+                        || !snapshot.approvedRevision().equals(expected))
+                    throw conflict("pluginGraphChanged");
+                hydrateClusterArtifacts(operation, true);
+                return true;
+            }
+        }
+
+        @Override
+        public void fenced(ClusterOperationJournal.Operation operation) {
+            synchronized (lock) {
+                clusterFenced = true;
+                ready = false;
+                heartbeatHealthy = false;
+                busy = true;
+            }
+        }
+
+        @Override
+        public void prepare(ClusterOperationJournal.Operation operation) throws Exception {
+            synchronized (lock) {
+                if (!operation.baseRevision().equals(revision())
+                        || !operation.baseRevision().equals(loadedGraphRevision))
+                    throw conflict("pluginGraphChanged");
+                for (var item : operation.decision().digests().entrySet()) {
+                    String json =
+                            jdbc.sql(
+                                            "SELECT manifest::text FROM platform_plugin_artifact WHERE module_id=:id AND digest=:digest")
+                                    .param("id", item.getKey())
+                                    .param("digest", item.getValue())
+                                    .query(String.class)
+                                    .single();
+                    var manifest = mapper.readValue(json, PluginManifest.class);
+                    var current = handles.get(item.getKey());
+                    if (current != null && !current.digest.equals(item.getValue()))
+                        throw conflict("pluginGraphChanged");
+                    artifacts.put(item.getKey(), artifactStore.stored(item.getValue(), manifest));
+                }
+                var d = operation.decision();
+                if (d.kind() == ClusterOperationJournal.Kind.UNINSTALL) {
+                    if (!graph().uninstall(d.moduleId()).equals(d.remove()))
+                        throw conflict("pluginGraphChanged");
+                    requireNoConfiguredDependencies(d.moduleId());
+                } else {
+                    var expected = makePlan(d.moduleId(), "INSTALL", "PRESERVE");
+                    if (!expected.install().equals(d.install())
+                            || !expected.enable().equals(d.enable()))
+                        throw conflict("pluginGraphChanged");
+                    for (String id : d.install()) {
+                        validateNavigation(artifacts.get(id).manifest());
+                        validateEndpoints(artifacts.get(id));
+                    }
+                }
+                beginTrafficTransition(clusterAffected(operation));
+                allowTransitionApproval(d.targetRevision());
+                busy = true;
+            }
+        }
+
+        @Override
+        public void drain(ClusterOperationJournal.Operation operation) throws Exception {
+            synchronized (lock) {
+                for (String id : clusterAffected(operation)) PluginRuntime.this.drain(id);
+            }
+        }
+
+        @Override
+        public void stage(ClusterOperationJournal.Operation operation) throws Exception {
+            synchronized (lock) {
+                var d = operation.decision();
+                for (String id : d.remove()) unload(id);
+                for (String id : d.install()) load(id);
+                for (String id : d.enable()) load(id);
+            }
+        }
+
+        @Override
+        public void commit(ClusterOperationJournal.Operation operation) throws Exception {
+            withClusterLifecycleLock(
+                    () -> {
+                        synchronized (lock) {
+                            var plan = clusterPlan(operation);
+                            fenceLifecycle(clusterAffected(operation));
+                            var connection =
+                                    org.springframework.jdbc.datasource.DataSourceUtils
+                                            .getConnection(dataSource);
+                            try {
+                                AdministrationRecoveryBarrier.exclusive(connection);
+                            } finally {
+                                org.springframework.jdbc.datasource.DataSourceUtils
+                                        .releaseConnection(connection, dataSource);
+                            }
+                            if (!revision().equals(operation.baseRevision()))
+                                throw conflict("pluginGraphChanged");
+                            String actor =
+                                    jdbc.sql(
+                                                    "SELECT username FROM platform_user WHERE id=:id AND enabled AND deleted_at IS NULL")
+                                            .param("id", operation.decision().actorId())
+                                            .query(String.class)
+                                            .optional()
+                                            .orElseThrow(() -> conflict("forbidden"));
+                            requireLifecyclePermissions(actor, plan);
+                            if (plan.kind().equals("UNINSTALL")) {
+                                if (!graph().uninstall(plan.moduleId()).equals(plan.remove()))
+                                    throw conflict("pluginGraphChanged");
+                                requireNoConfiguredDependencies(plan.moduleId());
+                                for (String id : plan.remove()) {
+                                    persistInstalled(id, false, false);
+                                    setFlag(id, false);
+                                }
+                            } else {
+                                for (String id : plan.install()) {
+                                    persistInstalled(id, true, id.equals(plan.moduleId()));
+                                    setFlag(id, true);
+                                }
+                                for (String id : plan.enable()) setFlag(id, true);
+                                persistInstalled(plan.moduleId(), true, true);
+                            }
+                            String actual = revision();
+                            if (!actual.equals(operation.decision().targetRevision()))
+                                throw conflict("pluginGraphChanged");
+                            audit.append(
+                                    actor,
+                                    plan.kind().equals("INSTALL")
+                                            ? "plugin.installed"
+                                            : "plugin.uninstalled",
+                                    operation.id());
+                            int updated =
+                                    jdbc.sql(
+                                                    "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
+                                            .param("revision", actual)
+                                            .param("actor", actor)
+                                            .update();
+                            if (updated != 1)
+                                throw new IllegalStateException("pluginGraphApprovalUnavailable");
+                            return null;
+                        }
+                    });
+        }
+
+        @Override
+        public void apply(ClusterOperationJournal.Operation operation) throws Exception {
+            reconcileDecision(operation, operation.decision().targetRevision());
+        }
+
+        @Override
+        public void abort(ClusterOperationJournal.Operation operation) throws Exception {
+            reconcileDecision(operation, operation.baseRevision());
+        }
+
+        private void reconcileDecision(
+                ClusterOperationJournal.Operation operation, String expectedRevision)
+                throws Exception {
+            synchronized (lock) {
+                if (!revision().equals(expectedRevision)) throw conflict("pluginGraphChanged");
+                if (clusterColdRecovery || !ready) {
+                    clusterColdRecovery = true;
+                    beginTrafficTransition(clusterAffected(operation));
+                    allowTransitionApproval(operation.decision().targetRevision());
+                    busy = true;
+                    reconcileClusterGraph(operation, true);
+                } else
+                    for (String id : clusterAffected(operation)) {
+                        if (installed(id) && storedEnabled(id)) {
+                            load(id);
+                            var handle = handles.get(id);
+                            if (handle != null) handle.generation = storedGeneration(id);
+                        } else unload(id);
+                    }
+                registerCatalog();
+            }
+        }
+
+        @Override
+        public void aborted(ClusterOperationJournal.Operation operation) {
+            String actor =
+                    jdbc.sql("SELECT username FROM platform_user WHERE id=:id")
+                            .param("id", operation.decision().actorId())
+                            .query(String.class)
+                            .optional()
+                            .orElse(operation.decision().actorId().toString());
+            audit.append(
+                    actor,
+                    operation.decision().kind() == ClusterOperationJournal.Kind.INSTALL
+                            ? "plugin.installFailed"
+                            : "plugin.uninstallFailed",
+                    operation.id());
+        }
+
+        @Override
+        public void finish(ClusterOperationJournal.Operation operation) throws Exception {
+            synchronized (lock) {
+                if (operation.phase() != ClusterOperationJournal.Phase.COMPLETED
+                        && operation.phase() != ClusterOperationJournal.Phase.ABORTED)
+                    throw new IllegalStateException("clusterDecisionNotTerminal");
+                String expected =
+                        operation.phase() == ClusterOperationJournal.Phase.COMPLETED
+                                ? operation.decision().targetRevision()
+                                : operation.baseRevision();
+                if (!revision().equals(expected)) {
+                    var snapshot = graphSnapshot();
+                    if (clusterJournal.blocksGraphChange()
+                            || !snapshot.revision().equals(snapshot.approvedRevision()))
+                        throw conflict("pluginGraphChanged");
+                    // This node missed a successor while its own lease was expired. Rebuild only
+                    // from the current approved graph, never publish the older terminal snapshot.
+                    ready = false;
+                    for (String id : List.copyOf(handles.keySet())) unload(id);
+                    artifacts.clear();
+                    reconcileClusterGraph(operation, false);
+                    expected = snapshot.revision();
+                }
+                for (String id : clusterAffected(operation)) {
+                    var handle = handles.get(id);
+                    if (handle != null) handle.generation = storedGeneration(id);
+                    resumeAccepting(id);
+                }
+                registerCatalog();
+                boolean coldRecovery = clusterColdRecovery;
+                if (!coldRecovery) publishCommittedGraph(expected);
+                clusterColdRecovery = false;
+                trafficTransition = null;
+                busy = false;
+                if (!coldRecovery) updateNodeState(true, expected);
+            }
+        }
+    }
+
+    /** Artifact initialization is read-only with respect to the shared graph and its approval. */
+    private void hydrateClusterArtifacts(
+            ClusterOperationJournal.Operation operation, boolean includeDecision) throws Exception {
+        artifactStore.initialize();
+        var wanted = new TreeMap<String, String>();
+        for (var installation : installationMap().values())
+            if (installation.installed())
+                wanted.put(installation.moduleId(), installation.digest());
+        if (includeDecision)
+            for (var item : operation.decision().digests().entrySet()) {
+                String installedDigest = wanted.get(item.getKey());
+                if (installedDigest != null && !installedDigest.equals(item.getValue()))
+                    throw conflict("pluginGraphChanged");
+                wanted.putIfAbsent(item.getKey(), item.getValue());
+            }
+        for (var item : wanted.entrySet()) {
+            var existing = artifacts.get(item.getKey());
+            if (existing != null && existing.digest().equals(item.getValue())) continue;
+            String json =
+                    jdbc.sql(
+                                    "SELECT manifest::text FROM platform_plugin_artifact WHERE module_id=:id AND digest=:digest")
+                            .param("id", item.getKey())
+                            .param("digest", item.getValue())
+                            .query(String.class)
+                            .single();
+            var manifest = mapper.readValue(json, PluginManifest.class);
+            artifacts.put(item.getKey(), artifactStore.stored(item.getValue(), manifest));
+        }
+        registerCatalog();
+    }
+
+    /** Cold recovery must load every enabled installed module before admitting any traffic. */
+    private void reconcileClusterGraph(
+            ClusterOperationJournal.Operation operation, boolean includeDecision) throws Exception {
+        hydrateClusterArtifacts(operation, includeDecision);
+        for (String id : List.copyOf(handles.keySet()))
+            if (!installed(id) || !storedEnabled(id)) unload(id);
+        for (String id : orderAll()) if (installed(id) && storedEnabled(id)) load(id);
+        registerCatalog();
+    }
+
     private void step(UUID id, String status, String step, String error) {
         int updated =
                 jdbc.sql(
-                                "UPDATE platform_plugin_operation SET status=:status,step=:step,error_code=:error,lease_expires_at=CASE WHEN :status IN ('SUCCEEDED','FAILED','CANCELLED') THEN NULL ELSE now()+interval '45 seconds' END,updated_at=now() WHERE id=:id AND owner_node_id=:owner AND status IN ('QUEUED','RUNNING') AND lease_expires_at>now()")
+                                "UPDATE platform_plugin_operation SET status=:status,step=:step,error_code=:error,lease_expires_at=CASE WHEN :status IN ('SUCCEEDED','FAILED','CANCELLED') THEN NULL ELSE clock_timestamp()+interval '45 seconds' END,updated_at=clock_timestamp() WHERE id=:id AND owner_node_id=:owner AND status IN ('QUEUED','RUNNING') AND lease_expires_at>clock_timestamp()")
                         .param("id", id)
                         .param("owner", nodeId)
                         .param("status", status)
@@ -1299,7 +2312,7 @@ public class PluginRuntime
         var added = new ArrayList<String>();
         var enabled = new ArrayList<String>();
         var removed = new ArrayList<String>();
-        var deleteUninstallCommitted = new AtomicReference<>(false);
+        var lifecycleCommitted = new AtomicReference<>(false);
         var recoveryFailed = new AtomicReference<>(false);
         try {
             withClusterLifecycleLock(
@@ -1310,27 +2323,26 @@ public class PluginRuntime
                             if (!makePlan(plan.moduleId(), plan.kind(), plan.dataMode())
                                     .revision()
                                     .equals(plan.revision())) throw conflict("staleRecord");
+                            var affected = new HashSet<>(plan.install());
+                            affected.addAll(plan.enable());
+                            affected.addAll(plan.remove());
+                            affected.add(plan.moduleId());
+                            beginTrafficTransition(affected);
                             if (plan.kind().equals("INSTALL")) {
                                 for (String id : plan.install()) {
                                     step(op, "RUNNING", "install " + id, null);
                                     load(id, msg -> step(op, "RUNNING", msg, null));
                                     added.add(id);
-                                    persistInstalled(id, true, id.equals(plan.moduleId()));
-                                    setFlag(id, true);
                                 }
                                 for (String id : plan.enable()) {
                                     step(op, "RUNNING", "enable " + id, null);
                                     load(id);
-                                    setFlag(id, true);
                                     enabled.add(id);
                                 }
-                                if (installed(plan.moduleId()))
-                                    persistInstalled(plan.moduleId(), true, true);
                                 String completedRevision =
-                                        completeLifecycleOperation(actor, op, "plugin.installed");
-                                loadedGraphRevision = completedRevision;
-                                ready = true;
-                                updateNodeState(true, completedRevision);
+                                        commitLifecycleOperation(actor, op, plan);
+                                lifecycleCommitted.set(true);
+                                publishCommittedGraph(completedRevision);
                             } else {
                                 // Drain all affected handles before removing any provider.
                                 for (String id : plan.remove()) drain(id);
@@ -1348,36 +2360,31 @@ public class PluginRuntime
                                         throw unloadError;
                                     }
                                     if (wasLoaded) removed.add(id);
-                                    if (!deleteUninstall) {
-                                        persistInstalled(id, false, false);
-                                        setFlag(id, false);
-                                    }
                                 }
                                 if (deleteUninstall) {
                                     step(op, "RUNNING", "delete data " + plan.moduleId(), null);
-                                    String completedRevision =
-                                            completeDeleteUninstall(actor, op, plan);
-                                    deleteUninstallCommitted.set(true);
-                                    loadedGraphRevision = completedRevision;
-                                    ready = true;
-                                    updateNodeState(true, completedRevision);
-                                } else {
-                                    String completedRevision =
-                                            completeLifecycleOperation(
-                                                    actor, op, "plugin.uninstalled");
-                                    loadedGraphRevision = completedRevision;
-                                    ready = true;
-                                    updateNodeState(true, completedRevision);
                                 }
+                                String completedRevision =
+                                        commitLifecycleOperation(actor, op, plan);
+                                lifecycleCommitted.set(true);
+                                publishCommittedGraph(completedRevision);
                             }
                         }
                         return null;
                     });
         } catch (Throwable error) {
-            boolean restoreRemovedResources =
-                    plan.kind().equals("UNINSTALL")
-                            && plan.dataMode().equals("DELETE")
-                            && !deleteUninstallCommitted.get();
+            // A committed graph is authoritative even if local publication subsequently fails.
+            // Never undo it as though preparation had failed.
+            if (lifecycleCommitted.get()) {
+                recoveryFailed.set(true);
+                System.getLogger(getClass().getName())
+                        .log(
+                                System.Logger.Level.ERROR,
+                                "Plugin graph committed but local publication failed: " + op,
+                                error);
+                return;
+            }
+            boolean restoreRemovedResources = plan.kind().equals("UNINSTALL");
             try {
                 recoverFailedOperation(
                         op,
@@ -1437,7 +2444,6 @@ public class PluginRuntime
             System.getLogger(getClass().getName())
                     .log(System.Logger.Level.ERROR, "Plugin operation failed: " + op, error);
         } finally {
-            busy = false;
             try {
                 String currentRevision = revision();
                 String approvedRevision =
@@ -1455,6 +2461,9 @@ public class PluginRuntime
             } catch (RuntimeException failure) {
                 ready = false;
                 updateNodeState(false, loadedGraphRevision);
+            } finally {
+                trafficTransition = null;
+                busy = false;
             }
         }
     }
@@ -1475,15 +2484,12 @@ public class PluginRuntime
                         for (String id : added) {
                             try {
                                 unload(id);
-                                persistInstalled(id, false, false);
-                                setFlag(id, false);
                             } catch (Exception ignored) {
                             }
                         }
                         for (String id : enabled) {
                             try {
                                 unload(id);
-                                setFlag(id, false);
                             } catch (Exception ignored) {
                             }
                         }
@@ -1536,35 +2542,55 @@ public class PluginRuntime
                 });
     }
 
-    private String completeLifecycleOperation(String actor, UUID op, String action) {
-        tx.executeWithoutResult(status -> audit.append(actor, action, op));
-        registerCatalog();
-        String completedRevision = revision();
-        tx.executeWithoutResult(
-                status -> {
-                    jdbc.sql(
-                                    "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
-                            .param("revision", completedRevision)
-                            .param("actor", actor)
-                            .update();
-                    step(op, "SUCCEEDED", "complete", null);
-                });
-        return completedRevision;
-    }
-
-    private String completeDeleteUninstall(String actor, UUID op, Plan plan) {
+    /**
+     * Publish one durable graph: installation, flags, catalog, audit and operation commit together.
+     */
+    private String commitLifecycleOperation(String actor, UUID op, Plan plan) {
         return tx.execute(
                 status -> {
-                    for (String id : plan.remove()) {
-                        persistInstalled(id, false, false);
-                        setFlag(id, false);
+                    var affected = new HashSet<>(plan.install());
+                    affected.addAll(plan.enable());
+                    affected.addAll(plan.remove());
+                    affected.add(plan.moduleId());
+                    fenceLifecycle(affected);
+                    // Lock the owner token before any mutation. A heartbeat cannot revive an
+                    // expired token, and completion checks wall time again after all work.
+                    var owned =
+                            jdbc.sql(
+                                            "SELECT id FROM platform_plugin_operation WHERE id=:id AND owner_node_id=:owner AND status IN ('QUEUED','RUNNING') AND lease_expires_at>clock_timestamp() FOR UPDATE")
+                                    .param("id", op)
+                                    .param("owner", nodeId)
+                                    .query(UUID.class)
+                                    .optional();
+                    if (owned.isEmpty()) throw conflict("pluginOperationLeaseLost");
+                    if (plan.kind().equals("INSTALL")) {
+                        for (String id : plan.install()) {
+                            persistInstalled(id, true, id.equals(plan.moduleId()));
+                            setFlag(id, true);
+                        }
+                        for (String id : plan.enable()) setFlag(id, true);
+                        if (installed(plan.moduleId()))
+                            persistInstalled(plan.moduleId(), true, true);
+                    } else {
+                        for (String id : plan.remove()) {
+                            persistInstalled(id, false, false);
+                            setFlag(id, false);
+                        }
+                        if (plan.dataMode().equals("DELETE")) {
+                            PluginDataRemoval.delete(
+                                    jdbc, artifacts.get(plan.moduleId()).manifest().dataSets());
+                            audit.append(actor, "plugin.dataDeleted", op);
+                        }
                     }
-                    PluginDataRemoval.delete(
-                            jdbc, artifacts.get(plan.moduleId()).manifest().dataSets());
-                    audit.append(actor, "plugin.dataDeleted", op);
-                    audit.append(actor, "plugin.uninstalled", op);
+                    audit.append(
+                            actor,
+                            plan.kind().equals("INSTALL")
+                                    ? "plugin.installed"
+                                    : "plugin.uninstalled",
+                            op);
                     registerCatalog();
                     String completedRevision = revision();
+                    allowTransitionApproval(completedRevision);
                     jdbc.sql(
                                     "UPDATE platform_plugin_graph_approval SET graph_revision=:revision,approved_at=now(),approved_by=:actor WHERE id=1")
                             .param("revision", completedRevision)
@@ -1597,6 +2623,10 @@ public class PluginRuntime
 
     public Operation operation(String actor, UUID id) {
         read(actor);
+        if (clusterEnabled && clusterJournal.protocolReady()) {
+            var clustered = tx.execute(status -> clusterJournal.find(id));
+            if (clustered.isPresent()) return clusterOperation(clustered.get());
+        }
         return jdbc.sql(
                         "SELECT id,module_id,kind,status,step,error_code,data_mode FROM platform_plugin_operation WHERE id=:id")
                 .param("id", id)
@@ -1621,76 +2651,100 @@ public class PluginRuntime
                     () -> {
                         synchronized (lock) {
                             requireLifecycleChangeAllowed();
+                            if (activeNodeCount() > 1)
+                                throw conflict("pluginClusterLifecycleUnsupported");
                             if (busy) throw conflict("pluginBusy");
                             if (!installed(id)) throw conflict("pluginNotInstalled");
-                            if (states.states().stream()
+                            var currentStates = states.states();
+                            if (currentStates.stream()
                                             .filter(s -> s.moduleId().equals(id))
                                             .findFirst()
                                             .orElseThrow()
                                             .version()
                                     != version) throw conflict("staleRecord");
+                            if (!enabled) {
+                                var active = new HashSet<String>();
+                                currentStates.stream()
+                                        .filter(ModuleStateStore.State::enabled)
+                                        .forEach(state -> active.add(state.moduleId()));
+                                if (registry.modules().stream()
+                                        .anyMatch(
+                                                module ->
+                                                        active.contains(module.id())
+                                                                && module.dependencies()
+                                                                        .contains(id)))
+                                    throw conflict("moduleDependencyConflict");
+                            }
+                            if (!enabled) requireNoConfiguredDependencies(id);
+                            beginTrafficTransition(Set.of(id));
                             busy = true;
-                            updateNodeState(false, loadedGraphRevision);
+                            updateNodeState(true, loadedGraphRevision);
+                            boolean previouslyLoaded = handles.containsKey(id);
+                            boolean resourceRecoveryFailed = false;
                             try {
-                                ModuleStateStore.State changed;
-                                if (enabled) {
-                                    boolean alreadyLoaded = handles.containsKey(id);
-                                    loadUnchecked(id);
-                                    try {
-                                        changed =
-                                                states.change(
-                                                        id, true, version, actor, changeReason);
-                                    } catch (Exception e) {
-                                        if (!alreadyLoaded)
-                                            try {
-                                                unload(id);
-                                            } catch (Exception ignored) {
-                                            }
-                                        throw e;
-                                    }
-                                } else {
+                                if (enabled) loadUnchecked(id);
+                                else {
                                     drain(id);
-                                    try {
-                                        changed =
-                                                states.change(
-                                                        id, false, version, actor, changeReason);
-                                        unload(id);
-                                    } catch (Exception e) {
-                                        var current =
-                                                states.states().stream()
-                                                        .filter(s -> s.moduleId().equals(id))
-                                                        .findFirst()
-                                                        .orElse(null);
-                                        if (current != null && !current.enabled())
-                                            try {
-                                                states.change(
-                                                        id,
-                                                        true,
-                                                        current.version(),
-                                                        actor,
-                                                        "Restore after failed plugin shutdown");
-                                                load(id);
-                                            } catch (Exception ignored) {
-                                            }
-                                        throw conflict("pluginDrainTimeout");
-                                    }
+                                    requireNoConfiguredDependencies(id);
                                 }
-                                approveGraphChange(actor);
+                                AtomicReference<String> committedRevision = new AtomicReference<>();
+                                var changed =
+                                        tx.execute(
+                                                status -> {
+                                                    fenceLifecycle(Set.of(id));
+                                                    var result =
+                                                            states.change(
+                                                                    id,
+                                                                    enabled,
+                                                                    version,
+                                                                    actor,
+                                                                    changeReason);
+                                                    if (!enabled) {
+                                                        try {
+                                                            unload(id);
+                                                        } catch (Exception error) {
+                                                            throw new IllegalStateException(
+                                                                    "pluginShutdownFailed", error);
+                                                        }
+                                                    }
+                                                    committedRevision.set(
+                                                            persistGraphApproval(actor));
+                                                    return result;
+                                                });
+                                publishCommittedGraph(committedRevision.get());
                                 return changed;
+                            } catch (Exception failure) {
+                                // Failed durable publication leaves the previous flags and versions
+                                // intact. Restore resources, without a compensating state mutation.
+                                try {
+                                    if (enabled && !previouslyLoaded) unload(id);
+                                    else if (!enabled && previouslyLoaded) load(id);
+                                    resumeAccepting(id);
+                                } catch (Exception recovery) {
+                                    failure.addSuppressed(recovery);
+                                    resourceRecoveryFailed = true;
+                                    ready = false;
+                                }
+                                throw failure;
                             } finally {
-                                busy = false;
-                                String currentRevision = revision();
-                                String approvedRevision =
-                                        jdbc.sql(
-                                                        "SELECT graph_revision FROM platform_plugin_graph_approval WHERE id=1")
-                                                .query(String.class)
-                                                .optional()
-                                                .orElse("");
-                                ready =
-                                        currentRevision.equals(loadedGraphRevision)
-                                                && currentRevision.equals(approvedRevision)
-                                                && heartbeatHealthy;
-                                updateNodeState(ready, loadedGraphRevision);
+                                try {
+                                    String currentRevision = revision();
+                                    String approvedRevision =
+                                            jdbc.sql(
+                                                            "SELECT graph_revision FROM platform_plugin_graph_approval WHERE id=1")
+                                                    .query(String.class)
+                                                    .optional()
+                                                    .orElse("");
+                                    ready =
+                                            !resourceRecoveryFailed
+                                                    && currentRevision.equals(loadedGraphRevision)
+                                                    && currentRevision.equals(approvedRevision)
+                                                    && heartbeatHealthy;
+                                    updateNodeState(ready, loadedGraphRevision);
+                                } finally {
+                                    trafficTransition = null;
+                                    busy = false;
+                                }
                             }
                         }
                     });
@@ -1723,6 +2777,7 @@ public class PluginRuntime
 
     private void load(String id, java.util.function.Consumer<String> progress) throws Exception {
         if (handles.containsKey(id)) return;
+        PluginFrameworkCaches.validate();
         var a = artifacts.get(id);
         Path jar = root.resolve("loaded").resolve(id + ".jar");
         Files.copy(
@@ -1732,7 +2787,8 @@ public class PluginRuntime
         var mappings = new ArrayList<Published>();
         var published = new ArrayList<Published>();
         var context = new AnnotationConfigApplicationContext();
-        var resources = new PluginOwnedResources(id, () -> acquire(id));
+        var taskHandle = new java.util.concurrent.atomic.AtomicReference<Handle>();
+        var resources = new PluginOwnedResources(id, () -> acquireOwnedWork(taskHandle.get()));
         try {
             manager.loadPlugin(jar);
             var wrapper = manager.getPlugin(id);
@@ -1741,9 +2797,19 @@ public class PluginRuntime
             context.setParent(host);
             context.setClassLoader(wrapper.getPluginClassLoader());
             context.registerBean(com.lumira.plugin.sdk.PluginResources.class, () -> resources);
+            registerDependencyServices(a.manifest(), context);
             progress.accept("create container " + id);
             context.register(entry.configuration());
             context.refresh();
+            validateOwnedServices(
+                    id,
+                    context
+                            .getBeansOfType(com.lumira.platform.common.PluginServicePort.class)
+                            .entrySet()
+                            .stream()
+                            .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
+                            .map(Map.Entry::getValue)
+                            .toList());
             if (!context.getBeansOfType(
                             org.springframework.scheduling.annotation
                                     .ScheduledAnnotationBeanPostProcessor.class)
@@ -1786,8 +2852,36 @@ public class PluginRuntime
                 mapping.registerMapping(p.mapping(), p.bean(), p.method());
                 published.add(p);
             }
-            handles.put(id, new Handle(context, List.copyOf(mappings), resources));
+            handles.put(id, new Handle(id, context, List.copyOf(mappings), resources));
             registry.live(id, true);
+            var publishedHandle = handles.get(id);
+            publishedHandle.digest = a.digest();
+            publishedHandle.generation = storedGeneration(id);
+            taskHandle.set(publishedHandle);
+            var producers = context.getBeansOfType(DurableEventProducerPort.class).values();
+            if (!producers.isEmpty())
+                resources.ownRegistration(
+                        "platform-event-producers",
+                        host.getBean(DynamicEventConsumerPort.class)
+                                .registerProducers(id, producers));
+            var consumers = context.getBeansOfType(DurableEventConsumerPort.class).values();
+            if (!consumers.isEmpty()) {
+                resources.ownRegistration(
+                        "platform-event-consumers",
+                        host.getBean(DynamicEventConsumerPort.class)
+                                .registerConsumers(
+                                        id,
+                                        consumers,
+                                        () -> {
+                                            if (!isReadyForTraffic() || !isModuleEnabled(id))
+                                                return null;
+                                            try {
+                                                return acquireOwnedWork(publishedHandle);
+                                            } catch (ResponseStatusException unavailable) {
+                                                return null;
+                                            }
+                                        }));
+            }
             registerNavigation(a.manifest());
             resources.start();
         } catch (Throwable e) {
@@ -1799,9 +2893,204 @@ public class PluginRuntime
                 manager.unloadPlugin(id);
             } catch (Exception ignored) {
             }
+            if (context.getClassLoader() instanceof PluginClassLoader)
+                PluginFrameworkCaches.release(host, context.getClassLoader());
             registry.live(id, false);
             handles.remove(id);
             throw e;
+        }
+    }
+
+    private void registerDependencyServices(
+            PluginManifest manifest, AnnotationConfigApplicationContext context) {
+        var contracts = new HashSet<Class<?>>();
+        for (var dependency : manifest.dependencies()) {
+            var provider = handles.get(dependency.id());
+            if (provider == null) continue; // Kernel contracts come from the parent context.
+            for (var service :
+                    provider.context.getBeansOfType(PluginServicePort.class).entrySet().stream()
+                            .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
+                            .map(Map.Entry::getValue)
+                            .toList()) {
+                if (!dependency.id().equals(service.ownerPluginId())) continue;
+                for (var contract :
+                        org.springframework.util.ClassUtils.getAllInterfacesForClass(
+                                service.getClass())) {
+                    if (contract == PluginServicePort.class
+                            || !PluginServicePort.class.isAssignableFrom(contract)) continue;
+                    try {
+                        if (host.getClassLoader().loadClass(contract.getName()) != contract)
+                            throw new IllegalArgumentException("pluginServiceContractNotShared");
+                    } catch (ClassNotFoundException error) {
+                        throw new IllegalArgumentException("pluginServiceContractNotShared", error);
+                    }
+                    if (!contracts.add(contract))
+                        throw new IllegalArgumentException("pluginServiceContractConflict");
+                    String owner = dependency.id();
+                    Object proxy =
+                            java.lang.reflect.Proxy.newProxyInstance(
+                                    contract.getClassLoader(),
+                                    new Class<?>[] {contract},
+                                    (instance, method, arguments) -> {
+                                        if (method.getDeclaringClass() == Object.class) {
+                                            return switch (method.getName()) {
+                                                case "toString" ->
+                                                        "Plugin dependency "
+                                                                + owner
+                                                                + ":"
+                                                                + contract.getName();
+                                                case "hashCode" ->
+                                                        System.identityHashCode(instance);
+                                                case "equals" -> instance == arguments[0];
+                                                default ->
+                                                        throw new IllegalStateException(
+                                                                method.getName());
+                                            };
+                                        }
+                                        return withServiceLease(
+                                                owner,
+                                                contract,
+                                                target -> {
+                                                    try {
+                                                        return method.invoke(target, arguments);
+                                                    } catch (
+                                                            java.lang.reflect
+                                                                            .InvocationTargetException
+                                                                    error) {
+                                                        throw error.getCause();
+                                                    }
+                                                });
+                                    });
+                    registerDependencyProxy(
+                            context,
+                            "__lumiraDependency." + owner + "." + contract.getName(),
+                            contract,
+                            proxy);
+                }
+            }
+        }
+    }
+
+    private static <T> void registerDependencyProxy(
+            AnnotationConfigApplicationContext context,
+            String name,
+            Class<T> contract,
+            Object proxy) {
+        context.registerBean(
+                name,
+                contract,
+                () -> contract.cast(proxy),
+                definition -> {
+                    definition.setPrimary(true);
+                    definition.setDestroyMethodName("");
+                });
+    }
+
+    @FunctionalInterface
+    private interface ServiceCall<T, R> {
+        R call(T service) throws Throwable;
+    }
+
+    /** Both dependency proxies and kernel adapters use the same transaction-aware drain lease. */
+    private <T, R> R withServiceLease(String owner, Class<T> contract, ServiceCall<T, R> call)
+            throws Throwable {
+        var current = handles.get(owner);
+        var lease = acquire(current);
+        boolean deferred = false;
+        try {
+            if (TransactionSynchronizationManager.isSynchronizationActive()
+                    && TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCompletion(int status) {
+                                try {
+                                    lease.close();
+                                } catch (Exception error) {
+                                    throw new IllegalStateException(error);
+                                }
+                            }
+                        });
+                deferred = true;
+            }
+            var targets =
+                    current.context.getBeansOfType(contract).entrySet().stream()
+                            .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
+                            .map(Map.Entry::getValue)
+                            .filter(
+                                    bean ->
+                                            bean instanceof PluginServicePort owned
+                                                    && owner.equals(owned.ownerPluginId()))
+                            .toList();
+            if (targets.size() != 1)
+                throw new IllegalStateException("pluginServiceContractConflict");
+            try (var scope = invocationScope(current)) {
+                return call.call(targets.getFirst());
+            }
+        } finally {
+            if (!deferred) lease.close();
+        }
+    }
+
+    @Override
+    public <T extends PluginServicePort, R> R service(
+            String owner, Class<T> contract, java.util.function.Function<T, R> call) {
+        if (owner == null
+                || !owner.matches("[a-z][a-z0-9-]{0,63}")
+                || contract == null
+                || !contract.isInterface()
+                || contract == PluginServicePort.class
+                || !PluginServicePort.class.isAssignableFrom(contract)
+                || call == null)
+            throw new IllegalArgumentException("pluginServiceContractNotShared");
+        try {
+            if (host.getClassLoader().loadClass(contract.getName()) != contract)
+                throw new IllegalArgumentException("pluginServiceContractNotShared");
+        } catch (ClassNotFoundException error) {
+            throw new IllegalArgumentException("pluginServiceContractNotShared", error);
+        }
+        if (!isReadyForTraffic() || !isModuleEnabled(owner))
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "moduleUnavailable");
+        try {
+            return withServiceLease(owner, contract, call::apply);
+        } catch (RuntimeException | Error error) {
+            throw error;
+        } catch (Throwable error) {
+            throw new IllegalStateException("pluginServiceInvocationFailed", error);
+        }
+    }
+
+    private void resumeAccepting(String id) {
+        var handle = handles.get(id);
+        if (handle != null)
+            synchronized (handle) {
+                handle.accepting = true;
+            }
+    }
+
+    private List<String> configuredBlockers(String id) {
+        return configuredDependencies
+                .orderedStream()
+                .flatMap(provider -> provider.blockers(id).stream())
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private void requireNoConfiguredDependencies(String id) {
+        if (!configuredBlockers(id).isEmpty())
+            throw new ModuleStateStore.Rejected("moduleDependencyConflict");
+    }
+
+    static void validateOwnedServices(
+            String owner, Collection<com.lumira.platform.common.PluginServicePort> services) {
+        var types = new HashSet<String>();
+        for (var service : services) {
+            if (!owner.equals(service.ownerPluginId())
+                    || service.serviceType() == null
+                    || !service.serviceType().matches("[a-z][a-z0-9-]{0,63}")
+                    || !types.add(service.serviceType()))
+                throw new IllegalArgumentException("pluginServiceOwnerConflict");
         }
     }
 
@@ -1838,19 +3127,36 @@ public class PluginRuntime
         }
     }
 
-    private boolean covered(PluginManifest m, String method, String path) {
-        return m.apiRules().stream()
-                .anyMatch(r -> r.method().equals(method) && matches(r.path(), path));
+    private PluginHttpRuleIndex rulesFor(PluginArchive.Artifact artifact) {
+        var indexed = routeIndexes.get(artifact.manifest().id());
+        if (indexed != null && indexed.artifact() == artifact) return indexed.rules();
+        return routeIndexes
+                .compute(
+                        artifact.manifest().id(),
+                        (id, current) ->
+                                current != null && current.artifact() == artifact
+                                        ? current
+                                        : new IndexedArtifact(
+                                                artifact,
+                                                new PluginHttpRuleIndex(
+                                                        artifact.manifest().apiRules())))
+                .rules();
     }
 
-    private static boolean matches(String pattern, String path) {
-        try {
-            return PathPatternParser.defaultInstance
-                    .parse(pattern)
-                    .matches(PathContainer.parsePath(path));
-        } catch (Exception e) {
-            return false;
-        }
+    private boolean covered(PluginManifest m, String method, String path) {
+        return new PluginHttpRuleIndex(m.apiRules())
+                        .first(method, PluginHttpRuleIndex.requestPath(path))
+                != null;
+    }
+
+    static List<String> bootstrapPluginIds(Path source, ObjectMapper mapper)
+            throws java.io.IOException {
+        var ids = Arrays.asList(mapper.readValue(Files.readString(source), String[].class));
+        if (ids.size() > 100
+                || new HashSet<>(ids).size() != ids.size()
+                || ids.stream().anyMatch(id -> id == null || !id.matches("[a-z][a-z0-9-]{0,63}")))
+            throw new IllegalArgumentException("invalidPluginBootstrapManifest");
+        return List.copyOf(ids);
     }
 
     private void validateNavigation(PluginManifest m) {
@@ -1861,7 +3167,9 @@ public class PluginRuntime
                             .param("id", r.id())
                             .query(String.class)
                             .optional();
-            if (owner.isPresent() && !m.id().equals(owner.get()))
+            if (owner.isPresent()
+                    && !m.id().equals(owner.get())
+                    && !(legacyNavigationOwner(m, owner.get()) && legacyNavigation(m, r, false)))
                 throw new IllegalArgumentException("pluginRouteConflict:" + r.id());
             for (var other : artifacts.values())
                 if (!other.manifest().id().equals(m.id()))
@@ -1880,7 +3188,10 @@ public class PluginRuntime
                             .query(String.class)
                             .optional();
             if (existing.isPresent()) {
-                if (!m.id().equals(existing.get())) throw conflict("pluginRouteConflict");
+                if (!m.id().equals(existing.get())
+                        && !(legacyNavigationOwner(m, existing.get())
+                                && legacyNavigation(m, r, true)))
+                    throw conflict("pluginRouteConflict");
                 continue;
             }
             UUID parent =
@@ -1903,6 +3214,77 @@ public class PluginRuntime
                     .param("sort", r.order())
                     .update();
         }
+    }
+
+    private static boolean legacyNavigationOwner(PluginManifest manifest, String owner) {
+        return owner.isEmpty() || "ai".equals(manifest.id()) && "platform".equals(owner);
+    }
+
+    /** Adopt only pinned B52 built-in rows; preserve labels, layout, state and identity. */
+    private boolean legacyNavigation(
+            PluginManifest manifest, PluginManifest.Route route, boolean adopt) {
+        String knownId =
+                switch (manifest.id() + ":" + route.id()) {
+                    case "delivery-console:mail-deliveries" ->
+                            "00000000-0000-0000-0000-000000000034";
+                    case "delivery-console:sms-deliveries" ->
+                            "00000000-0000-0000-0000-000000000048";
+                    case "authentication-console:security" ->
+                            "00000000-0000-0000-0000-000000000049";
+                    case "authentication-console:authentication" ->
+                            "f15212df-d192-491d-a0c6-1c1cbf10171d";
+                    case "authentication-console:passkey" -> "00000000-0000-0000-0000-000000000052";
+                    case "authentication-console:wechat" -> "ca740762-2005-4b8d-8a4a-87af93a096ce";
+                    case "authentication-console:captcha" -> "0e348dcc-ac99-4f40-a844-e14486e77663";
+                    case "authentication-console:registration" ->
+                            "230e98d2-91d3-4793-b9a8-98f4d96ca209";
+                    case "personal-files:files" -> "00000000-0000-0000-0000-000000000011";
+                    case "profile-console:profile-fields" -> "00000000-0000-0000-0000-000000000029";
+                    case "delivery-settings:smtp" -> "00000000-0000-0000-0000-000000000028";
+                    case "delivery-settings:sms" -> "00000000-0000-0000-0000-000000000047";
+                    case "site-console:branding" -> "00000000-0000-0000-0000-000000000027";
+                    case "site-console:watermark" -> "00000000-0000-0000-0000-000000000031";
+                    case "site-console:agreements" -> "00000000-0000-0000-0000-000000000030";
+                    case "site-console:maintenance" -> "00000000-0000-0000-0000-000000000032";
+                    case "file-console:files-all" -> "00000000-0000-0000-0000-000000000050";
+                    case "ai:ai-console" -> "00000000-0000-0000-0000-000000000057";
+                    case "ai:ai-models" -> "00000000-0000-0000-0000-000000000058";
+                    case "directory:users" -> "00000000-0000-0000-0000-000000000022";
+                    case "directory:online-users" -> "00000000-0000-0000-0000-000000000023";
+                    case "directory:roles" -> "00000000-0000-0000-0000-000000000024";
+                    case "directory:organizations" -> "00000000-0000-0000-0000-000000000025";
+                    case "directory:print-templates" -> "00000000-0000-0000-0000-000000000064";
+                    case "dictionaries:dictionaries" -> "00000000-0000-0000-0000-000000000026";
+                    case "navigation-console:navigation" -> "00000000-0000-0000-0000-000000000037";
+                    case "event-console:event-outbox" -> "00000000-0000-0000-0000-000000000035";
+                    case "notifications:notifications" -> "00000000-0000-0000-0000-000000000051";
+                    case "monitoring:monitoring" -> "00000000-0000-0000-0000-000000000021";
+                    default -> null;
+                };
+        if (knownId == null
+                || !Objects.equals(
+                        route.permission(),
+                        "personal-files".equals(manifest.id())
+                                ? null
+                                : "platform:" + route.id() + ":access")) return false;
+        String predicate =
+                " WHERE id=:id AND section_key=:section AND path=:path AND permission_key IS NOT DISTINCT FROM :permission"
+                        + " AND COALESCE(module_id,'')=:legacyOwner AND menu_type='PAGE' AND built_in AND global_only=:global AND NOT deleted";
+        var query =
+                jdbc.sql(
+                                (adopt
+                                                ? "UPDATE platform_navigation_menu SET module_id=:owner,version=version+1,updated_at=now()"
+                                                : "SELECT count(*) FROM platform_navigation_menu")
+                                        + predicate)
+                        .param("id", UUID.fromString(knownId))
+                        .param("legacyOwner", "ai".equals(manifest.id()) ? "platform" : "")
+                        .param("global", route.global())
+                        .param("section", route.id())
+                        .param("path", "/dashboard/" + route.id())
+                        .param("permission", route.permission());
+        return adopt
+                ? query.param("owner", manifest.id()).update() == 1
+                : query.query(Integer.class).single() == 1;
     }
 
     private void drain(String id) throws Exception {
@@ -1932,19 +3314,75 @@ public class PluginRuntime
         h.context.close();
         manager.stopPlugin(id);
         manager.unloadPlugin(id);
+        PluginFrameworkCaches.release(host, h.context.getClassLoader());
     }
 
     public AutoCloseable acquire(String id) {
-        var h = handles.get(id);
+        return acquire(handles.get(id));
+    }
+
+    PluginInvocationContext.Owner invocationOwner(String id) {
+        var handle = handles.get(id);
+        if (handle == null)
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "moduleUnavailable");
+        return new PluginInvocationContext.Owner(id, handle.digest, handle.generation, nodeId);
+    }
+
+    private PluginInvocationContext invocationScope(Handle handle) {
+        return PluginInvocationContext.open(
+                new PluginInvocationContext.Owner(
+                        handle.owner, handle.digest, handle.generation, nodeId));
+    }
+
+    private long storedGeneration(String id) {
+        return jdbc.sql("SELECT version FROM platform_module_state WHERE module_id=:id")
+                .param("id", id)
+                .query(Long.class)
+                .optional()
+                .orElse(0L);
+    }
+
+    private void fenceLifecycle(Set<String> affected) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("pluginLifecycleFenceRequiresTransaction");
+        var connection =
+                org.springframework.jdbc.datasource.DataSourceUtils.getConnection(dataSource);
+        try {
+            PluginTransactionFence.exclusive(connection, affected);
+        } catch (java.sql.SQLException busy) {
+            throw conflict("pluginDrainTimeout");
+        } finally {
+            org.springframework.jdbc.datasource.DataSourceUtils.releaseConnection(
+                    connection, dataSource);
+        }
+    }
+
+    private AutoCloseable acquireOwnedWork(Handle handle) {
+        if (handle == null || !isReadyForTraffic() || !isModuleEnabled(handle.owner))
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "moduleUnavailable");
+        var lease = acquire(handle);
+        var scope = invocationScope(handle);
+        return () -> {
+            try {
+                scope.close();
+            } finally {
+                lease.close();
+            }
+        };
+    }
+
+    private AutoCloseable acquire(Handle h) {
         if (h == null)
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "moduleUnavailable");
         synchronized (h) {
-            if (!h.accepting)
+            if (!h.accepting || changing(h.owner))
                 throw new ResponseStatusException(
                         HttpStatus.SERVICE_UNAVAILABLE, "moduleUnavailable");
             h.calls++;
         }
+        var released = new java.util.concurrent.atomic.AtomicBoolean();
         return () -> {
+            if (!released.compareAndSet(false, true)) return;
             synchronized (h) {
                 h.calls--;
                 h.notifyAll();
@@ -1956,16 +3394,49 @@ public class PluginRuntime
         if (!isReadyForTraffic()) return List.of();
         var out = new ArrayList<R>();
         for (var entry : handles.entrySet()) {
-            if (!states.isEnabled(entry.getKey())) continue;
-            try (var lease = acquire(entry.getKey())) {
-                for (var bean : entry.getValue().context.getBeansOfType(type).values())
-                    out.add(call.apply(bean));
+            AutoCloseable lease = null;
+            boolean deferred = false;
+            try {
+                lease = acquire(entry.getValue());
+                var beans =
+                        entry.getValue().context.getBeansOfType(type).entrySet().stream()
+                                .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
+                                .map(Map.Entry::getValue)
+                                .toList();
+                if (beans.isEmpty() || !isModuleEnabled(entry.getKey())) continue;
+                if (TransactionSynchronizationManager.isSynchronizationActive()
+                        && TransactionSynchronizationManager.isActualTransactionActive()) {
+                    var activeLease = lease;
+                    TransactionSynchronizationManager.registerSynchronization(
+                            new TransactionSynchronization() {
+                                @Override
+                                public void afterCompletion(int status) {
+                                    try {
+                                        activeLease.close();
+                                    } catch (Exception error) {
+                                        throw new IllegalStateException(error);
+                                    }
+                                }
+                            });
+                    deferred = true;
+                }
+                try (var scope = invocationScope(entry.getValue())) {
+                    for (var bean : beans) out.add(call.apply(bean));
+                }
             } catch (ResponseStatusException unavailable) {
                 if (!"moduleUnavailable".equals(unavailable.getReason())) throw unavailable;
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
                 throw new IllegalStateException(e);
+            } finally {
+                if (!deferred && lease != null) {
+                    try {
+                        lease.close();
+                    } catch (Exception error) {
+                        throw new IllegalStateException(error);
+                    }
+                }
             }
         }
         return out;
@@ -1974,20 +3445,24 @@ public class PluginRuntime
     public boolean authorize(
             String method, String path, Set<String> authorities, boolean authenticated) {
         if (!isReadyForTraffic()) return false;
+        var requestPath = PluginHttpRuleIndex.requestPath(path);
         for (var a : artifacts.values()) {
-            if (!states.isEnabled(a.manifest().id())) continue;
-            for (var rule : a.manifest().apiRules())
-                if (rule.method().equals(method) && matches(rule.path(), path))
-                    return rule.signedCallback()
-                            || rule.publicAccess()
-                            || authenticated
-                                    && (rule.authenticatedOnly()
-                                            || authorityRuleMatches(rule, authorities));
+            var rule = rulesFor(a).first(method, requestPath);
+            if (rule != null && isModuleEnabled(a.manifest().id()))
+                return ruleAllows(rule, authorities, authenticated);
         }
         return false;
     }
 
     /** Legacy `authorities` retain any-of semantics; the additive all-of list is explicit. */
+    private static boolean ruleAllows(
+            PluginManifest.Rule rule, Set<String> authorities, boolean authenticated) {
+        return rule.signedCallback()
+                || rule.publicAccess()
+                || authenticated
+                        && (rule.authenticatedOnly() || authorityRuleMatches(rule, authorities));
+    }
+
     static boolean authorityRuleMatches(PluginManifest.Rule rule, Set<String> authorities) {
         if (rule == null || authorities == null) return false;
         boolean legacyAny =
@@ -1996,15 +3471,42 @@ public class PluginRuntime
         return legacyAny && authorities.containsAll(rule.allAuthorities());
     }
 
+    static boolean authorityRuleMatches(
+            PluginManifest.Rule rule, Set<String> effective, Set<String> global) {
+        return scopedRuleMatches(rule, effective, global::contains);
+    }
+
+    private static boolean scopedRuleMatches(
+            PluginManifest.Rule rule,
+            Set<String> effective,
+            java.util.function.Predicate<String> global) {
+        java.util.function.Predicate<String> allowed =
+                permission ->
+                        effective.contains(permission)
+                                && (!"global"
+                                                .equals(
+                                                        rule.authorityScopes()
+                                                                .getOrDefault(
+                                                                        permission,
+                                                                        rule.global()
+                                                                                ? "global"
+                                                                                : "scoped"))
+                                        || global.test(permission));
+        return rule.allAuthorities().stream().allMatch(allowed)
+                && (rule.authorities().isEmpty() || rule.authorities().stream().anyMatch(allowed))
+                && (rule.globalAuthorities().isEmpty()
+                        || rule.globalAuthorities().stream().anyMatch(global));
+    }
+
     @Override
     public boolean signedCallback(String method, String path) {
         if (!"POST".equals(method) || !isReadyForTraffic()) return false;
         for (var artifact : artifacts.values()) {
-            if (!states.isEnabled(artifact.manifest().id())) continue;
             for (var rule : artifact.manifest().apiRules())
                 if (rule.signedCallback()
                         && "POST".equals(rule.method())
-                        && rule.path().equals(path)) return true;
+                        && rule.path().equals(path)
+                        && isModuleEnabled(artifact.manifest().id())) return true;
         }
         return false;
     }
@@ -2016,20 +3518,19 @@ public class PluginRuntime
             Set<String> effectiveAuthorities,
             Set<String> effectiveGlobalAuthorities) {
         if (!"GET".equals(method) || !isReadyForTraffic()) return false;
+        var requestPath = PluginHttpRuleIndex.requestPath(path);
         for (var artifact : artifacts.values()) {
-            if (!states.isEnabled(artifact.manifest().id())) continue;
-            for (var rule : artifact.manifest().apiRules()) {
-                if (!rule.previewReadOnly()
-                        || !rule.method().equals(method)
-                        || !matches(rule.path(), path)) continue;
-                Set<String> available =
-                        rule.global() ? effectiveGlobalAuthorities : effectiveAuthorities;
-                if (authorityRuleMatches(rule, available)
-                        && (rule.globalAuthorities().isEmpty()
-                                || rule.globalAuthorities().stream()
-                                        .anyMatch(effectiveGlobalAuthorities::contains)))
-                    return true;
-            }
+            if (rulesFor(artifact)
+                    .any(
+                            method,
+                            requestPath,
+                            rule ->
+                                    rule.previewReadOnly()
+                                            && isModuleEnabled(artifact.manifest().id())
+                                            && authorityRuleMatches(
+                                                    rule,
+                                                    effectiveAuthorities,
+                                                    effectiveGlobalAuthorities))) return true;
         }
         return false;
     }
@@ -2046,7 +3547,7 @@ public class PluginRuntime
         String file = matcher.group(2);
         return artifacts.values().stream()
                 .filter(artifact -> artifact.digest().equals(digest))
-                .filter(artifact -> states.isEnabled(artifact.manifest().id()))
+                .filter(artifact -> isModuleEnabled(artifact.manifest().id()))
                 .anyMatch(artifact -> artifact.manifest().files().containsKey("frontend/" + file));
     }
 
@@ -2055,42 +3556,59 @@ public class PluginRuntime
         if (!isReadyForTraffic()) return false;
         var a = artifacts.get(module);
         if (a == null) return false;
-        for (var rule : a.manifest().apiRules())
-            if (rule.method().equals(method) && matches(rule.path(), path)) {
-                if (!authorize(
-                        method,
-                        path,
-                        auth == null
-                                ? Set.of()
-                                : auth.getAuthorities().stream()
-                                        .map(
-                                                org.springframework.security.core.GrantedAuthority
-                                                        ::getAuthority)
-                                        .collect(java.util.stream.Collectors.toSet()),
-                        auth != null
-                                && auth.isAuthenticated()
-                                && !(auth
-                                        instanceof
-                                        org.springframework.security.authentication
-                                                .AnonymousAuthenticationToken))) return false;
-                if (rule.global() && !rule.publicAccess()) {
-                    if (!rule.authorities().isEmpty()
-                            && rule.authorities().stream()
-                                    .noneMatch(
-                                            permission ->
-                                                    guard.hasGlobal(auth.getName(), permission)))
-                        guard.requireGlobal(auth.getName(), rule.authorities().getFirst());
-                    for (String permission : rule.allAuthorities())
-                        if (!guard.hasGlobal(auth.getName(), permission))
-                            guard.requireGlobal(auth.getName(), permission);
-                }
-                if (!rule.globalAuthorities().isEmpty()
-                        && rule.globalAuthorities().stream()
-                                .noneMatch(
-                                        permission -> guard.hasGlobal(auth.getName(), permission)))
-                    guard.requireGlobal(auth.getName(), rule.globalAuthorities().getFirst());
-                return true;
+        var rule = rulesFor(a).first(method, PluginHttpRuleIndex.requestPath(path));
+        if (rule != null) {
+            // The MVC handler has already established ownership. Another plugin's broader
+            // public rule must not authorize this controller, nor trigger a second catalog
+            // scan.
+            if (!isModuleEnabled(module)
+                    || !ruleAllows(
+                            rule,
+                            auth == null
+                                    ? Set.of()
+                                    : auth.getAuthorities().stream()
+                                            .map(
+                                                    org.springframework.security.core
+                                                                    .GrantedAuthority
+                                                            ::getAuthority)
+                                            .collect(java.util.stream.Collectors.toSet()),
+                            auth != null
+                                    && auth.isAuthenticated()
+                                    && !(auth
+                                            instanceof
+                                            org.springframework.security.authentication
+                                                    .AnonymousAuthenticationToken))) return false;
+            if (!rule.authorityScopes().isEmpty()) {
+                var effective =
+                        auth.getAuthorities().stream()
+                                .map(
+                                        org.springframework.security.core.GrantedAuthority
+                                                ::getAuthority)
+                                .collect(java.util.stream.Collectors.toSet());
+                return scopedRuleMatches(
+                        rule,
+                        effective,
+                        permission -> guard.hasRequestGlobal(auth.getName(), permission));
             }
+            if (rule.global() && !rule.publicAccess()) {
+                if (!rule.authorities().isEmpty()
+                        && rule.authorities().stream()
+                                .noneMatch(
+                                        permission ->
+                                                guard.hasRequestGlobal(auth.getName(), permission)))
+                    guard.requireGlobal(auth.getName(), rule.authorities().getFirst());
+                for (String permission : rule.allAuthorities())
+                    if (!guard.hasRequestGlobal(auth.getName(), permission))
+                        guard.requireGlobal(auth.getName(), permission);
+            }
+            if (!rule.globalAuthorities().isEmpty()
+                    && rule.globalAuthorities().stream()
+                            .noneMatch(
+                                    permission ->
+                                            guard.hasRequestGlobal(auth.getName(), permission)))
+                guard.requireGlobal(auth.getName(), rule.globalAuthorities().getFirst());
+            return true;
+        }
         return false;
     }
 
@@ -2104,7 +3622,7 @@ public class PluginRuntime
                                 () ->
                                         new ResponseStatusException(
                                                 HttpStatus.NOT_FOUND, "pluginNotFound"));
-        if (!states.isEnabled(a.manifest().id())
+        if (!isModuleEnabled(a.manifest().id())
                 || !a.manifest().files().containsKey("frontend/" + file))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "moduleUnavailable");
         Path p = a.directory().resolve("frontend").resolve(file).normalize();
@@ -2116,9 +3634,19 @@ public class PluginRuntime
     @Override
     public void close() {
         ready = false;
+        snapshotCache.clear();
+        ModuleStateStore.invalidateScope();
+        clusterExecutor.shutdownNow();
         executor.shutdown();
         heartbeatExecutor.shutdownNow();
         try {
+            if (!clusterExecutor.awaitTermination(35, TimeUnit.SECONDS)) {
+                System.getLogger(getClass().getName())
+                        .log(
+                                System.Logger.Level.ERROR,
+                                "Plugin cluster participant is still running; owned contexts cannot be closed concurrently");
+                return;
+            }
             if (!executor.awaitTermination(35, TimeUnit.SECONDS)) executor.shutdownNow();
         } catch (InterruptedException interrupted) {
             executor.shutdownNow();

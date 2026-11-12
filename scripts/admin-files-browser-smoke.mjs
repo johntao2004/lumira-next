@@ -48,29 +48,10 @@ const sql = statement => execFileSync('python3', ['-c', 'import sys; from smoke_
 
 const sqlQuote = value => `'${String(value).replaceAll("'", "''")}'`;
 
-function readRetirement(fileIdValue, graceStartedAt) {
-  const output = sql(`
-    SELECT count(*)::text || '|' ||
-           count(*) FILTER (WHERE retire_after IS NULL)::text || '|' ||
-           count(*) FILTER (WHERE retire_after < ${sqlQuote(graceStartedAt)}::timestamptz + interval '24 hours')::text || '|' ||
-           coalesce(min(retire_after)::text, '') || '|' || coalesce(max(retire_after)::text, '')
-      FROM platform_file_blob_chunk WHERE file_id=${sqlQuote(fileIdValue)};
-  `);
-  const [chunkCount, missingCount, shortGraceCount, earliestRetireAfter, latestRetireAfter] = output.split('|');
-  assert.equal(output.split('|').length, 5, 'Retired chunk query must return one aggregate row');
-  return {
-    chunkCount: Number(chunkCount),
-    missingCount: Number(missingCount),
-    shortGraceCount: Number(shortGraceCount),
-    earliestRetireAfter,
-    latestRetireAfter,
-  };
-}
-
 async function waitUntilFileRemoved(timeoutMs = 70_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const response = await context.request.get(`/api/account/files/${fileId}`);
+    const response = await apiGet(`/api/account/files/${fileId}`);
     if (response.status() === 404) return;
     assert.equal(response.status(), 200, await response.text());
     assert.equal((await response.json()).state, 'DELETING', 'The synthetic file must stay fenced while cleanup runs');
@@ -79,27 +60,39 @@ async function waitUntilFileRemoved(timeoutMs = 70_000) {
   assert.fail('The accelerated synthetic file was not physically cleaned within one 60-second sweep interval.');
 }
 
-async function csrfHeaders() {
+async function authorizationHeaders() {
+  const response = await context.request.get('/api/auth/me');
+  assert.equal(response.status(), 200);
+  const revision = (await response.json()).authorizationContext?.revision;
+  assert.equal(typeof revision, 'string');
+  return { 'X-Lumira-Authorization-Context-Revision': revision };
+}
+
+async function apiGet(url) {
+  return context.request.get(url, { headers: await authorizationHeaders() });
+}
+
+async function writeHeaders() {
   const csrf = await (await context.request.get('/api/auth/csrf')).json();
-  return { [csrf.headerName]: csrf.token };
+  return { [csrf.headerName]: csrf.token, ...(await authorizationHeaders()) };
 }
 
 async function clearFile() {
   if (!fileId) return;
   assert.match(fileId, /^[a-f0-9-]{36}$/i, 'Cleanup may touch only this run\'s synthetic file UUID');
-  let response = await context.request.get(`/api/account/files/${fileId}`);
+  let response = await apiGet(`/api/account/files/${fileId}`);
   if (response.status() === 404) return;
   if (!response.ok()) return;
   let file = await response.json();
   if (file.state === 'READY') {
-    await context.request.delete(`/api/account/files/${fileId}?version=${file.version}`, { headers: await csrfHeaders() });
-    response = await context.request.get(`/api/account/files/${fileId}`);
+    await context.request.delete(`/api/account/files/${fileId}?version=${file.version}`, { headers: await writeHeaders() });
+    response = await apiGet(`/api/account/files/${fileId}`);
     if (response.status() === 404 || !response.ok()) return;
     file = await response.json();
   }
   if (file.state === 'TRASHED') {
-    await context.request.delete(`/api/account/files/${fileId}/purge?version=${file.version}`, { headers: await csrfHeaders() });
-    response = await context.request.get(`/api/account/files/${fileId}`);
+    await context.request.delete(`/api/account/files/${fileId}/purge?version=${file.version}`, { headers: await writeHeaders() });
+    response = await apiGet(`/api/account/files/${fileId}`);
     if (response.status() === 404 || !response.ok()) return;
     file = await response.json();
   }
@@ -115,18 +108,18 @@ try {
   const csrf = await (await context.request.get('/api/auth/csrf')).json();
   const login = await context.request.post('/api/auth/login', { form: { username: 'admin', password: config.LUMIRA_BOOTSTRAP_PASSWORD }, headers: { [csrf.headerName]: csrf.token } });
   assert.equal(login.status(), 200, await login.text());
-  const before = await (await context.request.get('/api/account/files/usage')).json();
+  const before = await (await apiGet('/api/account/files/usage')).json();
   setStage('upload and admin listing');
-  const upload = await context.request.post(`/api/account/files?filename=${encodeURIComponent(filename)}`, { data: payload, headers: { 'Content-Type': 'application/octet-stream', ...(await csrfHeaders()) } });
+  const upload = await context.request.post(`/api/account/files?filename=${encodeURIComponent(filename)}`, { data: payload, headers: { 'Content-Type': 'application/octet-stream', ...(await writeHeaders()) } });
   assert.equal(upload.status(), 201, await upload.text());
   const uploaded = await upload.json();
   fileId = uploaded.id;
   assert.equal(uploaded.state, 'READY');
-  const afterUpload = await (await context.request.get('/api/account/files/usage')).json();
+  const afterUpload = await (await apiGet('/api/account/files/usage')).json();
   assert.equal(afterUpload.chargedBytes, before.chargedBytes + payload.length);
   assert.equal(afterUpload.fileCount, before.fileCount + 1);
 
-  const managed = await context.request.get(`/api/platform/files?search=${encodeURIComponent(filename)}&page=1&pageSize=20`);
+  const managed = await apiGet(`/api/platform/files?search=${encodeURIComponent(filename)}&page=1&pageSize=20`);
   assert.equal(managed.status(), 200, await managed.text());
   const listed = await managed.json();
   assert.equal(listed.total, 1);
@@ -171,10 +164,10 @@ try {
   assert.ok(moveResponse, 'move-to-trash UI action returned no browser response');
   assert.equal(moveResponse.status(), 204);
   await expect(row).toHaveCount(0);
-  let usage = await (await context.request.get('/api/account/files/usage')).json();
+  let usage = await (await apiGet('/api/account/files/usage')).json();
   assert.equal(usage.chargedBytes, before.chargedBytes + payload.length);
   assert.equal(usage.fileCount, before.fileCount + 1);
-  const trashResponse = await context.request.get(`/api/platform/files/trash?search=${encodeURIComponent(filename)}&page=1&pageSize=20`);
+  const trashResponse = await apiGet(`/api/platform/files/trash?search=${encodeURIComponent(filename)}&page=1&pageSize=20`);
   assert.equal(trashResponse.status(), 200, await trashResponse.text());
   assert.equal((await trashResponse.json()).total, 1);
 
@@ -207,43 +200,20 @@ try {
   const purgeConfirmText = t.purgeFileConfirm.replace('{name}', filename);
   const purgeConfirm = page.locator('.ant-popconfirm').filter({ hasText: purgeConfirmText });
   await expect(purgeConfirm).toBeVisible({ timeout: 5000 });
-  const graceStartedAt = sql('SELECT clock_timestamp()::text');
   const purgeResponsePromise = page.waitForResponse(response => response.url().includes(`/api/platform/files/${fileId}/purge?`) && response.request().method() === 'DELETE', { timeout: 10000 }).catch(() => null);
   await purgeConfirm.getByRole('button', { name: new RegExp(t.purgeFile.split('').join('\\s*')) }).click({ timeout: 5000 });
   const purgeResponse = await purgeResponsePromise;
   assert.ok(purgeResponse, 'permanent-delete UI action returned no browser response');
   assert.equal(purgeResponse.status(), 204);
   await expect(finalTrashRow).toHaveCount(0);
-  const deleting = await (await context.request.get(`/api/account/files/${fileId}`)).json();
-  assert.equal(deleting.state, 'DELETING');
-  usage = await (await context.request.get('/api/account/files/usage')).json();
-  assert.equal(usage.chargedBytes, before.chargedBytes + payload.length, 'Purge keeps synthetic bytes charged during the grace period');
-  assert.equal(usage.fileCount, before.fileCount + 1);
-  assert.equal(usage.pendingDeletingCount, before.pendingDeletingCount + 1);
-  assert.equal(usage.pendingDeletingBytes, before.pendingDeletingBytes + payload.length);
-
-  setStage('verify immutable grace and pending quota');
-  const firstRetirement = readRetirement(fileId, graceStartedAt);
-  assert.ok(firstRetirement.chunkCount > 0, 'The QA file must have PostgreSQL blob chunks to verify the 24-hour grace');
-  assert.equal(firstRetirement.missingCount, 0, 'Every PostgreSQL chunk must have a retire_after timestamp');
-  assert.equal(firstRetirement.shortGraceCount, 0, 'Every chunk must retain at least 24 hours from the pre-purge database timestamp');
-
-  const repeatPurge = await context.request.delete(`/api/platform/files/${fileId}/purge?version=${deleting.version}`, { headers: await csrfHeaders() });
-  assert.equal(repeatPurge.status(), 409, 'A repeated purge while DELETING must be rejected');
-  const repeatedRetirement = readRetirement(fileId, graceStartedAt);
-  assert.deepEqual(repeatedRetirement, firstRetirement, 'A rejected repeated purge must not change the grace timestamps');
-
-  sql(`UPDATE platform_file_blob_chunk SET retire_after=clock_timestamp()-interval '1 second' WHERE file_id=${sqlQuote(fileId)} AND retire_after IS NOT NULL`);
-  // FileCleanup only selects DELETING rows with updated_at older than one minute.
-  // Age this synthetic row so the next scheduled sweep can finalize it immediately.
-  sql(`UPDATE platform_file SET updated_at=clock_timestamp()-interval '2 minutes' WHERE id=${sqlQuote(fileId)} AND state='DELETING'`);
-  const advancedChunks = Number(sql(`SELECT count(*) FROM platform_file_blob_chunk WHERE file_id=${sqlQuote(fileId)} AND retire_after<=clock_timestamp()`));
-  assert.equal(advancedChunks, firstRetirement.chunkCount, 'Only this synthetic file\'s chunks are advanced to trigger cleanup');
-  setStage('await scheduled physical cleanup');
-  await waitUntilFileRemoved();
+  setStage('verify physical removal and released quota');
+  const removed = await apiGet(`/api/account/files/${fileId}`);
+  assert.equal(removed.status(), 404, 'Committed PostgreSQL purge removes metadata and bytes');
   assert.equal(Number(sql(`SELECT count(*) FROM platform_file WHERE id=${sqlQuote(fileId)}`)), 0);
   assert.equal(Number(sql(`SELECT count(*) FROM platform_file_blob_chunk WHERE file_id=${sqlQuote(fileId)}`)), 0);
-  usage = await (await context.request.get('/api/account/files/usage')).json();
+  const repeatPurge = await context.request.delete(`/api/platform/files/${fileId}/purge?version=0`, { headers: await writeHeaders() });
+  assert.equal(repeatPurge.status(), 404, 'An already removed resource remains absent');
+  usage = await (await apiGet('/api/account/files/usage')).json();
   assert.equal(usage.chargedBytes, before.chargedBytes);
   assert.equal(usage.fileCount, before.fileCount);
   assert.equal(usage.pendingDeletingCount, before.pendingDeletingCount);
@@ -251,7 +221,7 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false);
   assert.deepEqual(errors, []);
   setStage('complete');
-  console.log('PASS: global file center, upload/download, trash and restore, charged DELETING state, immutable 24-hour retire_after on repeated purge, synthetic-time accelerated cleanup and baseline quota restoration');
+  console.log('PASS: global file center, upload/download, trash and restore, committed PostgreSQL physical deletion, repeated request remains absent and baseline quota restoration');
 } catch (error) {
   primaryError = error;
   console.error(`[admin-files] main flow failed at ${currentStage} (${error?.name ?? 'Error'}); recent API trace=${JSON.stringify(apiTrace.slice(-12))}`);

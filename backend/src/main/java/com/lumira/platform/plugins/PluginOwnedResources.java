@@ -59,9 +59,27 @@ final class PluginOwnedResources implements PluginResources, AutoCloseable {
 
     @Override
     public synchronized <T extends AutoCloseable> T own(String name, T resource) {
-        if (closed || name == null || name.isBlank() || owned.putIfAbsent(name, resource) != null)
+        if (closed
+                || resource == null
+                || name == null
+                || name.isBlank()
+                || owned.putIfAbsent(name, resource) != null)
             throw new IllegalArgumentException("invalidPluginResource");
         return resource;
+    }
+
+    /** Roll back an already-published host registration if ownership cannot be attached. */
+    synchronized void ownRegistration(String name, AutoCloseable registration) throws Exception {
+        try {
+            own(name, registration);
+        } catch (RuntimeException failure) {
+            try {
+                registration.close();
+            } catch (Exception cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
     }
 
     synchronized void start() {

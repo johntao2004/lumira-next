@@ -3,7 +3,6 @@ package com.lumira.platform.identity;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.lumira.platform.TestSchema;
-import com.lumira.platform.roles.BootstrapAdministratorRoleAdapter;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

@@ -2,11 +2,8 @@ package com.lumira.platform.identity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.lumira.platform.common.PlatformOperation;
-import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import java.util.List;
@@ -296,14 +293,29 @@ class PlatformHttpPermissionPolicyTest {
     }
 
     @Test
-    void aiCapabilitiesBelongToTheScopedConsolePageWithoutAnActionGrant() {
+    void aiCapabilitiesBelongToTheScopedConsolePageWithoutAnActionGrant() throws Exception {
         String path = "/api/platform/ai/capabilities";
         var route = PlatformHttpPermissionPolicy.routeFor("GET", path);
 
-        assertNotNull(route);
-        assertEquals(PlatformPageId.AI_CONSOLE, route.page());
-        assertEquals(PlatformOperation.Scope.SCOPED, route.page().scope());
-        assertTrue(route.operationsAny().isEmpty());
+        assertEquals(null, route, "AI business is no longer a host policy");
+        var manifest =
+                new tools.jackson.databind.json.JsonMapper()
+                        .readValue(
+                                java.nio.file.Files.readString(
+                                        java.nio.file.Path.of(
+                                                "..", "plugins", "ai", "plugin.json")),
+                                com.lumira.platform.plugins.PluginManifest.class);
+        var rule =
+                manifest.apiRules().stream()
+                        .filter(
+                                candidate ->
+                                        candidate.method().equals("GET")
+                                                && candidate.path().equals(path))
+                        .findFirst()
+                        .orElseThrow();
+        assertEquals(List.of("platform:ai-console:access"), rule.allAuthorities());
+        assertEquals("scoped", rule.authorityScopes().get("platform:ai-console:access"));
+        assertTrue(rule.authorities().isEmpty());
         assertFalse(
                 decide(
                         "GET",
@@ -359,7 +371,11 @@ class PlatformHttpPermissionPolicyTest {
                 AuthenticationRequestContext.bind(
                         new AuthenticationRequestContext.Snapshot(
                                 "operator", ACTOR_ID, null, context))) {
-            return PlatformHttpPermissionPolicy.authorize(authentication, request, null);
+            return PlatformHttpPermissionPolicy.authorize(
+                    authentication,
+                    request,
+                    com.lumira.platform.plugins.PluginManifestAuthorizationTestSupport.forPlugins(
+                            "directory", "ai", "profile-console", "authentication-console"));
         }
     }
 

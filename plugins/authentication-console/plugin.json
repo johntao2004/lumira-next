@@ -1,0 +1,427 @@
+{
+  "formatVersion": 1,
+  "id": "authentication-console",
+  "name": "认证管理",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.authenticationconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    },
+    {
+      "id": "settings",
+      "version": "1.0.0"
+    },
+    {
+      "id": "directory",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:security:access",
+    "platform:security:update",
+    "platform:authentication:access",
+    "platform:authentication:update",
+    "platform:passkey:access",
+    "platform:passkey:update",
+    "platform:wechat:access",
+    "platform:wechat:update",
+    "platform:captcha:access",
+    "platform:captcha:update",
+    "platform:registration:access",
+    "platform:registration:update",
+    "platform:registration:read-roles",
+    "platform:registration:assign-default-role"
+  ],
+  "routes": [
+    {
+      "id": "security",
+      "label": "authenticationSecurity",
+      "permission": "platform:security:access",
+      "group": "user-management",
+      "order": 60,
+      "operations": {
+        "update": "platform:security:update"
+      },
+      "global": true
+    },
+    {
+      "id": "authentication",
+      "label": "authenticationMethods",
+      "permission": "platform:authentication:access",
+      "group": "user-management",
+      "order": 70,
+      "operations": {
+        "update": "platform:authentication:update"
+      },
+      "global": true
+    },
+    {
+      "id": "passkey",
+      "label": "passkeySettings",
+      "permission": "platform:passkey:access",
+      "group": "user-management",
+      "order": 80,
+      "operations": {
+        "update": "platform:passkey:update"
+      },
+      "global": true
+    },
+    {
+      "id": "wechat",
+      "label": "wechatSettings",
+      "permission": "platform:wechat:access",
+      "group": "user-management",
+      "order": 90,
+      "operations": {
+        "update": "platform:wechat:update"
+      },
+      "global": true
+    },
+    {
+      "id": "captcha",
+      "label": "captchaSettingsTitle",
+      "permission": "platform:captcha:access",
+      "group": "user-management",
+      "order": 100,
+      "operations": {
+        "update": "platform:captcha:update"
+      },
+      "global": true
+    },
+    {
+      "id": "registration",
+      "label": "registrationSettingsTitle",
+      "permission": "platform:registration:access",
+      "group": "user-management",
+      "order": 110,
+      "operations": {
+        "update": "platform:registration:update",
+        "readRoles": "platform:registration:read-roles",
+        "assignDefaultRole": "platform:registration:assign-default-role"
+      },
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/security",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:security:access"
+      ],
+      "authorityScopes": {
+        "platform:security:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/security",
+      "authorities": [
+        "platform:security:update"
+      ],
+      "allAuthorities": [
+        "platform:security:access"
+      ],
+      "authorityScopes": {
+        "platform:security:access": "global",
+        "platform:security:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/authentication",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:authentication:access"
+      ],
+      "authorityScopes": {
+        "platform:authentication:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/authentication",
+      "authorities": [
+        "platform:authentication:update"
+      ],
+      "allAuthorities": [
+        "platform:authentication:access"
+      ],
+      "authorityScopes": {
+        "platform:authentication:access": "global",
+        "platform:authentication:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/passkey",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:passkey:access"
+      ],
+      "authorityScopes": {
+        "platform:passkey:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/passkey",
+      "authorities": [
+        "platform:passkey:update"
+      ],
+      "allAuthorities": [
+        "platform:passkey:access"
+      ],
+      "authorityScopes": {
+        "platform:passkey:access": "global",
+        "platform:passkey:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/wechat",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:wechat:access"
+      ],
+      "authorityScopes": {
+        "platform:wechat:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/wechat",
+      "authorities": [
+        "platform:wechat:update"
+      ],
+      "allAuthorities": [
+        "platform:wechat:access"
+      ],
+      "authorityScopes": {
+        "platform:wechat:access": "global",
+        "platform:wechat:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/captcha",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:captcha:access"
+      ],
+      "authorityScopes": {
+        "platform:captcha:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/captcha",
+      "authorities": [
+        "platform:captcha:update"
+      ],
+      "allAuthorities": [
+        "platform:captcha:access"
+      ],
+      "authorityScopes": {
+        "platform:captcha:access": "global",
+        "platform:captcha:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/registration",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:registration:access"
+      ],
+      "authorityScopes": {
+        "platform:registration:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/registration/roles",
+      "authorities": [
+        "platform:registration:read-roles",
+        "platform:registration:assign-default-role"
+      ],
+      "allAuthorities": [
+        "platform:registration:access"
+      ],
+      "authorityScopes": {
+        "platform:registration:access": "global",
+        "platform:registration:read-roles": "global",
+        "platform:registration:assign-default-role": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/registration",
+      "authorities": [
+        "platform:registration:update"
+      ],
+      "allAuthorities": [
+        "platform:registration:access"
+      ],
+      "authorityScopes": {
+        "platform:registration:access": "global",
+        "platform:registration:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/passkey/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:passkey:access"
+      ],
+      "authorityScopes": {
+        "platform:passkey:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/passkey/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:passkey:access"
+      ],
+      "authorityScopes": {
+        "platform:passkey:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/passkey/rollback",
+      "authorities": [
+        "platform:passkey:update"
+      ],
+      "allAuthorities": [
+        "platform:passkey:access"
+      ],
+      "authorityScopes": {
+        "platform:passkey:access": "global",
+        "platform:passkey:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    }
+  ],
+  "dataSets": [],
+  "permissionGroups": [
+    {
+      "id": "settings",
+      "title": "settings",
+      "permissions": [
+        {
+          "code": "platform:security:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:security:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:authentication:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:authentication:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:passkey:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:passkey:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:wechat:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:wechat:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:captcha:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:captcha:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:registration:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:registration:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:registration:read-roles",
+          "label": "permissionReadRoles"
+        },
+        {
+          "code": "platform:registration:assign-default-role",
+          "label": "permissionAssignDefaultRole"
+        }
+      ]
+    }
+  ]
+}

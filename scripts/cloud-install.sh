@@ -6,6 +6,9 @@ set -euo pipefail
   exit 1
 }
 source /etc/os-release
+# A fresh SSH shell does not inherit the toolchain installed by an earlier run.
+# Reuse it when resuming setup after a failed check instead of downloading again.
+export PATH="/opt/lumira-cloud/node/bin:/opt/lumira-cloud/pnpm/bin:$PATH"
 if ! command -v docker >/dev/null \
   || ! docker compose version >/dev/null 2>&1 \
   || ! docker info --format '{{.ServerVersion}}' >/dev/null 2>&1; then

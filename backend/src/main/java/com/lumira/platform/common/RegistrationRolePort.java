@@ -1,9 +1,16 @@
 package com.lumira.platform.common;
 
+import java.util.Set;
 import java.util.UUID;
 
 /** Roles-owned allow-list and assignment operations for the single public-registration role. */
 public interface RegistrationRolePort {
+    Set<String> SELF_SERVICE_AUTHORITIES =
+            Set.of(
+                    "platform:feedback:access",
+                    "platform:feedback:read",
+                    "platform:feedback:create");
+
     PageResult<Candidate> candidates(PageRequest page);
 
     Candidate candidate(UUID roleId);

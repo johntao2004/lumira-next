@@ -1,0 +1,9 @@
+# Containerd 2.x host configuration fragment, not a Kubernetes resource.
+# Generate the base OCI spec with this node's `ctr oci spec`, retaining its
+# defaults and setting linux.resources.pids.limit to 128. See docs/kubernetes.md.
+version = 3
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.lumira-office]
+  runtime_type = 'io.containerd.runc.v2'
+  base_runtime_spec = '/etc/lumira-office/runtime-spec.json'
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.lumira-office.options]
+  SystemdCgroup = true

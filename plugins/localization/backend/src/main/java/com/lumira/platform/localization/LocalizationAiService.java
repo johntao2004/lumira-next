@@ -1,7 +1,7 @@
 package com.lumira.platform.localization;
 
 import com.lumira.platform.common.AdministrationPort;
-import com.lumira.platform.common.AiTextGenerationPort;
+import com.lumira.platform.common.AiTextGenerationServicePort;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -45,13 +45,13 @@ public class LocalizationAiService {
 
     public record TranslationResponse(List<TranslationItem> items, int succeeded, int failed) {}
 
-    private final AiTextGenerationPort generation;
+    private final AiTextGenerationServicePort generation;
     private final LocalizationService localization;
     private final AdministrationPort guard;
     private final ObjectMapper mapper;
 
     public LocalizationAiService(
-            AiTextGenerationPort generation,
+            AiTextGenerationServicePort generation,
             LocalizationService localization,
             AdministrationPort guard,
             ObjectMapper mapper) {

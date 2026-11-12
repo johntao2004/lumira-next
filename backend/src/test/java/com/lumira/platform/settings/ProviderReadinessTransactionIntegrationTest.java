@@ -97,12 +97,12 @@ class ProviderReadinessTransactionIntegrationTest {
                 () -> new DataSourceTransactionManager(dataSource));
         context.registerBean(
                 "smtpSettingsService",
-                SmtpSettingsService.class,
-                () -> new SmtpSettingsService(settings, secrets, keys, guard, mapper, audit));
+                SmtpConfigurationReader.class,
+                () -> new SmtpConfigurationReader(settings, secrets, keys, mapper));
         context.registerBean(
                 "smsSettingsService",
-                SmsSettingsService.class,
-                () -> new SmsSettingsService(settings, secrets, keys, guard, mapper, audit));
+                SmsConfigurationReader.class,
+                () -> new SmsConfigurationReader(settings, secrets, keys, mapper));
         context.register(TransactionalReadinessConfiguration.class);
         context.refresh();
     }
@@ -183,10 +183,10 @@ class ProviderReadinessTransactionIntegrationTest {
         return new AuthenticationMethodAvailabilityService(
                 new MailSenderAdapter(
                         mock(MailDeliveryStore.class),
-                        new SmtpConnectionSource(context.getBean(SmtpSettingsService.class))),
+                        new SmtpConnectionSource(context.getBean(SmtpConfigurationReader.class))),
                 new SmsSenderAdapter(
                         mock(SmsDeliveryStore.class),
-                        new SmsConnectionSource(context.getBean(SmsSettingsService.class))),
+                        new SmsConnectionSource(context.getBean(SmsConfigurationReader.class))),
                 mock(PasskeyPolicyPort.class),
                 wechatProviders());
     }

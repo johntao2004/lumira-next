@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.lumira.platform.common.PageRequest;
+import com.lumira.plugins.deliveryconsole.DeliveryPageQuerySupport;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 

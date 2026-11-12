@@ -1,0 +1,195 @@
+[
+  {
+    "pageId": "profile-fields",
+    "accessPermission": "platform:profile-fields:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/profile-fields/dictionaries",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:profile-fields:read-dictionaries",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:profile-fields:read-dictionaries"
+    ]
+  },
+  {
+    "pageId": "profile-fields",
+    "accessPermission": "platform:profile-fields:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/profile-fields",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "profile-fields",
+    "accessPermission": "platform:profile-fields:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/profile-fields",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:profile-fields:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:profile-fields:update"
+    ]
+  },
+  {
+    "pageId": "profile-fields",
+    "accessPermission": "platform:profile-fields:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/profile-fields/history",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "profile-fields",
+    "accessPermission": "platform:profile-fields:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/profile-fields/history/1",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "profile-fields",
+    "accessPermission": "platform:profile-fields:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/settings/profile-fields/rollback",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:profile-fields:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:profile-fields:update"
+    ]
+  }
+]

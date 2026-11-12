@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -14,6 +15,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UriUtils;
 
 /**
  * Gives every request a correlation id that appears in each log line (MDC key {@code requestId})
@@ -28,6 +30,7 @@ public final class RequestCorrelationFilter extends OncePerRequestFilter {
     public static final String MDC_KEY = "requestId";
     private static final Pattern SAFE = Pattern.compile("[A-Za-z0-9._-]{8,64}");
     private static final Logger access = LoggerFactory.getLogger("lumira.access");
+    private static final String PUBLIC_SHARE_PATH = "/api/public/ai/shares/";
 
     static String resolve(String supplied) {
         return supplied != null && SAFE.matcher(supplied).matches()
@@ -59,7 +62,7 @@ public final class RequestCorrelationFilter extends OncePerRequestFilter {
         String line =
                 request.getMethod()
                         + " "
-                        + path
+                        + loggedPath(request, path)
                         + " -> "
                         + response.getStatus()
                         + " in "
@@ -67,5 +70,20 @@ public final class RequestCorrelationFilter extends OncePerRequestFilter {
                         + " ms";
         if (probe) access.debug(line);
         else access.info(line);
+    }
+
+    private static String loggedPath(HttpServletRequest request, String path) {
+        if (path.contains(PUBLIC_SHARE_PATH)
+                || request.getServletPath().startsWith(PUBLIC_SHARE_PATH))
+            return PUBLIC_SHARE_PATH + "{token}";
+        if (path.indexOf('%') >= 0) {
+            try {
+                if (UriUtils.decode(path, StandardCharsets.UTF_8).contains(PUBLIC_SHARE_PATH))
+                    return PUBLIC_SHARE_PATH + "{token}";
+            } catch (IllegalArgumentException malformed) {
+                return "<invalid-path>";
+            }
+        }
+        return path;
     }
 }

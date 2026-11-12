@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumira-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: lumira-web
+  template:
+    metadata:
+      labels:
+        app: lumira-web
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: web
+          image: lumira/web
+          ports:
+            - name: http
+              containerPort: 8010
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumira-web
+spec:
+  selector:
+    app: lumira-web
+  ports:
+    - name: http
+      port: 8010
+      targetPort: http

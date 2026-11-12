@@ -10,6 +10,18 @@ import org.junit.jupiter.api.Test;
 
 class SensitiveWordMatcherTest {
     @Test
+    void suffixOutputLinksRetainNestedMatchesAndBlockingSemantics() {
+        var entries = new ArrayList<SensitiveWordMatcher.Entry>();
+        for (int i = 1; i <= 200; i++)
+            entries.add(entry("a".repeat(i), "HIGH", i == 200 ? "BLOCK" : "LOG_ONLY"));
+        var result = new SensitiveWordMatcher(entries).scan("a".repeat(200));
+        assertEquals(200, result.totalMatchCount());
+        assertEquals(20, result.matches().size());
+        assertTrue(result.blocked());
+        assertFalse(result.blockingMatchDisplayed());
+    }
+
+    @Test
     void normalizesCompatibilityFormsAndCaseBeforeMatching() {
         var word = SensitiveWordMatcher.normalizeForMatch("Ｂａｄ");
         var matcher =

@@ -4,11 +4,45 @@ import com.lumira.platform.common.AuditPort;
 import java.util.*;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Internal state engine. Administrative authorization and request gating belong in adapters. */
 @Repository
 public class ModuleStateStore implements ModuleRuntime, ModuleCapabilityPort {
+    private static final ThreadLocal<Map<String, Boolean>> REQUEST_CACHE = new ThreadLocal<>();
+
+    public interface Scope extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    public static Scope openScope(Map<String, Boolean> initial) {
+        var previous = REQUEST_CACHE.get();
+        var cache = new HashMap<String, Boolean>();
+        if (previous != null) cache.putAll(previous);
+        if (initial != null) cache.putAll(initial);
+        REQUEST_CACHE.set(cache);
+        return () -> {
+            if (previous == null) REQUEST_CACHE.remove();
+            else REQUEST_CACHE.set(previous);
+        };
+    }
+
+    public static void populateScope(Map<String, Boolean> states) {
+        var cache = REQUEST_CACHE.get();
+        if (cache != null && states != null) {
+            cache.putAll(states);
+        }
+    }
+
+    public static void invalidateScope() {
+        var cache = REQUEST_CACHE.get();
+        if (cache != null) {
+            cache.clear();
+        }
+    }
+
     public static final String DEFAULT_CHANGE_REASON =
             "Module state changed through module management.";
 
@@ -56,7 +90,7 @@ public class ModuleStateStore implements ModuleRuntime, ModuleCapabilityPort {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.SUPPORTS, readOnly = true)
     public boolean isEnabled(String moduleId) {
         var module =
                 registry.modules().stream()
@@ -65,11 +99,63 @@ public class ModuleStateStore implements ModuleRuntime, ModuleCapabilityPort {
                         .orElse(null);
         if (module == null || !registry.isLive(moduleId)) return false;
         if (module.core()) return true;
+        var reqStates = REQUEST_CACHE.get();
+        if (reqStates != null) {
+            Boolean cached = reqStates.get(moduleId);
+            if (cached != null) return cached;
+            boolean enabled = queryEnabled(moduleId);
+            reqStates.put(moduleId, enabled);
+            return enabled;
+        }
+        var txStates = readOnlyTransactionStates();
+        if (txStates != null) return txStates.computeIfAbsent(moduleId, this::queryEnabled);
+        return queryEnabled(moduleId);
+    }
+
+    private boolean queryEnabled(String moduleId) {
         return jdbc.sql("SELECT enabled FROM platform_module_state WHERE module_id=:module")
                 .param("module", moduleId)
                 .query(Boolean.class)
                 .optional()
                 .orElse(false);
+    }
+
+    private Map<String, Boolean> readOnlyTransactionStates() {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isActualTransactionActive()
+                || !org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isCurrentTransactionReadOnly()
+                || !org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isSynchronizationActive()) return null;
+        for (var sync :
+                org.springframework.transaction.support.TransactionSynchronizationManager
+                        .getSynchronizations()) {
+            if (sync instanceof ReadOnlyStateSynchronization current && current.owner() == this) {
+                return current.states();
+            }
+        }
+        var created = new ReadOnlyStateSynchronization();
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .registerSynchronization(created);
+        return created.states();
+    }
+
+    private final class ReadOnlyStateSynchronization
+            implements org.springframework.transaction.support.TransactionSynchronization {
+        private final Map<String, Boolean> states = new HashMap<>();
+
+        ModuleStateStore owner() {
+            return ModuleStateStore.this;
+        }
+
+        Map<String, Boolean> states() {
+            return states;
+        }
+
+        @Override
+        public void afterCompletion(int status) {
+            states.clear();
+        }
     }
 
     @Override
@@ -79,7 +165,7 @@ public class ModuleStateStore implements ModuleRuntime, ModuleCapabilityPort {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.SUPPORTS, readOnly = true)
     public int totalModules() {
         return registry.modules().size();
     }
@@ -129,6 +215,7 @@ public class ModuleStateStore implements ModuleRuntime, ModuleCapabilityPort {
                 .param("version", version)
                 .update();
         audit.append(actor, enabled ? "module.enabled" : "module.disabled", id);
+        invalidateScope();
         return new State(moduleId, enabled, version);
     }
 }

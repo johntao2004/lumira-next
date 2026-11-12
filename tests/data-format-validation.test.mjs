@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { profileFieldValueValid } from "../apps/web/src/platform/profile-fields/validation.ts";
-import { smtpHostValid, smtpMailboxValid, smtpTextValid } from "../apps/web/src/features/settings/smtp-validation.ts";
+import { smtpHostValid, smtpMailboxValid, smtpTextValid } from "../plugins/delivery-settings/frontend/smtp-validation.ts";
 
 const field = (type, extra = {}) => ({ key: "sample", label: "Sample", type, required: false, ...extra });
 

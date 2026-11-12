@@ -3,7 +3,6 @@ package com.lumira.platform.files;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.ProfileRepository;
@@ -47,7 +46,7 @@ class FileServiceTest {
         when(stage.metadata())
                 .thenReturn(new BlobStore.Stored(UUID.randomUUID(), 1, "a".repeat(64)));
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         profile,
                         store,
@@ -76,7 +75,7 @@ class FileServiceTest {
         var store = mock(BlobStore.class);
         var manager = mock(PlatformTransactionManager.class);
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         store,
@@ -122,7 +121,7 @@ class FileServiceTest {
                                 Optional.of(entry(invocation.getArgument(0), owner, "READY", 1)));
 
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         store,
@@ -154,7 +153,7 @@ class FileServiceTest {
         when(repo.usage(owner)).thenReturn(new FileRepository.Usage(0, 2));
 
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         mock(BlobStore.class),
@@ -195,7 +194,7 @@ class FileServiceTest {
                 new java.util.concurrent.atomic.AtomicReference<>(
                         new com.lumira.platform.common.FileQuotaPolicyPort.Limits(1024, 100));
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         mock(BlobStore.class),
@@ -244,7 +243,7 @@ class FileServiceTest {
                 .thenThrow(new IOException("failed stream"));
         when(repo.abandonUpload(any())).thenReturn(true);
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         profile,
                         store,
@@ -282,7 +281,7 @@ class FileServiceTest {
                 assertThrows(
                         IOException.class,
                         () ->
-                                new FileService(
+                                new TestFileWorkflow(
                                                 repo,
                                                 profile,
                                                 store,
@@ -314,7 +313,7 @@ class FileServiceTest {
         assertThrows(
                 IOException.class,
                 () ->
-                        new FileService(
+                        new TestFileWorkflow(
                                         repo,
                                         profile,
                                         store,
@@ -340,7 +339,7 @@ class FileServiceTest {
         when(repo.findOwned(id, owner)).thenReturn(Optional.of(entry(id, owner, "READY", 4)));
         when(repo.requestTrash(id, owner, 4)).thenReturn(true);
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo, accounts, blobs, manager, audit, new FileQuota(Long.MAX_VALUE, 1000));
         service.delete("actor", id, 4);
         verify(repo).requestTrash(id, owner, 4);
@@ -365,7 +364,7 @@ class FileServiceTest {
         when(repo.findDeleting(id, 6)).thenReturn(Optional.of(entry(id, owner, "DELETING", 6)));
         when(repo.finishDelete(id, 6)).thenReturn(true);
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo, accounts, blobs, manager, audit, new FileQuota(Long.MAX_VALUE, 1000));
         service.restore("actor", id, 5);
         service.purge("actor", id, 5);
@@ -391,7 +390,8 @@ class FileServiceTest {
         when(repo.purgeOwned(id, owner, 11)).thenReturn(true);
         when(repo.findDeleting(id, 12)).thenReturn(Optional.of(entry(id, owner, "DELETING", 12)));
         when(repo.finishDelete(id, 12)).thenReturn(true);
-        new FileService(repo, accounts, blobs, manager, audit, new FileQuota(Long.MAX_VALUE, 1000))
+        new TestFileWorkflow(
+                        repo, accounts, blobs, manager, audit, new FileQuota(Long.MAX_VALUE, 1000))
                 .purge("actor", id, 11);
         var order = inOrder(repo, manager, blobs);
         order.verify(repo).purgeOwned(id, owner, 11);
@@ -421,7 +421,7 @@ class FileServiceTest {
         doThrow(new IOException("storage unavailable")).when(blobs).delete(id);
         assertDoesNotThrow(
                 () ->
-                        new FileService(
+                        new TestFileWorkflow(
                                         repo,
                                         accounts,
                                         blobs,
@@ -435,7 +435,7 @@ class FileServiceTest {
     }
 
     @Test
-    void staleAndForbiddenPurgeNeverReachStorage() throws Exception {
+    void staleOwnedPurgeNeverReachesStorage() throws Exception {
         var repo = mock(FileRepository.class);
         var accounts = mock(com.lumira.platform.identity.api.AccountOwnerPort.class);
         var blobs = mock(BlobStore.class);
@@ -446,7 +446,7 @@ class FileServiceTest {
         when(accounts.id("actor", true)).thenReturn(owner);
         when(repo.findOwned(id, owner)).thenReturn(Optional.of(entry(id, owner, "TRASHED", 9)));
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         blobs,
@@ -455,65 +455,6 @@ class FileServiceTest {
                         new FileQuota(Long.MAX_VALUE, 1000));
         assertThrows(ResponseStatusException.class, () -> service.purge("actor", id, 8));
         verify(blobs, never()).delete(any());
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
-                .when(guard)
-                .requireOperationGlobal("admin", PlatformOperation.FILE_PURGE);
-        var managed =
-                new FileService(
-                        repo,
-                        accounts,
-                        blobs,
-                        manager,
-                        mock(com.lumira.platform.common.AuditPort.class),
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard);
-        assertThrows(ResponseStatusException.class, () -> managed.purgeManaged("admin", id, 9));
-        verify(blobs, never()).delete(any());
-    }
-
-    @Test
-    void adminPurgeUsesGlobalGuardAndImmediateFinalizer() throws Exception {
-        var repo = mock(FileRepository.class);
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        var blobs = mock(BlobStore.class);
-        var audit = mock(com.lumira.platform.common.AuditPort.class);
-        var manager = mock(PlatformTransactionManager.class);
-        when(manager.getTransaction(any())).thenAnswer(invocation -> mock(TransactionStatus.class));
-        var id = UUID.randomUUID();
-        var owner = UUID.randomUUID();
-        when(repo.findManaged(id))
-                .thenReturn(
-                        Optional.of(
-                                new FileRepository.ManagedEntry(
-                                        id,
-                                        owner,
-                                        "user",
-                                        "User",
-                                        "postgres",
-                                        "report.pdf",
-                                        "TRASHED",
-                                        12L,
-                                        "a".repeat(64),
-                                        4,
-                                        java.time.Instant.EPOCH,
-                                        java.time.Instant.EPOCH,
-                                        java.time.Instant.EPOCH)));
-        when(repo.purgeManaged(id, 4)).thenReturn(true);
-        when(repo.findDeleting(id, 5)).thenReturn(Optional.of(entry(id, owner, "DELETING", 5)));
-        when(repo.finishDelete(id, 5)).thenReturn(true);
-        new FileService(
-                        repo,
-                        mock(com.lumira.platform.identity.api.AccountOwnerPort.class),
-                        blobs,
-                        manager,
-                        audit,
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard)
-                .purgeManaged("admin", id, 4);
-        verify(guard).requireOperationGlobal("admin", PlatformOperation.FILE_PURGE);
-        verify(blobs).delete(id);
-        verify(repo).finishDelete(id, 5);
     }
 
     @Test
@@ -527,7 +468,7 @@ class FileServiceTest {
         when(accounts.id("actor", false)).thenReturn(owner);
         when(repo.findOwned(id, owner)).thenReturn(Optional.empty());
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         blobs,
@@ -550,7 +491,7 @@ class FileServiceTest {
         when(accounts.id("actor", false)).thenReturn(owner);
         when(repo.findOwned(id, owner)).thenReturn(Optional.of(entry(id, owner, "TRASHED", 4)));
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         blobs,
@@ -574,7 +515,7 @@ class FileServiceTest {
         when(accounts.id("actor", true)).thenReturn(owner);
         when(repo.findOwned(id, owner)).thenReturn(Optional.of(entry(id, owner, "TRASHED", 8)));
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         repo,
                         accounts,
                         mock(BlobStore.class),
@@ -583,205 +524,5 @@ class FileServiceTest {
                         new FileQuota(Long.MAX_VALUE, 1000));
         assertThrows(ResponseStatusException.class, () -> service.restore("actor", id, 7));
         verify(repo, never()).restoreOwned(any(), any(), anyLong());
-    }
-
-    @Test
-    void managedTrashRequiresFileDeleteOperation() {
-        var repo = mock(FileRepository.class);
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        var manager = mock(PlatformTransactionManager.class);
-        when(manager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
-        var id = UUID.randomUUID();
-        var owner = UUID.randomUUID();
-        when(repo.findManaged(id))
-                .thenReturn(
-                        Optional.of(
-                                new FileRepository.ManagedEntry(
-                                        id,
-                                        owner,
-                                        "user",
-                                        "User",
-                                        "postgres",
-                                        "report.pdf",
-                                        "READY",
-                                        12L,
-                                        "a".repeat(64),
-                                        4,
-                                        java.time.Instant.EPOCH,
-                                        java.time.Instant.EPOCH,
-                                        null)));
-        when(repo.requestManagedTrash(id, 4)).thenReturn(true);
-        var service =
-                new FileService(
-                        repo,
-                        mock(com.lumira.platform.identity.api.AccountOwnerPort.class),
-                        mock(BlobStore.class),
-                        manager,
-                        mock(com.lumira.platform.common.AuditPort.class),
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard);
-        service.deleteManaged("admin", id, 4);
-        verify(guard).requireOperationGlobal("admin", PlatformOperation.FILE_DELETE);
-        verify(repo).requestManagedTrash(id, 4);
-    }
-
-    @Test
-    void managedReadsRequireTheFilesAllPage() {
-        var repo = mock(FileRepository.class);
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        var id = UUID.randomUUID();
-        var service =
-                new FileService(
-                        repo,
-                        mock(com.lumira.platform.identity.api.AccountOwnerPort.class),
-                        mock(BlobStore.class),
-                        mock(PlatformTransactionManager.class),
-                        mock(com.lumira.platform.common.AuditPort.class),
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard);
-
-        service.listManaged("admin", new PageRequest(1, 10, ""));
-
-        verify(guard).requirePageGlobal("admin", PlatformPageId.FILES_ALL);
-        verify(guard, never()).requireOperationGlobal(anyString(), any());
-    }
-
-    @Test
-    void managedDownloadRequiresDownloadOperationForMetadataAndContent() throws Exception {
-        var repo = mock(FileRepository.class);
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
-                .when(guard)
-                .requireOperationGlobal("admin", PlatformOperation.FILE_DOWNLOAD);
-        var service =
-                new FileService(
-                        repo,
-                        mock(com.lumira.platform.identity.api.AccountOwnerPort.class),
-                        mock(BlobStore.class),
-                        mock(PlatformTransactionManager.class),
-                        mock(com.lumira.platform.common.AuditPort.class),
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard);
-
-        assertThrows(
-                ResponseStatusException.class,
-                () -> service.findManaged("admin", UUID.randomUUID()));
-        assertThrows(
-                ResponseStatusException.class,
-                () -> service.openManaged("admin", UUID.randomUUID()));
-
-        verify(guard, times(2)).requireOperationGlobal("admin", PlatformOperation.FILE_DOWNLOAD);
-        verify(repo, never()).findManaged(any());
-    }
-
-    @Test
-    void managedPreviewUsesPreviewOperationWithoutDownloadGrant() throws Exception {
-        var repo = mock(FileRepository.class);
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        var blobs = mock(BlobStore.class);
-        var id = UUID.randomUUID();
-        var owner = UUID.randomUUID();
-        when(repo.findManaged(id))
-                .thenReturn(
-                        Optional.of(
-                                new FileRepository.ManagedEntry(
-                                        id,
-                                        owner,
-                                        "user",
-                                        "User",
-                                        "postgres",
-                                        "preview.txt",
-                                        "READY",
-                                        7L,
-                                        "a".repeat(64),
-                                        1,
-                                        java.time.Instant.EPOCH,
-                                        java.time.Instant.EPOCH,
-                                        null)));
-        when(blobs.open(id)).thenReturn(new ByteArrayInputStream("preview".getBytes()));
-        var service =
-                new FileService(
-                        repo,
-                        mock(com.lumira.platform.identity.api.AccountOwnerPort.class),
-                        blobs,
-                        mock(PlatformTransactionManager.class),
-                        mock(com.lumira.platform.common.AuditPort.class),
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard);
-
-        var preview = service.previewManaged("admin", id, 1);
-
-        assertEquals("preview", preview.text());
-        verify(guard).requireOperationGlobal("admin", PlatformOperation.FILE_PREVIEW);
-        verify(guard, never()).requireOperationGlobal("admin", PlatformOperation.FILE_DOWNLOAD);
-    }
-
-    @Test
-    void downloadGrantAloneDoesNotAuthorizeManagedPreview() throws Exception {
-        var repo = mock(FileRepository.class);
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden"))
-                .when(guard)
-                .requireOperationGlobal("admin", PlatformOperation.FILE_PREVIEW);
-        var service =
-                new FileService(
-                        repo,
-                        mock(com.lumira.platform.identity.api.AccountOwnerPort.class),
-                        mock(BlobStore.class),
-                        mock(PlatformTransactionManager.class),
-                        mock(com.lumira.platform.common.AuditPort.class),
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard);
-
-        assertThrows(
-                ResponseStatusException.class,
-                () -> service.previewManaged("admin", UUID.randomUUID(), 1));
-
-        verify(guard).requireOperationGlobal("admin", PlatformOperation.FILE_PREVIEW);
-        verify(guard, never()).requireOperationGlobal("admin", PlatformOperation.FILE_DOWNLOAD);
-        verify(repo, never()).findManaged(any());
-    }
-
-    @Test
-    void managedRestoreRequiresRestoreOperationWithoutDeleteGrant() {
-        var repo = mock(FileRepository.class);
-        var guard = mock(com.lumira.platform.common.AdministrationPort.class);
-        var manager = mock(PlatformTransactionManager.class);
-        when(manager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
-        var id = UUID.randomUUID();
-        var owner = UUID.randomUUID();
-        when(repo.findManaged(id))
-                .thenReturn(
-                        Optional.of(
-                                new FileRepository.ManagedEntry(
-                                        id,
-                                        owner,
-                                        "user",
-                                        "User",
-                                        "postgres",
-                                        "report.pdf",
-                                        "TRASHED",
-                                        12L,
-                                        "a".repeat(64),
-                                        4,
-                                        java.time.Instant.EPOCH,
-                                        java.time.Instant.EPOCH,
-                                        java.time.Instant.EPOCH)));
-        when(repo.restoreManaged(id, 4)).thenReturn(true);
-        var service =
-                new FileService(
-                        repo,
-                        mock(com.lumira.platform.identity.api.AccountOwnerPort.class),
-                        mock(BlobStore.class),
-                        manager,
-                        mock(com.lumira.platform.common.AuditPort.class),
-                        new FileQuota(Long.MAX_VALUE, 1000),
-                        guard);
-
-        service.restoreManaged("admin", id, 4);
-
-        verify(guard).requireOperationGlobal("admin", PlatformOperation.FILE_RESTORE);
-        verify(guard, never()).requireOperationGlobal("admin", PlatformOperation.FILE_DELETE);
-        verify(repo).restoreManaged(id, 4);
     }
 }

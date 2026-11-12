@@ -35,6 +35,10 @@ final class FileDeleteFinalizer {
      * them later. The pending-state/version lookup prevents stale callers from deleting bytes.
      */
     void finish(UUID id, long version) {
+        // A nested caller may still roll back the metadata fence. Nontransactional storage
+        // must remain untouched; the durable DELETING queue is retried after commit.
+        if (org.springframework.transaction.support.TransactionSynchronizationManager
+                .isActualTransactionActive()) return;
         try {
             if (files.findDeleting(id, version).isEmpty()) return;
 

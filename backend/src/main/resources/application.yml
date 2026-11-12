@@ -6,9 +6,16 @@ spring:
     username: ${LUMIRA_DB_USER:lumira_next}
     password: ${LUMIRA_DB_PASSWORD}
     hikari:
-      maximum-pool-size: 12
-      minimum-idle: 2
-      connection-timeout: 3000
+      maximum-pool-size: ${LUMIRA_DB_POOL_MAX:12}
+      minimum-idle: ${LUMIRA_DB_POOL_MIN:2}
+      connection-timeout: ${LUMIRA_DB_POOL_TIMEOUT_MS:3000}
+      data-source-properties:
+        prepareThreshold: ${LUMIRA_DB_PREPARE_THRESHOLD:1}
+        options: ${LUMIRA_DB_OPTIONS:-c random_page_cost=0.2 -c cpu_index_tuple_cost=0.0005}
+        preparedStatementCacheQueries: ${LUMIRA_DB_PREPARED_STATEMENT_CACHE_QUERIES:512}
+        preparedStatementCacheSizeMiB: ${LUMIRA_DB_PREPARED_STATEMENT_CACHE_SIZE_MIB:16}
+        reWriteBatchedInserts: ${LUMIRA_DB_REWRITE_BATCHED_INSERTS:true}
+        tcpKeepAlive: ${LUMIRA_DB_TCP_KEEP_ALIVE:true}
   session:
     timeout: 30m
     jdbc:
@@ -38,6 +45,9 @@ springdoc:
 server:
   address: ${LUMIRA_BIND:127.0.0.1}
   port: ${LUMIRA_PORT:8090}
+  tomcat:
+    accept-count: ${LUMIRA_TOMCAT_ACCEPT_COUNT:2048}
+    max-keep-alive-requests: ${LUMIRA_TOMCAT_MAX_KEEP_ALIVE_REQUESTS:10000}
   servlet:
     session:
       cookie:
@@ -70,14 +80,18 @@ management:
           include: livenessState
       show-details: never
 lumira:
+  session:
+    touch-window-ms: ${LUMIRA_SESSION_TOUCH_WINDOW_MS:0}
   plugins:
     path: ${LUMIRA_PLUGINS_PATH:.runtime/plugins}
+    artifacts-path: ${LUMIRA_PLUGINS_ARTIFACTS_PATH:}
     fixed-graph: ${LUMIRA_PLUGINS_FIXED_GRAPH:false}
     approved-graph: ${LUMIRA_PLUGINS_APPROVED_GRAPH:plugins/approved-graph.json}
   metrics:
     # Bearer token required for /actuator/prometheus (min 32 chars); unset means the endpoint is disabled.
     token: ${LUMIRA_METRICS_TOKEN:}
   http:
+    max-in-flight: ${LUMIRA_HTTP_MAX_IN_FLIGHT:256}
     upload-idle-timeout-ms: ${LUMIRA_UPLOAD_IDLE_TIMEOUT_MS:30000}
   files:
     account-per-minute: ${LUMIRA_UPLOAD_ACCOUNT_PER_MINUTE:30}

@@ -6,8 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.lumira.platform.ai.AiProviderService;
 import com.lumira.platform.identity.ProfileValuesService;
-import com.lumira.platform.settings.SecuritySettingsController;
 import com.lumira.platform.settings.WatermarkSettings;
+import com.lumira.plugins.authenticationconsole.SecuritySettingsController;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

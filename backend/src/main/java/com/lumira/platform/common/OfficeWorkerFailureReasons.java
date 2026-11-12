@@ -5,7 +5,8 @@ public final class OfficeWorkerFailureReasons {
     private OfficeWorkerFailureReasons() {}
 
     public static String tooLarge(String operation) {
-        if (OfficeWorkerProtocol.PREVIEW.equals(operation)) return "filePreviewTooLarge";
+        if (OfficeWorkerProtocol.PREVIEW.equals(operation)
+                || OfficeWorkerProtocol.PDF_PAGE.equals(operation)) return "filePreviewTooLarge";
         if (OfficeWorkerProtocol.DICTIONARY.equals(operation)) return "dictionaryDatasetTooLarge";
         return isTemplateOperation(operation)
                 ? "documentTemplateTooLarge"
@@ -13,7 +14,8 @@ public final class OfficeWorkerFailureReasons {
     }
 
     public static String invalid(String operation) {
-        if (OfficeWorkerProtocol.PREVIEW.equals(operation)) return "filePreviewInvalid";
+        if (OfficeWorkerProtocol.PREVIEW.equals(operation)
+                || OfficeWorkerProtocol.PDF_PAGE.equals(operation)) return "filePreviewInvalid";
         if (OfficeWorkerProtocol.DICTIONARY.equals(operation)) return "invalidDictionaryDataset";
         return isTemplateOperation(operation)
                 ? "documentTemplateInvalid"

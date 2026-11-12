@@ -1,4 +1,5 @@
 export const messages = {
+    serverBusy: "Das System ist ausgelastet. Versuchen Sie es später erneut; diese Anfrage wurde noch nicht verarbeitet.",
     rolePermissionDelegationDenied: "Dein Konto kann die ausgewählten Berechtigungen nicht delegieren. Plattformberechtigungen müssen global vorliegen; Plugin-Berechtigungen erfordern globale Berechtigungen oder die Berechtigung zur Plugin-Installation.",
     rolePermissionUnavailable: "Der Berechtigungskatalog hat sich geändert und eine ausgewählte Berechtigung ist nicht mehr verfügbar. Aktualisiere den Rollen-Editor und versuche es erneut.",
     registrationRoleInUse: "Dies ist die Standardrolle für neue Konten. Sie kann nicht gelöscht, deaktiviert, mit einem größeren Datenbereich oder mit Berechtigungen außerhalb der Zulassungsliste für die öffentliche Registrierung versehen werden. Wähle zuerst in den Einstellungen zur öffentlichen Registrierung eine andere Standardrolle.",
@@ -140,6 +141,7 @@ export const messages = {
     pluginBusy: "A plugin operation is in progress",
     pluginFixedGraph: "Diese Bereitstellung aktualisiert Module über ein Release. Online-Import, Installation, Aktivierung, Deaktivierung und Deinstallation sind gesperrt. Bitte wenden Sie sich an den Betrieb.",
     pluginClusterLifecycleUnsupported: "Online-Moduländerungen werden abgelehnt, solange mehrere Laufzeitknoten aktiv sind. Aktualisieren Sie Module über ein Release.",
+    pluginClusterOperationActive: "Eine Moduländerung im Cluster ist noch nicht abgeschlossen. Warten Sie auf den Abschluss oder lassen Sie den Betrieb den Vorgang wiederherstellen.",
     pluginGraphChanged: "Der laufende Modulgraph stimmt nicht mit dem geladenen Snapshot überein. Der Vorgang wurde abgelehnt; wenden Sie sich an den Betrieb.",
     pluginReleaseNodesActive: "Stoppen Sie die alten Laufzeitknoten, bevor Sie ein Modul-Release anwenden.",
     pluginOperationLeaseLost: "Dieser Laufzeitknoten ist nicht mehr Eigentümer des Vorgangs. Aktualisieren Sie den Status.",
@@ -152,6 +154,7 @@ export const messages = {
     pluginDependencyCycle: "Circular plugin dependency",
     pluginVersionConflict: "Plugin version conflict",
     pluginStartFailed: "Plugin startup failed. Check runtime logs.",
+    pluginServiceOwnerConflict: "Das Plugin deklariert einen Dienst eines anderen Plugins oder einen Diensttyp mehrfach.",
     pluginDrainTimeout: "Plugin calls are still active. Uninstall cancelled.",
     invalidPluginPackage: "Invalid plugin package",
     pluginDigestMismatch: "Plugin integrity check failed",

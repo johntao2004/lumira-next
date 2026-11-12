@@ -6,6 +6,7 @@ import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.FixedWindowBuckets;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PrimaryMethod;
+import com.lumira.platform.common.RegistrationRolePort;
 import com.lumira.platform.identity.api.EffectiveAuthenticationPolicyPort;
 import com.lumira.platform.identity.api.LoginResponse;
 import com.lumira.platform.identity.api.PasswordContract;
@@ -495,8 +496,8 @@ public class TemporaryPasswordResetService implements TemporaryPasswordResetPort
 
     private UserSnapshot authorizedSnapshot(
             UUID id, long expectedVersion, String actor, boolean lock) {
-        administration.requireOperationUser(actor, id, RESET_OPERATION);
         if (lock) policyLock.lockForAuthentication();
+        administration.requireOperationUser(actor, id, RESET_OPERATION);
         String sql =
                 "SELECT id,username,password_hash,primary_credential_revision,version,enabled FROM platform_user WHERE id=:id AND deleted_at IS NULL"
                         + (lock ? " FOR UPDATE" : "");
@@ -526,6 +527,35 @@ public class TemporaryPasswordResetService implements TemporaryPasswordResetPort
                         .param("id", user.id())
                         .query(Boolean.class)
                         .single()) throw error(HttpStatus.CONFLICT, "protectedAccount");
+
+        var privileges =
+                jdbc.sql(
+                                """
+                                SELECT effective.authority
+                                  FROM platform_effective_authority effective
+                                 WHERE effective.user_id=:id
+                                   AND (
+                                     effective.authority NOT IN (:selfService)
+                                     OR EXISTS (
+                                       SELECT 1 FROM platform_authority explicit_grant
+                                        WHERE explicit_grant.user_id=:id
+                                          AND explicit_grant.authority=effective.authority
+                                     )
+                                     OR EXISTS (
+                                       SELECT 1 FROM platform_user_role assigned
+                                       JOIN platform_role role ON role.id=assigned.role_id
+                                       JOIN platform_role_authority granted ON granted.role_id=role.id
+                                        WHERE assigned.user_id=:id AND role.enabled
+                                          AND role.data_scope <> 'SELF'
+                                          AND granted.authority=effective.authority
+                                     )
+                                   )
+                                """)
+                        .param("id", user.id())
+                        .param("selfService", RegistrationRolePort.SELF_SERVICE_AUTHORITIES)
+                        .query(String.class)
+                        .list();
+        for (String privilege : privileges) administration.requireGlobal(actor, privilege);
     }
 
     private SecurityPolicyPort.Policy currentPolicy() {

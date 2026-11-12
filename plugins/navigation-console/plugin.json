@@ -1,0 +1,119 @@
+{
+  "formatVersion": 1,
+  "id": "navigation-console",
+  "name": "导航管理",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.navigationconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "navigation",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:navigation:access",
+    "platform:navigation:create",
+    "platform:navigation:update",
+    "platform:navigation:delete"
+  ],
+  "routes": [
+    {
+      "id": "navigation",
+      "label": "navigationManagement",
+      "permission": "platform:navigation:access",
+      "operations": {
+        "create": "platform:navigation:create",
+        "update": "platform:navigation:update",
+        "delete": "platform:navigation:delete"
+      },
+      "group": "administration",
+      "order": 60,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/navigation/menus",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:navigation:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/navigation/menus/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:navigation:access"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/navigation/menus",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:navigation:access",
+        "platform:navigation:create"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/navigation/menus/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:navigation:access",
+        "platform:navigation:update"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/navigation/menus/reorder",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:navigation:access",
+        "platform:navigation:update"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/platform/navigation/menus/{id}/status",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:navigation:access",
+        "platform:navigation:update"
+      ],
+      "global": true,
+      "publicAccess": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/navigation/menus/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:navigation:access",
+        "platform:navigation:delete"
+      ],
+      "global": true,
+      "publicAccess": false
+    }
+  ],
+  "dataSets": []
+}

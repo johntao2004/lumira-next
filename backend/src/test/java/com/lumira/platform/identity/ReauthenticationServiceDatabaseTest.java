@@ -247,19 +247,26 @@ class ReauthenticationServiceDatabaseTest {
     @Test
     void oneSessionHasAtMostOnePendingChallengeAndStartIsRateLimited() {
         var starts = new ArrayList<ReauthenticationService.Start>();
-        for (int index = 0; index < 12; index++)
-            starts.add(
-                    service.start("reauth-user", ReauthenticationPort.Action.MFA_DISABLE, request));
-
-        var limited =
-                assertThrows(
-                        ResponseStatusException.class,
-                        () ->
+        // PostgreSQL CURRENT_TIMESTAMP is stable within this transaction. The assertion is
+        // about one fixed window, including when the wall clock crosses a minute boundary.
+        tx.executeWithoutResult(
+                status -> {
+                    for (int index = 0; index < 12; index++)
+                        starts.add(
                                 service.start(
                                         "reauth-user",
                                         ReauthenticationPort.Action.MFA_DISABLE,
                                         request));
-        assertEquals("reauthenticationStartLimited", limited.getReason());
+                    var limited =
+                            assertThrows(
+                                    ResponseStatusException.class,
+                                    () ->
+                                            service.start(
+                                                    "reauth-user",
+                                                    ReauthenticationPort.Action.MFA_DISABLE,
+                                                    request));
+                    assertEquals("reauthenticationStartLimited", limited.getReason());
+                });
         assertEquals(
                 1,
                 jdbc.queryForObject(
@@ -271,6 +278,30 @@ class ReauthenticationServiceDatabaseTest {
                         "SELECT count(*) FROM platform_reauthentication_challenge WHERE state='SUPERSEDED'",
                         Integer.class));
         assertEquals(12, starts.size());
+    }
+
+    @Test
+    void fixedRateWindowReopensOnlyAfterItsStoredMinuteExpires() {
+        var buckets = new FixedWindowBuckets(JdbcClient.create(jdbc.getDataSource()));
+        String key = FixedWindowBuckets.key("qa-window", "explicit-rollover");
+        tx.executeWithoutResult(
+                status -> {
+                    assertTrue(buckets.consume(key, 2));
+                    assertTrue(buckets.consume(key, 2));
+                    assertFalse(buckets.consume(key, 2));
+                    jdbc.update(
+                            "UPDATE platform_rate_bucket SET window_start=CURRENT_TIMESTAMP-INTERVAL '1 minute' WHERE bucket_key=?",
+                            key);
+                    assertTrue(buckets.consume(key, 2));
+                    assertTrue(buckets.consume(key, 2));
+                    assertFalse(buckets.consume(key, 2));
+                    assertEquals(
+                            1,
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM platform_rate_bucket WHERE bucket_key=? AND window_start=date_trunc('minute',CURRENT_TIMESTAMP) AND attempts=3",
+                                    Integer.class,
+                                    key));
+                });
     }
 
     @Test

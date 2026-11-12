@@ -1,5 +1,6 @@
 package com.lumira.platform.identity;
 
+import com.lumira.platform.common.BoundedBody;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,7 +55,8 @@ public class RolePreviewController {
 
     @PostMapping
     public RolePreviewContextService.View enter(
-            @RequestBody SelectInput input,
+            @RequestBody @BoundedBody(maxBytes = 2048, errorCode = "invalidRolePreview")
+                    SelectInput input,
             HttpServletRequest request,
             Authentication authentication) {
         if (input == null
@@ -68,7 +70,8 @@ public class RolePreviewController {
 
     @DeleteMapping
     public RolePreviewContextService.View exit(
-            @RequestBody ExitInput input,
+            @RequestBody @BoundedBody(maxBytes = 1024, errorCode = "invalidRolePreview")
+                    ExitInput input,
             HttpServletRequest request,
             Authentication authentication) {
         if (input == null || input.hasUnknownFields())

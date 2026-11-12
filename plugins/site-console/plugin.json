@@ -1,0 +1,457 @@
+{
+  "formatVersion": 1,
+  "id": "site-console",
+  "name": "站点配置管理",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.siteconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "files",
+      "version": "1.0.0"
+    },
+    {
+      "id": "settings",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:branding:access",
+    "platform:branding:update",
+    "platform:watermark:access",
+    "platform:watermark:update",
+    "platform:agreements:access",
+    "platform:agreements:update",
+    "platform:maintenance:access",
+    "platform:maintenance:update"
+  ],
+  "routes": [
+    {
+      "id": "branding",
+      "label": "siteSettings",
+      "permission": "platform:branding:access",
+      "group": "administration",
+      "order": 20,
+      "global": true,
+      "operations": {
+        "update": "platform:branding:update"
+      }
+    },
+    {
+      "id": "watermark",
+      "label": "watermark",
+      "permission": "platform:watermark:access",
+      "group": "administration",
+      "order": 30,
+      "global": true,
+      "operations": {
+        "update": "platform:watermark:update"
+      }
+    },
+    {
+      "id": "agreements",
+      "label": "agreements",
+      "permission": "platform:agreements:access",
+      "group": "administration",
+      "order": 40,
+      "global": true,
+      "operations": {
+        "update": "platform:agreements:update"
+      }
+    },
+    {
+      "id": "maintenance",
+      "label": "maintenance",
+      "permission": "platform:maintenance:access",
+      "group": "administration",
+      "order": 50,
+      "global": true,
+      "operations": {
+        "update": "platform:maintenance:update"
+      }
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/branding",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:branding:access"
+      ],
+      "authorityScopes": {
+        "platform:branding:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/branding",
+      "authorities": [
+        "platform:branding:update"
+      ],
+      "allAuthorities": [
+        "platform:branding:access"
+      ],
+      "authorityScopes": {
+        "platform:branding:access": "global",
+        "platform:branding:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/branding/assets",
+      "authorities": [
+        "platform:branding:update"
+      ],
+      "allAuthorities": [
+        "platform:branding:access"
+      ],
+      "authorityScopes": {
+        "platform:branding:access": "global",
+        "platform:branding:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/agreements",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:agreements:access"
+      ],
+      "authorityScopes": {
+        "platform:agreements:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/agreements",
+      "authorities": [
+        "platform:agreements:update"
+      ],
+      "allAuthorities": [
+        "platform:agreements:access"
+      ],
+      "authorityScopes": {
+        "platform:agreements:access": "global",
+        "platform:agreements:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/watermark",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:watermark:access"
+      ],
+      "authorityScopes": {
+        "platform:watermark:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/watermark",
+      "authorities": [
+        "platform:watermark:update"
+      ],
+      "allAuthorities": [
+        "platform:watermark:access"
+      ],
+      "authorityScopes": {
+        "platform:watermark:access": "global",
+        "platform:watermark:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/maintenance",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:maintenance:access"
+      ],
+      "authorityScopes": {
+        "platform:maintenance:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/maintenance/roles",
+      "authorities": [
+        "platform:maintenance:update"
+      ],
+      "allAuthorities": [
+        "platform:maintenance:access"
+      ],
+      "authorityScopes": {
+        "platform:maintenance:access": "global",
+        "platform:maintenance:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/maintenance",
+      "authorities": [
+        "platform:maintenance:update"
+      ],
+      "allAuthorities": [
+        "platform:maintenance:access"
+      ],
+      "authorityScopes": {
+        "platform:maintenance:access": "global",
+        "platform:maintenance:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/branding/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:branding:access"
+      ],
+      "authorityScopes": {
+        "platform:branding:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/branding/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:branding:access"
+      ],
+      "authorityScopes": {
+        "platform:branding:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/branding/rollback",
+      "authorities": [
+        "platform:branding:update"
+      ],
+      "allAuthorities": [
+        "platform:branding:access"
+      ],
+      "authorityScopes": {
+        "platform:branding:access": "global",
+        "platform:branding:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/agreements/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:agreements:access"
+      ],
+      "authorityScopes": {
+        "platform:agreements:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/agreements/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:agreements:access"
+      ],
+      "authorityScopes": {
+        "platform:agreements:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/agreements/rollback",
+      "authorities": [
+        "platform:agreements:update"
+      ],
+      "allAuthorities": [
+        "platform:agreements:access"
+      ],
+      "authorityScopes": {
+        "platform:agreements:access": "global",
+        "platform:agreements:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/watermark/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:watermark:access"
+      ],
+      "authorityScopes": {
+        "platform:watermark:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/watermark/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:watermark:access"
+      ],
+      "authorityScopes": {
+        "platform:watermark:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/watermark/rollback",
+      "authorities": [
+        "platform:watermark:update"
+      ],
+      "allAuthorities": [
+        "platform:watermark:access"
+      ],
+      "authorityScopes": {
+        "platform:watermark:access": "global",
+        "platform:watermark:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/maintenance/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:maintenance:access"
+      ],
+      "authorityScopes": {
+        "platform:maintenance:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/maintenance/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:maintenance:access"
+      ],
+      "authorityScopes": {
+        "platform:maintenance:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/maintenance/rollback",
+      "authorities": [
+        "platform:maintenance:update"
+      ],
+      "allAuthorities": [
+        "platform:maintenance:access"
+      ],
+      "authorityScopes": {
+        "platform:maintenance:access": "global",
+        "platform:maintenance:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    }
+  ],
+  "dataSets": [],
+  "permissionGroups": [
+    {
+      "id": "settings",
+      "title": "settings",
+      "permissions": [
+        {
+          "code": "platform:branding:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:branding:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:watermark:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:watermark:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:agreements:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:agreements:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:maintenance:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:maintenance:update",
+          "label": "permissionUpdate"
+        }
+      ]
+    }
+  ]
+}

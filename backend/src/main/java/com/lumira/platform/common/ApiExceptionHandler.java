@@ -24,9 +24,15 @@ public class ApiExceptionHandler {
     @ExceptionHandler({
         org.springframework.dao.DataAccessException.class,
         org.springframework.transaction.TransactionException.class,
+        java.sql.SQLException.class,
         java.io.IOException.class
     })
     public ProblemDetail infrastructure(Exception error) {
+        Throwable fenced = error;
+        for (int depth = 0; fenced != null && depth < 16; depth++, fenced = fenced.getCause())
+            if (fenced instanceof PluginWorkFencedException)
+                return ProblemDetail.forStatusAndDetail(
+                        HttpStatus.SERVICE_UNAVAILABLE, "moduleUnavailable");
         if (error instanceof java.io.IOException) {
             Throwable cause = error;
             for (int depth = 0; cause != null && depth < 10; depth++, cause = cause.getCause())

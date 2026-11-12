@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "id": "audit-console",
+  "name": "审计查询",
+  "version": "1.0.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.auditconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [{ "id": "platform", "version": "1.0.0" }],
+  "permissions": ["platform:audit:access"],
+  "routes": [{ "id": "audit", "label": "audit", "permission": "platform:audit:access", "group": "operations", "order": 30, "global": true }],
+  "apiRules": [{ "method": "GET", "path": "/api/platform/audit", "authorities": ["platform:audit:access"], "global": true, "publicAccess": false }],
+  "dataSets": []
+}

@@ -8,7 +8,7 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.MailConfigurationPort;
 import com.lumira.platform.common.PlatformOperation;
-import com.lumira.platform.settings.SmtpSettingsService;
+import com.lumira.plugins.deliverysettings.MailDeliveryTestService;
 import jakarta.mail.Address;
 import jakarta.mail.Message;
 import jakarta.mail.Session;
@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 class MailDeliveryTestServiceTest {
     @Test
     void requiresTheSmtpPageAndTestAction() {
-        var settings = mock(SmtpSettingsService.class);
+        var settings = mock(com.lumira.platform.common.MailConfigurationPort.class);
         var gateway = mock(SmtpGateway.class);
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
@@ -31,7 +31,9 @@ class MailDeliveryTestServiceTest {
                 .when(guard)
                 .requireOperationGlobal("reader", PlatformOperation.SMTP_TEST);
 
-        var service = new MailDeliveryTestService(settings, gateway, guard, audit);
+        var service =
+                new MailDeliveryTestService(
+                        new MailTransportProbeAdapter(settings, gateway), guard, audit);
         assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("reader"));
         verifyNoInteractions(settings, gateway, audit);
         verify(guard, never()).requireOperationGlobal("reader", PlatformOperation.SMTP_UPDATE);
@@ -39,7 +41,7 @@ class MailDeliveryTestServiceTest {
 
     @Test
     void rejectsRemoteOrAuthenticatedConfigurationWithoutOpeningTransport() {
-        var settings = mock(SmtpSettingsService.class);
+        var settings = mock(com.lumira.platform.common.MailConfigurationPort.class);
         when(settings.readSettings())
                 .thenReturn(
                         new MailConfigurationPort.Settings(
@@ -55,7 +57,9 @@ class MailDeliveryTestServiceTest {
         var guard = mock(AdministrationPort.class);
         var audit = mock(AuditPort.class);
 
-        var service = new MailDeliveryTestService(settings, gateway, guard, audit);
+        var service =
+                new MailDeliveryTestService(
+                        new MailTransportProbeAdapter(settings, gateway), guard, audit);
         var failure =
                 assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("admin"));
         assertEquals("smtpLocalTestUnavailable", failure.getReason());
@@ -64,7 +68,7 @@ class MailDeliveryTestServiceTest {
 
     @Test
     void sendsOnlyTheFixedSyntheticMessageAndKeepsHostnameCheckingEnabled() throws Exception {
-        var settings = mock(SmtpSettingsService.class);
+        var settings = mock(com.lumira.platform.common.MailConfigurationPort.class);
         when(settings.readSettings())
                 .thenReturn(
                         new MailConfigurationPort.Settings(
@@ -88,7 +92,9 @@ class MailDeliveryTestServiceTest {
         var audit = mock(AuditPort.class);
 
         var result =
-                new MailDeliveryTestService(settings, gateway, guard, audit).sendLocalTest("admin");
+                new MailDeliveryTestService(
+                                new MailTransportProbeAdapter(settings, gateway), guard, audit)
+                        .sendLocalTest("admin");
 
         assertEquals(SmtpGateway.Result.ACCEPTED.name(), result.result());
         verify(transport).connect("127.0.0.1", 1025, null, null);

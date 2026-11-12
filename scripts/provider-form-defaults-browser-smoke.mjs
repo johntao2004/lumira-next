@@ -3,7 +3,7 @@ import {chromium,expect} from '@playwright/test';
 import {writeFileSync,mkdirSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {loadLocaleMessages} from '../apps/web/src/platform/i18n/messages.ts';
-import {providerDefaultBaseUrl,providerKindLabel} from '../apps/web/src/features/ai/types.ts';
+import {providerDefaultBaseUrl,providerKindLabel} from '../plugins/ai/frontend/types.ts';
 const { config, baseURL } = loadQaRunContext();
 const browser=await chromium.launch({headless:true});const context=await browser.newContext({baseURL:baseURL,viewport:{width:1254,height:869}});const page=await context.newPage();const errors=[];const writes=[];const checks=[];const t=await loadLocaleMessages('zh-CN');const folder='.runtime/qa/provider-form-defaults';mkdirSync(folder,{recursive:true});
 page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(new URL(r.url()).pathname==='/api/platform/ai/providers'&&r.method()!=='GET')writes.push(r.method());});

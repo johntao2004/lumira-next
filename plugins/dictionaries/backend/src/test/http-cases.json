@@ -1,0 +1,556 @@
+[
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/dictionaries",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001/export",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:export",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:export"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001/items",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001/items/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001/items/00000000-0000-0000-0000-000000000001/ancestors",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/dictionaries",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:create",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:create"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:update"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "DELETE",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:delete",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:delete"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001/items",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:create",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:create"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001/items/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:update",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:update"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "DELETE",
+    "path": "/platform/dictionaries/00000000-0000-0000-0000-000000000001/items/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:delete",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:delete"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/dictionaries/preview",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:import",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:import"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/dictionaries/import",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:dictionaries:import",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:import"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/dictionaries/file-preview?filename=invalid.csv&code=qa-code&name=QA&enabled=true&structure=flat",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "bodyBytes": [],
+    "contentType": "application/octet-stream",
+    "operationPermission": "platform:dictionaries:import",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:import"
+    ]
+  },
+  {
+    "pageId": "dictionaries",
+    "accessPermission": "platform:dictionaries:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/dictionaries/file-import?filename=invalid.csv&expectedSha256=0000000000000000000000000000000000000000000000000000000000000000&code=qa-code&name=QA&enabled=true&structure=flat",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "bodyBytes": [],
+    "contentType": "application/octet-stream",
+    "operationPermission": "platform:dictionaries:import",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:dictionaries:import"
+    ]
+  }
+]

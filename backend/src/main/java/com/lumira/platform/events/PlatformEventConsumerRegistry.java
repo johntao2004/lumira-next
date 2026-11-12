@@ -2,7 +2,9 @@ package com.lumira.platform.events;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
 import com.lumira.platform.common.DurableEventProducerPort;
+import com.lumira.platform.common.DynamicEventConsumerPort;
 import java.util.*;
+import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -12,10 +14,101 @@ import org.springframework.stereotype.Component;
  * payloads cannot load arbitrary code.
  */
 @Component
-public final class PlatformEventConsumerRegistry {
+public final class PlatformEventConsumerRegistry implements DynamicEventConsumerPort {
     private record Key(String sourceType, String eventType) {}
 
     private final Map<Key, DurableEventConsumerPort> consumers;
+
+    private record Registration(
+            UUID identity, DurableEventConsumerPort consumer, Supplier<AutoCloseable> admission) {}
+
+    private volatile Map<Key, Registration> dynamic = Map.of();
+    private volatile Map<UUID, Set<DurableEventProducerPort.EventType>> producerDeclarations =
+            Map.of();
+
+    @Override
+    public synchronized AutoCloseable registerProducers(
+            String owner, Collection<DurableEventProducerPort> candidates) {
+        if (owner == null || owner.isBlank())
+            throw new IllegalArgumentException("Invalid producer owner");
+        var types = new HashSet<DurableEventProducerPort.EventType>();
+        for (var candidate : candidates) types.addAll(candidate.eventTypes());
+        var token = UUID.randomUUID();
+        var next = new HashMap<>(producerDeclarations);
+        next.put(token, Set.copyOf(types));
+        producerDeclarations = Map.copyOf(next);
+        return () -> {
+            synchronized (this) {
+                var remaining = new HashMap<>(producerDeclarations);
+                remaining.remove(token);
+                producerDeclarations = Map.copyOf(remaining);
+            }
+        };
+    }
+
+    public Set<DurableEventProducerPort.EventType> producedEventTypes() {
+        var result = new HashSet<DurableEventProducerPort.EventType>();
+        producerDeclarations.values().forEach(result::addAll);
+        return Set.copyOf(result);
+    }
+
+    public record Lease(DurableEventConsumerPort consumer, AutoCloseable admission)
+            implements AutoCloseable {
+        @Override
+        public void close() throws Exception {
+            admission.close();
+        }
+    }
+
+    @Override
+    public synchronized AutoCloseable registerConsumers(
+            String owner,
+            Collection<DurableEventConsumerPort> candidates,
+            Supplier<AutoCloseable> admission) {
+        if (owner == null || owner.isBlank() || admission == null)
+            throw new IllegalArgumentException("Invalid consumer owner");
+        var added = new LinkedHashMap<Key, Registration>();
+        for (var candidate : candidates) {
+            if (candidate == null
+                    || !validSource(candidate.sourceType())
+                    || !validEvent(candidate.eventType()))
+                throw new IllegalArgumentException("Invalid event consumer registration");
+            var key = new Key(candidate.sourceType(), candidate.eventType());
+            if (consumers.containsKey(key) || dynamic.containsKey(key) || added.containsKey(key))
+                throw new IllegalArgumentException("Duplicate event consumer: " + key);
+            added.put(key, new Registration(UUID.randomUUID(), candidate, admission));
+        }
+        var next = new LinkedHashMap<>(dynamic);
+        next.putAll(added);
+        dynamic = Map.copyOf(next);
+        return () -> {
+            synchronized (this) {
+                var remaining = new LinkedHashMap<>(dynamic);
+                added.forEach((key, registration) -> remaining.remove(key, registration));
+                dynamic = Map.copyOf(remaining);
+            }
+        };
+    }
+
+    public Optional<Lease> acquire(String sourceType, String eventType) {
+        var key = new Key(sourceType, eventType);
+        var fixed = consumers.get(key);
+        if (fixed != null) return Optional.of(new Lease(fixed, () -> {}));
+        var registration = dynamic.get(key);
+        if (registration == null) return Optional.empty();
+        var admission = registration.admission().get();
+        if (admission != null && dynamic.get(key) != registration) {
+            try {
+                admission.close();
+            } catch (Exception error) {
+                throw new IllegalStateException("Consumer admission release failed", error);
+            }
+            return Optional.empty();
+        }
+        return admission == null
+                ? Optional.empty()
+                : Optional.of(new Lease(registration.consumer(), admission));
+    }
 
     /** Compatibility constructor for callers that still register legacy handlers. */
     public PlatformEventConsumerRegistry(List<PlatformEventConsumer> candidates) {
@@ -78,16 +171,18 @@ public final class PlatformEventConsumerRegistry {
     }
 
     public boolean isEmpty() {
-        return consumers.isEmpty();
+        return consumers.isEmpty() && dynamic.isEmpty();
     }
 
     public int size() {
-        return consumers.size();
+        return consumers.size() + dynamic.size();
     }
 
     public Set<DurableEventProducerPort.EventType> eventTypes() {
         var types = new LinkedHashSet<DurableEventProducerPort.EventType>();
-        consumers.keySet().stream()
+        var keys = new HashSet<>(consumers.keySet());
+        keys.addAll(dynamic.keySet());
+        keys.stream()
                 .sorted(Comparator.comparing(Key::sourceType).thenComparing(Key::eventType))
                 .forEach(
                         key ->

@@ -113,4 +113,40 @@ class IdentityConfigurationTest {
         assertTrue(proofs.matches(evidence.hashFingerprint(), storedHash));
         assertEquals(revision, evidence.primaryCredentialRevision());
     }
+
+    @Test
+    void legacyBcryptUpgradeFingerprintsTheHashNowStoredOnTheSamePrincipal() {
+        var password = "legacy-password-123";
+        var legacy = new BCryptPasswordEncoder(4).encode(password);
+        var revision = UUID.randomUUID();
+        var user = new PasswordProofUserDetails("legacy", legacy, true, revision, List.of());
+        var proofs = new PasswordCredentialProof();
+        var upgraded = new AtomicReference<String>();
+        var provider =
+                new IdentityConfiguration()
+                        .authenticationProvider(
+                                username -> user,
+                                encoder(),
+                                (details, newPassword) -> {
+                                    upgraded.set(newPassword);
+                                    if (details instanceof PasswordProofUserDetails proofUser) {
+                                        proofUser.useEncodedPassword(newPassword);
+                                        return proofUser;
+                                    }
+                                    return User.withUserDetails(details)
+                                            .password(newPassword)
+                                            .build();
+                                },
+                                proofs);
+        var manager = new ProviderManager(List.of(provider));
+
+        var authentication =
+                manager.authenticate(new UsernamePasswordAuthenticationToken("legacy", password));
+
+        var evidence = (PasswordCredentialProof.Evidence) authentication.getDetails();
+        assertTrue(upgraded.get().startsWith("{argon2id@lumira_v1}$argon2id$"));
+        assertTrue(proofs.matches(evidence.hashFingerprint(), upgraded.get()));
+        assertFalse(proofs.matches(evidence.hashFingerprint(), legacy));
+        assertEquals(revision, evidence.primaryCredentialRevision());
+    }
 }

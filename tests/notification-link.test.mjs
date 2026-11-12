@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { safeNotificationHref } from "../apps/web/src/features/notifications/safe-notification-href.ts";
+import { safeNotificationHref } from "../plugins/notifications/frontend/safe-notification-href.ts";
 
 const base = "https://lumira.invalid/dashboard/home";
 

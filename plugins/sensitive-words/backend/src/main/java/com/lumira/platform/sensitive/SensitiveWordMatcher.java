@@ -70,12 +70,14 @@ public final class SensitiveWordMatcher {
             char ch = normalized.charAt(index);
             while (current != root && !current.next.containsKey(ch)) current = current.fail;
             current = current.next.getOrDefault(ch, root);
-            for (Entry entry : current.outputs) {
-                if ("BLOCK".equals(entry.action())) blocked = true;
-                if (seen.add(entry.normalizedWord()) && matches.size() < maxMatches) {
-                    matches.putIfAbsent(
-                            entry.normalizedWord(),
-                            new Match(entry.word(), entry.severity(), entry.action()));
+            for (Node output = current; output != null; output = output.outputLink) {
+                for (Entry entry : output.outputs) {
+                    if ("BLOCK".equals(entry.action())) blocked = true;
+                    if (seen.add(entry.normalizedWord()) && matches.size() < maxMatches) {
+                        matches.putIfAbsent(
+                                entry.normalizedWord(),
+                                new Match(entry.word(), entry.severity(), entry.action()));
+                    }
                 }
             }
         }
@@ -148,7 +150,8 @@ public final class SensitiveWordMatcher {
                 Node target = transition.getValue();
                 while (fallback != root && !fallback.next.containsKey(ch)) fallback = fallback.fail;
                 target.fail = fallback.next.getOrDefault(ch, root);
-                target.outputs.addAll(target.fail.outputs);
+                target.outputLink =
+                        target.fail.outputs.isEmpty() ? target.fail.outputLink : target.fail;
                 queue.add(target);
             }
         }
@@ -158,5 +161,6 @@ public final class SensitiveWordMatcher {
         private final Map<Character, Node> next = new HashMap<>();
         private final List<Entry> outputs = new ArrayList<>();
         private Node fail;
+        private Node outputLink;
     }
 }

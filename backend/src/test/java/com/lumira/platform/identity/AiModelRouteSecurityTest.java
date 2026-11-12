@@ -298,5 +298,11 @@ class AiModelRouteSecurityTest {
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
     @org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
     @Import({SecurityConfiguration.class, RouteProbeController.class})
-    static class TestWebConfiguration {}
+    static class TestWebConfiguration {
+        @org.springframework.context.annotation.Bean
+        com.lumira.platform.common.PluginAuthorizationPort aiAuthorization() {
+            return com.lumira.platform.plugins.PluginManifestAuthorizationTestSupport.forPlugins(
+                    "ai");
+        }
+    }
 }

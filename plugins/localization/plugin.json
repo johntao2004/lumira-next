@@ -2,7 +2,7 @@
   "formatVersion": 2,
   "id": "localization",
   "name": "运行时本地化",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "sdkVersion": "1",
   "entryClass": "com.lumira.platform.localization.LumiraPlugin",
   "backend": "backend/plugin.jar",
@@ -10,6 +10,10 @@
   "dependencies": [
     {
       "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "ai",
       "version": "1.0.0"
     }
   ],

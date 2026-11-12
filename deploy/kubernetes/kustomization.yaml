@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lumira
+resources:
+  - namespace.yaml
+  - office-runtime.yaml
+  - server.yaml
+  - office-worker.yaml
+  - web.yaml
+configMapGenerator:
+  - name: lumira-capacity
+    literals:
+      - LUMIRA_HTTP_MAX_IN_FLIGHT=256
+      - LUMIRA_SESSION_TOUCH_WINDOW_MS=1000
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=12
+      - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=2
+      - SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=3000
+      - SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE=30s
+      - SERVER_SHUTDOWN=graceful
+      - LUMIRA_COOKIE_SECURE=true
+      - LUMIRA_PLUGINS_FIXED_GRAPH=true
+      - LUMIRA_OFFICE_WORKER_URL=http://lumira-office-worker:18091
+      - LUMIRA_TRUSTED_PROXY_ADDRESSES=
+# Replace these with immutable image digests in the environment overlay before applying.
+images:
+  - name: lumira/server
+    newTag: replace-me
+  - name: lumira/office-worker
+    newTag: replace-me
+  - name: lumira/web
+    newTag: replace-me

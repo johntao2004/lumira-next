@@ -1,5 +1,6 @@
 package com.lumira.platform.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /** Bounded request and response values shared by the host and isolated Office worker. */
@@ -9,6 +10,7 @@ public final class OfficeWorkerProtocol {
     public static final String FILENAME_HEADER = "X-Lumira-Office-Filename";
     public static final String STRUCTURE_HEADER = "X-Lumira-Office-Structure";
     public static final String PREVIEW = "preview";
+    public static final String PDF_PAGE = "pdf-page";
     public static final String DICTIONARY = "dictionary";
     public static final String DOCUMENT_INSPECT = "document-inspect";
     public static final String DOCUMENT_PDF = "document-pdf";
@@ -20,6 +22,8 @@ public final class OfficeWorkerProtocol {
     public static final String CHILD_METADATA_FILE = "metadata.json";
     public static final String REQUEST_FRAME_MAGIC = "LDO1";
     public static final int MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+    public static final int PDF_OUTPUT_EDGE = 2048;
+    public static final int MAX_PDF_PNG_BYTES = 13 * 1024 * 1024;
 
     public record ChildRequest(
             String operation,
@@ -29,6 +33,8 @@ public final class OfficeWorkerProtocol {
             String metadataFile) {}
 
     public record Preview(String text, boolean truncated) {}
+
+    public record PdfPage(int page, int pageCount, byte[] png) {}
 
     public record Dictionary(String sha256, List<DictionaryItem> items) {}
 
@@ -63,39 +69,66 @@ public final class OfficeWorkerProtocol {
             byte[] workbookFile,
             int status,
             String reason,
-            List<Issue> issues) {
+            List<Issue> issues,
+            @JsonInclude(JsonInclude.Include.NON_NULL) PdfPage pdfPage) {
         public static Response preview(Preview value) {
-            return new Response(PREVIEW, value, null, null, null, null, null, 0, null, List.of());
+            return new Response(
+                    PREVIEW, value, null, null, null, null, null, 0, null, List.of(), null);
+        }
+
+        public static Response pdfPage(PdfPage value) {
+            return new Response(
+                    PDF_PAGE, null, null, null, null, null, null, 0, null, List.of(), value);
         }
 
         public static Response dictionary(Dictionary value) {
             return new Response(
-                    DICTIONARY, null, value, null, null, null, null, 0, null, List.of());
+                    DICTIONARY, null, value, null, null, null, null, 0, null, List.of(), null);
         }
 
         public static Response inspection(Inspection value) {
             return new Response(
-                    DOCUMENT_INSPECT, null, null, value, null, null, null, 0, null, List.of());
+                    DOCUMENT_INSPECT,
+                    null,
+                    null,
+                    value,
+                    null,
+                    null,
+                    null,
+                    0,
+                    null,
+                    List.of(),
+                    null);
         }
 
         public static Response documentPdf(byte[] value) {
             return new Response(
-                    DOCUMENT_PDF, null, null, null, value, null, null, 0, null, List.of());
+                    DOCUMENT_PDF, null, null, null, value, null, null, 0, null, List.of(), null);
         }
 
         public static Response workbook(WorkbookData value) {
             return new Response(
-                    WORKBOOK_READ, null, null, null, null, value, null, 0, null, List.of());
+                    WORKBOOK_READ, null, null, null, null, value, null, 0, null, List.of(), null);
         }
 
         public static Response workbookFile(byte[] value) {
             return new Response(
-                    WORKBOOK_WRITE, null, null, null, null, null, value, 0, null, List.of());
+                    WORKBOOK_WRITE, null, null, null, null, null, value, 0, null, List.of(), null);
         }
 
         public static Response error(String kind, int status, String reason, List<Issue> issues) {
             return new Response(
-                    kind, null, null, null, null, null, null, status, reason, List.copyOf(issues));
+                    kind,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    status,
+                    reason,
+                    List.copyOf(issues),
+                    null);
         }
     }
 

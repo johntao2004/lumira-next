@@ -84,6 +84,44 @@ class RequestCorrelationFilterTest {
     }
 
     @Test
+    void redactsPublicShareTokensInSuccessfulAndRejectedRequests() throws Exception {
+        var logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("lumira.access");
+        var appender =
+                new ch.qos.logback.core.read.ListAppender<
+                        ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            var response = new MockHttpServletResponse();
+            filter.doFilter(
+                    new MockHttpServletRequest("GET", "/api/public/ai/shares/sample-token"),
+                    response,
+                    new MockFilterChain());
+            var rejected = new MockHttpServletResponse();
+            rejected.setStatus(404);
+            filter.doFilter(
+                    new MockHttpServletRequest("GET", "/api/public/ai/%73hares/sample-token"),
+                    rejected,
+                    new MockFilterChain());
+
+            assertEquals(2, appender.list.size());
+            assertTrue(
+                    appender.list
+                            .get(0)
+                            .getFormattedMessage()
+                            .startsWith("GET /api/public/ai/shares/{token} -> 200"));
+            assertTrue(
+                    appender.list
+                            .get(1)
+                            .getFormattedMessage()
+                            .startsWith("GET /api/public/ai/shares/{token} -> 404"));
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
     void healthProbesDoNotFloodTheInfoLog() throws Exception {
         var logger =
                 (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("lumira.access");

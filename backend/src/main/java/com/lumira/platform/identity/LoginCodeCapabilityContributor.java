@@ -37,49 +37,68 @@ public class LoginCodeCapabilityContributor implements AuthenticationCapabilityC
 
     @Override
     public AccountMethods accountMethods(UUID userId) {
-        var snapshot =
-                jdbc.sql(
-                                """
-                        SELECT u.primary_credential_revision,
-                               e.email,e.verified_at AS email_verified,e.version AS email_version,
-                               p.phone,p.verified_at AS phone_verified,p.version AS phone_version
-                          FROM platform_user u
-                          LEFT JOIN platform_account_email e ON e.user_id=u.id
-                          LEFT JOIN platform_account_phone p ON p.user_id=u.id
-                         WHERE u.id=:id AND u.enabled AND u.deleted_at IS NULL
-                        """)
-                        .param("id", userId)
-                        .query(
-                                (rs, row) ->
-                                        new Snapshot(
-                                                rs.getObject(
-                                                        "primary_credential_revision", UUID.class),
-                                                rs.getString("email"),
-                                                rs.getObject(
-                                                                "email_verified",
-                                                                java.time.OffsetDateTime.class)
-                                                        != null,
-                                                (Long) rs.getObject("email_version"),
-                                                rs.getString("phone"),
-                                                rs.getObject(
-                                                                "phone_verified",
-                                                                java.time.OffsetDateTime.class)
-                                                        != null,
-                                                (Long) rs.getObject("phone_version")))
-                        .optional()
-                        .orElse(null);
+        AdmissionCredentialProjection.LoginCodeFacts facts =
+                AdmissionCredentialProjection.consumeLoginCodeFacts(userId);
+        Snapshot snapshot;
+        if (facts != null) {
+            snapshot =
+                    new Snapshot(
+                            facts.primaryCredentialRevision(),
+                            facts.email(),
+                            facts.emailVerified(),
+                            facts.emailVersion(),
+                            facts.phone(),
+                            facts.phoneVerified(),
+                            facts.phoneVersion());
+        } else {
+            snapshot =
+                    jdbc.sql(
+                                    """
+                            SELECT u.primary_credential_revision,
+                                   e.email,e.verified_at AS email_verified,e.version AS email_version,
+                                   p.phone,p.verified_at AS phone_verified,p.version AS phone_version
+                              FROM platform_user u
+                              LEFT JOIN platform_account_email e ON e.user_id=u.id
+                              LEFT JOIN platform_account_phone p ON p.user_id=u.id
+                             WHERE u.id=:id AND u.enabled AND u.deleted_at IS NULL
+                            """)
+                            .param("id", userId)
+                            .query(
+                                    (rs, row) ->
+                                            new Snapshot(
+                                                    rs.getObject(
+                                                            "primary_credential_revision",
+                                                            UUID.class),
+                                                    rs.getString("email"),
+                                                    rs.getObject(
+                                                                    "email_verified",
+                                                                    java.time.OffsetDateTime.class)
+                                                            != null,
+                                                    (Long) rs.getObject("email_version"),
+                                                    rs.getString("phone"),
+                                                    rs.getObject(
+                                                                    "phone_verified",
+                                                                    java.time.OffsetDateTime.class)
+                                                            != null,
+                                                    (Long) rs.getObject("phone_version")))
+                            .optional()
+                            .orElse(null);
+        }
         if (snapshot == null) return new AccountMethods(Set.of(), "inactive:" + userId);
 
-        Set<PrimaryMethod> configured = availability.availableMethods();
+        boolean emailEligible =
+                snapshot.emailVerified() && snapshot.email() != null && !snapshot.email().isBlank();
+        boolean phoneEligible =
+                snapshot.phoneVerified() && snapshot.phone() != null && !snapshot.phone().isBlank();
+        // Provider readiness cannot make an absent or unverified contact usable. Avoid unrelated
+        // settings/provider reads for that common case while retaining the exact contact revision.
+        Set<PrimaryMethod> configured =
+                emailEligible || phoneEligible ? availability.availableMethods() : Set.of();
         var methods = EnumSet.noneOf(PrimaryMethod.class);
-        if (configured.contains(PrimaryMethod.EMAIL_OTP)
-                && snapshot.emailVerified()
-                && snapshot.email() != null
-                && !snapshot.email().isBlank()) methods.add(PrimaryMethod.EMAIL_OTP);
-        if (configured.contains(PrimaryMethod.SMS_OTP)
-                && snapshot.phoneVerified()
-                && snapshot.phone() != null
-                && !snapshot.phone().isBlank()) methods.add(PrimaryMethod.SMS_OTP);
+        if (emailEligible && configured.contains(PrimaryMethod.EMAIL_OTP))
+            methods.add(PrimaryMethod.EMAIL_OTP);
+        if (phoneEligible && configured.contains(PrimaryMethod.SMS_OTP))
+            methods.add(PrimaryMethod.SMS_OTP);
         String revision =
                 String.valueOf(snapshot.primaryCredentialRevision())
                         + ":email="

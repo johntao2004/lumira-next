@@ -156,15 +156,15 @@ export function ProfileDrawer({ open, onClose, embedded = false }: { open: boole
             <Tabs anchor="account-profile" items={[
               { key: "basic", label: <span id="account-profile-basic-tab-label">{t("userBasicInformation")}</span>, forceRender: true, children: <>
                 <BuiltInProfileFields fields={builtInsFor("basic")} tab="basic" t={t} />
-                {customFor("basic").length > 0 && <ProfileFieldRenderer fields={customFor("basic")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
+                {customFor("basic").length > 0 && <ProfileFieldRenderer dictionaryEndpointPrefix="/account/profile-dictionaries" fields={customFor("basic")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
               </> },
               { key: "details", label: t("details"), forceRender: true, children: <>
                 <BuiltInProfileFields fields={builtInsFor("details")} tab="details" t={t} />
-                {customFor("details").length > 0 && <ProfileFieldRenderer fields={customFor("details")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
+                {customFor("details").length > 0 && <ProfileFieldRenderer dictionaryEndpointPrefix="/account/profile-dictionaries" fields={customFor("details")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />}
                 {builtInsFor("details").length === 0 && customFor("details").length === 0 && <Empty description={t("noCustomProfileFields")} />}
               </> },
               { key: "custom", label: t("fieldCustomGroup"), forceRender: true, children: customFor("custom").length > 0
-                ? <ProfileFieldRenderer fields={customFor("custom")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />
+                ? <ProfileFieldRenderer dictionaryEndpointPrefix="/account/profile-dictionaries" fields={customFor("custom")} disabled={pending} dictionarySelections={profileValues.dictionarySelections} />
                 : <Empty description={t("noCustomProfileFields")} /> },
             ]} />
             {embedded && <div className="account-settings-form-footer">

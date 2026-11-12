@@ -58,7 +58,7 @@ class PaymentCoreStorePostgresIntegrationTest {
             jdbc.sql(TestSchema.table("platform_authority")).update();
             String initialization =
                     Files.readString(
-                            findPaymentCoreMigrations().resolve("V4__plugin_initialization.sql"));
+                            findPaymentCoreMigrations().resolve("V5__plugin_initialization.sql"));
             jdbc.sql(initialization.split("-- BEGIN HOST PERMISSION ADOPTION", 2)[0]).update();
 
             var store =
@@ -198,7 +198,7 @@ class PaymentCoreStorePostgresIntegrationTest {
         Path directory = Path.of("").toAbsolutePath();
         while (directory != null) {
             Path migrations = directory.resolve("plugins/payment-core/migrations");
-            if (Files.isRegularFile(migrations.resolve("V4__plugin_initialization.sql"))) {
+            if (Files.isRegularFile(migrations.resolve("V5__plugin_initialization.sql"))) {
                 return migrations;
             }
             directory = directory.getParent();

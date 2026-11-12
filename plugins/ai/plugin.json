@@ -1,0 +1,462 @@
+{
+  "formatVersion": 1,
+  "id": "ai",
+  "name": "AI 工作台",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.platform.ai.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    },
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "directory",
+      "version": "1.0.0"
+    },
+    {
+      "id": "files",
+      "version": "1.0.0"
+    },
+    {
+      "id": "settings",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:ai-console:access",
+    "platform:ai-console:read-users",
+    "platform:ai-console:create-user",
+    "platform:ai-console:update-user",
+    "platform:ai-console:delete-user",
+    "platform:ai-models:access",
+    "platform:ai-models:create",
+    "platform:ai-models:update",
+    "platform:ai-models:delete",
+    "platform:ai-models:test"
+  ],
+  "permissionGroups": [
+    {
+      "id": "ai",
+      "title": "aiManagement",
+      "permissions": [
+        {
+          "code": "platform:ai-console:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:ai-console:read-users",
+          "label": "permissionReadUsers"
+        },
+        {
+          "code": "platform:ai-console:create-user",
+          "label": "permissionCreate"
+        },
+        {
+          "code": "platform:ai-console:update-user",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:ai-console:delete-user",
+          "label": "permissionDelete"
+        },
+        {
+          "code": "platform:ai-models:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:ai-models:create",
+          "label": "permissionCreate"
+        },
+        {
+          "code": "platform:ai-models:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:ai-models:delete",
+          "label": "permissionDelete"
+        },
+        {
+          "code": "platform:ai-models:test",
+          "label": "permissionTestConnection"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "ai-console",
+      "label": "aiConsole",
+      "permission": "platform:ai-console:access",
+      "operations": {
+        "readUsers": "platform:ai-console:read-users",
+        "createUser": "platform:ai-console:create-user",
+        "updateUser": "platform:ai-console:update-user",
+        "deleteUser": "platform:ai-console:delete-user"
+      },
+      "scopedOperations": [
+        "readUsers",
+        "updateUser",
+        "deleteUser"
+      ],
+      "group": "ai-management",
+      "order": 10,
+      "global": false
+    },
+    {
+      "id": "ai-models",
+      "label": "aiModels",
+      "permission": "platform:ai-models:access",
+      "operations": {
+        "create": "platform:ai-models:create",
+        "update": "platform:ai-models:update",
+        "delete": "platform:ai-models:delete",
+        "test": "platform:ai-models:test"
+      },
+      "scopedOperations": [],
+      "group": "ai-management",
+      "order": 20,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "POST",
+      "path": "/api/platform/ai/providers/discover-models",
+      "authorities": [
+        "platform:ai-models:test"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global",
+        "platform:ai-models:test": "global"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/ai/console/providers",
+      "authorities": [],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/ai/capabilities",
+      "authorities": [],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/ai/judgments",
+      "authorities": [
+        "platform:ai-models:test"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global",
+        "platform:ai-models:test": "global"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/ai/providers",
+      "authorities": [],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/ai/providers",
+      "authorities": [
+        "platform:ai-models:create"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global",
+        "platform:ai-models:create": "global"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/ai/shares",
+      "authorities": [
+        "platform:ai-console:read-users",
+        "platform:ai-console:create-user",
+        "platform:ai-console:update-user",
+        "platform:ai-console:delete-user"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped",
+        "platform:ai-console:read-users": "scoped",
+        "platform:ai-console:create-user": "global",
+        "platform:ai-console:update-user": "scoped",
+        "platform:ai-console:delete-user": "scoped"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/ai/shares",
+      "authorities": [
+        "platform:ai-console:read-users",
+        "platform:ai-console:create-user",
+        "platform:ai-console:update-user",
+        "platform:ai-console:delete-user"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped",
+        "platform:ai-console:read-users": "scoped",
+        "platform:ai-console:create-user": "global",
+        "platform:ai-console:update-user": "scoped",
+        "platform:ai-console:delete-user": "scoped"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/ai/chat",
+      "authorities": [
+        "platform:ai-console:read-users",
+        "platform:ai-console:create-user",
+        "platform:ai-console:update-user",
+        "platform:ai-console:delete-user"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped",
+        "platform:ai-console:read-users": "scoped",
+        "platform:ai-console:create-user": "global",
+        "platform:ai-console:update-user": "scoped",
+        "platform:ai-console:delete-user": "scoped"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/ai/console/providers/{id}/models",
+      "authorities": [],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/ai/providers/{id}/models",
+      "authorities": [],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/ai/actions/{id}/confirm",
+      "authorities": [
+        "platform:ai-console:create-user",
+        "platform:ai-console:update-user",
+        "platform:ai-console:delete-user"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped",
+        "platform:ai-console:create-user": "global",
+        "platform:ai-console:update-user": "scoped",
+        "platform:ai-console:delete-user": "scoped"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/ai/providers/{id}/test",
+      "authorities": [
+        "platform:ai-models:test"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global",
+        "platform:ai-models:test": "global"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/ai/attachments/{id}",
+      "authorities": [],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/ai/providers/{id}",
+      "authorities": [
+        "platform:ai-models:delete"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global",
+        "platform:ai-models:delete": "global"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/ai/providers/{id}",
+      "authorities": [
+        "platform:ai-models:update"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-models:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-models:access": "global",
+        "platform:ai-models:update": "global"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/ai/actions/{id}",
+      "authorities": [
+        "platform:ai-console:create-user",
+        "platform:ai-console:update-user",
+        "platform:ai-console:delete-user"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped",
+        "platform:ai-console:create-user": "global",
+        "platform:ai-console:update-user": "scoped",
+        "platform:ai-console:delete-user": "scoped"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/public/ai/shares/{token}",
+      "authorities": [],
+      "publicAccess": true,
+      "global": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/ai/shares/{id}",
+      "authorities": [
+        "platform:ai-console:read-users",
+        "platform:ai-console:create-user",
+        "platform:ai-console:update-user",
+        "platform:ai-console:delete-user"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped",
+        "platform:ai-console:read-users": "scoped",
+        "platform:ai-console:create-user": "global",
+        "platform:ai-console:update-user": "scoped",
+        "platform:ai-console:delete-user": "scoped"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/ai/shares/{id}",
+      "authorities": [
+        "platform:ai-console:read-users",
+        "platform:ai-console:create-user",
+        "platform:ai-console:update-user",
+        "platform:ai-console:delete-user"
+      ],
+      "publicAccess": false,
+      "global": false,
+      "allAuthorities": [
+        "platform:ai-console:access"
+      ],
+      "authorityScopes": {
+        "platform:ai-console:access": "scoped",
+        "platform:ai-console:read-users": "scoped",
+        "platform:ai-console:create-user": "global",
+        "platform:ai-console:update-user": "scoped",
+        "platform:ai-console:delete-user": "scoped"
+      }
+    }
+  ],
+  "dataSets": []
+}

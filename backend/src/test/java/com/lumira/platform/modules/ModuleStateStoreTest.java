@@ -81,11 +81,11 @@ class ModuleStateStoreTest {
     @Test
     void protectsCoreAndDependenciesInBothDirections() {
         assertEquals(
-                List.of(true, true, false, false, true),
+                List.of(true, true, false, false, false),
                 store.states().stream().map(ModuleStateStore.State::enabled).toList());
         rejected("requiredModule", () -> change("identity", false, 0));
         rejected("requiredModule", () -> change("platform", false, 0));
-        rejected("requiredModule", () -> change("audit-console", false, 0));
+        assertFalse(change("audit-console", false, 0).enabled());
         rejected("moduleDependencyConflict", () -> change("extension", true, 0));
         change("base", true, 0);
         change("extension", true, 0);
@@ -95,7 +95,10 @@ class ModuleStateStoreTest {
         rejected("moduleDependencyConflict", () -> change("extension", true, 2));
         change("base", true, 2);
         change("extension", true, 2);
-        assertTrue(store.states().stream().allMatch(ModuleStateStore.State::enabled));
+        assertTrue(
+                store.states().stream()
+                        .filter(state -> !state.moduleId().equals("audit-console"))
+                        .allMatch(ModuleStateStore.State::enabled));
         assertEquals(0, count("platform_module_revision"));
         assertEquals(6, count("platform_audit"));
     }
@@ -120,7 +123,7 @@ class ModuleStateStoreTest {
     }
 
     @Test
-    void auditConsoleRemainsEnabledWhenAStoredRowSaysDisabled() {
+    void auditConsoleHonorsStoredStateAndCanBeEnabledIndependently() {
         jdbc.update(
                 "INSERT INTO platform_module_state VALUES(?, ?, false, 3, now())",
                 UUID.randomUUID(),
@@ -130,11 +133,12 @@ class ModuleStateStoreTest {
                         .filter(state -> state.moduleId().equals("audit-console"))
                         .findFirst()
                         .orElseThrow();
-        assertTrue(audit.enabled());
+        assertFalse(audit.enabled());
         assertEquals(3, audit.version());
-        assertTrue(store.isEnabled("audit-console"));
-        assertTrue(store.enabledModules().contains("audit-console"));
-        rejected("requiredModule", () -> change("audit-console", false, 3));
+        assertFalse(store.isEnabled("audit-console"));
+        assertFalse(store.enabledModules().contains("audit-console"));
+        assertTrue(change("audit-console", true, 3).enabled());
+        assertFalse(change("audit-console", false, 4).enabled());
         assertEquals(0, count("platform_module_revision"));
     }
 
@@ -200,5 +204,57 @@ class ModuleStateStoreTest {
             assertEquals("moduleDependencyConflict", error.getMessage());
             return false;
         }
+    }
+
+    @Test
+    void deduplicatesIsEnabledWithinReadOnlyTransactionAndRefreshesAfterCompletion() {
+        var txManager = new DataSourceTransactionManager(jdbc.getDataSource());
+        var roTx = new TransactionTemplate(txManager);
+        roTx.setReadOnly(true);
+        var roRequiresNewTx = new TransactionTemplate(txManager);
+        roRequiresNewTx.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        roRequiresNewTx.setReadOnly(true);
+        assertEquals(
+                Boolean.FALSE,
+                roTx.execute(
+                        s -> {
+                            boolean first = store.isEnabled("base");
+                            admin.update(
+                                    "INSERT INTO "
+                                            + schema
+                                            + ".platform_module_state VALUES(?, 'base', true, 1, now())",
+                                    UUID.randomUUID());
+                            assertEquals(
+                                    Boolean.TRUE,
+                                    roRequiresNewTx.execute(inner -> store.isEnabled("base")));
+                            boolean second = store.isEnabled("base");
+                            assertEquals(first, second);
+                            return second;
+                        }));
+        assertEquals(Boolean.TRUE, roTx.execute(s -> store.isEnabled("base")));
+    }
+
+    @Test
+    void requestScopeCachesEnabledStateAndClearsOnCloseOrChange() {
+        admin.update(
+                "INSERT INTO "
+                        + schema
+                        + ".platform_module_state VALUES(?, 'base', true, 1, now())",
+                UUID.randomUUID());
+        try (var scope = ModuleStateStore.openScope(Map.of("base", true))) {
+            assertTrue(store.isEnabled("base"));
+            admin.update(
+                    "UPDATE "
+                            + schema
+                            + ".platform_module_state SET enabled=false WHERE module_id='base'");
+            // Within scope, returns cached state
+            assertTrue(store.isEnabled("base"));
+            ModuleStateStore.invalidateScope();
+            // After invalidation, queries live state
+            assertFalse(store.isEnabled("base"));
+        }
+        // Outside scope, queries live state
+        assertFalse(store.isEnabled("base"));
     }
 }

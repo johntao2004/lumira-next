@@ -11,7 +11,7 @@ import com.lumira.platform.common.PluginExtensionsPort;
 import com.lumira.platform.common.PrimaryMethod;
 import com.lumira.platform.identity.api.AuthenticationMethodAvailabilityPort;
 import com.lumira.platform.identity.api.AuthenticationReachabilityPort;
-import com.lumira.platform.settings.GlobalAuthenticationPolicyService;
+import com.lumira.plugins.authenticationconsole.GlobalAuthenticationPolicyService;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
@@ -142,7 +142,8 @@ class RolePreviewPolicyLockOrderDatabaseTest {
                         notifyingLock,
                         mock(PluginExtensionsPort.class),
                         reachability,
-                        methods);
+                        methods,
+                        new com.lumira.platform.settings.GlobalAuthenticationPolicyReader(client));
 
         var transactionManager = new DataSourceTransactionManager(jdbc.getDataSource());
         var previewTransaction = new TransactionTemplate(transactionManager);

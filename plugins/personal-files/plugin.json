@@ -1,0 +1,113 @@
+{
+  "formatVersion": 1,
+  "id": "personal-files",
+  "name": "我的文件",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.personalfiles.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    },
+    {
+      "id": "files",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [],
+  "routes": [
+    {
+      "id": "files",
+      "label": "myFiles",
+      "permission": null,
+      "group": "overview",
+      "order": 20,
+      "global": false
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/account/files",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/files/usage",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/files/trash",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/account/files",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/files/{id}",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/files/{id}/preview",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "GET",
+      "path": "/api/account/files/{id}/content",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/account/files/{id}",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "POST",
+      "path": "/api/account/files/{id}/restore",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/account/files/{id}/purge",
+      "authenticatedOnly": true,
+      "global": false,
+      "publicAccess": false,
+      "authorities": []
+    }
+  ]
+}

@@ -53,6 +53,34 @@ public final class OfficeWorkerClient {
         return preview;
     }
 
+    public static OfficeWorkerProtocol.PdfPage pdfPage(String filename, byte[] bytes, int page) {
+        if (page < 1) throw invalidInput(OfficeWorkerProtocol.PDF_PAGE);
+        var response =
+                invoke(OfficeWorkerProtocol.PDF_PAGE, filename, Integer.toString(page), bytes);
+        var result = response.pdfPage();
+        if (result == null
+                || result.page() != page
+                || result.pageCount() < page
+                || !validPngHeader(result.png())) throw unavailable();
+        return result;
+    }
+
+    private static boolean validPngHeader(byte[] bytes) {
+        if (bytes == null
+                || bytes.length < 33
+                || bytes.length > OfficeWorkerProtocol.MAX_PDF_PNG_BYTES) return false;
+        var header = java.nio.ByteBuffer.wrap(bytes);
+        if (header.getLong() != 0x89504e470d0a1a0aL
+                || header.getInt() != 13
+                || header.getInt() != 0x49484452) return false;
+        int width = header.getInt();
+        int height = header.getInt();
+        return width > 0
+                && width <= OfficeWorkerProtocol.PDF_OUTPUT_EDGE
+                && height > 0
+                && height <= OfficeWorkerProtocol.PDF_OUTPUT_EDGE;
+    }
+
     public static OfficeWorkerProtocol.Dictionary dictionary(
             String filename, String structure, byte[] bytes) {
         var response = invoke(OfficeWorkerProtocol.DICTIONARY, filename, structure, bytes);
@@ -155,7 +183,11 @@ public final class OfficeWorkerClient {
         if (!IN_FLIGHT.tryAcquire()) throw unavailable();
 
         CompletableFuture<HttpResponse<byte[]>> request = null;
-        var bodyHandler = new BoundedBodyHandler(MAX_RESPONSE_BYTES);
+        int responseLimit =
+                OfficeWorkerProtocol.PDF_PAGE.equals(operation)
+                        ? (OfficeWorkerProtocol.MAX_PDF_PNG_BYTES * 4 / 3) + 1024
+                        : MAX_RESPONSE_BYTES;
+        var bodyHandler = new BoundedBodyHandler(responseLimit);
         try {
             byte[] requestBody = requestBody(operation, bytes, metadata);
             URI endpoint = endpoint(baseUrl);
@@ -281,24 +313,11 @@ public final class OfficeWorkerClient {
     }
 
     private static String tooLargeReason(String operation) {
-        if (OfficeWorkerProtocol.PREVIEW.equals(operation)) return "filePreviewTooLarge";
-        if (OfficeWorkerProtocol.DICTIONARY.equals(operation)) return "dictionaryDatasetTooLarge";
-        return isTemplateOperation(operation)
-                ? "documentTemplateTooLarge"
-                : "documentWorkbookTooLarge";
+        return OfficeWorkerFailureReasons.tooLarge(operation);
     }
 
     private static String invalidReason(String operation) {
-        if (OfficeWorkerProtocol.PREVIEW.equals(operation)) return "filePreviewInvalid";
-        if (OfficeWorkerProtocol.DICTIONARY.equals(operation)) return "invalidDictionaryDataset";
-        return isTemplateOperation(operation)
-                ? "documentTemplateInvalid"
-                : "documentWorkbookInvalid";
-    }
-
-    private static boolean isTemplateOperation(String operation) {
-        return OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
-                || OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation);
+        return OfficeWorkerFailureReasons.invalid(operation);
     }
 
     private static byte[] requestBody(String operation, byte[] bytes, Object metadata)

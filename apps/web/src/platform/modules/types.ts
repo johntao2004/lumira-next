@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { MessageKey } from "../i18n/messages";
 
 export type NavigationGroupId =
@@ -49,6 +49,11 @@ export type FrontendPageContext = {
   /** Check an action declared by the current page route. */
   readonly hasOperation: (actionId: string) => boolean;
   readonly readOnlyPreview?: boolean;
+  /** Render this page alone inside a host workflow and report a completed save. */
+  readonly embedded?: {
+    readonly onSaved?: () => void | Promise<void>;
+    readonly presentation?: "summary";
+  };
 };
 
 export type FrontendPageRenderer = (context: FrontendPageContext) => ReactNode;
@@ -64,4 +69,19 @@ export type FrontendModuleManifest = {
 
 export type FrontendModule = FrontendModuleManifest & {
   readonly pages: Readonly<Record<string, FrontendPageRenderer>>;
+  /** Account-level header controls; their APIs must enforce their own access rules. */
+  readonly workspaceActions?: readonly FrontendWorkspaceAction[];
+};
+
+export type FrontendWorkspaceAction = {
+  /** Unique within this module. */
+  readonly id: string;
+  /** Function/class component. Wrap lazy or memo components in a function. */
+  readonly component: ComponentType;
+};
+
+export type RegisteredWorkspaceAction = FrontendWorkspaceAction & {
+  readonly moduleId: string;
+  /** Changes on re-registration so React cannot retain the previous plugin's state. */
+  readonly key: string;
 };

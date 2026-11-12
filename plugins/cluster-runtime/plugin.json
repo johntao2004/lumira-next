@@ -1,0 +1,22 @@
+{
+  "formatVersion": 2,
+  "id": "cluster-runtime",
+  "name": "集群运行时",
+  "version": "1.3.0",
+  "sdkVersion": "1",
+  "entryClass": "com.lumira.plugins.clusterruntime.ClusterRuntimePlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [],
+  "permissionGroups": [],
+  "routes": [],
+  "apiRules": [],
+  "files": {},
+  "dataSets": []
+}

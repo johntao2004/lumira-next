@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lumira-office-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: lumira-office-worker
+  template:
+    metadata:
+      labels:
+        app: lumira-office-worker
+    spec:
+      enableServiceLinks: false
+      runtimeClassName: lumira-office
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: lumira/office-worker
+          ports:
+            - name: worker
+              containerPort: 18091
+          env:
+            - name: LUMIRA_OFFICE_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lumira-runtime
+                  key: LUMIRA_OFFICE_WORKER_TOKEN
+            - name: LUMIRA_OFFICE_WORKER_TEST_MODE
+              value: "false"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            tcpSocket:
+              port: worker
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            exec:
+              command: [java, -XX:ActiveProcessorCount=1, -XX:+UseSerialGC, -XX:CICompilerCount=2, -Xss512k, -Xms8m, -Xmx32m, -XX:MaxMetaspaceSize=64m, -jar, /app/app.jar, --office-worker-healthcheck]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            tcpSocket:
+              port: worker
+            periodSeconds: 15
+          volumeMounts:
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: temporary
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lumira-office-worker
+spec:
+  selector:
+    app: lumira-office-worker
+  ports:
+    - name: worker
+      port: 18091
+      targetPort: worker
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lumira-office-worker
+spec:
+  podSelector:
+    matchLabels:
+      app: lumira-office-worker
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: lumira-server
+      ports:
+        - protocol: TCP
+          port: 18091
+  egress: []
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: lumira-office-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: lumira-office-worker

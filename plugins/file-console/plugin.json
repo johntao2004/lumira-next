@@ -1,0 +1,230 @@
+{
+  "formatVersion": 1,
+  "id": "file-console",
+  "name": "全部文件管理",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.fileconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "files",
+      "version": "1.0.0"
+    },
+    {
+      "id": "settings",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:files-all:access",
+    "platform:files-all:update-quota",
+    "platform:files-all:delete",
+    "platform:files-all:restore",
+    "platform:files-all:purge",
+    "platform:files-all:preview",
+    "platform:files-all:download"
+  ],
+  "routes": [
+    {
+      "id": "files-all",
+      "label": "allFiles",
+      "permission": "platform:files-all:access",
+      "operations": {
+        "delete": "platform:files-all:delete",
+        "restore": "platform:files-all:restore",
+        "purge": "platform:files-all:purge",
+        "preview": "platform:files-all:preview",
+        "download": "platform:files-all:download",
+        "update-quota": "platform:files-all:update-quota"
+      },
+      "group": "content-management",
+      "order": 10,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/files",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/files/trash",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/file-quota",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/file-quota",
+      "authorities": [
+        "platform:files-all:update-quota"
+      ],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global",
+        "platform:files-all:update-quota": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/files/{id}/preview",
+      "authorities": [
+        "platform:files-all:preview"
+      ],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global",
+        "platform:files-all:preview": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/files/{id}/content",
+      "authorities": [
+        "platform:files-all:download"
+      ],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global",
+        "platform:files-all:download": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/files/{id}",
+      "authorities": [
+        "platform:files-all:delete"
+      ],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global",
+        "platform:files-all:delete": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/files/{id}/purge",
+      "authorities": [
+        "platform:files-all:purge"
+      ],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global",
+        "platform:files-all:purge": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/files/{id}/restore",
+      "authorities": [
+        "platform:files-all:restore"
+      ],
+      "allAuthorities": [
+        "platform:files-all:access"
+      ],
+      "authorityScopes": {
+        "platform:files-all:access": "global",
+        "platform:files-all:restore": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    }
+  ],
+  "dataSets": [],
+  "permissionGroups": [
+    {
+      "id": "files",
+      "title": "allFiles",
+      "permissions": [
+        {
+          "code": "platform:files-all:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:files-all:update-quota",
+          "label": "permissionUpdateFileQuota"
+        },
+        {
+          "code": "platform:files-all:delete",
+          "label": "permissionDelete"
+        },
+        {
+          "code": "platform:files-all:restore",
+          "label": "permissionRestoreFiles"
+        },
+        {
+          "code": "platform:files-all:purge",
+          "label": "permissionPurgeFiles"
+        },
+        {
+          "code": "platform:files-all:preview",
+          "label": "permissionPreviewFiles"
+        },
+        {
+          "code": "platform:files-all:download",
+          "label": "downloadFile"
+        }
+      ]
+    }
+  ]
+}

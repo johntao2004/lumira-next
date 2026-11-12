@@ -32,52 +32,69 @@ test("an operation requires both its page access and its own action grant", () =
   const pageAccess = "platform:users:access";
   const create = "platform:users:create";
 
-  assert.equal(canOperateSection("users", "create", [pageAccess], [], [pageAccess]), false);
-  assert.equal(canOperateSection("users", "create", [create], [], [pageAccess, create]), false);
-  assert.equal(canOperateSection("users", "create", [pageAccess], [], [pageAccess]), false);
-  assert.equal(canOperateSection("users", "create", [pageAccess], [], [pageAccess, create]), true);
-  assert.equal(canOperateSection("users", "create", [pageAccess], [], [pageAccess, "platform:ai-console:create-user"]), false);
+  assert.equal(canOperateSection("users", "create", [pageAccess], ["directory"], [pageAccess]), false);
+  assert.equal(canOperateSection("users", "create", [create], ["directory"], [pageAccess, create]), false);
+  assert.equal(canOperateSection("users", "create", [pageAccess], ["directory"], [pageAccess]), false);
+  assert.equal(canOperateSection("users", "create", [pageAccess], ["directory"], [pageAccess, create]), true);
+  assert.equal(canOperateSection("users", "create", [pageAccess], ["directory"], [pageAccess, "platform:ai-console:create-user"]), false);
 });
 
 test("target-scoped actions use effective grants while global actions require global grants", () => {
   const access = "platform:users:access";
   const update = "platform:users:update";
-  assert.equal(canOperateSection("users", "update", [access, update], [], [access]), true);
-  assert.equal(canOperateSection("users", "create", [access, "platform:users:create"], [], [access]), false);
-  assert.equal(canOperateSection("users", "assignRoles", [access, "platform:users:assign-roles"], [], [access]), true);
+  assert.equal(canOperateSection("users", "update", [access, update], ["directory"], [access]), true);
+  assert.equal(canOperateSection("users", "create", [access, "platform:users:create"], ["directory"], [access]), false);
+  assert.equal(canOperateSection("users", "assignRoles", [access, "platform:users:assign-roles"], ["directory"], [access]), true);
 
   const aiAccess = "platform:ai-console:access";
   const readUsers = "platform:ai-console:read-users";
-  assert.equal(canOperateSection("ai-console", "readUsers", [aiAccess, readUsers], [], []), true);
-  assert.equal(canOperateSection("ai-console", "updateUser", [aiAccess, "platform:ai-console:update-user"], [], []), true);
+  assert.equal(canOperateSection("ai-console", "readUsers", [aiAccess, readUsers], ["ai"], []), true);
+  assert.equal(canOperateSection("ai-console", "updateUser", [aiAccess, "platform:ai-console:update-user"], ["ai"], []), true);
 });
 
 test("page access uses the catalog's explicit global or caller-scoped authority scope", () => {
-  assert.equal(canAccessSection("users", ["platform:users:access"], [], []), true);
-  assert.equal(canAccessSection("users", [], [], ["platform:users:access"]), false);
-  assert.equal(canAccessSection("online-users", ["platform:online-users:access"], [], []), false);
-  assert.equal(canAccessSection("online-users", [], [], ["platform:online-users:access"]), true);
+  assert.equal(canAccessSection("users", ["platform:users:access"], ["directory"], []), true);
+  assert.equal(canAccessSection("users", [], ["directory"], ["platform:users:access"]), false);
+  assert.equal(canAccessSection("online-users", ["platform:online-users:access"], ["directory"], []), false);
+  assert.equal(canAccessSection("online-users", [], ["directory"], ["platform:online-users:access"]), true);
 });
 
 test("page access controls navigation separately from action grants", () => {
-  const actionOnly = availableNavigation(["platform:users:create"], [], ["platform:users:create"])
+  const actionOnly = availableNavigation(["platform:users:create"], ["directory"], ["platform:users:create"])
     .flatMap(({ pages }) => pages.map(({ id }) => id));
   assert.equal(actionOnly.includes("users"), false);
 
-  const usersOnly = availableNavigation(["platform:users:access"], [], ["platform:users:access"])
+  const usersOnly = availableNavigation(["platform:users:access"], ["directory"], ["platform:users:access"])
     .flatMap(({ pages }) => pages.map(({ id }) => id));
   assert.equal(usersOnly.includes("users"), true);
   assert.equal(usersOnly.includes("online-users"), false);
-  assert.equal(canAccessSection("online-users", ["platform:users:access"], [], ["platform:users:access"]), false);
+  assert.equal(canAccessSection("online-users", ["platform:users:access"], ["directory"], ["platform:users:access"]), false);
 });
 
-test("settings tabs include only children with their own page access", () => {
-  const settings = frontendModuleManifests.find(({ id }) => id === "settings");
+test("site settings tabs include only children with their own page access", () => {
+  const settings = frontendModuleManifests.find(({ id }) => id === "site-console");
   assert.ok(settings);
   const access = new Set(["watermark", "registration"]);
   const childrenByRoute = Object.fromEntries(settings.routes.map(({ id }) => [id, access.has(id) ? id : undefined]));
   const visible = routeTabsForGroup(settings, "personalization", childrenByRoute);
   assert.deepEqual(visible.map(({ key }) => key), ["watermark"]);
-  assert.equal(canAccessSection("smtp", ["platform:smtp:access"]), true);
-  assert.equal(canAccessSection("sms", ["platform:smtp:access"]), false);
+  assert.equal(canAccessSection("smtp", ["platform:smtp:access"], ["delivery-settings"], ["platform:smtp:access"]), true);
+  assert.equal(canAccessSection("sms", ["platform:smtp:access"], ["delivery-settings"], ["platform:smtp:access"]), false);
+});
+
+
+test("directory authority grants do not expose unloaded pages or operations", () => {
+  const grants = ["platform:users:access", "platform:users:create", "platform:online-users:access"];
+  assert.equal(canAccessSection("users", grants, [], grants), false);
+  assert.equal(canAccessSection("online-users", grants, [], grants), false);
+  assert.equal(canOperateSection("users", "create", grants, [], grants), false);
+  assert.equal(availableNavigation(grants, [], grants).some(({ pages }) => pages.some(({ id }) => id === "users")), false);
+});
+
+
+test("AI pages and actions require their optional provider to be enabled", () => {
+  const grants = ["platform:ai-console:access", "platform:ai-console:read-users"];
+  assert.equal(canAccessSection("ai-console", grants, [], grants), false);
+  assert.equal(canOperateSection("ai-console", "readUsers", grants, [], grants), false);
+  assert.equal(canOperateSection("ai-console", "readUsers", grants, ["ai"], grants), true);
 });

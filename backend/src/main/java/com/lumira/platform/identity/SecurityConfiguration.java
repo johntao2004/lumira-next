@@ -253,7 +253,9 @@ public class SecurityConfiguration {
                                         .permitAll()
                                         .requestMatchers(
                                                 org.springframework.http.HttpMethod.GET,
-                                                "/api/account/profile-fields")
+                                                "/api/account/profile-fields",
+                                                "/api/account/profile-dictionaries/*/items",
+                                                "/api/account/profile-dictionaries/*/items/*")
                                         .authenticated()
                                         .requestMatchers(
                                                 "/api/account/profile-values",

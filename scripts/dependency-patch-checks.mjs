@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -249,7 +249,7 @@ export async function verifyActiveMakoDependencyResolution() {
   const newlyLoaded = Object.keys(nodeRequire.cache).filter(
     (modulePath) => !beforeLoad.has(modulePath),
   );
-  assert.ok(newlyLoaded.some((modulePath) => modulePath.startsWith(makoRoot)));
+  assert.ok(newlyLoaded.some((modulePath) => modulePath.startsWith(realpathSync(makoRoot) + path.sep)));
   assert.equal(
     newlyLoaded.some((modulePath) => modulePath.includes("/bundler-webpack/")),
     false,

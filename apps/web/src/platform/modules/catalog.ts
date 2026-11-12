@@ -1,29 +1,54 @@
+import { personalFilesManifest } from "../../../../../plugins/personal-files/frontend/manifest.ts";
+import { authenticationConsoleManifest } from "../../../../../plugins/authentication-console/frontend/manifest.ts";
+import { profileConsoleManifest } from "../../../../../plugins/profile-console/frontend/manifest.ts";
+import { deliverySettingsManifest } from "../../../../../plugins/delivery-settings/frontend/manifest.ts";
+import { siteConsoleManifest } from "../../../../../plugins/site-console/frontend/manifest.ts";
+import { fileConsoleManifest } from "../../../../../plugins/file-console/frontend/manifest.ts";
+import { fileRetentionManifest } from "../../../../../plugins/file-retention/frontend/manifest.ts";
+import { aiManifest } from "../../../../../plugins/ai/frontend/manifest.ts";
 import { orderModuleGraph } from "./graph.ts";
 import type { FrontendModuleManifest, FrontendRoute } from "./types.ts";
 import { validateFrontendModuleManifest } from "./contracts.ts";
 import { identityManifest } from "../../features/account/manifest.ts";
 import { platformManifest } from "../../features/platform/manifest.ts";
-import { directoryManifest } from "../../features/directory/manifest.ts";
-import { dictionariesManifest } from "../../features/dictionaries/manifest.ts";
+import { directoryManifest } from "../../../../../plugins/directory/frontend/manifest.ts";
+import { dictionariesManifest } from "../../../../../plugins/dictionaries/frontend/manifest.ts";
 import { filesManifest } from "../../features/files/manifest.ts";
 import { settingsManifest } from "../../features/settings/manifest.ts";
 import { eventsManifest } from "../../features/events/manifest.ts";
 import { navigationManifest } from "../../features/navigation/manifest.ts";
-import { notificationsManifest } from "../../features/notifications/manifest.ts";
-import { monitoringManifest } from "../../features/monitoring/manifest.ts";
-import { auditManifest } from "../../features/audit/manifest.ts";
+import { notificationsManifest } from "../../../../../plugins/notifications/frontend/manifest.ts";
+import { monitoringManifest } from "../../../../../plugins/monitoring/frontend/manifest.ts";
+import { auditManifest } from "../../../../../plugins/audit-console/frontend/manifest.ts";
 import { feedbackManifest } from "../../../../../plugins/feedback/frontend/manifest.ts";
 import { sensitiveWordsManifest } from "../../../../../plugins/sensitive-words/frontend/manifest.ts";
 import { localizationManifest } from "../../../../../plugins/localization/frontend/manifest.ts";
 import { mfaManifest } from "../../../../../plugins/mfa/frontend/manifest.ts";
 import { communicationManifest } from "../../features/communication/manifest.ts";
 
+import { eventsManifest as eventConsoleManifest } from "../../../../../plugins/event-console/frontend/manifest.ts";
+
+import { communicationManifest as deliveryConsoleManifest } from "../../../../../plugins/delivery-console/frontend/manifest.ts";
+
+import { navigationManifest as navigationConsoleManifest } from "../../../../../plugins/navigation-console/frontend/manifest.ts";
+
 const candidates = [
+  personalFilesManifest,
+  authenticationConsoleManifest,
+  profileConsoleManifest,
+  deliverySettingsManifest,
+  siteConsoleManifest,
+  aiManifest,
+  navigationConsoleManifest,
+  deliveryConsoleManifest,
+  eventConsoleManifest,
   identityManifest,
   platformManifest,
   directoryManifest,
   dictionariesManifest,
   filesManifest,
+  fileRetentionManifest,
+  fileConsoleManifest,
   settingsManifest,
   eventsManifest,
   navigationManifest,

@@ -47,9 +47,19 @@ class ApiDocsRouteSecurityTest {
     @MockitoBean SecondFactorLoginService secondFactor;
     @MockitoBean AdministrationPort administration;
     @MockitoBean RolePreviewContextService rolePreviewContexts;
+    @MockitoBean com.lumira.platform.common.PluginAuthorizationPort plugins;
 
     @BeforeEach
     void installCurrentAuthorityContext() throws Exception {
+        when(plugins.authorize(
+                        org.mockito.ArgumentMatchers.eq("GET"),
+                        org.mockito.ArgumentMatchers.eq("/api/platform/api-docs"),
+                        org.mockito.ArgumentMatchers.anySet(),
+                        org.mockito.ArgumentMatchers.eq(true)))
+                .thenAnswer(
+                        invocation ->
+                                ((java.util.Set<?>) invocation.getArgument(2))
+                                        .contains(ApiDocsAccessPolicy.PERMISSION));
         CurrentAuthorityFilterTestSupport.install(
                 jdbc,
                 authenticationPolicies,
@@ -60,6 +70,29 @@ class ApiDocsRouteSecurityTest {
                             case "auditor", "admin" -> List.of(ApiDocsAccessPolicy.PERMISSION);
                             default -> List.of("platform:settings:read");
                         });
+    }
+
+    @Test
+    void unavailableMonitoringPluginDeniesEvenTheGlobalAdministrator() throws Exception {
+        when(plugins.authorize(
+                        org.mockito.ArgumentMatchers.eq("GET"),
+                        org.mockito.ArgumentMatchers.eq("/api/platform/api-docs"),
+                        org.mockito.ArgumentMatchers.anySet(),
+                        org.mockito.ArgumentMatchers.eq(true)))
+                .thenReturn(false);
+        mvc.perform(
+                        get("/api/platform/api-docs")
+                                .with(
+                                        user("admin")
+                                                .authorities(
+                                                        new SimpleGrantedAuthority(
+                                                                ApiDocsAccessPolicy.PERMISSION)))
+                                .header(
+                                        RolePreviewContextService.REVISION_HEADER,
+                                        CurrentAuthorityFilterTestSupport.CONTEXT_REVISION)
+                                .session(CurrentAuthorityFilterTestSupport.session()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(administration);
     }
 
     @Test

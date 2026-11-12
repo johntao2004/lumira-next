@@ -43,6 +43,17 @@ public final class TestSchema {
         return definition(name).createTable();
     }
 
+    /** Returns the baseline's complete view definition for a fixture's current schema. */
+    public static String view(String name) {
+        if (name == null || !name.matches("[A-Za-z_][A-Za-z0-9_$]*"))
+            throw new IllegalArgumentException("Invalid platform baseline view name: " + name);
+        String source = readBaseline();
+        int start = source.indexOf("CREATE VIEW public." + name + " AS");
+        if (start < 0)
+            throw new IllegalArgumentException("Unknown platform baseline view: " + name);
+        return stripPublicQualifier(source.substring(start, source.indexOf(';', start) + 1));
+    }
+
     /** Returns only the baseline's standalone indexes for one table, without a schema qualifier. */
     public static List<String> indexes(String name) {
         return definition(name).indexes();

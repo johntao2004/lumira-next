@@ -83,9 +83,17 @@ public final class PluginArchive {
                         throw new IllegalArgumentException("pluginUnlistedFile");
             }
             verifyCode(new Artifact(digest, manifest, temp));
-            if (!Files.exists(destination)) Files.move(temp, destination);
-            else deleteTemp(temp);
-            return new Artifact(digest, manifest, destination);
+            var published = new Artifact(digest, manifest, destination);
+            try {
+                Files.move(temp, destination);
+            } catch (FileSystemException concurrentPublisher) {
+                // Another node may have published the same digest. Reuse only verified bytes;
+                // never replace a retained directory or report success for a corrupt winner.
+                // Providers may report ENOTEMPTY as a generic FileSystemException.
+                if (!Files.isDirectory(destination)) throw concurrentPublisher;
+                verifyStored(published);
+            }
+            return published;
         } finally {
             deleteTemp(temp);
         }
@@ -185,6 +193,19 @@ public final class PluginArchive {
                 throw new IllegalArgumentException("pluginEntryIncompatible");
         } catch (ClassNotFoundException | LinkageError error) {
             throw new IllegalArgumentException("pluginClassMissing", error);
+        }
+        verifyMigrations(a);
+    }
+
+    private static void verifyMigrations(Artifact a) {
+        Path migrations = a.directory().resolve("migrations");
+        if (Files.isDirectory(migrations)
+                && PluginInitializationMigrationRunner.supports(migrations)) {
+            try {
+                PluginInitializationMigrationRunner.readCatalog(a.manifest().id(), migrations);
+            } catch (IllegalStateException error) {
+                throw new IllegalArgumentException("invalidPluginInitializationCatalog", error);
+            }
         }
     }
 

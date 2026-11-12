@@ -113,4 +113,44 @@ class RoleContentPolicyServiceTest {
                                                         .class)));
         assertEquals(400, error.getStatusCode().value());
     }
+
+    @Test
+    void reusesSnapshotAndActorPoliciesAcrossReadOnlyTransactionAndClearsAfterCompletion() {
+        when(policies.forActor("qa")).thenReturn(List.of(policy("ON")));
+        var sync = org.springframework.transaction.support.TransactionSynchronizationManager.class;
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .initSynchronization();
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .setActualTransactionActive(true);
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .setCurrentTransactionReadOnly(true);
+        try {
+            assertFalse(
+                    service.evaluate("qa", "safe one", "DictionaryController.create:name")
+                            .blocked());
+            assertTrue(
+                    service.evaluate("qa", "blocked", "DictionaryController.create:remark")
+                            .blocked());
+            verify(policies, times(1)).forActor("qa");
+            verify(words, times(1)).matcherSnapshot(anyLong());
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .getSynchronizations()
+                    .forEach(
+                            s ->
+                                    s.afterCompletion(
+                                            org.springframework.transaction.support
+                                                    .TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .setCurrentTransactionReadOnly(false);
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .setActualTransactionActive(false);
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .clearSynchronization();
+        }
+        assertFalse(
+                service.evaluate("qa", "safe two", "DictionaryController.create:name").blocked());
+        verify(policies, times(2)).forActor("qa");
+        verify(words, times(2)).matcherSnapshot(anyLong());
+    }
 }

@@ -44,19 +44,17 @@ public class IdentityConfiguration {
     @Bean
     UserDetailsPasswordService userDetailsPasswordService(JdbcClient jdbc) {
         return (user, newPassword) -> {
-            jdbc.sql(
-                            "UPDATE platform_user SET password_hash=:password WHERE username=:username AND password_hash=:oldHash AND enabled=true")
-                    .param("password", newPassword)
-                    .param("username", user.getUsername())
-                    .param("oldHash", user.getPassword())
-                    .update();
+            int updated =
+                    jdbc.sql(
+                                    "UPDATE platform_user SET password_hash=:password WHERE username=:username AND password_hash=:oldHash AND enabled=true")
+                            .param("password", newPassword)
+                            .param("username", user.getUsername())
+                            .param("oldHash", user.getPassword())
+                            .update();
+            if (updated != 1) return user;
             if (user instanceof PasswordProofUserDetails proofUser) {
-                return new PasswordProofUserDetails(
-                        user.getUsername(),
-                        newPassword,
-                        user.isEnabled(),
-                        proofUser.primaryCredentialRevision(),
-                        user.getAuthorities());
+                proofUser.useEncodedPassword(newPassword);
+                return proofUser;
             }
             return User.withUserDetails(user).password(newPassword).build();
         };

@@ -2,6 +2,7 @@ package com.lumira.platform.settings;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.lumira.plugins.deliverysettings.SmtpSettingsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;

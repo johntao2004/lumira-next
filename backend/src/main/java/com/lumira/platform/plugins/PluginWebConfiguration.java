@@ -28,6 +28,7 @@ public class PluginWebConfiguration implements WebMvcConfigurer {
                 new AsyncHandlerInterceptor() {
                     private static final String LEASE =
                             PluginWebConfiguration.class.getName() + ".lease";
+                    private static final String SCOPE = LEASE + ".scope";
 
                     @Override
                     public boolean preHandle(
@@ -48,7 +49,56 @@ public class PluginWebConfiguration implements WebMvcConfigurer {
                             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
                         if (req.getAttribute(LEASE) == null)
                             req.setAttribute(LEASE, runtime.acquire(owner.value()));
+                        var snapshot = runtime.invocationOwner(owner.value());
+                        req.setAttribute(SCOPE, PluginInvocationContext.open(snapshot));
+                        org.springframework.web.context.request.async.WebAsyncUtils.getAsyncManager(
+                                        req)
+                                .registerCallableInterceptor(
+                                        SCOPE,
+                                        new org.springframework.web.context.request.async
+                                                .CallableProcessingInterceptor() {
+                                            private final ThreadLocal<PluginInvocationContext>
+                                                    worker = new ThreadLocal<>();
+
+                                            @Override
+                                            public <T> void preProcess(
+                                                    org.springframework.web.context.request
+                                                                    .NativeWebRequest
+                                                            request,
+                                                    java.util.concurrent.Callable<T> task) {
+                                                worker.set(PluginInvocationContext.open(snapshot));
+                                            }
+
+                                            @Override
+                                            public <T> void postProcess(
+                                                    org.springframework.web.context.request
+                                                                    .NativeWebRequest
+                                                            request,
+                                                    java.util.concurrent.Callable<T> task,
+                                                    Object result) {
+                                                var scope = worker.get();
+                                                try {
+                                                    if (scope != null) scope.close();
+                                                } finally {
+                                                    worker.remove();
+                                                }
+                                            }
+                                        });
                         return true;
+                    }
+
+                    private void closeScope(HttpServletRequest request) {
+                        var value = request.getAttribute(SCOPE);
+                        request.removeAttribute(SCOPE);
+                        if (value instanceof PluginInvocationContext scope) scope.close();
+                    }
+
+                    @Override
+                    public void afterConcurrentHandlingStarted(
+                            HttpServletRequest request,
+                            HttpServletResponse response,
+                            Object handler) {
+                        closeScope(request);
                     }
 
                     @Override
@@ -58,11 +108,17 @@ public class PluginWebConfiguration implements WebMvcConfigurer {
                             Object handler,
                             Exception e)
                             throws Exception {
+                        closeScope(req);
                         var lease = req.getAttribute(LEASE);
                         if (lease instanceof AutoCloseable close) {
                             req.removeAttribute(LEASE);
                             close.close();
                         }
+                        String path = req.getRequestURI();
+                        if (path.equals("/api/platform/api-docs")
+                                || path.equals("/api/platform/api-docs.yaml")
+                                || path.startsWith("/api/platform/api-docs/"))
+                            PluginFrameworkCaches.releaseDocumentationCaches();
                     }
                 });
     }

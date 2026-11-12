@@ -33,6 +33,6 @@ public record PlatformModule(
 
     /** Required modules and the audit query module are fixed core capabilities. */
     public boolean core() {
-        return required || "audit-console".equals(id);
+        return required;
     }
 }

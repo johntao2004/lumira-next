@@ -33,6 +33,51 @@ class PaymentCoreServiceTest {
     private static final long AMOUNT_FEN = 1250;
 
     @Test
+    void thirdProviderUsesItsOwnPageCallbackAndSharedOrderLifecycle() {
+        var h = new Harness("third-pay");
+        var created = h.createOrder();
+        assertEquals("third-pay", created.providerId());
+        assertEquals("PENDING", created.status());
+        h.gateway.notification =
+                new PaymentGatewayPort.Notification(
+                        created.merchantOrderNo(),
+                        "synthetic-trade-1",
+                        AMOUNT_FEN,
+                        "CNY",
+                        true,
+                        "third-event",
+                        NOW);
+        h.service.acceptCallback("third-pay", Map.of(), "verified-by-fixture");
+        assertEquals("PAID", h.store.findOrder(created.orderId()).orElseThrow().status());
+        h.gateway.refundQueryResult =
+                new RefundResult(RefundState.SUCCESS, "third-refund", AMOUNT_FEN, NOW, null);
+        assertEquals(
+                "REFUNDED",
+                h.service
+                        .refundOrder(
+                                "admin",
+                                h.page,
+                                created.orderId(),
+                                new PaymentCoreAdminPort.RefundRequest(
+                                        UUID.randomUUID(), "Fixture refund"))
+                        .status());
+        assertEquals(1, h.gateway.precreateCalls);
+        assertEquals(1, h.gateway.refundCalls);
+        assertEquals(
+                "platform:third-pay:orders-refund",
+                h.page.operationPermission(PaymentCoreAdminPort.Operation.REFUND));
+        assertThrows(
+                ResponseStatusException.class,
+                () ->
+                        h.service.createOrder(
+                                "admin",
+                                h.page,
+                                new PaymentCoreAdminPort.CreateOrder(
+                                        UUID.randomUUID(), "wechat-pay", AMOUNT_FEN, "Mismatch"),
+                                "127.0.0.1"));
+    }
+
+    @Test
     void subjectBoundaryCountsUtf8BytesAndRejectsNulBeforeReservingOrders() {
         var h = new Harness("alipay-pay");
         for (String subject :
@@ -284,14 +329,17 @@ class PaymentCoreServiceTest {
         final FakeStore store = new FakeStore();
         final FakeGateway gateway;
         final PaymentCoreService service;
-        final PaymentCoreAdminPort.Page page;
+        final PaymentCoreAdminPort.PageContext page;
 
         Harness(String providerId) {
             gateway = new FakeGateway(providerId);
             page =
                     "wechat-pay".equals(providerId)
                             ? PaymentCoreAdminPort.Page.WECHAT_ORDERS
-                            : PaymentCoreAdminPort.Page.ALIPAY_ORDERS;
+                            : "alipay-pay".equals(providerId)
+                                    ? PaymentCoreAdminPort.Page.ALIPAY_ORDERS
+                                    : new PaymentCoreAdminPort.ProviderPage(
+                                            providerId, PaymentCoreAdminPort.PageKind.ORDERS);
             var extensions =
                     new PluginExtensionsPort() {
                         @Override
@@ -337,6 +385,13 @@ class PaymentCoreServiceTest {
         @Override
         public String id() {
             return providerId;
+        }
+
+        @Override
+        public String callbackPath() {
+            return Set.of("wechat-pay", "alipay-pay").contains(providerId)
+                    ? PaymentGatewayPort.super.callbackPath()
+                    : "/api/plugins/" + providerId + "/callbacks/" + providerId;
         }
 
         @Override
@@ -680,8 +735,8 @@ class PaymentCoreServiceTest {
                     1,
                     Map.of(
                             "notifyUrl",
-                            "https://merchant.example/api/plugins/payment-core/callbacks/"
-                                    + providerId));
+                            "https://merchant.example"
+                                    + new FakeGateway(providerId).callbackPath()));
         }
 
         private static Order copy(

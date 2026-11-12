@@ -1,5 +1,6 @@
 package com.lumira.platform.identity;
 
+import com.lumira.platform.common.BoundedBody;
 import com.lumira.platform.identity.PublicAuthRequests.StrictInput;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -29,7 +30,9 @@ public class RolePreviewBootstrapController {
     @PostMapping
     @ResponseStatus(HttpStatus.OK)
     public RolePreviewContextService.BootstrapResult apply(
-            @RequestBody Input input, HttpServletRequest request) {
+            @RequestBody @BoundedBody(maxBytes = 8192, errorCode = "invalidRolePreviewBootstrap")
+                    Input input,
+            HttpServletRequest request) {
         if (input == null || input.hasUnknownFields())
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "invalidRolePreviewBootstrap");

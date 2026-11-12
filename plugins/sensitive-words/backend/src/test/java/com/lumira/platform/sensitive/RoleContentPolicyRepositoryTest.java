@@ -86,4 +86,104 @@ class RoleContentPolicyRepositoryTest {
         jdbc.update("UPDATE platform_user SET deleted_at=null,enabled=false WHERE id=?", user);
         assertTrue(policies.forActor("qa_policy").isEmpty());
     }
+
+    @Test
+    void readOnlyBatchReusesSnapshotAcrossRequiresNewHitRecordingAndCommitsLogHitOnBlockRollback() {
+        jdbc.execute(TestSchema.table("platform_content_policy_hit"));
+        TestSchema.indexes("platform_content_policy_hit").forEach(jdbc::execute);
+        var txManager =
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(
+                        jdbc.getDataSource());
+        var requiresNewTx =
+                new org.springframework.transaction.support.TransactionTemplate(txManager);
+        requiresNewTx.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        var forActorCalls = new java.util.concurrent.atomic.AtomicInteger();
+        var txPolicies =
+                new RoleContentPolicyRepository(JdbcClient.create(jdbc.getDataSource())) {
+                    @Override
+                    public java.util.List<Policy> forActor(String actor) {
+                        forActorCalls.incrementAndGet();
+                        return super.forActor(actor);
+                    }
+
+                    @Override
+                    public void record(
+                            String actor,
+                            String source,
+                            boolean blocked,
+                            int matchCount,
+                            java.util.List<UUID> matchedRoleIds) {
+                        requiresNewTx.executeWithoutResult(
+                                s ->
+                                        super.record(
+                                                actor,
+                                                source,
+                                                blocked,
+                                                matchCount,
+                                                matchedRoleIds));
+                    }
+                };
+        var words = org.mockito.Mockito.mock(SensitiveWordRepository.class);
+        org.mockito.Mockito.when(words.matcherSnapshot(org.mockito.Mockito.anyLong()))
+                .thenReturn(
+                        new SensitiveWordRepository.MatcherSnapshot(
+                                1L,
+                                java.util.List.of(
+                                        new SensitiveWordRepository.ActiveEntry(
+                                                "warnword", "warnword", "LOW", "LOG_ONLY"),
+                                        new SensitiveWordRepository.ActiveEntry(
+                                                "blockword", "blockword", "HIGH", "BLOCK"))));
+        var modules = org.mockito.Mockito.mock(com.lumira.platform.modules.ModuleRuntime.class);
+        org.mockito.Mockito.when(modules.isEnabled("sensitive-words")).thenReturn(true);
+        var service =
+                new RoleContentPolicyService(
+                        txPolicies,
+                        words,
+                        org.mockito.Mockito.mock(SensitiveWordService.class),
+                        org.mockito.Mockito.mock(
+                                com.lumira.platform.common.AdministrationPort.class),
+                        org.mockito.Mockito.mock(com.lumira.platform.common.AuditPort.class),
+                        modules);
+        var roTx = new org.springframework.transaction.support.TransactionTemplate(txManager);
+        roTx.setReadOnly(true);
+        var error =
+                assertThrows(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        () ->
+                                roTx.executeWithoutResult(
+                                        s -> {
+                                            assertFalse(
+                                                    service.evaluate(
+                                                                    "qa_policy",
+                                                                    "first field warnword",
+                                                                    "DictionaryController.create:name")
+                                                            .blocked());
+                                            if (service.evaluate(
+                                                            "qa_policy",
+                                                            "second field blockword",
+                                                            "DictionaryController.create:remark")
+                                                    .blocked()) {
+                                                throw new org.springframework.web.server
+                                                        .ResponseStatusException(
+                                                        org.springframework.http.HttpStatus
+                                                                .BAD_REQUEST,
+                                                        "sensitiveContent");
+                                            }
+                                        }));
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals(1, forActorCalls.get());
+        org.mockito.Mockito.verify(words, org.mockito.Mockito.times(1))
+                .matcherSnapshot(org.mockito.Mockito.anyLong());
+        org.mockito.Mockito.verify(modules, org.mockito.Mockito.times(1))
+                .isEnabled("sensitive-words");
+        var recordedHits = txPolicies.hits(new com.lumira.platform.common.PageRequest(1, 10, null));
+        assertEquals(2, recordedHits.size());
+        assertTrue(
+                recordedHits.stream()
+                        .anyMatch(h -> "LOG_ONLY".equals(h.action()) && h.matchCount() == 1));
+        assertTrue(
+                recordedHits.stream()
+                        .anyMatch(h -> "BLOCK".equals(h.action()) && h.matchCount() == 1));
+    }
 }

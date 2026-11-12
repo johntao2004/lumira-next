@@ -7,7 +7,7 @@ import {
   maximumSafeCapacity,
   normalizeFileQuotaSettings,
   selectCapacityUnit,
-} from "../apps/web/src/features/files/file-quota-conversion.ts";
+} from "../plugins/file-console/frontend/file-quota-conversion.ts";
 
 test("uses decimal MB and GB conversions with up to two decimal places", () => {
   assert.equal(capacityBytes("1.25", "gb"), 1_250_000_000);

@@ -2,7 +2,6 @@
 
 import { AccountSettingsLayout, AccountSettingsLoadingSkeleton } from "@/features/account/account-settings-layout";
 import { isAccountSettingsRoute } from "@/features/account/manifest";
-import { NotificationsButton } from "@/features/notifications/notifications-button";
 import { ApiError, api, getAuthorizationContext, logout, mutate, sessionMe, shouldRefreshAuthorizationContextRevision } from "@/platform/api/client";
 import type { AuthorizationContext, CurrentUser } from "@/platform/auth/api-types";
 import { refreshAuthorizationScopedQueries } from "@/platform/auth/authorization-cache";
@@ -11,7 +10,8 @@ import { PlatformWatermark } from "@/platform/branding/watermark";
 import { useBranding } from "@/platform/branding/provider";
 import { AccountAvatar } from "@/platform/components/account-avatar";
 import { QueryFailure } from "@/platform/components/query-failure";
-import { FileUsage } from "@/platform/components/file-usage";
+import { EmbeddedFrontendPage } from "@/platform/modules/embedded-page";
+import type { FrontendPageContext } from "@/platform/modules/types";
 import { LanguageSwitcher } from "@/platform/i18n/language-switcher";
 import { usePluginRuntime } from "@/platform/modules/plugin-runtime";
 import { renderFrontendPage } from "@/platform/modules/registry";
@@ -29,6 +29,7 @@ import { Alert, App, Button, Result, Skeleton, Space, Statistic, Tag, Typography
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AccountMenu } from "./account-menu";
 import { DynamicPage } from "./dynamic-page";
+import { WorkspaceModuleActions } from "./workspace-module-actions";
 import { useDisplayScale } from "../display/use-display-scale";
 import { buildProLayoutRoute } from "./navigation";
 import { formatDateTime } from "../i18n/format";
@@ -321,15 +322,16 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
       ? !canAccessSection(routeSection as Section, user.data.authorities, user.data.enabledModules ?? [], user.data.globalAuthorities ?? [])
       : !runtimePage);
   const title = resolvedPageTitle;
-  const featurePage = !denied && routeSection !== "home"
-    ? renderFrontendPage(routeSection, {
+  const pageContext: FrontendPageContext = {
         authorities: user.data.authorities,
         hasGlobal,
         hasRouteAccess,
         hasRouteOperation,
         hasOperation,
         readOnlyPreview: Boolean(user.data.authorizationContext?.preview),
-      })
+      };
+  const featurePage = !denied && routeSection !== "home"
+    ? renderFrontendPage(routeSection, pageContext)
     : null;
   const layoutRoute = buildProLayoutRoute(navigation, t);
   const activeMenuPage = navigation.flatMap((group) => group.pages)
@@ -349,7 +351,7 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
       aria-label={t(dark ? "lightMode" : "darkMode")}
     />,
     <LanguageSwitcher key="language" />,
-    <NotificationsButton key="notifications" />,
+    <WorkspaceModuleActions key="module-actions" />,
   ];
   const accountTrigger = (compact = false) => (
     // ProLayout reads aria-hidden as a request to skip the action-wrapper hover; AccountMenu does not forward it to the DOM.
@@ -466,6 +468,7 @@ export function Workspace({ children = null }: { children?: React.ReactNode }) {
                 <Skeleton active paragraph={{ rows: 8 }} />
               ) : routeSection === "home" ? (
                 <Workbench
+                  pageContext={pageContext}
                   displayName={user.data.displayName}
                   userId={user.data.userId}
                   globalAuthorities={user.data.globalAuthorities ?? []}
@@ -533,6 +536,7 @@ function RolePreviewBanner({ context, actorName }: { context: AuthorizationConte
 }
 
 function Workbench({
+  pageContext,
   displayName,
   userId,
   globalAuthorities,
@@ -540,6 +544,7 @@ function Workbench({
   previewActive,
   navigation,
 }: {
+  pageContext: FrontendPageContext;
   displayName: string;
   userId: string;
   globalAuthorities: readonly string[];
@@ -594,7 +599,9 @@ function Workbench({
           onRetry={() => void monitoring.refetch()}
         />
       ) : (
-        <FileUsage />
+        <Suspense fallback={null}>
+          <EmbeddedFrontendPage routeId="files" context={{ ...pageContext, embedded: { presentation: "summary" } }} />
+        </Suspense>
       )}
     </div>
   );

@@ -15,12 +15,12 @@ import { QueryFailure } from "@/platform/components/query-failure";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { usePreferences } from "@/platform/providers";
-import { ReauthenticationFields } from "../../../../../plugins/mfa/frontend/reauthentication-fields";
-import type { MfaActionValues } from "../../../../../plugins/mfa/frontend/types";
+import { ReauthenticationFields } from "@/platform/auth/reauthentication-fields";
+import type { ReauthenticationFormValues } from "@/platform/auth/reauthentication-contract";
 import { AccountSettingsRow, AccountSettingsSection } from "./account-form-surface";
 
 type BindingAction = "BIND" | "REPLACE" | "UNBIND";
-type BindingValues = MfaActionValues;
+type BindingValues = ReauthenticationFormValues;
 const bindingErrors = ["wechatUnavailable", "wechatAlreadyUsed", "wechatRequiredUsableMethod", "reauthenticationRequired", "reauthenticationInvalid", "reauthenticationExpired", "reauthenticationLocked", "reauthenticationMethodUnavailable", "reauthenticationCodeLimited", "reauthenticationPasskeyUseFirst", "secondFactorInvalid", "mfaRequiredByPolicy", "staleRecord", "forbidden", "passkeyUnsupported", "passkeyCancelled", "passkeyTimeout", "passkeyOperationFailed", "unavailable"] as const satisfies readonly MessageKey[];
 
 export function AccountWechatPage() {

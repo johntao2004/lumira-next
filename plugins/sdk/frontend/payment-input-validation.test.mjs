@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { validPaymentText } from "./payment-input-validation.ts";
+import { trustedPaymentQrUrl } from "./payment-qr-policy.ts";
+
+test("third-channel QR validation is explicit and retains the shared input bounds", () => {
+  const order = { providerId: "third-pay", codeUrl: "https://qr.third.example/fixture" };
+  const validator = value => new URL(value).origin === "https://qr.third.example";
+  assert.equal(trustedPaymentQrUrl(order), null);
+  assert.equal(trustedPaymentQrUrl(order, validator), order.codeUrl);
+  assert.equal(trustedPaymentQrUrl({ ...order, codeUrl: "https://other.example/fixture" }, validator), null);
+  assert.equal(trustedPaymentQrUrl({ ...order, codeUrl: order.codeUrl + "\n" }, () => true), null);
+  assert.equal(trustedPaymentQrUrl({ ...order, codeUrl: "a".repeat(513) }, () => true), null);
+  assert.equal(trustedPaymentQrUrl(order, () => { throw new Error("bad provider"); }), null);
+  assert.equal(trustedPaymentQrUrl({ providerId: "alipay-pay", codeUrl: "https://qr.alipay.com/test" }), "https://qr.alipay.com/test");
+  assert.equal(trustedPaymentQrUrl({ providerId: "wechat-pay", codeUrl: "weixin://wxpay/bizpayurl?pr=test" }), "weixin://wxpay/bizpayurl?pr=test");
+});
 
 test("payment subjects obey the 127 UTF-8 byte contract for ASCII, Chinese and emoji", () => {
   for (const subject of ["a".repeat(127), "中".repeat(42) + "a", "😀".repeat(31) + "abc"]) {

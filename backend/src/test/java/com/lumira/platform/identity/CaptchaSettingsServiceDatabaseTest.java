@@ -9,6 +9,8 @@ import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.CaptchaProofPort;
 import com.lumira.platform.common.SecretKeys;
+import com.lumira.platform.identity.api.CaptchaConfigurationPort;
+import com.lumira.plugins.authenticationconsole.CaptchaSettingsService;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
@@ -73,8 +75,11 @@ class CaptchaSettingsServiceDatabaseTest {
         service =
                 new CaptchaSettingsService(
                         JdbcClient.create(dataSource),
-                        keys,
-                        new LocalCaptchaAssets(),
+                        new CaptchaConfigurationReader(
+                                JdbcClient.create(dataSource),
+                                keys,
+                                new LocalCaptchaAssets(),
+                                new ObjectMapper()),
                         mock(AuthenticationPolicyWriteLock.class),
                         mock(AdministrationPort.class),
                         audit,
@@ -89,16 +94,16 @@ class CaptchaSettingsServiceDatabaseTest {
 
     @Test
     void saveResponseMatchesTheNormalizedSettingsReturnedByTheNextRead() {
-        var partialActions = Map.of("PASSWORD_LOGIN", CaptchaSettingsService.Mode.ALWAYS);
+        var partialActions = Map.of("PASSWORD_LOGIN", CaptchaConfigurationPort.Mode.ALWAYS);
         var submitted =
-                new CaptchaSettingsService.Data(true, "LOCAL", "IMAGE_TEXT", partialActions);
+                new CaptchaConfigurationPort.Data(true, "LOCAL", "IMAGE_TEXT", partialActions);
 
         var saved = service.save("qa-admin", new CaptchaSettingsService.Input(1, submitted, null));
         var readAgain = service.read("qa-admin");
 
         assertEquals(CaptchaProofPort.Action.values().length, saved.data().actions().size());
         assertEquals(
-                CaptchaSettingsService.Mode.OFF,
+                CaptchaConfigurationPort.Mode.OFF,
                 saved.data().actions().get("PASSWORD_RECOVERY_VERIFY"));
         assertEquals(readAgain.data(), saved.data());
         assertEquals(readAgain.revision(), saved.revision());

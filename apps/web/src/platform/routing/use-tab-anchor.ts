@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { history, useLocation } from "@umijs/max";
-import { readTabAnchor, tabAnchorName, updateFragment } from "./tab-anchor";
+import { readTabAnchor, tabAnchorName, tabAnchorToPersist, updateFragment } from "./tab-anchor";
 
 /** Read the current URL at write time so concurrent tab groups cannot overwrite one another. */
 export function navigateFragment(changes: Record<string, string | null>, mode: "push" | "replace" = "push") {
@@ -17,7 +17,7 @@ export function useFragmentParams() {
 }
 
 /** The URL is the source of truth, including refresh, direct links and browser history. */
-export function useTabAnchor<const Key extends string>(scope: string, keys: readonly Key[], fallback: Key, enabled = true) {
+export function useTabAnchor<const Key extends string>(scope: string, keys: readonly Key[], fallback: Key, enabled = true, preserveUnavailable: readonly string[] = []) {
   const location = useLocation();
   const activeKey = readTabAnchor(location.hash, scope, keys, fallback) as Key;
   const name = tabAnchorName(scope);
@@ -26,9 +26,10 @@ export function useTabAnchor<const Key extends string>(scope: string, keys: read
     if (!enabled || !keys.length) return;
     // Ignore an effect from a page which has already been left.
     if (window.location.pathname !== location.pathname) return;
-    const current = readTabAnchor(window.location.hash, scope, keys, fallback);
+    const current = tabAnchorToPersist(window.location.hash, scope, keys, fallback, preserveUnavailable);
+    if (current === null) return;
     navigateFragment({ [name]: current }, "replace");
-  }, [enabled, location.pathname, location.hash, name, fallback, keys.join("\0")]);
+  }, [enabled, location.pathname, location.hash, name, fallback, keys.join("\0"), preserveUnavailable.join("\0")]);
 
   const setActiveKey = (key: string) => {
     if (enabled && keys.includes(key as Key)) navigateFragment({ [name]: key });

@@ -1,12 +1,13 @@
 import {observeResponse} from "./browser-support.mjs";
+import {loadQaRunContext} from "./qa-run-guard.mjs";
 import {chromium,expect} from '@playwright/test';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-const config=JSON.parse(readFileSync('.runtime/local.json','utf8'));
+const {config,baseURL}=loadQaRunContext();
 async function run(format) {
 const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});
-const context=await browser.newContext({baseURL:'http://127.0.0.1:8010',viewport:{width:1213,height:886}});
+const context=await browser.newContext({baseURL,viewport:{width:1213,height:886}});
 const page=await context.newPage();const code=`qa_browser_${Date.now()}`;let id;
 const csrf=await (await context.request.get('/api/auth/csrf')).json();
 try {

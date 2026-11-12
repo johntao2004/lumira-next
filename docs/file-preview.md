@@ -12,13 +12,17 @@
 
 `GET /api/account/files/{id}/content` 要求当前账号拥有文件。管理员 PDF 原文通过 `GET /api/platform/files/{id}/content` 获取，除预览权限外还要求独立的 `FILE_DOWNLOAD` 操作权限；没有该权限时，前端显示受控提示，不请求原文。角色预览期间不读取 PDF 原文：该模式只允许现有的一次性 JSON 预览资源票据，不为原文或下载签发票据，PDF 预览会显示受控不可用提示。
 
-`GET /api/account/files/{id}/preview?page=1` 与 `GET /api/platform/files/{id}/preview?page=1` 仍保留为 JSON 预览接口：前者要求当前账号拥有文件，后者要求 `platform:files:read`。接口保持既有图片、文本和逐页 PDF PNG 响应契约，供现有客户端/兼容调用使用；当前文件中心的 PDF.js 原文预览不调用这两个接口。角色预览的一次性票据仍只签发并读取这些 JSON 预览资源，不会扩大到 `/content`。预览接口返回 `Cache-Control: no-store`。
+`GET /api/account/files/{id}/preview?page=1` 与 `GET /api/platform/files/{id}/preview?page=1` 仍保留为 JSON 预览接口：前者要求当前账号拥有文件，后者要求全局 `platform:files-all:access` 与 `platform:files-all:preview`。接口保持既有图片、文本和逐页 PDF PNG 响应契约，供现有客户端/兼容调用使用；当前文件中心的 PDF.js 原文预览不调用这两个接口。角色预览的一次性票据仍只签发并读取这些 JSON 预览资源，不会扩大到 `/content`。预览接口返回 `Cache-Control: no-store`。
 
-Linux 后端运行环境安装 `fonts-wqy-zenhei`，用于保留的 JSON 预览接口通过 PDFBox 渲染未嵌入的 Adobe-GB1 中文 CID 字体；PDF 内已嵌入的字体仍优先使用。文件中心 PDF.js 使用浏览器 FontFace 和操作系统字体替代未嵌入的 CID 字体；其 CMap 等数据来自本地 PDF.js 资源。Ubuntu/WSL 本地可运行 `sudo apt-get install fontconfig fonts-wqy-zenhei`。无 sudo 的云安装会从发行版签名仓库提取字体到 PDFBox 可扫描的 `$HOME/.fonts`；单独放在 XDG 字体目录不会被当前 PDFBox 版本发现。安装字体后需重启后端，让 PDFBox 重新扫描字体。
+Office worker 使用 Tini 作为 PID 1，回收 LibreOffice 启动后遗留的 GPG 辅助进程，并转发关闭信号。Docker Compose 与 Kubernetes 保留镜像入口；覆盖入口时也必须提供等价的子进程回收机制，避免长期转换耗尽 PID 配额。现有内存、CPU、PID 与临时目录上限保持生效。
+
+`scripts/office-worker-reaping-smoke.py` 对专用 QA worker 连续执行真实 DOCX → PDF 转换，逐次检查僵尸进程与 PID 预算。它要求 `LUMIRA_OFFICE_REAPING_CONFIG` 指向权限 0600 的显式配置，包含 `container`、`ingress`、`owner`、`hostPort`、`token`；容器必须带匹配的 `com.lumira.qa.owner` 标签，启用测试模式且仅向回环地址发布端口。配置和测试输出留在 `.runtime`。
+
+Office worker 镜像安装 `fonts-wqy-zenhei`，供兼容 JSON 预览渲染未嵌入的 Adobe-GB1 中文 CID 字体。PDF 内已嵌入的字体优先使用。文件中心 PDF.js 使用浏览器 FontFace 和操作系统字体替代未嵌入的 CID 字体，CMap 等数据来自本地 PDF.js 资源。
 
 JSON 预览响应包含 `text`、`truncated`、`imageDataUrl`、`page`、`pageCount`。纯文本的 `imageDataUrl` 为 null；图片和兼容接口中的 PDF 页面 `imageDataUrl` 只包含重新编码的 `data:image/png;base64,...`。PDF 页码从 1 开始，每次只渲染请求的一页。文件中心 PDF.js 查看器直接加载原文，不经过这个分页 JSON 响应。
 
-源文件上限沿用上传的 20 MiB；纯文本最多展示 200,000 个 Unicode 码点。AI 附件继续使用 5 MiB 上限，并复用同一 DOC/DOCX worker。源图片最长边不超过 8192 像素且总像素不超过 16,000,000；JSON 兼容接口的图片与 PDF 输出最长边不超过 2048 像素。文件中心的 PDF.js 预览按当前页与缩放重新渲染原 PDF，并将单页画布限制在 16,000,000 像素内。解码不会写回文件或修改数据库。
+源文件上限沿用上传的 20 MiB，纯文本最多展示 200,000 个 Unicode 码点。AI 附件使用 5 MiB 上限。兼容 PDF 预览和 AI 附件的 PDF 文本提取都在 Office worker 的受限子进程中执行。后端在打开 Blob 之前限制同时读取和生成的预览与附件任务，worker 忙碌或不可用时返回 503。源图片最长边不超过 8192 像素且总像素不超过 16,000,000，JSON 兼容接口的图片与 PDF 输出最长边不超过 2048 像素。文件中心的 PDF.js 预览按当前页与缩放重新渲染原 PDF，并将单页画布限制在 16,000,000 像素内。
 
 ## Office worker 资源边界
 

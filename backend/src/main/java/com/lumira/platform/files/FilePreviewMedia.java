@@ -9,8 +9,6 @@ import java.util.Base64;
 import java.util.Locale;
 import javax.imageio.ImageIO;
 import javax.imageio.stream.MemoryCacheImageInputStream;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -57,25 +55,6 @@ final class FilePreviewMedia {
                 }
             } finally {
                 reader.dispose();
-            }
-        }
-    }
-
-    static FilePreview pdf(byte[] bytes, int page) throws IOException {
-        try (var document = Loader.loadPDF(bytes)) {
-            int count = document.getNumberOfPages();
-            if (document.isEncrypted() || page < 1 || page > count) throw invalid();
-            var box = document.getPage(page - 1).getCropBox();
-            double edge = Math.max(box.getWidth(), box.getHeight());
-            if (!Double.isFinite(edge) || box.getWidth() <= 0 || box.getHeight() <= 0)
-                throw invalid();
-            var renderer = new PDFRenderer(document);
-            renderer.setSubsamplingAllowed(true);
-            var image = renderer.renderImage(page - 1, (float) Math.min(2, OUTPUT_EDGE / edge));
-            try {
-                return new FilePreview("", false, encode(image), page, count);
-            } finally {
-                image.flush();
             }
         }
     }

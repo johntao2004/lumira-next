@@ -20,7 +20,8 @@ public class AiAttachmentAdapter implements AiAttachmentPort {
         var entry = files.find(actor, id);
         if (entry.sizeBytes() != null && entry.sizeBytes() > MAX_BYTES)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "aiAttachmentTooLarge");
-        try (var input = files.open(entry)) {
+        try (var admission = FilePreviewReader.admit();
+                var input = files.open(entry)) {
             return AiAttachmentReader.read(
                     id, entry.originalName(), input.readNBytes(MAX_BYTES + 1));
         } catch (IOException exception) {

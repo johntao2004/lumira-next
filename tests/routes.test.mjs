@@ -101,7 +101,8 @@ test('navigation groups own the intended routes while hidden account pages stay 
   for (const routeId of ['account-profile', 'account-security', 'account-authentication-security', 'account-role-preview', 'account-wechat', 'account-password', 'account-sessions']) {
     assert.equal(routesById.get(routeId)?.group, 'user-management');
   }
-  assert.deepEqual(availableNavigation([]).find(group => group.id === 'overview').pages.map(page => page.id), ['home', 'files']);
+  assert.deepEqual(availableNavigation([]).find(group => group.id === 'overview').pages.map(page => page.id), ['home']);
+  assert.deepEqual(availableNavigation([], ['personal-files']).find(group => group.id === 'overview').pages.map(page => page.id), ['home', 'files']);
 });
 
 test('static manifest ordering matches the current built-in navigation order', () => {
@@ -229,7 +230,7 @@ test('navigation group and anchor labels are translated across all supported loc
 });
 
 test('server-owned custom pages join the matching navigation group safely', () => {
-  const groups = availableNavigation(['platform:users:access'], [], []);
+  const groups = availableNavigation(['platform:users:access'], ['directory'], []);
   const merged = mergeRuntimeNavigation(groups, [
     { id: 'root', menuCode: 'administration', menuType: 'CATALOG', sectionKey: null, children: [
       { id: 'custom', menuCode: 'qa-page', menuType: 'PAGE', sectionKey: 'custom-page', path: '/dashboard/custom-page', componentKey: 'platform:info', labelKey: 'qaPage', labelDefault: 'QA 页面', routable: true, children: [] },
@@ -243,7 +244,7 @@ test('server-owned custom pages join the matching navigation group safely', () =
 });
 
 test('server-owned custom root catalogs become top-level navigation groups', () => {
-  const groups = availableNavigation(['platform:users:access'], [], []);
+  const groups = availableNavigation(['platform:users:access'], ['directory'], []);
   const merged = mergeRuntimeNavigation(groups, [
     { id: 'catalog', menuCode: 'qa-catalog', menuType: 'CATALOG', sectionKey: null, labelKey: 'qaCatalog', labelDefault: 'QA 分组', children: [
       { id: 'page', menuCode: 'qa-page', menuType: 'PAGE', sectionKey: 'qa-page', path: '/dashboard/qa-page', labelKey: 'qaPage', labelDefault: 'QA 页面', routable: true, children: [] },
@@ -256,11 +257,11 @@ test('server-owned custom root catalogs become top-level navigation groups', () 
 
 test('navigation removes empty groups and only exposes independently granted pages', () => {
   assert.deepEqual(availableNavigation([]).map(group => group.id), ['overview']);
-  const groups = availableNavigation(['platform:users:access', 'platform:roles:update'], [], []);
+  const groups = availableNavigation(['platform:users:access', 'platform:roles:update'], ['directory'], []);
   const userManagement = groups.find(group => group.id === 'user-management');
   assert.deepEqual(userManagement.pages.map(page => page.id), ['users']);
   assert.equal(groups.some(group => group.id === 'administration'), false);
-  assert.deepEqual(availableNavigation(['platform:users:access'], [], ['platform:online-users:access'])
+  assert.deepEqual(availableNavigation(['platform:users:access'], ['directory'], ['platform:online-users:access'])
     .find(group => group.id === 'user-management').pages.map(page => page.id), ['users', 'online-users']);
 });
 
@@ -332,7 +333,7 @@ test('print templates resolves through its registered section when runtime navig
   const target = runtimeNavigationPageNode([page], 'print-templates', '/dashboard/print-templates');
   const trail = runtimeNavigationTrail([page], 'print-templates', '/dashboard/print-templates');
   const navigation = mergeRuntimeNavigation(
-    availableNavigation(['platform:print-templates:access'], [], ['platform:print-templates:access']),
+    availableNavigation(['platform:print-templates:access'], ['directory'], ['platform:print-templates:access']),
     [page],
   );
 
@@ -390,12 +391,12 @@ test('runtime labels override static sidebar metadata without granting static ac
   const tree = [{ id: 'user-management', menuCode: 'user-management', menuType: 'CATALOG', sectionKey: null, labelKey: 'userManagement', labelDefault: '运行时用户管理', children: [
     { id: 'users', menuCode: 'users', menuType: 'PAGE', sectionKey: 'users', path: '/dashboard/users', labelKey: 'runtimeUsers', labelDefault: '运行时用户页', routable: true, children: [] },
   ] }];
-  const merged = mergeRuntimeNavigation(availableNavigation(['platform:users:access'], [], []), tree);
+  const merged = mergeRuntimeNavigation(availableNavigation(['platform:users:access'], ['directory'], []), tree);
   const group = merged.find(item => item.id === 'user-management');
 
   assert.equal(group.labelDefault, '运行时用户管理');
   assert.equal(group.pages[0].labelDefault, '运行时用户页');
-  const withoutPermission = mergeRuntimeNavigation(availableNavigation([]), tree);
+  const withoutPermission = mergeRuntimeNavigation(availableNavigation([], ['directory']), tree);
   assert.equal(withoutPermission.flatMap(item => item.pages).some(page => page.id === 'users'), false);
 });
 
@@ -409,7 +410,7 @@ test('security and registration settings share one user-management sidebar entry
     'platform:captcha:access',
     'platform:registration:access',
   ];
-  const groups = collapseTabbedNavigation(availableNavigation(settingsAccess));
+  const groups = collapseTabbedNavigation(availableNavigation(settingsAccess,["profile-console","authentication-console"],settingsAccess));
   const userManagement = groups.find(group => group.id === 'user-management');
   const settingRoutes = userManagement.pages.map(page => page.id);
 
@@ -421,7 +422,7 @@ test('security and registration settings share one user-management sidebar entry
     assert.ok(isSection(tab), `${tab} deep link remains a registered route`);
   }
 
-  const serverOwnedSubset = mergeRuntimeNavigation(availableNavigation(settingsAccess), [
+  const serverOwnedSubset = mergeRuntimeNavigation(availableNavigation(settingsAccess,["profile-console","authentication-console"],settingsAccess), [
     { id: 'user-management', menuCode: 'user-management', menuType: 'CATALOG', sectionKey: null, children: [
       { id: 'security', menuCode: 'security', menuType: 'PAGE', sectionKey: 'security', path: '/dashboard/security', children: [] },
       { id: 'passkey', menuCode: 'passkey', menuType: 'PAGE', sectionKey: 'passkey', path: '/dashboard/passkey', children: [] },
@@ -459,11 +460,11 @@ test('security and registration settings share one user-management sidebar entry
 
 test('five tab groups derive labels, aliases, and sidebar anchors from module manifests', () => {
   assert.deepEqual(frontendTabGroups.map(({ moduleId, id, routes, anchor, collapse }) => ({ moduleId, id, routes, anchor, collapse })), [
-    { moduleId: 'settings', id: 'personalization', routes: ['branding', 'watermark', 'agreements', 'maintenance'], anchor: 'branding', collapse: 'when-all-visible' },
-    { moduleId: 'settings', id: 'message-channels', routes: ['smtp', 'sms'], anchor: 'smtp', collapse: 'when-all-visible' },
-    { moduleId: 'settings', id: 'authentication-security', routes: ['security', 'authentication', 'passkey', 'wechat', 'captcha', 'registration'], anchor: 'security', collapse: 'when-anchor-visible' },
     { moduleId: 'directory', id: 'user-activity', routes: ['users', 'online-users'], anchor: 'users', collapse: 'when-all-visible' },
-    { moduleId: 'communication', id: 'delivery-records', routes: ['mail-deliveries', 'sms-deliveries'], anchor: 'mail-deliveries', collapse: 'when-all-visible' },
+    { moduleId: 'authentication-console', id: 'authentication-security', routes: ['security', 'authentication', 'passkey', 'wechat', 'captcha', 'registration'], anchor: 'security', collapse: 'when-anchor-visible' },
+    { moduleId: 'delivery-settings', id: 'message-channels', routes: ['smtp', 'sms'], anchor: 'smtp', collapse: 'when-all-visible' },
+    { moduleId: 'site-console', id: 'personalization', routes: ['branding', 'watermark', 'agreements', 'maintenance'], anchor: 'branding', collapse: 'when-all-visible' },
+    { moduleId: 'delivery-console', id: 'delivery-records', routes: ['mail-deliveries', 'sms-deliveries'], anchor: 'mail-deliveries', collapse: 'when-all-visible' },
   ]);
   for (const tabGroup of frontendTabGroups) {
     const manifest = frontendModuleManifests.find(candidate => candidate.id === tabGroup.moduleId);
@@ -475,8 +476,8 @@ test('five tab groups derive labels, aliases, and sidebar anchors from module ma
       return route.tabLabel ?? route.label;
     }));
   }
-  const settings = frontendModuleManifests.find(candidate => candidate.id === 'settings');
-  const partial = routeTabsForGroup(settings, 'personalization', { branding: 'branding', watermark: 'watermark' });
+  const site = frontendModuleManifests.find(candidate => candidate.id === 'site-console');
+  const partial = routeTabsForGroup(site, 'personalization', { branding: 'branding', watermark: 'watermark' });
   assert.deepEqual(partial.map(tab => tab.key), ['branding', 'watermark']);
 });
 
@@ -517,9 +518,37 @@ test('retired standalone AI pages are absent while model connections remain rout
   assert.equal(isSection('ai-capabilities'), false);
   assert.equal(isSection('ai-judgment'), false);
   assert.equal(isSection('ai-models'), true);
-  const pages = availableNavigation(['platform:ai-models:access'])
+  const pages = availableNavigation(['platform:ai-models:access'], ['ai'])
     .flatMap(group => group.pages.map(page => page.id));
   assert.ok(pages.includes('ai-models'));
   assert.ok(!pages.includes('ai-capabilities'));
   assert.ok(!pages.includes('ai-judgment'));
+});
+
+
+test('directory business routes require the optional plugin to be enabled', () => {
+  for (const section of ['users', 'roles', 'organizations', 'online-users', 'print-templates']) {
+    const permission = `platform:${section}:access`;
+    assert.equal(canAccessSection(section, [permission], [], [permission]), false);
+    assert.equal(canAccessSection(section, [permission], ['directory'], [permission]), true);
+    assert.equal(canAccessSection(section, [], ['directory'], []), false);
+  }
+});
+
+
+test('authentication administration withdraws with its plugin while account routes remain available', () => {
+  const rights=['platform:security:access','platform:authentication:access','platform:passkey:access','platform:wechat:access','platform:captcha:access','platform:registration:access'];
+  for(const route of ['security','authentication','passkey','wechat','captcha','registration']) {
+    assert.equal(canAccessSection(route,rights,[],rights),false);
+    assert.equal(canAccessSection(route,rights,['authentication-console'],rights),true);
+  }
+  assert.equal(canAccessSection('account-authentication-security',[],[],[]),true);
+  assert.equal(canAccessSection('account-security',[],[],[]),true);
+});
+
+
+test('personal file workflow is optional while required storage stays registered', () => {
+  assert.equal(canAccessSection('files', [], []), false);
+  assert.equal(canAccessSection('files', [], ['personal-files']), true);
+  assert.equal(frontendModuleManifests.find(module => module.routes.some(route => route.id === 'files')).id, 'personal-files');
 });

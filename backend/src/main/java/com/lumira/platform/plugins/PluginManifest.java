@@ -25,19 +25,14 @@ public record PluginManifest(
                     "roles",
                     "organizations",
                     "audit",
-                    "dictionaries",
                     "settings",
                     "modules",
                     "navigation",
                     "files",
-                    "notifications",
                     "events",
                     "platform",
                     "identity",
-                    "directory",
-                    "communication",
-                    "monitoring",
-                    "audit-console");
+                    "communication");
 
     public record Dependency(String id, String version) {}
 
@@ -107,14 +102,42 @@ public record PluginManifest(
             Boolean previewReadOnly,
             Boolean signedCallback,
             List<String> allAuthorities,
-            List<String> globalAuthorities) {
+            List<String> globalAuthorities,
+            Map<String, String> authorityScopes) {
         public Rule {
             authenticatedOnly = Boolean.TRUE.equals(authenticatedOnly);
             previewReadOnly = Boolean.TRUE.equals(previewReadOnly);
             signedCallback = Boolean.TRUE.equals(signedCallback);
+            authorityScopes = Map.copyOf(authorityScopes == null ? Map.of() : authorityScopes);
             allAuthorities = List.copyOf(allAuthorities == null ? List.of() : allAuthorities);
             globalAuthorities =
                     List.copyOf(globalAuthorities == null ? List.of() : globalAuthorities);
+        }
+
+        /** Compatibility with published rules before per-authority scopes. */
+        public Rule(
+                String method,
+                String path,
+                List<String> authorities,
+                boolean global,
+                boolean publicAccess,
+                Boolean authenticatedOnly,
+                Boolean previewReadOnly,
+                Boolean signedCallback,
+                List<String> allAuthorities,
+                List<String> globalAuthorities) {
+            this(
+                    method,
+                    path,
+                    authorities,
+                    global,
+                    publicAccess,
+                    authenticatedOnly,
+                    previewReadOnly,
+                    signedCallback,
+                    allAuthorities,
+                    globalAuthorities,
+                    Map.of());
         }
 
         /** Compatibility constructor for v1 manifests without mixed-scope global gates. */
@@ -246,7 +269,8 @@ public record PluginManifest(
                 || name.isBlank()
                 || version == null
                 || !version.matches("[0-9]+\\.[0-9]+\\.[0-9]+")
-                || !"1".equals(sdkVersion)
+                || sdkVersion == null
+                || !Set.of("1", "2").contains(sdkVersion)
                 || entryClass == null
                 || !entryClass.matches("[a-zA-Z_$][\\w$]*(\\.[a-zA-Z_$][\\w$]*)+")
                 || !"backend/plugin.jar".equals(backend)
@@ -287,13 +311,10 @@ public record PluginManifest(
                                             operation.getKey() == null
                                                     || !operation
                                                             .getKey()
-                                                            .matches("[a-z][a-z0-9-]{0,63}")
+                                                            .matches("[a-z][A-Za-z0-9-]{0,63}")
                                                     || operation.getValue() == null
                                                     || !permissionCodes.contains(
                                                             operation.getValue())
-                                                    || !operation
-                                                            .getValue()
-                                                            .startsWith("platform:" + id + ":")
                                                     || !pluginPermission(id, operation.getValue())
                                                     || operation.getValue().equals(r.permission()))
                     || r.operations().values().stream()
@@ -348,6 +369,18 @@ public record PluginManifest(
                                                                     r.authorities().stream(),
                                                                     r.allAuthorities().stream())
                                                             .anyMatch(authority::equals))
+                    || r.authorityScopes().entrySet().stream()
+                            .anyMatch(
+                                    entry ->
+                                            !Set.of("global", "scoped").contains(entry.getValue())
+                                                    || !java.util.stream.Stream.concat(
+                                                                    r.authorities().stream(),
+                                                                    r.allAuthorities().stream())
+                                                            .anyMatch(entry.getKey()::equals))
+                    || !r.authorityScopes().isEmpty()
+                            && (!"2".equals(sdkVersion)
+                                    || r.publicAccess()
+                                    || r.authenticatedOnly())
                     || new HashSet<>(r.authorities()).size() != r.authorities().size()
                     || new HashSet<>(r.allAuthorities()).size() != r.allAuthorities().size()
                     || new HashSet<>(r.globalAuthorities()).size() != r.globalAuthorities().size()
@@ -404,7 +437,8 @@ public record PluginManifest(
                                                                                     .globalAuthorities()
                                                                                     .stream())
                                                                     .distinct()
-                                                                    .toList())))
+                                                                    .toList()))
+                    && !mappedByRoutes(routes, rule, formatVersion == 2))
                 throw new IllegalArgumentException("invalidPluginPermission");
     }
 
@@ -516,6 +550,59 @@ public record PluginManifest(
     }
 
     private static boolean pluginPermission(String pluginId, String permission) {
+        if ("authentication-console".equals(pluginId)
+                && permission != null
+                && com.lumira.platform.common.AuthenticationConsoleAuthorityCodes.values()
+                        .contains(permission)) return true;
+        if ("profile-console".equals(pluginId)
+                && permission != null
+                && com.lumira.platform.common.ProfileConsoleAuthorityCodes.values()
+                        .contains(permission)) return true;
+        if ("delivery-settings".equals(pluginId)
+                && permission != null
+                && com.lumira.platform.common.DeliverySettingsAuthorityCodes.values()
+                        .contains(permission)) return true;
+        if ("site-console".equals(pluginId)
+                && permission != null
+                && com.lumira.platform.common.SiteConsoleAuthorityCodes.values()
+                        .contains(permission)) return true;
+        if ("file-console".equals(pluginId)
+                && permission != null
+                && com.lumira.platform.common.FileConsoleAuthorityCodes.values()
+                        .contains(permission)) return true;
+        if ("file-retention".equals(pluginId)
+                && permission != null
+                && Set.of("platform:file-retention:access", "platform:file-retention:update")
+                        .contains(permission)) return true;
+        if ("ai".equals(pluginId)
+                && permission != null
+                && com.lumira.platform.common.AiAuthorityCodes.values().contains(permission))
+            return true;
+        if ("directory".equals(pluginId)
+                && permission != null
+                && com.lumira.platform.common.DirectoryAuthorityCodes.values().contains(permission))
+            return true;
+        if ("navigation-console".equals(pluginId)
+                && permission != null
+                && Set.of(
+                                "platform:navigation:access",
+                                "platform:navigation:create",
+                                "platform:navigation:update",
+                                "platform:navigation:delete")
+                        .contains(permission)) return true;
+        if ("delivery-console".equals(pluginId)
+                && permission != null
+                && Set.of("platform:mail-deliveries:access", "platform:sms-deliveries:access")
+                        .contains(permission)) return true;
+        if ("event-console".equals(pluginId)
+                && permission != null
+                && Set.of("platform:event-outbox:access", "platform:event-outbox:replay")
+                        .contains(permission)) return true;
+        // Preserve exact legacy page grants when business pages move out of the kernel.
+        if ("monitoring".equals(pluginId) && "platform:api-docs:access".equals(permission))
+            return true;
+        if ("audit-console".equals(pluginId) && "platform:audit:access".equals(permission))
+            return true;
         return permission != null
                 && permission.matches(
                         "platform:" + java.util.regex.Pattern.quote(pluginId) + ":[a-z][a-z0-9-]*");
@@ -526,6 +613,34 @@ public record PluginManifest(
         var mapped = new HashSet<String>(route.operations().values());
         mapped.add(route.permission());
         return mapped.containsAll(authorities);
+    }
+
+    /** Each action in a cross-page rule must retain its own conjunctive page gate. */
+    private static boolean mappedByRoutes(List<Route> routes, Rule rule, boolean actionsRequired) {
+        var pageCodes =
+                routes.stream()
+                        .map(Route::permission)
+                        .filter(Objects::nonNull)
+                        .collect(java.util.stream.Collectors.toSet());
+        if (rule.authorities().stream().anyMatch(pageCodes::contains)) return false;
+        var codes =
+                java.util.stream.Stream.concat(
+                                rule.authorities().stream(), rule.allAuthorities().stream())
+                        .distinct()
+                        .toList();
+        boolean action = false;
+        for (String code : codes) {
+            if (pageCodes.contains(code)) continue;
+            action = true;
+            if (routes.stream()
+                    .noneMatch(
+                            route ->
+                                    route.permission() != null
+                                            && rule.allAuthorities().contains(route.permission())
+                                            && route.operations().containsValue(code)))
+                return false;
+        }
+        return !codes.isEmpty() && (!actionsRequired || action);
     }
 
     /** V2 rules require their page gate and at least one same-page action to be enforced. */

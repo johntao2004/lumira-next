@@ -63,7 +63,7 @@ operation_permissions = {
         re.MULTILINE,
     )
 }
-catalog_source = (root / 'backend/src/main/java/com/lumira/platform/roles/PlatformPermissionCatalog.java').read_text()
+catalog_source = (root / 'plugins/directory/backend/src/main/java/com/lumira/plugins/directory/roles/PlatformPermissionCatalog.java').read_text()
 catalog_pages = set(re.findall(r'\bpage\(\s*PlatformPageId\.([A-Z][A-Z0-9_]*)', catalog_source))
 catalog_operations = set(re.findall(r'PlatformOperation\.([A-Z][A-Z0-9_]*)', catalog_source))
 assert catalog_pages and catalog_operations
@@ -77,7 +77,7 @@ plugin_manifests = sorted((root / 'plugins').glob('*/plugin.json'))
 for manifest_path in plugin_manifests:
     expected_admin_permissions.update(json.loads(manifest_path.read_text()).get('permissions', []))
 
-role_adapter = (root / 'backend/src/main/java/com/lumira/platform/roles/RegistrationRoleAdapter.java').read_text()
+role_adapter = (root / 'backend/src/main/java/com/lumira/platform/identity/RegistrationRoleAdapter.java').read_text()
 allowlist_match = re.search(r'ALLOWED_AUTHORITIES\s*=\s*Set\.of\(([\s\S]*?)\);', role_adapter)
 assert allowlist_match, 'registration role allowlist must remain explicit'
 expected_user_permissions = set(re.findall(r'"([^"]+)"', allowlist_match.group(1)))

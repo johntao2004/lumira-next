@@ -3,8 +3,8 @@ package com.lumira.platform;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.lumira.platform.common.PageResult;
-import com.lumira.platform.roles.RoleRepository;
-import com.lumira.platform.roles.api.RoleResponse;
+import com.lumira.plugins.directory.roles.RoleRepository;
+import com.lumira.plugins.directory.roles.api.RoleResponse;
 import java.lang.reflect.RecordComponent;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -18,52 +18,48 @@ class ApiResponseContractTest {
     private static final List<String[]> CONTRACTS =
             List.of(
                     new String[] {
-                        "com.lumira.platform.organizations.OrganizationRepository$Organization",
-                        "com.lumira.platform.organizations.api.OrganizationResponse"
+                        "com.lumira.plugins.directory.organizations.OrganizationRepository$Organization",
+                        "com.lumira.plugins.directory.organizations.api.OrganizationResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.identity.OnlineSessionRepository$Entry",
-                        "com.lumira.platform.identity.api.OnlineSessionResponse"
+                        "com.lumira.plugins.directory.sessions.OnlineSessionRepository$Entry",
+                        "com.lumira.plugins.directory.sessions.api.OnlineSessionResponse"
                     },
                     new String[] {
                         "com.lumira.platform.identity.AccountSessionRepository$Session",
                         "com.lumira.platform.identity.api.SessionResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.navigation.NavigationMenuRepository$Menu",
+                        "com.lumira.platform.navigation.api.NavigationMenu",
                         "com.lumira.platform.navigation.api.NavigationMenuResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.roles.RoleRepository$Role",
-                        "com.lumira.platform.roles.api.RoleResponse"
+                        "com.lumira.plugins.directory.roles.RoleRepository$Role",
+                        "com.lumira.plugins.directory.roles.api.RoleResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.audit.AuditRepository$Event",
-                        "com.lumira.platform.audit.api.AuditEventResponse"
+                        "com.lumira.platform.common.AuditQueryPort$Event",
+                        "com.lumira.plugins.auditconsole.api.AuditEventResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.files.FileRepository$Entry",
-                        "com.lumira.platform.files.api.FileResponse"
+                        "com.lumira.platform.common.AccountFileStoragePort$Entry",
+                        "com.lumira.plugins.personalfiles.FileResponse"
                     },
                     new String[] {
                         "com.lumira.platform.files.AvatarService$AvatarView",
                         "com.lumira.platform.files.api.AvatarResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.files.FileRepository$ManagedEntry",
-                        "com.lumira.platform.files.api.ManagedFileResponse"
+                        "com.lumira.plugins.fileconsole.ManagedFileRepository$Entry",
+                        "com.lumira.plugins.fileconsole.ManagedFileResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.dictionaries.DictionaryItemRepository$Item",
-                        "com.lumira.platform.dictionaries.api.DictionaryItemResponse"
+                        "com.lumira.plugins.dictionaries.DictionaryItemRepository$Item",
+                        "com.lumira.plugins.dictionaries.api.DictionaryItemResponse"
                     },
                     new String[] {
-                        "com.lumira.platform.dictionaries.DictionaryRepository$Dictionary",
-                        "com.lumira.platform.dictionaries.api.DictionaryResponse"
-                    },
-                    new String[] {
-                        "com.lumira.platform.dictionaries.DictionaryLookupRepository$Option",
-                        "com.lumira.platform.dictionaries.api.DictionaryOptionResponse"
+                        "com.lumira.plugins.dictionaries.DictionaryRepository$Dictionary",
+                        "com.lumira.plugins.dictionaries.api.DictionaryResponse"
                     },
                     new String[] {
                         "com.lumira.platform.sensitive.SensitiveWordRepository$Word",
@@ -107,6 +103,21 @@ class ApiResponseContractTest {
             }
             assertNull(convert.invoke(null, new Object[] {null}));
         }
+    }
+
+    @Test
+    void personalFileStorageMetadataRetainsEveryLegacyFieldAndType() {
+        assertEquals(
+                Arrays.stream(
+                                com.lumira.platform.files.FileRepository.Entry.class
+                                        .getRecordComponents())
+                        .map(field -> field.getName() + ":" + field.getType().getName())
+                        .toList(),
+                Arrays.stream(
+                                com.lumira.platform.common.AccountFileStoragePort.Entry.class
+                                        .getRecordComponents())
+                        .map(field -> field.getName() + ":" + field.getType().getName())
+                        .toList());
     }
 
     @Test

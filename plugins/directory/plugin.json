@@ -1,0 +1,1197 @@
+{
+  "formatVersion": 1,
+  "id": "directory",
+  "name": "组织与目录",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.directory.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    },
+    {
+      "id": "platform",
+      "version": "1.0.0"
+    },
+    {
+      "id": "files",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:users:access",
+    "platform:users:create",
+    "platform:users:update",
+    "platform:users:delete",
+    "platform:users:reset-password",
+    "platform:users:assign-roles",
+    "platform:users:assign-organizations",
+    "platform:users:read-roles",
+    "platform:users:export",
+    "platform:users:import",
+    "platform:users:print",
+    "platform:online-users:access",
+    "platform:online-users:terminate-session",
+    "platform:roles:access",
+    "platform:roles:create",
+    "platform:roles:update",
+    "platform:roles:delete",
+    "platform:roles:preview",
+    "platform:roles:read-authentication-policy",
+    "platform:roles:update-authentication-policy",
+    "platform:organizations:access",
+    "platform:organizations:create",
+    "platform:organizations:update",
+    "platform:organizations:delete",
+    "platform:print-templates:access",
+    "platform:print-templates:create",
+    "platform:print-templates:update",
+    "platform:print-templates:publish",
+    "platform:print-templates:use"
+  ],
+  "permissionGroups": [
+    {
+      "id": "users",
+      "title": "userManagement",
+      "permissions": [
+        {
+          "code": "platform:users:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:users:create",
+          "label": "permissionCreate"
+        },
+        {
+          "code": "platform:users:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:users:delete",
+          "label": "permissionDelete"
+        },
+        {
+          "code": "platform:users:reset-password",
+          "label": "resetPassword"
+        },
+        {
+          "code": "platform:users:assign-roles",
+          "label": "permissionAssignRoles"
+        },
+        {
+          "code": "platform:users:assign-organizations",
+          "label": "permissionAssignOrganizations"
+        },
+        {
+          "code": "platform:users:read-roles",
+          "label": "permissionReadRoles"
+        },
+        {
+          "code": "platform:users:export",
+          "label": "permissionExport"
+        },
+        {
+          "code": "platform:users:import",
+          "label": "permissionImport"
+        },
+        {
+          "code": "platform:users:print",
+          "label": "print"
+        },
+        {
+          "code": "platform:online-users:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:online-users:terminate-session",
+          "label": "revokeOnlineSession"
+        }
+      ]
+    },
+    {
+      "id": "roles",
+      "title": "roles",
+      "permissions": [
+        {
+          "code": "platform:roles:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:roles:create",
+          "label": "permissionCreate"
+        },
+        {
+          "code": "platform:roles:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:roles:delete",
+          "label": "permissionDelete"
+        },
+        {
+          "code": "platform:roles:preview",
+          "label": "permissionPreviewRole"
+        },
+        {
+          "code": "platform:roles:read-authentication-policy",
+          "label": "permissionReadAuthenticationPolicy"
+        },
+        {
+          "code": "platform:roles:update-authentication-policy",
+          "label": "permissionUpdateAuthenticationPolicy"
+        }
+      ]
+    },
+    {
+      "id": "organizations",
+      "title": "organizations",
+      "permissions": [
+        {
+          "code": "platform:organizations:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:organizations:create",
+          "label": "permissionCreate"
+        },
+        {
+          "code": "platform:organizations:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:organizations:delete",
+          "label": "permissionDelete"
+        }
+      ]
+    },
+    {
+      "id": "print-templates",
+      "title": "printTemplates",
+      "permissions": [
+        {
+          "code": "platform:print-templates:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:print-templates:create",
+          "label": "permissionCreate"
+        },
+        {
+          "code": "platform:print-templates:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:print-templates:publish",
+          "label": "publish"
+        },
+        {
+          "code": "platform:print-templates:use",
+          "label": "use"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "id": "users",
+      "label": "userList",
+      "permission": "platform:users:access",
+      "operations": {
+        "create": "platform:users:create",
+        "update": "platform:users:update",
+        "delete": "platform:users:delete",
+        "resetPassword": "platform:users:reset-password",
+        "assignRoles": "platform:users:assign-roles",
+        "assignOrganizations": "platform:users:assign-organizations",
+        "readRoles": "platform:users:read-roles",
+        "export": "platform:users:export",
+        "import": "platform:users:import",
+        "print": "platform:users:print"
+      },
+      "scopedOperations": [
+        "update",
+        "delete",
+        "resetPassword",
+        "assignRoles",
+        "assignOrganizations",
+        "export",
+        "import",
+        "print"
+      ],
+      "group": "user-management",
+      "order": 10,
+      "global": false
+    },
+    {
+      "id": "online-users",
+      "label": "onlineUsers",
+      "permission": "platform:online-users:access",
+      "operations": {
+        "terminateSession": "platform:online-users:terminate-session"
+      },
+      "scopedOperations": [],
+      "group": "user-management",
+      "order": 20,
+      "global": true
+    },
+    {
+      "id": "roles",
+      "label": "roles",
+      "permission": "platform:roles:access",
+      "operations": {
+        "create": "platform:roles:create",
+        "update": "platform:roles:update",
+        "delete": "platform:roles:delete",
+        "preview": "platform:roles:preview",
+        "readAuthenticationPolicy": "platform:roles:read-authentication-policy",
+        "updateAuthenticationPolicy": "platform:roles:update-authentication-policy"
+      },
+      "scopedOperations": [],
+      "group": "user-management",
+      "order": 30,
+      "global": true
+    },
+    {
+      "id": "organizations",
+      "label": "organizations",
+      "permission": "platform:organizations:access",
+      "operations": {
+        "create": "platform:organizations:create",
+        "update": "platform:organizations:update",
+        "delete": "platform:organizations:delete"
+      },
+      "scopedOperations": [],
+      "group": "user-management",
+      "order": 40,
+      "global": false
+    },
+    {
+      "id": "print-templates",
+      "label": "printTemplates",
+      "permission": "platform:print-templates:access",
+      "operations": {
+        "create": "platform:print-templates:create",
+        "update": "platform:print-templates:update",
+        "publish": "platform:print-templates:publish",
+        "use": "platform:print-templates:use"
+      },
+      "scopedOperations": [],
+      "group": "content-management",
+      "order": 30,
+      "global": true
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/users/import/template.xlsx",
+      "authorities": [
+        "platform:users:import"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:import": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/users/import/columns",
+      "authorities": [
+        "platform:users:import"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:import": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/users/import/preview",
+      "authorities": [
+        "platform:users:import"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:import": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/export/fields",
+      "authorities": [
+        "platform:users:export"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:export": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/import/fields",
+      "authorities": [
+        "platform:users:import"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:import": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/users/template-print",
+      "authorities": [
+        "platform:users:print"
+      ],
+      "allAuthorities": [
+        "platform:users:access",
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:print-templates:access": "global",
+        "platform:users:print": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/users/export.xlsx",
+      "authorities": [
+        "platform:users:export"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:export": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/templates/fields",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/permission-catalog",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/organizations",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:organizations:access"
+      ],
+      "authorityScopes": {
+        "platform:organizations:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/organizations",
+      "authorities": [
+        "platform:organizations:create"
+      ],
+      "allAuthorities": [
+        "platform:organizations:access"
+      ],
+      "authorityScopes": {
+        "platform:organizations:access": "scoped",
+        "platform:organizations:create": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/online-users",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:online-users:access"
+      ],
+      "authorityScopes": {
+        "platform:online-users:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/permissions",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/templates",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/templates",
+      "authorities": [
+        "platform:print-templates:create"
+      ],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global",
+        "platform:print-templates:create": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/roles",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/roles",
+      "authorities": [
+        "platform:roles:create"
+      ],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global",
+        "platform:roles:create": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/users",
+      "authorities": [
+        "platform:users:create"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:create": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/templates/{id}/versions/draft/source",
+      "authorities": [
+        "platform:print-templates:update"
+      ],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global",
+        "platform:print-templates:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/import/{previewId}/errors.xlsx",
+      "authorities": [
+        "platform:users:import"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:import": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/users/import/{previewId}/commit",
+      "authorities": [
+        "platform:users:import"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:import": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/templates/{id}/versions/draft",
+      "authorities": [
+        "platform:print-templates:update"
+      ],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global",
+        "platform:print-templates:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/import/tasks/{taskId}",
+      "authorities": [
+        "platform:users:import"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:import": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/roles/{id}/authentication-policy",
+      "authorities": [
+        "platform:roles:read-authentication-policy",
+        "platform:roles:update-authentication-policy"
+      ],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global",
+        "platform:roles:read-authentication-policy": "global",
+        "platform:roles:update-authentication-policy": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/roles/{id}/authentication-policy",
+      "authorities": [
+        "platform:roles:update-authentication-policy"
+      ],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global",
+        "platform:roles:update-authentication-policy": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/users/{userId}/password-reset",
+      "authorities": [
+        "platform:users:reset-password"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:reset-password": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/organizations/{id}/ancestors",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:organizations:access"
+      ],
+      "authorityScopes": {
+        "platform:organizations:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{id}/profile-values",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/templates/{id}/deactivate",
+      "authorities": [
+        "platform:print-templates:update"
+      ],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global",
+        "platform:print-templates:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{id}/organizations",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/users/{id}/organizations",
+      "authorities": [
+        "platform:users:assign-organizations"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:assign-organizations": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/templates/{id}/versions",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{id}/role-options",
+      "authorities": [
+        "platform:users:read-roles",
+        "platform:users:assign-roles"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:read-roles": "global",
+        "platform:users:assign-roles": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/online-users/user/{id}",
+      "authorities": [
+        "platform:online-users:terminate-session"
+      ],
+      "allAuthorities": [
+        "platform:online-users:access"
+      ],
+      "authorityScopes": {
+        "platform:online-users:access": "global",
+        "platform:online-users:terminate-session": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/templates/{id}/preview",
+      "authorities": [
+        "platform:print-templates:use"
+      ],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global",
+        "platform:print-templates:use": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/templates/{id}/publish",
+      "authorities": [
+        "platform:print-templates:publish"
+      ],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global",
+        "platform:print-templates:publish": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/users/{id}/editor",
+      "authorities": [
+        "platform:users:update",
+        "platform:users:assign-roles",
+        "platform:users:assign-organizations"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:update": "scoped",
+        "platform:users:assign-roles": "scoped",
+        "platform:users:assign-organizations": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{id}/roles",
+      "authorities": [
+        "platform:users:read-roles",
+        "platform:users:assign-roles"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:read-roles": "global",
+        "platform:users:assign-roles": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/users/{id}/roles",
+      "authorities": [
+        "platform:users:assign-roles"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:assign-roles": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/organizations/{id}",
+      "authorities": [
+        "platform:organizations:delete"
+      ],
+      "allAuthorities": [
+        "platform:organizations:access"
+      ],
+      "authorityScopes": {
+        "platform:organizations:access": "scoped",
+        "platform:organizations:delete": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/organizations/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:organizations:access"
+      ],
+      "authorityScopes": {
+        "platform:organizations:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/organizations/{id}",
+      "authorities": [
+        "platform:organizations:update"
+      ],
+      "allAuthorities": [
+        "platform:organizations:access"
+      ],
+      "authorityScopes": {
+        "platform:organizations:access": "scoped",
+        "platform:organizations:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/online-users/{id}",
+      "authorities": [
+        "platform:online-users:terminate-session"
+      ],
+      "allAuthorities": [
+        "platform:online-users:access"
+      ],
+      "authorityScopes": {
+        "platform:online-users:access": "global",
+        "platform:online-users:terminate-session": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/templates/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/templates/{id}",
+      "authorities": [
+        "platform:print-templates:update"
+      ],
+      "allAuthorities": [
+        "platform:print-templates:access"
+      ],
+      "authorityScopes": {
+        "platform:print-templates:access": "global",
+        "platform:print-templates:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/roles/{id}",
+      "authorities": [
+        "platform:roles:delete"
+      ],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global",
+        "platform:roles:delete": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/platform/users/{id}",
+      "authorities": [
+        "platform:users:delete"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:delete": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/roles/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/roles/{id}",
+      "authorities": [
+        "platform:roles:update"
+      ],
+      "allAuthorities": [
+        "platform:roles:access"
+      ],
+      "authorityScopes": {
+        "platform:roles:access": "global",
+        "platform:roles:update": "global"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/users/{id}",
+      "authorities": [
+        "platform:users:update"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:update": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": false,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{userId}/profile-dictionaries/{fieldKey}/items",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{userId}/profile-dictionaries/{fieldKey}/items/{id}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped"
+      },
+      "publicAccess": false,
+      "previewReadOnly": true,
+      "global": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{userId}/file-quota",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/users/{userId}/file-quota/preview",
+      "authorities": [
+        "platform:users:assign-roles"
+      ],
+      "allAuthorities": [
+        "platform:users:access"
+      ],
+      "authorityScopes": {
+        "platform:users:access": "scoped",
+        "platform:users:assign-roles": "scoped"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    }
+  ],
+  "dataSets": []
+}

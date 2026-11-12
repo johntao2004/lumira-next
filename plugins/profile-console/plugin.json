@@ -1,0 +1,159 @@
+{
+  "formatVersion": 1,
+  "id": "profile-console",
+  "name": "资料字段管理",
+  "version": "1.0.0",
+  "sdkVersion": "2",
+  "entryClass": "com.lumira.plugins.profileconsole.LumiraPlugin",
+  "backend": "backend/plugin.jar",
+  "frontend": "frontend/plugin.js",
+  "dependencies": [
+    {
+      "id": "identity",
+      "version": "1.0.0"
+    },
+    {
+      "id": "settings",
+      "version": "1.0.0"
+    },
+    {
+      "id": "dictionaries",
+      "version": "1.0.0"
+    }
+  ],
+  "permissions": [
+    "platform:profile-fields:access",
+    "platform:profile-fields:update",
+    "platform:profile-fields:read-dictionaries"
+  ],
+  "routes": [
+    {
+      "id": "profile-fields",
+      "label": "profileFields",
+      "permission": "platform:profile-fields:access",
+      "group": "user-management",
+      "order": 50,
+      "global": true,
+      "operations": {
+        "update": "platform:profile-fields:update",
+        "readDictionaries": "platform:profile-fields:read-dictionaries"
+      }
+    }
+  ],
+  "apiRules": [
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/profile-fields/dictionaries",
+      "authorities": [
+        "platform:profile-fields:read-dictionaries"
+      ],
+      "allAuthorities": [
+        "platform:profile-fields:access"
+      ],
+      "authorityScopes": {
+        "platform:profile-fields:access": "global",
+        "platform:profile-fields:read-dictionaries": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/profile-fields",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:profile-fields:access"
+      ],
+      "authorityScopes": {
+        "platform:profile-fields:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/platform/settings/profile-fields",
+      "authorities": [
+        "platform:profile-fields:update"
+      ],
+      "allAuthorities": [
+        "platform:profile-fields:access"
+      ],
+      "authorityScopes": {
+        "platform:profile-fields:access": "global",
+        "platform:profile-fields:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/profile-fields/history",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:profile-fields:access"
+      ],
+      "authorityScopes": {
+        "platform:profile-fields:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/settings/profile-fields/history/{version}",
+      "authorities": [],
+      "allAuthorities": [
+        "platform:profile-fields:access"
+      ],
+      "authorityScopes": {
+        "platform:profile-fields:access": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/settings/profile-fields/rollback",
+      "authorities": [
+        "platform:profile-fields:update"
+      ],
+      "allAuthorities": [
+        "platform:profile-fields:access"
+      ],
+      "authorityScopes": {
+        "platform:profile-fields:access": "global",
+        "platform:profile-fields:update": "global"
+      },
+      "global": false,
+      "publicAccess": false,
+      "previewReadOnly": false
+    }
+  ],
+  "dataSets": [],
+  "permissionGroups": [
+    {
+      "id": "settings",
+      "title": "settings",
+      "permissions": [
+        {
+          "code": "platform:profile-fields:access",
+          "label": "permissionPageAccess"
+        },
+        {
+          "code": "platform:profile-fields:update",
+          "label": "permissionUpdate"
+        },
+        {
+          "code": "platform:profile-fields:read-dictionaries",
+          "label": "permissionReadDictionaries"
+        }
+      ]
+    }
+  ]
+}

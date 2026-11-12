@@ -3,7 +3,7 @@ import "../plugins/sensitive-words/frontend/sensitive-word-validation.test.mjs";
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { smtpMailboxValid, smtpTextValid } from "../apps/web/src/features/settings/smtp-validation.ts";
+import { smtpMailboxValid, smtpTextValid } from "../plugins/delivery-settings/frontend/smtp-validation.ts";
 import { sensitiveWordValidationIssue } from "../plugins/sensitive-words/frontend/sensitive-word-csv.ts";
 
 test("SMTP display fields preserve the existing UTF-16 contract for Chinese and emoji", () => {

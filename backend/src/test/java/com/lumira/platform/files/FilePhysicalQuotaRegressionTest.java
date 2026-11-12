@@ -55,9 +55,11 @@ class FilePhysicalQuotaRegressionTest {
         TestSchema.indexes("platform_branding_file").forEach(jdbc::execute);
         TestSchema.foreignKeys("platform_branding_file").forEach(jdbc::execute);
         jdbc.execute(TestSchema.table("platform_feedback_file"));
-        jdbc.execute(
-                "CREATE TABLE platform_user(id uuid PRIMARY KEY,username text,display_name text,version bigint,deleted_at timestamptz)");
-        jdbc.update("INSERT INTO platform_user VALUES(?,'fixture','Fixture',0,NULL)", owner);
+        jdbc.execute(TestSchema.table("platform_user"));
+        TestSchema.indexes("platform_user").forEach(jdbc::execute);
+        jdbc.update(
+                "INSERT INTO platform_user(id,username,display_name,password_hash) VALUES(?,'fixture','Fixture','fixture')",
+                owner);
         manager = new DataSourceTransactionManager(ds);
         files = spy(new FileRepository(JdbcClient.create(ds)));
         // This separate orphan-expiration query deliberately qualifies public.platform_file;
@@ -176,7 +178,7 @@ class FilePhysicalQuotaRegressionTest {
         var accounts = mock(com.lumira.platform.identity.api.AccountOwnerPort.class);
         when(accounts.id("actor", true)).thenReturn(owner);
         var service =
-                new FileService(
+                new TestFileWorkflow(
                         files,
                         accounts,
                         blobs,
@@ -284,7 +286,7 @@ class FilePhysicalQuotaRegressionTest {
                 .when(audit)
                 .append(eq("actor"), eq("file.upload"), any());
         var service =
-                new FileService(files, accounts, blobs, manager, audit, new FileQuota(100, 1));
+                new TestFileWorkflow(files, accounts, blobs, manager, audit, new FileQuota(100, 1));
         assertThrows(
                 IllegalStateException.class,
                 () ->
@@ -311,6 +313,50 @@ class FilePhysicalQuotaRegressionTest {
         var routed = new RoutedBlobStore(files, local, blobs);
         new FileCleanup(files, routed, audit, manager).sweep();
         assertEquals(new FileRepository.Usage(0, 0), files.usage(owner));
+        assertThrows(java.nio.file.NoSuchFileException.class, () -> local.open(id));
+    }
+
+    @Test
+    void nestedTransactionRollbackKeepsLegacyLocalBytesAndCommittedQueueDrains(
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        byte[] content =
+                "QA nested transaction file".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        UUID id = completed(content);
+        jdbc.update("DELETE FROM platform_file_blob_chunk WHERE file_id=?", id);
+        jdbc.update(
+                "UPDATE platform_file SET storage_backend='local',state='TRASHED',version=3,trashed_at=now() WHERE id=?",
+                id);
+        var local = new LocalBlobStore(root);
+        local.put(id, new java.io.ByteArrayInputStream(content), content.length);
+        var accounts = mock(com.lumira.platform.identity.api.AccountOwnerPort.class);
+        when(accounts.id("actor", true)).thenReturn(owner);
+        var service =
+                new TestFileWorkflow(
+                        files,
+                        accounts,
+                        local,
+                        manager,
+                        audit,
+                        new FileQuota(Long.MAX_VALUE, 1000));
+        var outer = new org.springframework.transaction.support.TransactionTemplate(manager);
+        outer.executeWithoutResult(
+                status -> {
+                    service.purge("actor", id, 3);
+                    status.setRollbackOnly();
+                });
+        assertEquals("TRASHED", files.findOwned(id, owner).orElseThrow().state());
+        assertEquals(3, files.findOwned(id, owner).orElseThrow().version());
+        try (var input = local.open(id)) {
+            assertArrayEquals(content, input.readAllBytes());
+        }
+        outer.executeWithoutResult(status -> service.purge("actor", id, 3));
+        assertEquals("DELETING", files.findOwned(id, owner).orElseThrow().state());
+        try (var input = local.open(id)) {
+            assertArrayEquals(content, input.readAllBytes());
+        }
+        retryNow(id);
+        new FileCleanup(files, local, audit, manager).sweep();
+        assertTrue(files.findOwned(id, owner).isEmpty());
         assertThrows(java.nio.file.NoSuchFileException.class, () -> local.open(id));
     }
 }

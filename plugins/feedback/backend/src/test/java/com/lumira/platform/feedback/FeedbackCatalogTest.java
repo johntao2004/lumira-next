@@ -3,8 +3,8 @@ package com.lumira.platform.feedback;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.lumira.platform.TestSchema;
-import com.lumira.platform.dictionaries.DictionaryLookupRepository;
-import com.lumira.platform.dictionaries.DictionaryLookupService;
+import com.lumira.plugins.dictionaries.DictionaryLookupRepository;
+import com.lumira.plugins.dictionaries.DictionaryLookupService;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;

@@ -83,7 +83,9 @@ class PluginInitializationDatabaseTest {
                             id, root().resolve("plugins/" + id + "/migrations"));
             jdbc.update("DELETE FROM " + historyTable(id) + " WHERE type='SQL'");
             int rank = 2;
-            for (var entry : metadata.publishedMigrations())
+            var completedHistory = new java.util.ArrayList<>(metadata.publishedMigrations());
+            metadata.evolutions().forEach(evolution -> completedHistory.add(evolution.migration()));
+            for (var entry : completedHistory)
                 jdbc.update(
                         "INSERT INTO "
                                 + historyTable(id)

@@ -1,0 +1,295 @@
+[
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/files",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/files/trash",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/settings/file-quota",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "PUT",
+    "path": "/platform/settings/file-quota",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:files-all:update-quota",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:files-all:update-quota"
+    ]
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/files/00000000-0000-0000-0000-000000000001/preview",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:files-all:preview",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:files-all:preview"
+    ]
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/files/00000000-0000-0000-0000-000000000001/content",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:files-all:download",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:files-all:download"
+    ]
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "DELETE",
+    "path": "/platform/files/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:files-all:delete",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:files-all:delete"
+    ]
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "DELETE",
+    "path": "/platform/files/00000000-0000-0000-0000-000000000001/purge",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:files-all:purge",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:files-all:purge"
+    ]
+  },
+  {
+    "pageId": "files-all",
+    "accessPermission": "platform:files-all:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/files/00000000-0000-0000-0000-000000000001/restore?version=1",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:files-all:restore",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:files-all:restore"
+    ]
+  }
+]

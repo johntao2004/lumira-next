@@ -213,13 +213,26 @@ public class WechatIdentityService
 
     @Override
     public AccountMethods accountMethods(UUID userId) {
+        AdmissionCredentialProjection.WechatFacts facts =
+                AdmissionCredentialProjection.consumeWechatFacts(userId);
+        BindingRow binding;
+        boolean withinAdmission = facts != null;
+        if (facts != null) {
+            binding =
+                    new BindingRow(
+                            facts.version(), facts.appId(), facts.openIdDigest(), facts.nickname());
+        } else {
+            binding = readBinding(userId, false);
+        }
+        // An unbound account cannot use this provider. Its binding revision still participates in
+        // admission, so keep reading it on every resolution without loading unrelated settings.
+        if (!binding.bound())
+            return new AccountMethods(Set.of(), "wechat-binding:" + binding.version());
         var config = settings.snapshot();
-        var binding = readBinding(userId, false);
         boolean usable =
                 config.ready()
-                        && binding.bound()
                         && config.appId().equals(binding.appId())
-                        && activeAccount(userId);
+                        && (withinAdmission || activeAccount(userId));
         return new AccountMethods(
                 usable ? Set.of(PrimaryMethod.WECHAT) : Set.of(),
                 "wechat-binding:" + binding.version());
@@ -612,7 +625,7 @@ public class WechatIdentityService
                         .param("app", attempt.appId())
                         .param("digest", attempt.openIdDigest())
                         .param("nickname", attempt.nickname())
-                        .query(UUID.class)
+                        .query((rs, rowNum) -> rs.getObject(1, UUID.class))
                         .optional()
                         .isPresent();
         if (!inserted) return consumeRegistrationFailure(attempt, "wechatAlreadyUsed");
@@ -670,7 +683,7 @@ public class WechatIdentityService
                                 "SELECT EXISTS(SELECT 1 FROM platform_wechat_attempt WHERE session_digest=:session AND purpose=:purpose AND attempt_state='AUTHENTICATING' AND expires_at>CURRENT_TIMESTAMP)")
                         .param("session", sessionDigest)
                         .param("purpose", purpose)
-                        .query(Boolean.class)
+                        .query((rs, rowNum) -> rs.getBoolean(1))
                         .single();
         if (completing) throw conflict("wechatUnavailable");
         jdbc.sql(
@@ -1062,7 +1075,7 @@ public class WechatIdentityService
                     .param("app", appId)
                     .param("digest", digest)
                     .param("nickname", nickname)
-                    .query(Long.class)
+                    .query((rs, rowNum) -> rs.getLong(1))
                     .optional()
                     .orElseThrow(() -> conflict("staleRecord"));
         }
@@ -1078,7 +1091,7 @@ public class WechatIdentityService
                 .param("app", appId)
                 .param("digest", digest)
                 .param("nickname", nickname)
-                .query(Long.class)
+                .query((rs, rowNum) -> rs.getLong(1))
                 .optional()
                 .orElseThrow(() -> conflict("staleRecord"));
     }
@@ -1098,7 +1111,7 @@ public class WechatIdentityService
                         "SELECT user_id FROM platform_wechat_binding WHERE app_id=:app AND open_id_digest=:digest")
                 .param("app", appId)
                 .param("digest", digest)
-                .query(UUID.class)
+                .query((rs, rowNum) -> rs.getObject(1, UUID.class))
                 .optional()
                 .orElse(null);
     }

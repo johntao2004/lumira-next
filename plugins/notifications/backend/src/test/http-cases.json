@@ -1,0 +1,162 @@
+[
+  {
+    "pageId": "notifications",
+    "accessPermission": "platform:notifications:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/notifications",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": null,
+    "operationScope": null,
+    "allowedOperationPermissions": []
+  },
+  {
+    "pageId": "notifications",
+    "accessPermission": "platform:notifications:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/notifications/roles",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:notifications:create",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:notifications:create"
+    ]
+  },
+  {
+    "pageId": "notifications",
+    "accessPermission": "platform:notifications:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/notifications/recipients",
+    "allowedStatuses": [
+      200
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:notifications:create",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:notifications:create"
+    ]
+  },
+  {
+    "pageId": "notifications",
+    "accessPermission": "platform:notifications:access",
+    "accessScope": "GLOBAL",
+    "method": "GET",
+    "path": "/platform/notifications/recipients/00000000-0000-0000-0000-000000000001",
+    "allowedStatuses": [
+      200,
+      404
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:notifications:create",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:notifications:create"
+    ]
+  },
+  {
+    "pageId": "notifications",
+    "accessPermission": "platform:notifications:access",
+    "accessScope": "GLOBAL",
+    "method": "POST",
+    "path": "/platform/notifications",
+    "allowedStatuses": [
+      200,
+      201,
+      204,
+      400,
+      404,
+      409,
+      422
+    ],
+    "legacyPermissions": [
+      "platform:settings:read",
+      "platform:settings:update",
+      "platform:audit:read",
+      "platform:users:read",
+      "platform:users:update",
+      "platform:users:delete",
+      "platform:roles:read",
+      "platform:organizations:read",
+      "platform:dictionaries:read",
+      "platform:files:read",
+      "platform:files:delete",
+      "platform:ai:read",
+      "platform:modules:read",
+      "platform:notifications:read"
+    ],
+    "operationPermission": "platform:notifications:create",
+    "operationScope": "GLOBAL",
+    "allowedOperationPermissions": [
+      "platform:notifications:create"
+    ]
+  }
+]

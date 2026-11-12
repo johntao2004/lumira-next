@@ -12,6 +12,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
+import com.lumira.platform.navigation.api.NavigationMenu;
+import com.lumira.plugins.navigationconsole.NavigationMenuRepository;
+import com.lumira.plugins.navigationconsole.NavigationMenuService;
 import java.util.HashMap;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -19,9 +22,28 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 class NavigationMenuServiceTest {
-    private static NavigationMenuRepository.Menu page(
-            UUID id, UUID parentId, String code, String permission) {
-        return new NavigationMenuRepository.Menu(
+    @Test
+    void kernelProjectionHandlesDeepNavigationWithoutAnAdministrativeService() {
+        var rows = new java.util.ArrayList<NavigationMenu>();
+        UUID parent = null;
+        for (int index = 0; index < 20_000; index++) {
+            UUID id = UUID.randomUUID();
+            rows.add(page(id, parent, "deep-" + index, null));
+            parent = id;
+        }
+        var nodes =
+                NavigationTree.assemble(
+                        rows, java.util.Set.of(), java.util.Set.of(), java.util.Set.of());
+        for (var row : rows) {
+            assertEquals(1, nodes.size());
+            assertEquals(row.id(), nodes.getFirst().id());
+            nodes = nodes.getFirst().children();
+        }
+        assertTrue(nodes.isEmpty());
+    }
+
+    private static NavigationMenu page(UUID id, UUID parentId, String code, String permission) {
+        return new NavigationMenu(
                 id,
                 parentId,
                 code,
@@ -74,10 +96,9 @@ class NavigationMenuServiceTest {
     void retainsDeniedPageAncestorWithoutMakingItRoutableWhenChildIsAllowed() {
         UUID parentId = UUID.randomUUID();
         UUID childId = UUID.randomUUID();
-        var service = new NavigationMenuService(null, null, null, null, null, null);
 
         var tree =
-                service.tree(
+                NavigationTree.assemble(
                         java.util.List.of(
                                 page(parentId, null, "restricted-parent", "page:parent"),
                                 page(childId, parentId, "visible-child", "page:child")),
@@ -93,7 +114,7 @@ class NavigationMenuServiceTest {
         assertTrue(tree.getFirst().children().getFirst().routable());
 
         var deniedLeaf =
-                service.tree(
+                NavigationTree.assemble(
                         java.util.List.of(page(parentId, null, "restricted-parent", "page:parent")),
                         java.util.Set.of("page:child"),
                         java.util.Set.of(),
@@ -108,7 +129,7 @@ class NavigationMenuServiceTest {
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
                 .when(guard)
                 .requirePageGlobal("limited", PlatformPageId.NAVIGATION);
-        var service = new NavigationMenuService(repository, guard, null, null, null, null);
+        var service = new NavigationMenuService(repository, guard, null, null);
 
         assertThrows(ResponseStatusException.class, () -> service.adminList("limited"));
         verify(guard).requirePageGlobal("limited", PlatformPageId.NAVIGATION);
@@ -127,7 +148,7 @@ class NavigationMenuServiceTest {
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
                 .when(guard)
                 .requireOperationGlobal(eq("limited"), any(PlatformOperation.class));
-        var service = new NavigationMenuService(repository, guard, null, null, null, null);
+        var service = new NavigationMenuService(repository, guard, null, null);
         UUID id = UUID.randomUUID();
 
         assertThrows(ResponseStatusException.class, () -> service.create(null, "limited"));

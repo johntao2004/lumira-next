@@ -27,6 +27,7 @@ public final class PlatformEventTopology implements DurableEventTopologyPort {
     @Override
     public Snapshot snapshot() {
         Set<DurableEventProducerPort.EventType> produced = new LinkedHashSet<>();
+        produced.addAll(consumers.producedEventTypes());
         for (var producer : producers) {
             var declared = producer.eventTypes();
             if (declared != null) produced.addAll(declared);

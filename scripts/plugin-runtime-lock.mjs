@@ -40,8 +40,15 @@ export function writePluginRuntimeLock(pluginRoot, outputFile) {
 
 export function writePluginRuntimeBundle(pluginRoot, outputDirectory) {
   const lock = buildPluginRuntimeLock(pluginRoot);
+  const bootstrap = JSON.parse(readFileSync(path.join(pluginRoot, 'bootstrap.json'), 'utf8'));
+  const approved = new Set(lock.plugins.map(plugin => plugin.id));
+  if (!Array.isArray(bootstrap) || bootstrap.length > 100 || new Set(bootstrap).size !== bootstrap.length
+    || bootstrap.some(id => typeof id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(id) || !approved.has(id))) {
+    throw new Error('Invalid plugin bootstrap selection: every selected id must belong to the approved bundle');
+  }
   mkdirSync(outputDirectory, { recursive: true });
   writeFileSync(path.join(outputDirectory, 'approved-graph.json'), `${JSON.stringify(lock, null, 2)}\n`);
+  writeFileSync(path.join(outputDirectory, 'bootstrap.json'), `${JSON.stringify(bootstrap, null, 2)}\n`);
   for (const plugin of lock.plugins) {
     const sourceDirectory = path.join(pluginRoot, plugin.id);
     const targetDirectory = path.join(outputDirectory, plugin.id);

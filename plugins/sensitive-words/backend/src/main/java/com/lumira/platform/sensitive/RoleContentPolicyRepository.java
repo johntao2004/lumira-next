@@ -3,6 +3,7 @@ package com.lumira.platform.sensitive;
 import com.lumira.platform.common.PageRequest;
 import java.time.OffsetDateTime;
 import java.util.*;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.*;
@@ -24,6 +25,8 @@ public class RoleContentPolicyRepository {
             String action,
             int matchCount,
             OffsetDateTime createdAt) {}
+
+    public record ActorPolicies(long revision, List<Policy> policies) {}
 
     private final JdbcClient jdbc;
 
@@ -72,11 +75,72 @@ public class RoleContentPolicyRepository {
 
     public List<Policy> forActor(String actor) {
         return jdbc.sql(
-                        SELECT
-                                + " JOIN platform_user_role ur ON ur.role_id=r.id JOIN platform_user u ON u.id=ur.user_id WHERE u.username=:actor AND u.enabled AND u.deleted_at IS NULL AND r.enabled ORDER BY r.id")
+                        """
+                        WITH actor AS NOT MATERIALIZED (
+                            SELECT u.id
+                              FROM platform_user u
+                             WHERE u.username = :actor AND u.enabled AND u.deleted_at IS NULL
+                        )
+                        SELECT r.id, r.code, r.name, r.enabled,
+                               coalesce(p.mode, 'ON') AS mode,
+                               coalesce(p.version, 0) AS version
+                          FROM actor a
+                          JOIN platform_user_role ur ON ur.user_id = a.id
+                          JOIN platform_role r ON r.id = ur.role_id AND r.enabled
+                          LEFT JOIN platform_sensitive_role_policy p ON p.role_id = r.id
+                         ORDER BY r.id
+                        """)
                 .param("actor", actor)
                 .query((rs, n) -> row(rs))
                 .list();
+    }
+
+    private static final String ACTOR_REVISION_SELECT =
+            """
+            WITH actor AS NOT MATERIALIZED (
+                SELECT u.id
+                  FROM platform_user u
+                 WHERE u.username = :actor AND u.enabled AND u.deleted_at IS NULL
+            )
+            SELECT rev.revision, r.id, r.code, r.name, r.enabled, r.mode, r.version
+              FROM platform_sensitive_word_revision rev
+              LEFT JOIN (
+                  SELECT r.id, r.code, r.name, r.enabled,
+                         coalesce(p.mode, 'ON') AS mode,
+                         coalesce(p.version, 0) AS version
+                    FROM actor a
+                    JOIN platform_user_role ur ON ur.user_id = a.id
+                    JOIN platform_role r ON r.id = ur.role_id AND r.enabled
+                    LEFT JOIN platform_sensitive_role_policy p ON p.role_id = r.id
+              ) r ON true
+             WHERE rev.singleton = true
+             ORDER BY r.id
+            """;
+
+    public ActorPolicies forActorWithRevision(String actor) {
+        try {
+            Long[] rev = new Long[1];
+            List<Policy> list = new ArrayList<>();
+            jdbc.sql(ACTOR_REVISION_SELECT)
+                    .param("actor", actor)
+                    .query(
+                            (RowCallbackHandler)
+                                    rs -> {
+                                        if (rev[0] == null) {
+                                            rev[0] = rs.getLong("revision");
+                                        }
+                                        UUID id = rs.getObject("id", UUID.class);
+                                        if (id != null) {
+                                            list.add(row(rs));
+                                        }
+                                    });
+            if (rev[0] == null) {
+                return null;
+            }
+            return new ActorPolicies(rev[0], List.copyOf(list));
+        } catch (org.springframework.dao.DataAccessException ex) {
+            return null;
+        }
     }
 
     public boolean save(UUID id, String mode, long version, String actor) {
@@ -105,18 +169,33 @@ public class RoleContentPolicyRepository {
         jdbc.sql(
                         "INSERT INTO platform_content_policy_hit(id,actor,source,action,match_count,role_ids) VALUES(:id,:actor,:source,:action,:count,CAST(:roles AS uuid[]))")
                 .param("id", UUID.randomUUID())
-                .param("actor", actor)
-                .param("source", source.length() > 300 ? source.substring(0, 300) : source)
+                .param("actor", actor == null ? "" : actor)
+                .param(
+                        "source",
+                        source == null
+                                ? ""
+                                : (source.length() > 300 ? source.substring(0, 300) : source))
                 .param("action", blocked ? "BLOCK" : "LOG_ONLY")
                 .param("count", count)
                 .param(
                         "roles",
                         "{"
-                                + roleIds.stream()
-                                        .map(UUID::toString)
-                                        .collect(java.util.stream.Collectors.joining(","))
+                                + (roleIds == null ? List.<UUID>of() : roleIds)
+                                        .stream()
+                                                .map(UUID::toString)
+                                                .collect(java.util.stream.Collectors.joining(","))
                                 + "}")
                 .update();
+    }
+
+    private Hit hitRow(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new Hit(
+                rs.getObject("id", UUID.class),
+                rs.getString("actor"),
+                rs.getString("source"),
+                rs.getString("action"),
+                rs.getInt("match_count"),
+                rs.getObject("created_at", OffsetDateTime.class));
     }
 
     public List<Hit> hits(PageRequest page) {
@@ -125,7 +204,7 @@ public class RoleContentPolicyRepository {
                 .param("search", page.search())
                 .param("limit", page.pageSize())
                 .param("offset", page.offset())
-                .query(Hit.class)
+                .query((rs, n) -> hitRow(rs))
                 .list();
     }
 

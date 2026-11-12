@@ -32,8 +32,8 @@ class ArchitectureTest {
                     Map.entry("communication", Set.of()),
                     Map.entry("content", Set.of()),
                     Map.entry("dictionaries", Set.of("identity")),
-                    // Template operations use identity.api to enforce role preview restrictions.
-                    Map.entry("directory", Set.of("identity")),
+                    // Compatibility bridge uses only shared leased service contracts.
+                    Map.entry("directory", Set.of()),
                     Map.entry("events", Set.of()),
                     Map.entry(
                             "feedback",
@@ -48,12 +48,9 @@ class ArchitectureTest {
                     Map.entry("monitoring", Set.of()),
                     Map.entry("navigation", Set.of()),
                     Map.entry("notifications", Set.of()),
-                    Map.entry("organizations", Set.of()),
-                    Map.entry("roles", Set.of("files", "identity")),
                     Map.entry("sensitive", Set.of("dictionaries")),
                     Map.entry("settings", Set.of("dictionaries", "identity")),
-                    Map.entry("sms", Set.of("communication")),
-                    Map.entry("users", Set.of("directory", "identity", "organizations", "roles")));
+                    Map.entry("sms", Set.of("communication")));
 
     private static final Set<String> KERNEL = Set.of("common", "modules");
     private static JavaClasses production;
@@ -62,7 +59,18 @@ class ArchitectureTest {
     static void importProduction() {
         var paths = new java.util.ArrayList<java.nio.file.Path>();
         paths.add(java.nio.file.Path.of("target/classes"));
-        for (String id : java.util.List.of("feedback", "localization", "sensitive-words", "mfa")) {
+        paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/personalfiles"));
+        paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/directory"));
+        paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/fileretention"));
+        paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/fileconsole"));
+        paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/siteconsole"));
+        paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/deliverysettings"));
+        paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/profileconsole"));
+        paths.add(
+                java.nio.file.Path.of(
+                        "target/test-classes/com/lumira/plugins/authenticationconsole"));
+        for (String id :
+                java.util.List.of("ai", "feedback", "localization", "sensitive-words", "mfa")) {
             // Test compilation includes plugin implementations without packaging them in the host.
             paths.add(
                     java.nio.file.Path.of(
@@ -117,6 +125,42 @@ class ArchitectureTest {
                     .because(entry.getKey() + " may only depend on " + entry.getValue())
                     .check(production);
         }
+    }
+
+    @Test
+    void directoryPluginUsesSharedContractsAndHostNeverDependsOnItsImplementations() {
+        noClasses()
+                .that()
+                .resideInAPackage(ROOT + "..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.directory..")
+                .check(production);
+        var pluginClasses =
+                production.stream()
+                        .filter(
+                                type ->
+                                        type.getPackageName()
+                                                .startsWith("com.lumira.plugins.directory"))
+                        .toList();
+        assertTrue(!pluginClasses.isEmpty(), "Import actual directory plugin production classes");
+        var forbidden = new TreeSet<String>();
+        for (var source : pluginClasses) {
+            for (var dependency : source.getDirectDependenciesFromSelf()) {
+                String target = dependency.getTargetClass().getPackageName();
+                if (target.startsWith(ROOT + ".")
+                        && !target.equals(ROOT + ".common")
+                        && !target.startsWith(ROOT + ".common.")
+                        && !target.equals(ROOT + ".modules")
+                        && !target.startsWith(ROOT + ".modules.")
+                        && !target.equals(ROOT + ".identity.api")
+                        && !target.startsWith(ROOT + ".identity.api."))
+                    forbidden.add(
+                            source.getName() + " -> " + dependency.getTargetClass().getName());
+            }
+        }
+        assertTrue(
+                forbidden.isEmpty(), () -> "Directory may only use shared contracts: " + forbidden);
     }
 
     @Test
@@ -176,5 +220,168 @@ class ArchitectureTest {
     @Test
     void modulesAreFreeOfCycles() {
         slices().matching(ROOT + ".(*)..").should().beFreeOfCycles().check(production);
+    }
+
+    @Test
+    void fileRetentionAdministrationUsesOnlySharedKernelAndSettingsStorage() {
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.plugins.fileretention..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.lumira.platform.files..",
+                        "com.lumira.platform.identity..",
+                        "com.lumira.plugins.directory..")
+                .check(production);
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.platform..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.fileretention..")
+                .check(production);
+    }
+
+    @Test
+    void fileConsoleDependsOnlyOnStorageContractsAndSettingsFoundation() {
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.plugins.fileconsole..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.lumira.platform.files..",
+                        "com.lumira.platform.identity..",
+                        "com.lumira.plugins.directory..")
+                .check(production);
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.platform..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.fileconsole..")
+                .check(production);
+    }
+
+    @Test
+    void siteConsoleDependsOnlyOnSharedAndSettingsFoundation() {
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.plugins.siteconsole..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.lumira.platform.files..",
+                        "com.lumira.platform.identity..",
+                        "com.lumira.plugins.directory..")
+                .check(production);
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.platform..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.siteconsole..")
+                .check(production);
+    }
+
+    @Test
+    void deliverySettingsHasNoPrivateTransportOrBusinessDependencies() {
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.plugins.deliverysettings..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.lumira.platform.mail..",
+                        "com.lumira.platform.sms..",
+                        "com.lumira.platform.files..",
+                        "com.lumira.platform.identity..",
+                        "com.lumira.plugins.directory..")
+                .check(production);
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.platform..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.deliverysettings..")
+                .check(production);
+    }
+
+    @Test
+    void profileConsoleDependsOnlyOnProfileContractsAndStorage() {
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.plugins.profileconsole..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(
+                        "com.lumira.platform.files..",
+                        "com.lumira.platform.identity.ProfileRepository",
+                        "com.lumira.plugins.directory..")
+                .check(production);
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.platform..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.profileconsole..")
+                .check(production);
+    }
+
+    @Test
+    void authenticationConsoleDependsOnlyOnKernelContractsAndStorage() {
+        com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes()
+                .that()
+                .resideInAPackage("com.lumira.plugins.authenticationconsole..")
+                .should()
+                .onlyDependOnClassesThat()
+                .resideInAnyPackage(
+                        "java..",
+                        "org..",
+                        "tools..",
+                        "com.fasterxml.jackson..",
+                        "com.lumira.plugin.sdk..",
+                        "com.lumira.plugins.authenticationconsole..",
+                        "com.lumira.platform.common..",
+                        "com.lumira.platform.settings..",
+                        "com.lumira.platform.identity.api..",
+                        "com.lumira.platform.modules..")
+                .check(production);
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.platform..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.authenticationconsole..")
+                .check(production);
+    }
+
+    @Test
+    void personalFilesDependsOnlyOnKernelContractsAndStorage() {
+        com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes()
+                .that()
+                .resideInAPackage("com.lumira.plugins.personalfiles..")
+                .should()
+                .onlyDependOnClassesThat()
+                .resideInAnyPackage(
+                        "java..",
+                        "jakarta..",
+                        "org..",
+                        "tools..",
+                        "com.fasterxml.jackson..",
+                        "com.lumira.plugin.sdk..",
+                        "com.lumira.plugins.personalfiles..",
+                        "com.lumira.platform.common..",
+                        "com.lumira.platform.identity.api..",
+                        "com.lumira.platform.modules..")
+                .check(production);
+        noClasses()
+                .that()
+                .resideInAPackage("com.lumira.platform..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.lumira.plugins.personalfiles..")
+                .check(production);
     }
 }

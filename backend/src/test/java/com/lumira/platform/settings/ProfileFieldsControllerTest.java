@@ -16,6 +16,7 @@ import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PlatformPageId;
 import com.lumira.platform.identity.api.ProfileDictionaryPort;
 import com.lumira.platform.identity.api.ProfileFields;
+import com.lumira.plugins.profileconsole.ProfileFieldsController;
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
@@ -118,7 +119,9 @@ class ProfileFieldsControllerTest {
                         mock(ProfileDictionaryPort.class),
                         new ProfileSchemaReader(store, mapper));
 
-        var accountSchema = controller.accountSchema();
+        var accountSchema =
+                new AccountProfileFieldsController(new ProfileSchemaReader(store, mapper))
+                        .accountSchema();
 
         assertEquals(9, accountSchema.version());
         assertEquals(ProfileFields.class, accountSchema.data().getClass());
@@ -199,7 +202,7 @@ class ProfileFieldsControllerTest {
                 controller.write(
                         new ProfileFieldsController.Input(1, data, "Add emergency contact"),
                         authentication);
-        var reloaded = controller.readDocument();
+        var reloaded = schemas.read();
 
         assertEquals(2, written.version());
         assertEquals(2, reloaded.version());

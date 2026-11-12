@@ -369,6 +369,17 @@ function walkRegularFiles(directory) {
   return files;
 }
 
+function normalizedAuthorityScopes(scopes) {
+  if (scopes == null) return {};
+  if (typeof scopes !== 'object' || Array.isArray(scopes)
+      || Object.values(scopes).some(value => value !== 'global' && value !== 'scoped')) {
+    throw new Error('Plugin rule authorityScopes must contain explicit global/scoped values.');
+  }
+  const entries = Object.entries(scopes).sort(([left], [right]) => left.localeCompare(right));
+  // Omit the additive empty field so existing published manifest digests remain stable.
+  return entries.length ? { authorityScopes: Object.fromEntries(entries) } : {};
+}
+
 export function normalizePersistedPluginManifest(manifest) {
   const dependencies = Array.isArray(manifest.dependencies) ? manifest.dependencies : [];
   const permissions = Array.isArray(manifest.permissions) ? manifest.permissions : [];
@@ -428,6 +439,7 @@ export function normalizePersistedPluginManifest(manifest) {
       signedCallback: rule.signedCallback === true,
       allAuthorities: Array.isArray(rule.allAuthorities) ? rule.allAuthorities : [],
       globalAuthorities: Array.isArray(rule.globalAuthorities) ? rule.globalAuthorities : [],
+      ...normalizedAuthorityScopes(rule.authorityScopes),
     })),
     files: manifest.files && typeof manifest.files === 'object' && !Array.isArray(manifest.files) ? manifest.files : {},
     dataSets: dataSets

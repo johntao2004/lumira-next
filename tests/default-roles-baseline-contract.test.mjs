@@ -26,7 +26,7 @@ function permissionCatalogFromSources() {
     [...operationSource.matchAll(/^\s*([A-Z][A-Z0-9_]*)\(PlatformPageId\.([A-Z][A-Z0-9_]*),\s*"([^"]+)"/gm)]
       .map(([, constant, page, action]) => [constant, `platform:${pageIds.get(page)}:${action}`]),
   );
-  const catalog = read('backend/src/main/java/com/lumira/platform/roles/PlatformPermissionCatalog.java');
+  const catalog = read('plugins/directory/backend/src/main/java/com/lumira/plugins/directory/roles/PlatformPermissionCatalog.java');
   const pageConstants = new Set(
     [...catalog.matchAll(/\bpage\(\s*PlatformPageId\.([A-Z][A-Z0-9_]*)/g)]
       .map(([, constant]) => constant),
@@ -108,10 +108,10 @@ test('B52 administrator grants exactly the platform catalog and all attached plu
   assert.ok([...actual].every((authority) => !authority.includes('*')));
 });
 
-test('B52 user grants exactly the registration adapter allowlist', () => {
+test('B52 user grants exactly the registration self-service allowlist', () => {
   const { authorities } = seedSections();
-  const adapter = read('backend/src/main/java/com/lumira/platform/roles/RegistrationRoleAdapter.java');
-  const allowlist = adapter.match(/ALLOWED_AUTHORITIES\s*=\s*Set\.of\(([\s\S]*?)\);/);
+  const contract = read('backend/src/main/java/com/lumira/platform/common/RegistrationRolePort.java');
+  const allowlist = contract.match(/SELF_SERVICE_AUTHORITIES\s*=\s*Set\.of\(([\s\S]*?)\);/);
   assert.ok(allowlist, 'registration role allowlist must remain explicit');
   const allowed = new Set([...allowlist[1].matchAll(/"([^"]+)"/g)].map(([, authority]) => authority));
   assert.deepEqual(sorted(allowed), sorted([

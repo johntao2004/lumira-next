@@ -7,7 +7,7 @@ import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.SmsConfigurationPort;
-import com.lumira.platform.settings.SmsSettingsService;
+import com.lumira.plugins.deliverysettings.SmsDeliveryTestService;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 class SmsDeliveryTestServiceTest {
     @Test
     void requiresTheSmsPageAndTestAction() {
-        var settings = mock(SmsSettingsService.class);
+        var settings = mock(com.lumira.platform.common.SmsConfigurationPort.class);
         var source = mock(SmsConnectionSource.class);
         var gateway = mock(SmsGateway.class);
         var guard = mock(AdministrationPort.class);
@@ -26,7 +26,9 @@ class SmsDeliveryTestServiceTest {
                 .when(guard)
                 .requireOperationGlobal("reader", PlatformOperation.SMS_TEST);
 
-        var service = new SmsDeliveryTestService(settings, source, gateway, guard, audit);
+        var service =
+                new SmsDeliveryTestService(
+                        new SmsTransportProbeAdapter(settings, source, gateway), guard, audit);
         assertThrows(ResponseStatusException.class, () -> service.sendLocalTest("reader"));
         verifyNoInteractions(settings, source, gateway, audit);
         verify(guard, never()).requireOperationGlobal("reader", PlatformOperation.SMS_UPDATE);
@@ -34,7 +36,7 @@ class SmsDeliveryTestServiceTest {
 
     @Test
     void rejectsRemoteReceiversAndDoesNotLoadOrChangeCredentials() {
-        var settings = mock(SmsSettingsService.class);
+        var settings = mock(com.lumira.platform.common.SmsConfigurationPort.class);
         var source = mock(SmsConnectionSource.class);
         when(settings.readSettings())
                 .thenReturn(
@@ -53,7 +55,11 @@ class SmsDeliveryTestServiceTest {
                 assertThrows(
                         ResponseStatusException.class,
                         () ->
-                                new SmsDeliveryTestService(settings, source, gateway, guard, audit)
+                                new SmsDeliveryTestService(
+                                                new SmsTransportProbeAdapter(
+                                                        settings, source, gateway),
+                                                guard,
+                                                audit)
                                         .sendLocalTest("admin"));
         assertEquals("smsLocalTestUnavailable", failure.getReason());
         verifyNoInteractions(source, gateway, audit);
@@ -62,7 +68,7 @@ class SmsDeliveryTestServiceTest {
 
     @Test
     void localTestUsesTheStoredCredentialAndFixedSyntheticPayload() {
-        var settings = mock(SmsSettingsService.class);
+        var settings = mock(com.lumira.platform.common.SmsConfigurationPort.class);
         when(settings.readSettings())
                 .thenReturn(
                         new SmsConfigurationPort.Settings(
@@ -91,7 +97,10 @@ class SmsDeliveryTestServiceTest {
         var audit = mock(AuditPort.class);
 
         var result =
-                new SmsDeliveryTestService(settings, source, gateway, guard, audit)
+                new SmsDeliveryTestService(
+                                new SmsTransportProbeAdapter(settings, source, gateway),
+                                guard,
+                                audit)
                         .sendLocalTest("admin");
 
         assertEquals(SmsGateway.Result.ACCEPTED.name(), result.result());
@@ -112,7 +121,7 @@ class SmsDeliveryTestServiceTest {
 
     @Test
     void missingStoredCredentialFailsBeforeGatewayNetworkCall() {
-        var settings = mock(SmsSettingsService.class);
+        var settings = mock(com.lumira.platform.common.SmsConfigurationPort.class);
         when(settings.readSettings())
                 .thenReturn(
                         new SmsConfigurationPort.Settings(
@@ -136,7 +145,11 @@ class SmsDeliveryTestServiceTest {
                 assertThrows(
                         ResponseStatusException.class,
                         () ->
-                                new SmsDeliveryTestService(settings, source, gateway, guard, audit)
+                                new SmsDeliveryTestService(
+                                                new SmsTransportProbeAdapter(
+                                                        settings, source, gateway),
+                                                guard,
+                                                audit)
                                         .sendLocalTest("admin"));
 
         assertEquals("smsCredentialRequired", failure.getReason());

@@ -309,6 +309,8 @@ public final class OfficeWorkerServer {
             String structure =
                     exchange.getRequestHeaders().getFirst(OfficeWorkerProtocol.STRUCTURE_HEADER);
             if (!supported(operation, filename)
+                    || (OfficeWorkerProtocol.PDF_PAGE.equals(operation)
+                            && (structure == null || !structure.matches("[1-9][0-9]{0,9}")))
                     || (OfficeWorkerProtocol.DICTIONARY.equals(operation)
                             && !"TREE".equals(structure)
                             && !"FLAT".equals(structure))) {
@@ -627,6 +629,7 @@ public final class OfficeWorkerServer {
 
     private static boolean supportedOperation(String operation) {
         return OfficeWorkerProtocol.PREVIEW.equals(operation)
+                || OfficeWorkerProtocol.PDF_PAGE.equals(operation)
                 || OfficeWorkerProtocol.DICTIONARY.equals(operation)
                 || OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
                 || OfficeWorkerProtocol.DOCUMENT_PDF.equals(operation)
@@ -643,7 +646,8 @@ public final class OfficeWorkerServer {
         String extension =
                 filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
         if (OfficeWorkerProtocol.PREVIEW.equals(operation))
-            return "doc".equals(extension) || "docx".equals(extension);
+            return "doc".equals(extension) || "docx".equals(extension) || "pdf".equals(extension);
+        if (OfficeWorkerProtocol.PDF_PAGE.equals(operation)) return "pdf".equals(extension);
         if (OfficeWorkerProtocol.DICTIONARY.equals(operation))
             return "xls".equals(extension) || "xlsx".equals(extension);
         if (OfficeWorkerProtocol.DOCUMENT_INSPECT.equals(operation)
