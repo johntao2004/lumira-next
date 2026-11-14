@@ -64,8 +64,8 @@ importers:
         specifier: 4.6.0
         version: 4.6.0(eslint@8.35.0)
       jscpd:
-        specifier: 5.4.0
-        version: 5.4.0
+        specifier: 5.4.3
+        version: 5.4.3
 
   apps/web:
     dependencies:
@@ -2187,6 +2187,9 @@ packages:
   '@types/estree-jsx@1.0.5':
     resolution: {integrity: sha512-52CcUVNFyfb1A2ALocQw/Dd1BQFNmSdkuC3BkZ6iqhdMfQz7JWOFRuJFloOzjk+6WijU56m9oKXFAXc7o3Towg==}
 
+  '@types/estree@1.0.10':
+    resolution: {integrity: sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g==}
+
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
@@ -3965,8 +3968,8 @@ packages:
     resolution: {integrity: sha512-L1l8TNvomm6UVW5B253AGxQagSQr+vGwhMlrrfRS2qmhx46AMpMVJKQYLvWYbysTMY8VoicOvzHzoHMbyzB+4A==}
     engines: {node: '>=10.13.0'}
 
-  enhanced-resolve@5.25.1:
-    resolution: {integrity: sha512-nGXts5znJzmWPu+mIE9izCOzdg63oJca2mDzGWWTth7sr4aCToKcoyFVBQwN75Ij5Pf6p510EwkTqViTRzDV+w==}
+  enhanced-resolve@5.26.1:
+    resolution: {integrity: sha512-PPnnSJq3azKOIewXR/uppBV/6h98dprBJ/WaQ9Qgj10xX1lJLNfg+XShpbsrSqcDSy2yYYyhfXM1wWhftqgyzw==}
     engines: {node: '>=10.13.0'}
 
   enhanced-resolve@5.9.3:
@@ -4691,6 +4694,7 @@ packages:
   image-size@0.5.5:
     resolution: {integrity: sha512-6TDAlDPZxUFCv+fuOkIoXT/V/f3Qbq8e37p+YOiYrUv3v9cc3/6x78VdfPgFVaB9dZYeLUfKgHRebpkm/oP2VQ==}
     engines: {node: '>=0.10.0'}
+    deprecated: Please migrate to image-size@2.x
     hasBin: true
 
   immer@9.0.6:
@@ -5063,52 +5067,52 @@ packages:
     resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
-  jscpd-darwin-arm64@5.4.0:
-    resolution: {integrity: sha512-fNIDtNn9WE4YXoFoqf+3tkHb1+GaKKOeKzh77Wx61Gfa9iDxlCv5rO0Fjy7oWmGehUUKqslDaeXXtn/RoDprCg==}
+  jscpd-darwin-arm64@5.4.3:
+    resolution: {integrity: sha512-2Zu6FrML6exhznj4hryUrnfVRM6dmfH0N7nldeY09cs7fA2TRQD+xzo5wA7SIqzhRDaUo0CBPBNVJz/XFmUEbg==}
     cpu: [arm64]
     os: [darwin]
 
-  jscpd-darwin-x64@5.4.0:
-    resolution: {integrity: sha512-bxlnCVEb69SGIsas1+PaqZyFY8iYVTVjCBxfjVD74UafX115Ysw+oO9LAlsJaGsKUnK8Zsq5bhM33kBHux6bTA==}
+  jscpd-darwin-x64@5.4.3:
+    resolution: {integrity: sha512-Y4KykQqxMtVEV3pdjtfYbzONCmLOEgAyX8d2fUbwLW+uH/IZqUVCIwB3LrgCVv4Y+b/7mbOsdrGuIragTGpC/Q==}
     cpu: [x64]
     os: [darwin]
 
-  jscpd-linux-arm64-gnu@5.4.0:
-    resolution: {integrity: sha512-c4hX5QjuRyzLFJ+A+jNGHRpGlDvxcx+zzs4RJmZHpl23istuTMIkelwTOWliF4gXOm0RWXDlX/ywWKr9+Lre7w==}
+  jscpd-linux-arm64-gnu@5.4.3:
+    resolution: {integrity: sha512-08d2DKt9BELglfZj0ZfhEs7I4gxiAk9Iflgjnsd0z4pB1OjWA4+DGDbfWmGOf6W2sVMDpwkVoa5Q5DWaOMPyoA==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  jscpd-linux-arm64-musl@5.4.0:
-    resolution: {integrity: sha512-p4FUCNyL8WPTlizdZqfjontFwJ/+jnERYM2+YX2miYvm0NxzsIi23MhfzPl/eUHxkiT5wethV0NRYEAkJr999Q==}
+  jscpd-linux-arm64-musl@5.4.3:
+    resolution: {integrity: sha512-YbgJ7tQzztL441UCKX6UVN6n8zXc7eEwuJ4MHCdFtTf5w6EGpfFDi7+lgBi+MtwampG2k1PoltCYYiRZyPg4/g==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  jscpd-linux-x64-gnu@5.4.0:
-    resolution: {integrity: sha512-44NXS0gtYbjBCc53Gwilgj7PPwnWv9YTF/rGc0ZfnFcpzSoOKKU11yH+qHfCVie1hHte1wHyZ1f9Kjc8nGe2/g==}
+  jscpd-linux-x64-gnu@5.4.3:
+    resolution: {integrity: sha512-BbL0HypadbjpxNfK/KY4CfpD4sCd2zf9HpFnGwwOjdryjdTG098isft/95BiS/XvZjVT3p6lwLf5ToI97OoqCg==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  jscpd-linux-x64-musl@5.4.0:
-    resolution: {integrity: sha512-m9XHj14Zwia9RjWDkHDrl6VJ3W/b7m8qjFqjhcJ668Vkxoj4Ri/qeo0bo6is+fSw+bYxYexV6xxqIKRDolc8Lg==}
+  jscpd-linux-x64-musl@5.4.3:
+    resolution: {integrity: sha512-0DlkzVDuuZ83JRZMOc4Fd2tBFKIrtXDHkHvxdF6d4HK+b954PZxuKhwBMArg76CtVSOQcuiICd/zxU9HtdT+mg==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  jscpd-windows-arm64-msvc@5.4.0:
-    resolution: {integrity: sha512-AoP5RXyb9gIf8xmFwAc+Rgh4XJNyX1upcD+R1A6u4XjsDo2/oF+KKB4dtKnG2DbFQ+0fyFg/ClOcw+asQZJfPg==}
+  jscpd-windows-arm64-msvc@5.4.3:
+    resolution: {integrity: sha512-BUD8kCzLyXUomw3vWRDbaBcIPByX6yU3VyqsKSf7/sjzr8y9ZmTRcn0cwmCV2WChrzD5JF4HeQl+hZlb7+s8lg==}
     cpu: [arm64]
     os: [win32]
 
-  jscpd-windows-x64-msvc@5.4.0:
-    resolution: {integrity: sha512-dYkb5mAo5i7fjrtf2Ft6z9a/I38RJMd4JirEgJiW2BIv5pAGmfMVPDy1xEXL3hJqraXzeMIfnzqJFanefCyC6g==}
+  jscpd-windows-x64-msvc@5.4.3:
+    resolution: {integrity: sha512-qYSVGZE2WP0NNdZU1S8DsfcCDpjwKSExvsUd86c4Vx9eWwZdw1i+V7h/9FWazo3PxEa+FzPLsCD5YjVawaarRA==}
     cpu: [x64]
     os: [win32]
 
-  jscpd@5.4.0:
-    resolution: {integrity: sha512-6mU8OHff4rPJ3D5lIsQns82/aQhDas22gMsGurHx1wcrfXWOZDNaobi6rKhLevo+77ntWKUXOwtM6lcrkJeL7w==}
+  jscpd@5.4.3:
+    resolution: {integrity: sha512-2Ult/j407sgAx4Z8kW4nOB3wfGwvtyKyPN9XE+tbvNEP/QemBN8pijKtG6zC+8nfMuIiiWjNcez7VZo5ZjJRtA==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -5644,8 +5648,8 @@ packages:
     resolution: {integrity: sha512-Q4r8ghd80yhO/0j1O3B2BjweX3fiHg9cdOwjJd2J76Q135c+NDxGCqdYKQ1SKBuFfgWbAUzBfvYjPUEeNgqN1A==}
     engines: {node: '>= 6'}
 
-  minimizer-webpack-plugin@5.11.0:
-    resolution: {integrity: sha512-2JVy2DY+iBtfRyrQB5cRM7lfurnJIi6jFTgLip/7FxDu0WxswrIRzr4fBySQ0X7HqM7BcwE28zm+HfQ5V6y4Cg==}
+  minimizer-webpack-plugin@5.14.0:
+    resolution: {integrity: sha512-PnvQXCJxhgH2ZVVO7Lj0sM6q8L1XGxnUvd8wVQIRwi8khMCLq5wg0Ngxe44bcuZL2FSN81RdVE7YHEVzTKsQDQ==}
     engines: {node: '>= 10.13.0'}
     peerDependencies:
       '@minify-html/node': '*'
@@ -5756,6 +5760,7 @@ packages:
 
   node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
+    deprecated: This package is no longer needed on supported Node.js versions. Node.js 16+ includes AbortController and AbortSignal as built-in globals. All Node.js versions requiring this polyfill are end-of-life. Use the built-in globals instead.
 
   node-addon-api@8.9.2:
     resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
@@ -7175,9 +7180,15 @@ packages:
     resolution: {integrity: sha512-pN/yOAvcC+5rQ5nERGuwrjLlYvLTbCibnZ1I7B1LaiAz9BRBlE9GMgE/eqV30P7aJQUf7Ddimy/RsbYO/GrVGg==}
     engines: {node: '>= 10.13.0'}
 
-  schema-utils@4.5.0:
-    resolution: {integrity: sha512-zJlMCZ0cAR5p/Y4oVpRoqioDMJcGxaXRrQ/4rP4WyR84vc5z/DolXdbvXeDpTwbtocDFr2rhPqHPErDCUtz2kA==}
+  schema-utils@4.8.3:
+    resolution: {integrity: sha512-qIfo3f+lRNqnMPgpXSKvUhsT3pY5U+ppmgGr4j8LanFP3W/Ze+xj8DY/dPb5qVu3m6qFIMyMWKVRLNKxrNhxWg==}
     engines: {node: '>= 10.13.0'}
+    hasBin: true
+    peerDependencies:
+      webpack: ^5.0.0
+    peerDependenciesMeta:
+      webpack:
+        optional: true
 
   scroll-into-view-if-needed@2.2.31:
     resolution: {integrity: sha512-dGCXy99wZQivjmjIqihaBQNjryrz5rueJY7eHfTdyWEiR4ttYpsajb14rn9s5d4DY4EcY6+4+U/maARBXJedkA==}
@@ -7952,8 +7963,8 @@ packages:
   warning@4.0.3:
     resolution: {integrity: sha512-rpJyN222KWIvHJ/F53XSZv0Zl/accqHR8et1kpaMTD/fLCRxtV8iX8czMzY7sVZupTI3zcUTg8eycS2kNF9l6w==}
 
-  watchpack@2.5.2:
-    resolution: {integrity: sha512-6i/00NBjP4yGPs+caKSyRfpTF/8Torsu0MOW3mMzIbhgISFder8i7xbqgHlLMwJrdiN8ndBV3UA1/AfzPSr+jg==}
+  watchpack@2.6.4:
+    resolution: {integrity: sha512-5H3Tce2GfzWbcr9VnSqyak2whFaONw4BdmI5BDnMXold4qSlCFd64XaMQESRh2vkDKmdUkv6rUo17UvZ9f9nXw==}
     engines: {node: '>=10.13.0'}
 
   wbuf@1.7.3:
@@ -7973,8 +7984,8 @@ packages:
     resolution: {integrity: sha512-Tu1w80WA2Z+X6e7KzGy+cc0A0z+npVJA/fh55q2azMJ030gqz343Kx+yNAstDCeugsepmtDWY2J2IBRW/O+DEA==}
     engines: {node: '>=10'}
 
-  webpack-sources@3.5.1:
-    resolution: {integrity: sha512-jyuiGJdtvY434z5bUZrjz67v76/ePNvFZTp9Mdz29IlH4+GPsgyGjiv0fKI+M7BdkU6ADjulUcKAd3tUK3WlEw==}
+  webpack-sources@3.7.0:
+    resolution: {integrity: sha512-PdUhbCycwEgiS1hB/FBDksWKg/ashAIuJKqwdbPn8/dFVgU5LxQiBvG0js6VRRIzPujMrStYCczywp82P0KWng==}
     engines: {node: '>=10.13.0'}
 
   webpack@5.111.1:
@@ -10633,6 +10644,8 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
 
+  '@types/estree@1.0.10': {}
+
   '@types/estree@1.0.9': {}
 
   '@types/geojson@7946.0.16': {}
@@ -11257,7 +11270,7 @@ snapshots:
       babel-plugin-import: 1.13.8
       babel-plugin-styled-components: 2.1.4(@babel/core@7.29.7)(styled-components@6.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       dayjs: 1.11.23
-      dva-core: 2.0.4(redux@5.0.1)
+      dva-core: 2.0.4(redux@4.2.1)
       dva-immer: 1.0.2(dva@2.5.0-beta.2(encoding@0.1.13)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       dva-loading: 3.0.25(dva-core@2.0.4(redux@4.2.1))
       event-emitter: 0.3.5
@@ -12952,14 +12965,14 @@ snapshots:
       redux-saga: 0.16.2
       warning: 3.0.0
 
-  dva-core@2.0.4(redux@5.0.1):
+  dva-core@2.0.4(redux@4.2.1):
     dependencies:
       '@babel/runtime': 7.29.7
       flatten: 1.0.3
       global: 4.4.0
       invariant: 2.2.4
       is-plain-object: 2.0.4
-      redux: 5.0.1
+      redux: 4.2.1
       redux-saga: 0.16.2
       warning: 3.0.0
 
@@ -12972,7 +12985,7 @@ snapshots:
   dva-loading@3.0.25(dva-core@2.0.4(redux@4.2.1)):
     dependencies:
       '@babel/runtime': 7.29.7
-      dva-core: 2.0.4(redux@5.0.1)
+      dva-core: 2.0.4(redux@4.2.1)
 
   dva@2.5.0-beta.2(encoding@0.1.13)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
@@ -13032,7 +13045,7 @@ snapshots:
       graceful-fs: 4.2.11
       tapable: 2.3.3
 
-  enhanced-resolve@5.25.1:
+  enhanced-resolve@5.26.1:
     dependencies:
       graceful-fs: 4.2.11
       tapable: 2.3.3
@@ -14395,40 +14408,40 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  jscpd-darwin-arm64@5.4.0:
+  jscpd-darwin-arm64@5.4.3:
     optional: true
 
-  jscpd-darwin-x64@5.4.0:
+  jscpd-darwin-x64@5.4.3:
     optional: true
 
-  jscpd-linux-arm64-gnu@5.4.0:
+  jscpd-linux-arm64-gnu@5.4.3:
     optional: true
 
-  jscpd-linux-arm64-musl@5.4.0:
+  jscpd-linux-arm64-musl@5.4.3:
     optional: true
 
-  jscpd-linux-x64-gnu@5.4.0:
+  jscpd-linux-x64-gnu@5.4.3:
     optional: true
 
-  jscpd-linux-x64-musl@5.4.0:
+  jscpd-linux-x64-musl@5.4.3:
     optional: true
 
-  jscpd-windows-arm64-msvc@5.4.0:
+  jscpd-windows-arm64-msvc@5.4.3:
     optional: true
 
-  jscpd-windows-x64-msvc@5.4.0:
+  jscpd-windows-x64-msvc@5.4.3:
     optional: true
 
-  jscpd@5.4.0:
+  jscpd@5.4.3:
     optionalDependencies:
-      jscpd-darwin-arm64: 5.4.0
-      jscpd-darwin-x64: 5.4.0
-      jscpd-linux-arm64-gnu: 5.4.0
-      jscpd-linux-arm64-musl: 5.4.0
-      jscpd-linux-x64-gnu: 5.4.0
-      jscpd-linux-x64-musl: 5.4.0
-      jscpd-windows-arm64-msvc: 5.4.0
-      jscpd-windows-x64-msvc: 5.4.0
+      jscpd-darwin-arm64: 5.4.3
+      jscpd-darwin-x64: 5.4.3
+      jscpd-linux-arm64-gnu: 5.4.3
+      jscpd-linux-arm64-musl: 5.4.3
+      jscpd-linux-x64-gnu: 5.4.3
+      jscpd-linux-x64-musl: 5.4.3
+      jscpd-windows-arm64-msvc: 5.4.3
+      jscpd-windows-x64-msvc: 5.4.3
 
   jsesc@3.1.0: {}
 
@@ -15051,11 +15064,10 @@ snapshots:
       is-plain-obj: 1.1.0
       kind-of: 6.0.3
 
-  minimizer-webpack-plugin@5.11.0(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)):
+  minimizer-webpack-plugin@5.14.0(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)):
     dependencies:
-      '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
-      schema-utils: 4.5.0
+      schema-utils: 4.8.3(webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28))
       terser: 5.51.2
       webpack: 5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)
     optionalDependencies:
@@ -16776,12 +16788,14 @@ snapshots:
       ajv: 6.15.0
       ajv-keywords: 3.5.2(ajv@6.15.0)
 
-  schema-utils@4.5.0:
+  schema-utils@4.8.3(webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)):
     dependencies:
       '@types/json-schema': 7.0.15
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       ajv-keywords: 5.1.0(ajv@8.20.0)
+    optionalDependencies:
+      webpack: 5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)
 
   scroll-into-view-if-needed@2.2.31:
     dependencies:
@@ -17783,7 +17797,7 @@ snapshots:
     dependencies:
       loose-envify: 1.4.0
 
-  watchpack@2.5.2:
+  watchpack@2.6.4:
     dependencies:
       graceful-fs: 4.2.11
 
@@ -17803,27 +17817,27 @@ snapshots:
       deepmerge: 1.5.2
       javascript-stringify: 2.1.0
 
-  webpack-sources@3.5.1: {}
+  webpack-sources@3.7.0: {}
 
   webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28):
     dependencies:
-      '@types/estree': 1.0.9
+      '@types/estree': 1.0.10
       '@types/json-schema': 7.0.15
       '@webassemblyjs/ast': 1.14.1
       '@webassemblyjs/wasm-edit': 1.14.1
       '@webassemblyjs/wasm-parser': 1.14.1
       browserslist: 4.29.0
       chrome-trace-event: 1.0.4
-      enhanced-resolve: 5.25.1
+      enhanced-resolve: 5.26.1
       es-module-lexer: 2.3.2
       events: 3.3.0
       graceful-fs: 4.2.11
       mime-db: 1.54.0
-      minimizer-webpack-plugin: 5.11.0(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28))
-      schema-utils: 4.5.0
+      minimizer-webpack-plugin: 5.14.0(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28)(webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28))
+      schema-utils: 4.8.3(webpack@5.111.1(esbuild@0.28.2)(lightningcss@1.32.0)(postcss@8.5.28))
       tapable: 2.3.3
-      watchpack: 2.5.2
-      webpack-sources: 3.5.1
+      watchpack: 2.6.4
+      webpack-sources: 3.7.0
     transitivePeerDependencies:
       - '@minify-html/node'
       - '@napi-rs/image'
