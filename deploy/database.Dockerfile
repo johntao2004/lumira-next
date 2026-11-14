@@ -16,7 +16,7 @@ RUN git init . \
 
 # 保留 PostgreSQL 18.6 的入口、信号、目录及降权流程；不修改数据库版本或现有卷。
 # Preserve PostgreSQL 18.6 entrypoint, signals, directories and privilege drop; do not change data volumes.
-FROM postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+FROM postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
 COPY --from=gosu-build --chown=0:0 --chmod=0755 /out/gosu /usr/local/bin/gosu
 # 删除发行镜像的默认测试证书，不配置真实 TLS；现场须独立提供有效证书。
 # Remove bundled test certificates, without configuring real TLS; deployment needs separately managed certificates.
