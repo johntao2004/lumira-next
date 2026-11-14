@@ -30,7 +30,7 @@ RUN set -eu; \
     go version -m /out/caddy | grep -F 'go1.26.9'; \
     go version -m /out/caddy | grep -E '=>[[:space:]]+golang.org/x/net[[:space:]]+v0.60.0'
 
-FROM caddy:2.11.7-alpine AS patched-caddy
+FROM caddy:2.11.8-alpine AS patched-caddy
 COPY --from=caddy-build /out/caddy /usr/bin/caddy
 
 # 网关与静态站点共享已修补的二进制，各自保留配置职责。
