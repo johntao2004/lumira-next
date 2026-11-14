@@ -11,7 +11,7 @@ RUN ln -s ../apps/web/node_modules plugins/node_modules
 RUN corepack pnpm build
 COPY scripts/generate-csp.mjs scripts/generate-csp.mjs
 RUN node scripts/generate-csp.mjs apps/web/dist/index.html /workspace/csp.caddy
-FROM golang:1.26.9-alpine3.23 AS caddy-build
+FROM golang:1.27.0-alpine3.23 AS caddy-build
 RUN apk add --no-cache git
 RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
 # 修复 HTTP/2 SETTINGS 拒绝服务漏洞，并检查最终二进制确实采用补丁依赖。
