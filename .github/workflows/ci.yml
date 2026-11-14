@@ -112,7 +112,7 @@ jobs:
         run: python3 scripts/verify-platform-recovery.py
       - name: Upload sanitized platform recovery evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: platform-recovery-${{ github.run_id }}-${{ github.run_attempt }}
           path: .runtime/platform-restore-results.json
@@ -191,7 +191,7 @@ jobs:
           exit "$status"
       - name: Upload safe browser acceptance evidence only
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
           path: .runtime/browser-ci/*/evidence/
