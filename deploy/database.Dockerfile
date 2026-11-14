@@ -1,6 +1,6 @@
 # 固定官方 gosu 源码并保留模块校验；仅更新已修补的 Go 编译器。
 # Pin upstream gosu source and module verification; update only the patched Go compiler.
-FROM golang:1.26.9-alpine3.23 AS gosu-build
+FROM golang:1.27.0-alpine3.23 AS gosu-build
 RUN apk add --no-cache git
 WORKDIR /src/gosu
 RUN git init . \
