@@ -9,7 +9,7 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -41,7 +41,7 @@ jobs:
       LUMIRA_TEST_DB_USER: lumira_next
       LUMIRA_TEST_DB_PASSWORD: ci-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -132,7 +132,7 @@ jobs:
     # Pin the OS supported by the locked Playwright version instead of a drifting latest image.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -f deploy/database.Dockerfile -t lumira-database:ci .
       - name: Verify non-root database startup and recovery
         run: bash scripts/verify-database-image.sh lumira-database:ci
@@ -230,7 +230,7 @@ jobs:
   dependencies:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
