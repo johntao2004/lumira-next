@@ -1,5 +1,6 @@
 package com.lumira.platform.notifications;
 
+import com.lumira.platform.common.JdbcPageQuery;
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
@@ -328,36 +329,25 @@ public class NotificationStore {
                 " WHERE recipient_id=:recipient AND (expires_at IS NULL OR expires_at>now())";
         if (readState != null)
             filter += readState ? " AND read_at IS NOT NULL" : " AND read_at IS NULL";
-        var rows =
-                jdbc.sql(
-                                "SELECT id,kind,title_key,body_key,params::text,href,(read_at IS"
-                                        + " NOT NULL) AS read,created_at,expires_at FROM"
-                                        + " platform_notification"
-                                        + filter
-                                        + " ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET"
-                                        + " :offset")
-                        .param("recipient", recipientId)
-                        .param("limit", page.pageSize())
-                        .param("offset", page.offset())
-                        .query(
-                                (rs, n) ->
-                                        new Entry(
-                                                rs.getObject("id", UUID.class),
-                                                rs.getString("kind"),
-                                                rs.getString("title_key"),
-                                                rs.getString("body_key"),
-                                                rs.getString("params"),
-                                                NotificationHref.safeOrNull(rs.getString("href")),
-                                                rs.getBoolean("read"),
-                                                rs.getObject("created_at", OffsetDateTime.class),
-                                                rs.getObject("expires_at", OffsetDateTime.class)))
-                        .list();
-        var total =
-                jdbc.sql("SELECT count(*) FROM platform_notification" + filter)
-                        .param("recipient", recipientId)
-                        .query(Long.class)
-                        .single();
-        return new PageResult<>(rows, total, page.page(), page.pageSize());
+        return JdbcPageQuery.queryWindowed(
+                jdbc,
+                page,
+                "id,kind,title_key,body_key,params::text,href,(read_at IS NOT NULL) AS"
+                        + " read,created_at,expires_at",
+                " FROM platform_notification" + filter,
+                "created_at DESC,id DESC",
+                Map.of("recipient", recipientId),
+                (rs, n) ->
+                        new Entry(
+                                rs.getObject("id", UUID.class),
+                                rs.getString("kind"),
+                                rs.getString("title_key"),
+                                rs.getString("body_key"),
+                                rs.getString("params"),
+                                NotificationHref.safeOrNull(rs.getString("href")),
+                                rs.getBoolean("read"),
+                                rs.getObject("created_at", OffsetDateTime.class),
+                                rs.getObject("expires_at", OffsetDateTime.class)));
     }
 
     @Transactional(readOnly = true)
@@ -416,50 +406,31 @@ public class NotificationStore {
                                 "createdAt",
                                 "n.created_at"),
                         java.util.Set.of("createdAt"));
-        var countParams = new HashMap<String, Object>();
-        countParams.put("search", page.search());
-        countParams.putAll(fieldFilter.parameters());
-        var rowParams = new HashMap<>(countParams);
-        rowParams.put("limit", page.pageSize());
-        rowParams.put("offset", page.offset());
-        var rows =
-                jdbc.sql(
-                                "SELECT"
-                                        + " n.id,n.recipient_id,u.username,u.display_name,n.kind,n.title_key,n.body_key,n.params::text,n.href,(n.read_at"
-                                        + " IS NOT NULL) AS read,n.created_at,n.expires_at FROM"
-                                        + " platform_notification n JOIN platform_user u ON"
-                                        + " u.id=n.recipient_id"
-                                        + filter
-                                        + fieldFilter.sql()
-                                        + " ORDER BY n.created_at DESC,n.id DESC LIMIT :limit"
-                                        + " OFFSET :offset")
-                        .params(rowParams)
-                        .query(
-                                (rs, n) ->
-                                        new AdminEntry(
-                                                rs.getObject("id", UUID.class),
-                                                rs.getObject("recipient_id", UUID.class),
-                                                rs.getString("username"),
-                                                rs.getString("display_name"),
-                                                rs.getString("kind"),
-                                                rs.getString("title_key"),
-                                                rs.getString("body_key"),
-                                                rs.getString("params"),
-                                                NotificationHref.safeOrNull(rs.getString("href")),
-                                                rs.getBoolean("read"),
-                                                rs.getObject("created_at", OffsetDateTime.class),
-                                                rs.getObject("expires_at", OffsetDateTime.class)))
-                        .list();
-        var total =
-                jdbc.sql(
-                                "SELECT count(*) FROM platform_notification n JOIN platform_user u"
-                                        + " ON u.id=n.recipient_id"
-                                        + filter
-                                        + fieldFilter.sql())
-                        .params(countParams)
-                        .query(Long.class)
-                        .single();
-        return new PageResult<>(rows, total, page.page(), page.pageSize());
+        return JdbcPageQuery.query(
+                jdbc,
+                page,
+                "platform_notification n JOIN platform_user u ON u.id=n.recipient_id",
+                "n.id,n.recipient_id,u.username,u.display_name,n.kind,n.title_key,n.body_key,"
+                        + "n.params::text,n.href,(n.read_at IS NOT NULL) AS"
+                        + " read,n.created_at,n.expires_at",
+                filter,
+                fieldFilter,
+                Map.of(),
+                "n.created_at DESC,n.id DESC",
+                (rs, n) ->
+                        new AdminEntry(
+                                rs.getObject("id", UUID.class),
+                                rs.getObject("recipient_id", UUID.class),
+                                rs.getString("username"),
+                                rs.getString("display_name"),
+                                rs.getString("kind"),
+                                rs.getString("title_key"),
+                                rs.getString("body_key"),
+                                rs.getString("params"),
+                                NotificationHref.safeOrNull(rs.getString("href")),
+                                rs.getBoolean("read"),
+                                rs.getObject("created_at", OffsetDateTime.class),
+                                rs.getObject("expires_at", OffsetDateTime.class)));
     }
 
     @Transactional(readOnly = true)
@@ -468,25 +439,14 @@ public class NotificationStore {
                 " FROM platform_user u WHERE u.enabled=true AND u.deleted_at IS NULL AND"
                         + " (:search='' OR strpos(lower(coalesce(u.username,'')),lower(:search))>0 OR"
                         + " strpos(lower(coalesce(u.display_name,'')),lower(:search))>0)";
-        var parameters =
-                Map.<String, Object>of(
-                        "search", page.search(), "limit", page.pageSize(), "offset", page.offset());
-        var rows =
-                jdbc.sql(
-                                "SELECT u.id,u.username,u.display_name,u.enabled"
-                                        + fromAndFilter
-                                        + " ORDER BY"
-                                        + " lower(coalesce(u.display_name,'')),lower(u.username),u.id"
-                                        + " LIMIT :limit OFFSET :offset")
-                        .params(parameters)
-                        .query(this::mapRecipientOption)
-                        .list();
-        long total =
-                jdbc.sql("SELECT count(*)" + fromAndFilter)
-                        .param("search", page.search())
-                        .query(Long.class)
-                        .single();
-        return new PageResult<>(rows, total, page.page(), page.pageSize());
+        return JdbcPageQuery.queryWindowed(
+                jdbc,
+                page,
+                "u.id,u.username,u.display_name,u.enabled",
+                fromAndFilter,
+                "lower(coalesce(u.display_name,'')),lower(u.username),u.id",
+                Map.of("search", page.search()),
+                this::mapRecipientOption);
     }
 
     @Transactional(readOnly = true)
@@ -530,9 +490,32 @@ public class NotificationStore {
     }
 
     private static void validateKey(String value, int max, String label) {
-        if (value == null
-                || value.length() > max
-                || !value.matches("[A-Za-z][A-Za-z0-9._:-]{0," + (max - 1) + "}"))
+        if (!isValidKey(value, max))
             throw new IllegalArgumentException("Invalid notification " + label);
+    }
+
+    private static boolean isValidKey(String value, int max) {
+        if (value == null || value.isEmpty() || value.length() > max) {
+            return false;
+        }
+        char first = value.charAt(0);
+        if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z'))) {
+            return false;
+        }
+        for (int i = 1, len = value.length(); i < len; i++) {
+            char ch = value.charAt(i);
+            boolean ok =
+                    (ch >= 'A' && ch <= 'Z')
+                            || (ch >= 'a' && ch <= 'z')
+                            || (ch >= '0' && ch <= '9')
+                            || ch == '.'
+                            || ch == '_'
+                            || ch == ':'
+                            || ch == '-';
+            if (!ok) {
+                return false;
+            }
+        }
+        return true;
     }
 }

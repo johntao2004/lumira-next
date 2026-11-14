@@ -114,6 +114,58 @@ class PluginHttpRuleIndexTest {
         }
     }
 
+    @Test
+    void compositeIndexAndWildcardSegmentsPreserveMultiPluginPrecedence() throws Exception {
+        var mapper = new JsonMapper();
+        var owned = new ArrayList<PluginHttpRuleIndex.OwnedIndex>();
+        var flatRules = new ArrayList<PluginManifest.Rule>();
+        var samplePaths = new ArrayList<String>();
+        try (var dirs = Files.list(Path.of("..", "plugins"))) {
+            for (var dir : dirs.sorted().toList()) {
+                var manifestPath = dir.resolve("plugin.json");
+                if (!Files.exists(manifestPath)) continue;
+                var manifest =
+                        mapper.readValue(Files.readString(manifestPath), PluginManifest.class);
+                owned.add(
+                        new PluginHttpRuleIndex.OwnedIndex(
+                                manifest.id(), new PluginHttpRuleIndex(manifest.apiRules())));
+                flatRules.addAll(manifest.apiRules());
+                for (var r : manifest.apiRules()) {
+                    samplePaths.add(r.path().replaceAll("\\{[^}]+\\}", "sample-id"));
+                }
+            }
+        }
+        var composite = PluginHttpRuleIndex.composite(owned, null);
+        for (var method : List.of("GET", "POST", "PUT", "PATCH", "DELETE")) {
+            for (var raw : samplePaths) {
+                var req = PathContainer.parsePath(raw);
+                var expected =
+                        flatRules.stream()
+                                .filter(
+                                        r ->
+                                                r.method().equals(method)
+                                                        && PathPatternParser.defaultInstance
+                                                                .parse(r.path())
+                                                                .matches(req))
+                                .findFirst()
+                                .orElse(null);
+                assertSame(expected, composite.first(method, req), method + " " + raw);
+            }
+        }
+        var wildcard =
+                new PluginHttpRuleIndex(
+                        List.of(
+                                new PluginManifest.Rule(
+                                        "POST", "/api/cb", List.of(), false, false, false, false,
+                                        true),
+                                rule("/api/files/{*rest}"),
+                                rule("/api/files/exact")));
+        assertEquals(List.of(""), wildcard.signedCallbackOwners("/api/cb"));
+        assertSame(
+                wildcard.first("GET", PathContainer.parsePath("/api/files/a/b/c")),
+                wildcard.first("GET", PathContainer.parsePath("/api/files/exact")));
+    }
+
     private static PluginManifest.Rule rule(String path) {
         return new PluginManifest.Rule("GET", path, List.of("read"), false, false);
     }

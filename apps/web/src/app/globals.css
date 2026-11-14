@@ -2295,3 +2295,50 @@ textarea.editor-surface-editable {
     width: 100%;
   }
 }
+
+.resource-search,
+.ant-pro-table-search,
+.assignment-search {
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 16px;
+  padding: 16px 16px 4px;
+  box-sizing: border-box;
+}
+
+.resource-search .ant-form-item,
+.ant-pro-table-search .ant-form-item,
+.assignment-search-field {
+  margin-bottom: 12px;
+}
+
+.resource-search .ant-input,
+.resource-search .ant-input-affix-wrapper,
+.resource-search .ant-select,
+.ant-pro-table-search .ant-input,
+.ant-pro-table-search .ant-input-affix-wrapper,
+.ant-pro-table-search .ant-select,
+.assignment-search .ant-input,
+.assignment-search .ant-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.resource-search .ant-select-selector,
+.ant-pro-table-search .ant-select-selector,
+.assignment-search .ant-select-selector,
+.resource-search .ant-input,
+.ant-pro-table-search .ant-input,
+.assignment-search .ant-input {
+  min-height: 32px;
+}
+
+.resource-table,
+.resource-table .resource-data,
+.ant-table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+

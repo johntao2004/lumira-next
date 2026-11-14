@@ -2,6 +2,7 @@ package com.lumira.platform.sensitive;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -111,6 +112,32 @@ class SensitiveWordMatcherTest {
         assertTrue(matcher.find(null).isEmpty());
         assertTrue(matcher.find("   ").isEmpty());
         assertTrue(matcher.find("foo bar", 0).isEmpty());
+        String canonical = "already normalized ascii 123";
+        assertSame(canonical, SensitiveWordMatcher.normalizeForMatch(canonical));
+    }
+
+    @Test
+    void handlesOverlappingUnicodeAndMixedAsciiFailureLinks() {
+        var matcher =
+                new SensitiveWordMatcher(
+                        List.of(
+                                entry("敏感词", "MEDIUM", "LOG_ONLY"),
+                                entry("感词拦截", "HIGH", "BLOCK"),
+                                entry("词拦截x", "LOW", "LOG_ONLY"),
+                                entry("拦截x1", "HIGH", "BLOCK")));
+
+        var clean = matcher.scan("completely clean text without matches 正常文本");
+        assertFalse(clean.blocked());
+        assertEquals(0, clean.totalMatchCount());
+        assertTrue(clean.matches().isEmpty());
+
+        var result = matcher.scan("前缀 敏感词拦截X1 后缀");
+        assertTrue(result.blocked());
+        assertTrue(result.blockingMatchDisplayed());
+        assertEquals(4, result.totalMatchCount());
+        assertEquals(
+                List.of("敏感词", "感词拦截", "词拦截x", "拦截x1"),
+                result.matches().stream().map(SensitiveWordMatcher.Match::word).toList());
     }
 
     private static SensitiveWordMatcher.Entry entry(String word, String severity, String action) {

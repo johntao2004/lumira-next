@@ -654,24 +654,6 @@ function WorkbenchSystemOverview({
         { label: "unreadNotifications" as const, value: summary.unreadNotifications },
       ],
     },
-    {
-      title: "queueHealth" as const,
-      metrics: [
-        { label: "pendingOutbox" as const, value: summary.pendingOutbox },
-        { label: "processingOutbox" as const, value: summary.processingOutbox },
-        { label: "failedOutbox" as const, value: summary.failedOutbox, attention: true },
-        { label: "deadLetterOutbox" as const, value: summary.deadLetterOutbox, attention: true },
-      ],
-    },
-    {
-      title: "deliveryHealth" as const,
-      metrics: [
-        { label: "pendingMail" as const, value: summary.pendingMail },
-        { label: "failedMail" as const, value: summary.failedMail, attention: true },
-        { label: "pendingSms" as const, value: summary.pendingSms },
-        { label: "failedSms" as const, value: summary.failedSms, attention: true },
-      ],
-    },
   ] : [];
 
   return (

@@ -26,12 +26,7 @@ public class OnlineSessionService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<OnlineSessionRepository.Entry> list(String actor, PageRequest request) {
         guard.requirePageGlobal(actor, PlatformPageId.ONLINE_USERS);
-        long now = System.currentTimeMillis();
-        return new PageResult<>(
-                sessions.list(request, now),
-                sessions.count(request, now),
-                request.page(),
-                request.pageSize());
+        return sessions.queryPage(request, System.currentTimeMillis());
     }
 
     @Transactional

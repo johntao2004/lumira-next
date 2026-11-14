@@ -277,4 +277,47 @@ public class SensitiveWordRepository {
                 .param("actor", actor)
                 .update();
     }
+
+    /** Bulk import in multi-row chunks to avoid per-word round trips on large dictionaries. */
+    public int insertBatchIfAbsent(
+            java.util.Map<String, String> normalizedToWord,
+            String category,
+            String severity,
+            String action,
+            String actor) {
+        if (normalizedToWord == null || normalizedToWord.isEmpty()) return 0;
+        var entries = new ArrayList<>(normalizedToWord.entrySet());
+        int inserted = 0;
+        for (int offset = 0; offset < entries.size(); offset += 500) {
+            var chunk = entries.subList(offset, Math.min(offset + 500, entries.size()));
+            var values = new StringBuilder(chunk.size() * 64);
+            var params = new java.util.HashMap<String, Object>(chunk.size() * 3 + 4);
+            params.put("category", category);
+            params.put("severity", severity);
+            params.put("action", action);
+            params.put("actor", actor);
+            for (int i = 0; i < chunk.size(); i++) {
+                if (i > 0) values.append(',');
+                values.append("(:id")
+                        .append(i)
+                        .append(",:word")
+                        .append(i)
+                        .append(",:norm")
+                        .append(i)
+                        .append(",:category,:severity,:action,true,:actor,:actor)");
+                var entry = chunk.get(i);
+                params.put("id" + i, UUID.randomUUID());
+                params.put("word" + i, entry.getValue());
+                params.put("norm" + i, entry.getKey());
+            }
+            inserted +=
+                    jdbc.sql(
+                                    "INSERT INTO platform_sensitive_word(id,word,normalized_word,category,severity,action,enabled,created_by,updated_by) VALUES "
+                                            + values
+                                            + " ON CONFLICT DO NOTHING")
+                            .params(params)
+                            .update();
+        }
+        return inserted;
+    }
 }

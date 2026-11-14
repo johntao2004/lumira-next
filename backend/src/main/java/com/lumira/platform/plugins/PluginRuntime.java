@@ -143,6 +143,8 @@ public class PluginRuntime
         final AnnotationConfigApplicationContext context;
         final List<Published> mappings;
         final PluginOwnedResources resources;
+        final Map<Class<?>, List<?>> extensionBeans = new ConcurrentHashMap<>();
+        final Map<Class<?>, Object> serviceBeans = new ConcurrentHashMap<>();
         String digest = "";
         volatile long generation;
         boolean accepting = true;
@@ -160,10 +162,110 @@ public class PluginRuntime
         }
     }
 
+    private static final class VersionedArtifactMap
+            extends ConcurrentHashMap<String, PluginArchive.Artifact> {
+        private final java.util.concurrent.atomic.AtomicLong version =
+                new java.util.concurrent.atomic.AtomicLong();
+
+        long version() {
+            return version.get();
+        }
+
+        @Override
+        public PluginArchive.Artifact put(String key, PluginArchive.Artifact value) {
+            var prev = super.put(key, value);
+            if (prev != value) version.incrementAndGet();
+            return prev;
+        }
+
+        @Override
+        public PluginArchive.Artifact putIfAbsent(String key, PluginArchive.Artifact value) {
+            var prev = super.putIfAbsent(key, value);
+            if (prev == null) version.incrementAndGet();
+            return prev;
+        }
+
+        @Override
+        public PluginArchive.Artifact remove(Object key) {
+            var prev = super.remove(key);
+            if (prev != null) version.incrementAndGet();
+            return prev;
+        }
+
+        @Override
+        public boolean remove(Object key, Object value) {
+            boolean removed = super.remove(key, value);
+            if (removed) version.incrementAndGet();
+            return removed;
+        }
+
+        @Override
+        public void putAll(Map<? extends String, ? extends PluginArchive.Artifact> m) {
+            if (!m.isEmpty()) {
+                super.putAll(m);
+                version.incrementAndGet();
+            }
+        }
+
+        @Override
+        public void clear() {
+            if (!isEmpty()) {
+                super.clear();
+                version.incrementAndGet();
+            }
+        }
+    }
+
+    private static final class GlobalRouteIndex {
+        private final Map<String, PluginArchive.Artifact> sourceRef;
+        private final long sourceVersion;
+        private final List<Map.Entry<String, PluginArchive.Artifact>> fallbackSnapshot;
+        final PluginHttpRuleIndex rules;
+        final PluginHttpRuleIndex previewRules;
+        final Map<String, List<PluginArchive.Artifact>> byDigest;
+
+        GlobalRouteIndex(
+                Map<String, PluginArchive.Artifact> sourceRef,
+                long sourceVersion,
+                List<Map.Entry<String, PluginArchive.Artifact>> fallbackSnapshot,
+                PluginHttpRuleIndex rules,
+                PluginHttpRuleIndex previewRules,
+                Map<String, List<PluginArchive.Artifact>> byDigest) {
+            this.sourceRef = sourceRef;
+            this.sourceVersion = sourceVersion;
+            this.fallbackSnapshot = fallbackSnapshot;
+            this.rules = rules;
+            this.previewRules = previewRules;
+            this.byDigest = byDigest;
+        }
+
+        boolean matches(Map<String, PluginArchive.Artifact> current) {
+            if (this.sourceRef != current) return false;
+            if (current instanceof VersionedArtifactMap versioned) {
+                return this.sourceVersion == versioned.version();
+            }
+            if (current.size() != fallbackSnapshot.size()) return false;
+            int idx = 0;
+            for (var entry : current.entrySet()) {
+                var expected = fallbackSnapshot.get(idx++);
+                if (!Objects.equals(expected.getKey(), entry.getKey())
+                        || expected.getValue() != entry.getValue()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     private static final long CLUSTER_LOCK_KEY = 481028L;
     private static final Duration NODE_STALE_AFTER = Duration.ofSeconds(30);
     private static final Duration OPERATION_LEASE = Duration.ofSeconds(45);
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(10);
+    private static final java.util.regex.Pattern PLUGIN_ID_PATTERN =
+            java.util.regex.Pattern.compile("[a-z][a-z0-9-]{0,63}");
+    private static final java.util.regex.Pattern SAFE_FRONTEND_ASSET_PATTERN =
+            java.util.regex.Pattern.compile(
+                    "^/api/platform/modules/plugins/assets/([a-f0-9]{64})/(plugin\\.js|[A-Za-z0-9_.-]+\\.css)$");
 
     private final JdbcClient jdbc;
     private final ObjectMapper mapper;
@@ -193,11 +295,12 @@ public class PluginRuntime
     private final boolean fixedGraph;
     private final UUID nodeId = UUID.randomUUID();
     private final PluginManager manager;
-    private final Map<String, PluginArchive.Artifact> artifacts = new ConcurrentHashMap<>();
+    private final Map<String, PluginArchive.Artifact> artifacts = new VersionedArtifactMap();
 
     private record IndexedArtifact(PluginArchive.Artifact artifact, PluginHttpRuleIndex rules) {}
 
     private final Map<String, IndexedArtifact> routeIndexes = new ConcurrentHashMap<>();
+    private volatile GlobalRouteIndex cachedGlobalRoutes;
     private final Map<String, Handle> handles = new ConcurrentHashMap<>();
     private final ExecutorService executor =
             Executors.newSingleThreadExecutor(
@@ -3013,19 +3116,25 @@ public class PluginRuntime
                         });
                 deferred = true;
             }
-            var targets =
-                    current.context.getBeansOfType(contract).entrySet().stream()
-                            .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
-                            .map(Map.Entry::getValue)
-                            .filter(
-                                    bean ->
-                                            bean instanceof PluginServicePort owned
-                                                    && owner.equals(owned.ownerPluginId()))
-                            .toList();
-            if (targets.size() != 1)
-                throw new IllegalStateException("pluginServiceContractConflict");
+            @SuppressWarnings("unchecked")
+            T resolved = (T) current.serviceBeans.get(contract);
+            if (resolved == null) {
+                var targets =
+                        current.context.getBeansOfType(contract).entrySet().stream()
+                                .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
+                                .map(Map.Entry::getValue)
+                                .filter(
+                                        bean ->
+                                                bean instanceof PluginServicePort owned
+                                                        && owner.equals(owned.ownerPluginId()))
+                                .toList();
+                if (targets.size() != 1)
+                    throw new IllegalStateException("pluginServiceContractConflict");
+                resolved = targets.getFirst();
+                current.serviceBeans.put(contract, resolved);
+            }
             try (var scope = invocationScope(current)) {
-                return call.call(targets.getFirst());
+                return call.call(resolved);
             }
         } finally {
             if (!deferred) lease.close();
@@ -3036,18 +3145,21 @@ public class PluginRuntime
     public <T extends PluginServicePort, R> R service(
             String owner, Class<T> contract, java.util.function.Function<T, R> call) {
         if (owner == null
-                || !owner.matches("[a-z][a-z0-9-]{0,63}")
+                || !PLUGIN_ID_PATTERN.matcher(owner).matches()
                 || contract == null
                 || !contract.isInterface()
                 || contract == PluginServicePort.class
                 || !PluginServicePort.class.isAssignableFrom(contract)
                 || call == null)
             throw new IllegalArgumentException("pluginServiceContractNotShared");
-        try {
-            if (host.getClassLoader().loadClass(contract.getName()) != contract)
-                throw new IllegalArgumentException("pluginServiceContractNotShared");
-        } catch (ClassNotFoundException error) {
-            throw new IllegalArgumentException("pluginServiceContractNotShared", error);
+        ClassLoader hostLoader = host.getClassLoader();
+        if (contract.getClassLoader() != hostLoader) {
+            try {
+                if (hostLoader.loadClass(contract.getName()) != contract)
+                    throw new IllegalArgumentException("pluginServiceContractNotShared");
+            } catch (ClassNotFoundException error) {
+                throw new IllegalArgumentException("pluginServiceContractNotShared", error);
+            }
         }
         if (!isReadyForTraffic() || !isModuleEnabled(owner))
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "moduleUnavailable");
@@ -3128,6 +3240,7 @@ public class PluginRuntime
     }
 
     private PluginHttpRuleIndex rulesFor(PluginArchive.Artifact artifact) {
+        if (routeIndexes == null) return new PluginHttpRuleIndex(artifact.manifest().apiRules());
         var indexed = routeIndexes.get(artifact.manifest().id());
         if (indexed != null && indexed.artifact() == artifact) return indexed.rules();
         return routeIndexes
@@ -3141,6 +3254,42 @@ public class PluginRuntime
                                                 new PluginHttpRuleIndex(
                                                         artifact.manifest().apiRules())))
                 .rules();
+    }
+
+    private GlobalRouteIndex globalRoutes() {
+        var current = cachedGlobalRoutes;
+        if (current != null && current.matches(artifacts)) return current;
+        long version =
+                artifacts instanceof VersionedArtifactMap versioned ? versioned.version() : -1L;
+        List<Map.Entry<String, PluginArchive.Artifact>> entries = new ArrayList<>(artifacts.size());
+        for (var entry : artifacts.entrySet()) {
+            entries.add(Map.entry(entry.getKey(), entry.getValue()));
+        }
+        List<PluginHttpRuleIndex.OwnedIndex> owned = new ArrayList<>(entries.size());
+        Map<String, List<PluginArchive.Artifact>> digestMap = new HashMap<>();
+        for (var entry : entries) {
+            PluginArchive.Artifact artifact = entry.getValue();
+            owned.add(
+                    new PluginHttpRuleIndex.OwnedIndex(
+                            artifact.manifest().id(), rulesFor(artifact)));
+            digestMap
+                    .computeIfAbsent(artifact.digest(), ignored -> new ArrayList<>(1))
+                    .add(artifact);
+        }
+        Map<String, List<PluginArchive.Artifact>> frozenByDigest = new HashMap<>(digestMap.size());
+        digestMap.forEach((digest, list) -> frozenByDigest.put(digest, List.copyOf(list)));
+        var rebuilt =
+                new GlobalRouteIndex(
+                        artifacts,
+                        version,
+                        version >= 0 ? List.of() : List.copyOf(entries),
+                        PluginHttpRuleIndex.composite(owned, null),
+                        PluginHttpRuleIndex.composite(
+                                owned,
+                                rule -> "GET".equals(rule.method()) && rule.previewReadOnly()),
+                        Map.copyOf(frozenByDigest));
+        cachedGlobalRoutes = rebuilt;
+        return rebuilt;
     }
 
     private boolean covered(PluginManifest m, String method, String path) {
@@ -3394,15 +3543,31 @@ public class PluginRuntime
         if (!isReadyForTraffic()) return List.of();
         var out = new ArrayList<R>();
         for (var entry : handles.entrySet()) {
+            var handle = entry.getValue();
+            var prechecked = handle.extensionBeans.get(type);
+            if (prechecked != null && prechecked.isEmpty()) continue;
             AutoCloseable lease = null;
             boolean deferred = false;
             try {
-                lease = acquire(entry.getValue());
+                lease = acquire(handle);
+                @SuppressWarnings("unchecked")
                 var beans =
-                        entry.getValue().context.getBeansOfType(type).entrySet().stream()
-                                .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
-                                .map(Map.Entry::getValue)
-                                .toList();
+                        (List<T>)
+                                handle.extensionBeans.computeIfAbsent(
+                                        type,
+                                        contract ->
+                                                handle
+                                                        .context
+                                                        .getBeansOfType(contract)
+                                                        .entrySet()
+                                                        .stream()
+                                                        .filter(
+                                                                bean ->
+                                                                        !bean.getKey()
+                                                                                .startsWith(
+                                                                                        "__lumiraDependency."))
+                                                        .map(Map.Entry::getValue)
+                                                        .toList());
                 if (beans.isEmpty() || !isModuleEnabled(entry.getKey())) continue;
                 if (TransactionSynchronizationManager.isSynchronizationActive()
                         && TransactionSynchronizationManager.isActualTransactionActive()) {
@@ -3420,7 +3585,7 @@ public class PluginRuntime
                             });
                     deferred = true;
                 }
-                try (var scope = invocationScope(entry.getValue())) {
+                try (var scope = invocationScope(handle)) {
                     for (var bean : beans) out.add(call.apply(bean));
                 }
             } catch (ResponseStatusException unavailable) {
@@ -3446,12 +3611,30 @@ public class PluginRuntime
             String method, String path, Set<String> authorities, boolean authenticated) {
         if (!isReadyForTraffic()) return false;
         var requestPath = PluginHttpRuleIndex.requestPath(path);
-        for (var a : artifacts.values()) {
-            var rule = rulesFor(a).first(method, requestPath);
-            if (rule != null && isModuleEnabled(a.manifest().id()))
-                return ruleAllows(rule, authorities, authenticated);
-        }
-        return false;
+        if (requestPath == null) return false;
+        boolean[] allowed = new boolean[1];
+        Set<String>[] disabledChecked = new Set[1];
+        globalRoutes()
+                .rules
+                .forEachMatching(
+                        method,
+                        requestPath,
+                        compiled -> {
+                            String owner = compiled.owner();
+                            if (disabledChecked[0] != null && disabledChecked[0].contains(owner)) {
+                                return false;
+                            }
+                            if (!isModuleEnabled(owner)) {
+                                if (disabledChecked[0] == null) {
+                                    disabledChecked[0] = new HashSet<>(4);
+                                }
+                                disabledChecked[0].add(owner);
+                                return false;
+                            }
+                            allowed[0] = ruleAllows(compiled.rule(), authorities, authenticated);
+                            return true;
+                        });
+        return allowed[0];
     }
 
     /** Legacy `authorities` retain any-of semantics; the additive all-of list is explicit. */
@@ -3501,12 +3684,8 @@ public class PluginRuntime
     @Override
     public boolean signedCallback(String method, String path) {
         if (!"POST".equals(method) || !isReadyForTraffic()) return false;
-        for (var artifact : artifacts.values()) {
-            for (var rule : artifact.manifest().apiRules())
-                if (rule.signedCallback()
-                        && "POST".equals(rule.method())
-                        && rule.path().equals(path)
-                        && isModuleEnabled(artifact.manifest().id())) return true;
+        for (String owner : globalRoutes().rules.signedCallbackOwners(path)) {
+            if (isModuleEnabled(owner)) return true;
         }
         return false;
     }
@@ -3519,36 +3698,34 @@ public class PluginRuntime
             Set<String> effectiveGlobalAuthorities) {
         if (!"GET".equals(method) || !isReadyForTraffic()) return false;
         var requestPath = PluginHttpRuleIndex.requestPath(path);
-        for (var artifact : artifacts.values()) {
-            if (rulesFor(artifact)
-                    .any(
-                            method,
-                            requestPath,
-                            rule ->
-                                    rule.previewReadOnly()
-                                            && isModuleEnabled(artifact.manifest().id())
-                                            && authorityRuleMatches(
-                                                    rule,
-                                                    effectiveAuthorities,
-                                                    effectiveGlobalAuthorities))) return true;
-        }
-        return false;
+        if (requestPath == null) return false;
+        return globalRoutes()
+                .previewRules
+                .forEachMatching(
+                        method,
+                        requestPath,
+                        compiled ->
+                                isModuleEnabled(compiled.owner())
+                                        && authorityRuleMatches(
+                                                compiled.rule(),
+                                                effectiveAuthorities,
+                                                effectiveGlobalAuthorities));
     }
 
     @Override
     public boolean safeFrontendAsset(String path) {
-        if (!isReadyForTraffic()) return false;
-        var matcher =
-                java.util.regex.Pattern.compile(
-                                "^/api/platform/modules/plugins/assets/([a-f0-9]{64})/(plugin\\.js|[A-Za-z0-9_.-]+\\.css)$")
-                        .matcher(path == null ? "" : path);
+        if (!isReadyForTraffic() || path == null) return false;
+        var matcher = SAFE_FRONTEND_ASSET_PATTERN.matcher(path);
         if (!matcher.matches()) return false;
         String digest = matcher.group(1);
-        String file = matcher.group(2);
-        return artifacts.values().stream()
-                .filter(artifact -> artifact.digest().equals(digest))
-                .filter(artifact -> isModuleEnabled(artifact.manifest().id()))
-                .anyMatch(artifact -> artifact.manifest().files().containsKey("frontend/" + file));
+        String assetKey = "frontend/" + matcher.group(2);
+        for (var artifact : globalRoutes().byDigest.getOrDefault(digest, List.of())) {
+            if (isModuleEnabled(artifact.manifest().id())
+                    && artifact.manifest().files().containsKey(assetKey)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean endpointAuthorized(
@@ -3561,30 +3738,17 @@ public class PluginRuntime
             // The MVC handler has already established ownership. Another plugin's broader
             // public rule must not authorize this controller, nor trigger a second catalog
             // scan.
-            if (!isModuleEnabled(module)
-                    || !ruleAllows(
-                            rule,
-                            auth == null
-                                    ? Set.of()
-                                    : auth.getAuthorities().stream()
-                                            .map(
-                                                    org.springframework.security.core
-                                                                    .GrantedAuthority
-                                                            ::getAuthority)
-                                            .collect(java.util.stream.Collectors.toSet()),
-                            auth != null
-                                    && auth.isAuthenticated()
-                                    && !(auth
-                                            instanceof
-                                            org.springframework.security.authentication
-                                                    .AnonymousAuthenticationToken))) return false;
+            if (!isModuleEnabled(module)) return false;
+            Set<String> effective = extractAuthoritySet(auth);
+            boolean authenticated =
+                    auth != null
+                            && auth.isAuthenticated()
+                            && !(auth
+                                    instanceof
+                                    org.springframework.security.authentication
+                                            .AnonymousAuthenticationToken);
+            if (!ruleAllows(rule, effective, authenticated)) return false;
             if (!rule.authorityScopes().isEmpty()) {
-                var effective =
-                        auth.getAuthorities().stream()
-                                .map(
-                                        org.springframework.security.core.GrantedAuthority
-                                                ::getAuthority)
-                                .collect(java.util.stream.Collectors.toSet());
                 return scopedRuleMatches(
                         rule,
                         effective,
@@ -3612,16 +3776,24 @@ public class PluginRuntime
         return false;
     }
 
+    private static Set<String> extractAuthoritySet(Authentication auth) {
+        if (auth == null) return Set.of();
+        var granted = auth.getAuthorities();
+        if (granted == null || granted.isEmpty()) return Set.of();
+        var set = HashSet.<String>newHashSet(granted.size());
+        for (var authority : granted) {
+            String value = authority.getAuthority();
+            if (value != null) set.add(value);
+        }
+        return set;
+    }
+
     public Path asset(String digest, String file) {
         requireRuntimeReady();
-        var a =
-                artifacts.values().stream()
-                        .filter(x -> x.digest().equals(digest))
-                        .findFirst()
-                        .orElseThrow(
-                                () ->
-                                        new ResponseStatusException(
-                                                HttpStatus.NOT_FOUND, "pluginNotFound"));
+        var matching = globalRoutes().byDigest.get(digest);
+        if (matching == null || matching.isEmpty())
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "pluginNotFound");
+        var a = matching.getFirst();
         if (!isModuleEnabled(a.manifest().id())
                 || !a.manifest().files().containsKey("frontend/" + file))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "moduleUnavailable");

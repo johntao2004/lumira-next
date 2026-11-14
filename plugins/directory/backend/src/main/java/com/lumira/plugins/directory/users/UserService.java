@@ -286,34 +286,17 @@ public class UserService {
     public PageResult<UserSummary> list(
             PageRequest request, String actor, RequestAuthorizationContext authorization) {
         guard.requirePage(actor, PlatformPageId.USERS);
-        long total = repository.count(request, actor, authorization);
-        return new PageResult<>(
-                repository.findPage(request, actor, authorization),
-                total,
-                request.page(),
-                request.pageSize());
+        return repository.queryPage(request, actor, authorization);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResult<UserSummary> listForAi(PageRequest request, String actor) {
         guard.requireOperation(actor, PlatformOperation.AI_CONSOLE_READ_USERS);
-        String permission = PlatformOperation.AI_CONSOLE_READ_USERS.permission();
-        long total =
-                repository.count(
-                        request,
-                        actor,
-                        null,
-                        permission,
-                        PlatformPageId.AI_CONSOLE.accessPermission());
-        return new PageResult<>(
-                repository.findPage(
-                        request,
-                        actor,
-                        null,
-                        permission,
-                        PlatformPageId.AI_CONSOLE.accessPermission()),
-                total,
-                request.page(),
-                request.pageSize());
+        return repository.queryPage(
+                request,
+                actor,
+                null,
+                PlatformOperation.AI_CONSOLE_READ_USERS.permission(),
+                PlatformPageId.AI_CONSOLE.accessPermission());
     }
 }

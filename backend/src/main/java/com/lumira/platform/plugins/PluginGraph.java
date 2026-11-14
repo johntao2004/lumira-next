@@ -13,6 +13,7 @@ public final class PluginGraph {
             boolean explicit) {}
 
     private final Map<String, Node> nodes;
+    private final Map<String, List<String>> installedDependents;
 
     public PluginGraph(Collection<Node> nodes) {
         var map = new LinkedHashMap<String, Node>();
@@ -20,6 +21,18 @@ public final class PluginGraph {
             if (map.putIfAbsent(n.id(), n) != null)
                 throw new IllegalArgumentException("duplicatePlugin");
         this.nodes = Map.copyOf(map);
+        var dependents = new HashMap<String, Set<String>>();
+        for (var n : map.values()) {
+            if (!n.installed()) continue;
+            for (var dep : n.dependencies()) {
+                if (!dep.id().equals(n.id())) {
+                    dependents.computeIfAbsent(dep.id(), ignored -> new TreeSet<>()).add(n.id());
+                }
+            }
+        }
+        var frozenDependents = new HashMap<String, List<String>>(dependents.size());
+        dependents.forEach((id, set) -> frozenDependents.put(id, List.copyOf(set)));
+        this.installedDependents = Map.copyOf(frozenDependents);
     }
 
     public List<String> install(String root) {
@@ -73,17 +86,7 @@ public final class PluginGraph {
     public List<String> uninstall(String root) {
         var n = nodes.get(root);
         if (n == null || n.core()) throw new IllegalArgumentException("requiredModule");
-        var blockers =
-                nodes.values().stream()
-                        .filter(
-                                x ->
-                                        x.installed()
-                                                && !x.id().equals(root)
-                                                && x.dependencies().stream()
-                                                        .anyMatch(d -> d.id().equals(root)))
-                        .map(Node::id)
-                        .sorted()
-                        .toList();
+        var blockers = installedDependents.getOrDefault(root, List.of());
         if (!blockers.isEmpty())
             throw new IllegalArgumentException("pluginRequiredBy:" + String.join(",", blockers));
         if (!n.installed()) return List.of();

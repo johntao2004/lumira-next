@@ -249,7 +249,8 @@ public class SensitiveWordService {
                 duplicated++;
             }
         }
-        for (var entry : unique.entrySet()) {
+        if (unique.size() == 1) {
+            var entry = unique.entrySet().iterator().next();
             try {
                 if (repository.insertIfAbsent(
                                 UUID.randomUUID(),
@@ -264,6 +265,9 @@ public class SensitiveWordService {
             } catch (DuplicateKeyException error) {
                 duplicated++;
             }
+        } else if (!unique.isEmpty()) {
+            imported = repository.insertBatchIfAbsent(unique, category, severity, action, actor);
+            duplicated += unique.size() - imported;
         }
         if (imported > 0) {
             audit.append(actor, "sensitiveWord.imported", UUID.randomUUID());

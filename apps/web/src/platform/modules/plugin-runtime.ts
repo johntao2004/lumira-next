@@ -14,8 +14,27 @@ declare global {
   }
 }
 let runtimeObservers=0;
+let flushQueued=false;
+let currentNotify:(()=>void)|null=null;
 const pending=new Map<string,{version:string;digest:string;revision:string|null|undefined;script:HTMLScriptElement;resolve:(module:FrontendModule)=>void;reject:(error:Error)=>void}>();
 const loaded=new Map<string,{digest:string;revision:string|null|undefined;remove:()=>void;script:HTMLScriptElement;styles:HTMLLinkElement[]}>();
+function scheduleLoadedFlush(client:ReturnType<typeof useQueryClient>,fallbackNotify:()=>void){
+ if(!currentNotify)currentNotify=fallbackNotify;
+ if(flushQueued)return;
+ flushQueued=true;
+ void Promise.resolve().then(()=>{
+  flushQueued=false;
+  void client.invalidateQueries({queryKey:['modules']});
+  void client.invalidateQueries({queryKey:['plugins']});
+  void client.invalidateQueries({queryKey:['navigation-runtime']});
+  void client.invalidateQueries({queryKey:accountAvatarKey});
+  window.dispatchEvent(new Event('lumira:localization-changed'));
+  currentNotify?.();
+ });
+}
+function isFixedPluginGraph(plugins:PluginView[]|undefined):boolean{
+ return Boolean(plugins&&plugins.length>0&&plugins.every(p=>!p.lifecycleChangesAllowed&&p.lifecycleBlockReason==='pluginFixedGraph'));
+}
 function assetUrl(digest:string,file:string){const url=new URL(`/api/platform/modules/plugins/assets/${digest}/${file}`,window.location.origin);const revision=getAuthorizationContext()?.revision;if(!revision)throw new Error('authorizationContextUnavailable');url.searchParams.set('authorizationContextRevision',revision);return url.toString();}
 function loadPlugin(plugin:PluginView):Promise<FrontendModule>{
  const w=window;w.__lumiraPluginSdk=pluginSdkModules;
@@ -37,13 +56,15 @@ function loadPlugin(plugin:PluginView):Promise<FrontendModule>{
 }
 export function usePluginRuntime(){
  const client=useQueryClient();const [,render]=useState(0);const authorizationRevision=getAuthorizationContext()?.revision;
- const query=useQuery({queryKey:['plugin-frontend'],queryFn:({signal})=>api<PluginView[]>('/platform/modules/plugins/frontend',{signal}),refetchInterval:2500,refetchIntervalInBackground:true});
+ const query=useQuery({queryKey:['plugin-frontend'],queryFn:({signal})=>api<PluginView[]>('/platform/modules/plugins/frontend',{signal}),refetchInterval:q=>isFixedPluginGraph(q.state.data)?false:2500,refetchIntervalInBackground:false});
  useEffect(()=>{let cancelled=false;
+  const notify=()=>{if(!cancelled)render(n=>n+1);};
+  currentNotify=notify;
   const active=query.data?new Map(query.data.map(p=>[p.id,p])):undefined;
   for(const [id,item] of pending)if(item.revision!==authorizationRevision||active&&active.get(id)?.digest!==item.digest)item.reject(new Error('pluginFrontendCancelled'));
   for(const [id,item] of loaded)if(item.revision!==authorizationRevision||active&&active.get(id)?.digest!==item.digest){item.remove();item.script.remove();item.styles.forEach(s=>s.remove());loaded.delete(id);client.removeQueries({predicate:q=>q.queryKey.some(k=>typeof k==='string'&&(k.startsWith(id)||id==='sensitive-words'&&k.startsWith('sensitive')||id==='localization'&&k.includes('localization')))});render(n=>n+1);void client.invalidateQueries({queryKey:['modules']});void client.invalidateQueries({queryKey:['plugins']});void client.invalidateQueries({queryKey:['session']});void client.invalidateQueries({queryKey:['navigation-runtime']});void client.invalidateQueries({queryKey:accountAvatarKey});window.dispatchEvent(new Event('lumira:localization-changed'));}
-  for(const plugin of query.data??[])if(!loaded.has(plugin.id)&&!pending.has(plugin.id))void loadPlugin(plugin).then(()=>{void client.invalidateQueries({queryKey:['modules']});void client.invalidateQueries({queryKey:['plugins']});void client.invalidateQueries({queryKey:['navigation-runtime']});void client.invalidateQueries({queryKey:accountAvatarKey});window.dispatchEvent(new Event('lumira:localization-changed'));if(!cancelled)render(n=>n+1);}).catch(error=>{console.error('Plugin frontend failed',plugin.id,error);});
-  return ()=>{cancelled=true;};
+  for(const plugin of query.data??[])if(!loaded.has(plugin.id)&&!pending.has(plugin.id))void loadPlugin(plugin).then(()=>{scheduleLoadedFlush(client,notify);}).catch(error=>{console.error('Plugin frontend failed',plugin.id,error);});
+  return ()=>{cancelled=true;if(currentNotify===notify)currentNotify=null;};
  },[query.data,query.dataUpdatedAt,client,authorizationRevision]);
  useEffect(()=>{const refresh=()=>{void query.refetch();void client.invalidateQueries({queryKey:['modules']});void client.invalidateQueries({queryKey:['plugins']});void client.invalidateQueries({queryKey:['session']});void client.invalidateQueries({queryKey:['navigation-runtime']});window.dispatchEvent(new Event('lumira:localization-changed'));};window.addEventListener('lumira:modules-changed',refresh);return()=>window.removeEventListener('lumira:modules-changed',refresh);},[client,query.refetch]);
  useEffect(()=>{runtimeObservers++;return()=>{runtimeObservers--;if(runtimeObservers===0){for(const item of pending.values())item.reject(new Error('pluginFrontendCancelled'));for(const item of loaded.values()){item.remove();item.script.remove();item.styles.forEach(s=>s.remove());}loaded.clear();}};},[]);

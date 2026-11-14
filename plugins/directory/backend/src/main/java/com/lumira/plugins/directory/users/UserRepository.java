@@ -1,17 +1,22 @@
 package com.lumira.plugins.directory.users;
 
+import com.lumira.platform.common.JdbcPageQuery;
 import com.lumira.platform.common.PageFilterSql;
 import com.lumira.platform.common.PageRequest;
+import com.lumira.platform.common.PageResult;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class UserRepository {
+    private static final String SUMMARY_PROJECTION =
+            "id, username, display_name, enabled, version, file_quota_bytes_override, file_quota_files_override";
     private final JdbcClient jdbc;
     private final com.lumira.platform.common.UserDirectoryPort accounts;
 
@@ -24,12 +29,31 @@ public class UserRepository {
     private static String filter(
             RequestAuthorizationContext context, String scopePermission, String pagePermission) {
         String visibleScope = visible(context);
-        String visiblePage = visible(context).replace(":scopePermission", ":pagePermission");
+        if (Objects.equals(scopePermission, pagePermission)) {
+            return " WHERE deleted_at IS NULL AND id IN (SELECT user_id FROM "
+                    + visibleScope
+                    + ") AND (:search = '' OR strpos(lower(username), lower(:search)) > 0 OR strpos(lower(display_name), lower(:search)) > 0)";
+        }
+        String visiblePage = visibleScope.replace(":scopePermission", ":pagePermission");
         return " WHERE deleted_at IS NULL AND id IN (SELECT user_id FROM "
                 + visibleScope
                 + " INTERSECT SELECT user_id FROM "
                 + visiblePage
                 + ") AND (:search = '' OR strpos(lower(username), lower(:search)) > 0 OR strpos(lower(display_name), lower(:search)) > 0)";
+    }
+
+    private static void visibilityParams(
+            java.util.Map<String, Object> params,
+            String actor,
+            RequestAuthorizationContext context,
+            String scopePermission,
+            String pagePermission) {
+        params.put("actor", actor);
+        params.put("scopePermission", scopePermission);
+        if (!Objects.equals(scopePermission, pagePermission)) {
+            params.put("pagePermission", pagePermission);
+        }
+        contextParams(params, context);
     }
 
     private static void contextParams(
@@ -90,12 +114,9 @@ public class UserRepository {
             String pagePermission) {
         var filter = filters(request);
         var params = new java.util.HashMap<String, Object>();
-        params.put("actor", actor);
-        params.put("scopePermission", scopePermission);
-        params.put("pagePermission", pagePermission);
+        visibilityParams(params, actor, context, scopePermission, pagePermission);
         params.put("search", request.search());
         params.putAll(filter.parameters());
-        contextParams(params, context);
         return jdbc.sql(
                         "SELECT count(*) FROM platform_user"
                                 + filter(context, scopePermission, pagePermission)
@@ -103,6 +124,34 @@ public class UserRepository {
                 .params(params)
                 .query(Long.class)
                 .single();
+    }
+
+    public PageResult<UserSummary> queryPage(
+            PageRequest request, String actor, RequestAuthorizationContext context) {
+        return queryPage(request, actor, context, "platform:users:access", "platform:users:access");
+    }
+
+    public PageResult<UserSummary> queryPage(
+            PageRequest request,
+            String actor,
+            RequestAuthorizationContext context,
+            String scopePermission,
+            String pagePermission) {
+        var filter = filters(request);
+        var params = new java.util.HashMap<String, Object>();
+        visibilityParams(params, actor, context, scopePermission, pagePermission);
+        params.put("search", request.search());
+        params.putAll(filter.parameters());
+        return JdbcPageQuery.queryWindowed(
+                jdbc,
+                request,
+                SUMMARY_PROJECTION,
+                " FROM platform_user"
+                        + filter(context, scopePermission, pagePermission)
+                        + filter.sql(),
+                "username, id",
+                params,
+                UserRepository::mapSummary);
     }
 
     public List<UserSummary> findPage(PageRequest request, String actor) {
@@ -130,16 +179,15 @@ public class UserRepository {
             String pagePermission) {
         var filter = filters(request);
         var params = new java.util.HashMap<String, Object>();
-        params.put("actor", actor);
-        params.put("scopePermission", scopePermission);
-        params.put("pagePermission", pagePermission);
+        visibilityParams(params, actor, context, scopePermission, pagePermission);
         params.put("search", request.search());
         params.put("limit", request.pageSize());
         params.put("offset", request.offset());
         params.putAll(filter.parameters());
-        contextParams(params, context);
         return jdbc.sql(
-                        "SELECT id, username, display_name, enabled, version,file_quota_bytes_override,file_quota_files_override FROM platform_user"
+                        "SELECT "
+                                + SUMMARY_PROJECTION
+                                + " FROM platform_user"
                                 + filter(context, scopePermission, pagePermission)
                                 + filter.sql()
                                 + " ORDER BY username, id LIMIT :limit OFFSET :offset")
@@ -176,15 +224,14 @@ public class UserRepository {
             String pagePermission) {
         var filter = filters(request);
         var params = new java.util.HashMap<String, Object>();
-        params.put("actor", actor);
-        params.put("scopePermission", scopePermission);
-        params.put("pagePermission", pagePermission);
+        visibilityParams(params, actor, context, scopePermission, pagePermission);
         params.put("search", request.search());
         params.put("limit", limit);
         params.putAll(filter.parameters());
-        contextParams(params, context);
         return jdbc.sql(
-                        "SELECT id, username, display_name, enabled, version,file_quota_bytes_override,file_quota_files_override FROM platform_user"
+                        "SELECT "
+                                + SUMMARY_PROJECTION
+                                + " FROM platform_user"
                                 + filter(context, scopePermission, pagePermission)
                                 + filter.sql()
                                 + " ORDER BY username, id LIMIT :limit")

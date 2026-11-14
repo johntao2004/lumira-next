@@ -8,38 +8,40 @@ import { createFrontendPageRegistry } from '../apps/web/src/platform/modules/con
 function runtime() {
   const source = stripTypeScriptTypes(readFileSync(new URL('../apps/web/src/platform/modules/plugin-runtime.ts', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace(/export /g, ''));
-  let data = [], effects = [], cleanup, count = 0, revision = 'one';
+  let data = [], effects = [], cleanup, count = 0, revision = 'one', renders = 0, invalidations = 0, events = 0, queryOptions;
   const registry = createFrontendPageRegistry([]);
   const timers = new Set();
-  const client = { invalidateQueries: () => Promise.resolve(), removeQueries() {} };
+  const client = { invalidateQueries: () => { invalidations++; return Promise.resolve(); }, removeQueries() {} };
   const document = { currentScript: null, createElement: () => ({ remove() {} }), head: { appendChild() {} } };
   const context = vm.createContext({ console: { error() {} }, URL, Event, document,
     setTimeout: fn => { timers.add(fn); return fn; }, clearTimeout: fn => timers.delete(fn),
-    useState: () => [0, () => {}], useEffect: fn => effects.push(fn), useQueryClient: () => client,
-    useQuery: () => ({ data, refetch() {} }), api() {}, getAuthorizationContext: () => ({ revision }),
+    useState: () => [0, () => { renders++; }], useEffect: fn => effects.push(fn), useQueryClient: () => client,
+    useQuery: options => { queryOptions = options; return { data, refetch() {} }; }, api() {}, getAuthorizationContext: () => ({ revision }),
     pluginSdkModules: {}, accountAvatarKey: ['avatar'], registerPluginPages: module => {
       const remove = registry.registerPlugin(module);
       count++;
       return () => { remove(); count--; };
     },
-    window: { location: { origin: 'http://localhost' }, addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
+    window: { location: { origin: 'http://localhost' }, addEventListener() {}, removeEventListener() {}, dispatchEvent() { events++; } },
   });
   vm.runInContext(source + '\nglobalThis.run=usePluginRuntime;globalThis.requests=pending;', context);
   return {
     update(next) { cleanup?.(); effects = []; data = next; context.run(); cleanup = effects[0](); },
-    script() { return context.requests.get('probe')?.script; },
-    register(script) { document.currentScript = script; context.window.__lumiraRegisterPlugin('probe', { entry: {
-      id: 'probe', version: '1', required: false, dependencies: [], routes: [], pages: {},
-      workspaceActions: [{ id: 'inbox', component: () => null }],
+    script(id = 'probe') { return context.requests.get(id)?.script; },
+    register(script, id = 'probe') { document.currentScript = script; context.window.__lumiraRegisterPlugin(id, { entry: {
+      id, version: '1', required: false, dependencies: [], routes: [], pages: {},
+      workspaceActions: [{ id: `inbox-${id}`, component: () => null }],
     } }); document.currentScript = null; },
     expire() { for (const fn of [...timers]) fn(); },
     observe() { return effects.at(-1)(); },
     switchAccount() { revision = 'two'; },
     count: () => count, pending: () => context.requests.size, timers: () => timers.size,
+    renders: () => renders, invalidations: () => invalidations, events: () => events,
+    queryOptions: () => queryOptions,
     actions: registry.workspaceActions,
   };
 }
-const plugin = digest => ({ id: 'probe', version: '1', digest, manifest: { routes: [], files: {} } });
+const plugin = (digest, id = 'probe', extra = {}) => ({ id, version: '1', digest, manifest: { routes: [], files: {} }, ...extra });
 
 test('uninstall cancels a pending script and rejects late registration', async () => {
   const r = runtime(); r.update([plugin('old')]); const old = r.script();
@@ -136,4 +138,25 @@ test('an embedded editor preserves its completion callback and derives grants fr
   assert.equal(current.embedded.onSaved, onSaved);
   globals.delete(access);
   assert.equal(current.hasOperation('update'), false);
+});
+
+test('concurrent plugin loads coalesce query invalidations and disable fixed-graph background polling', async () => {
+  const r = runtime();
+  r.update([
+    plugin('d1', 'alpha', { lifecycleChangesAllowed: false, lifecycleBlockReason: 'pluginFixedGraph' }),
+    plugin('d2', 'beta', { lifecycleChangesAllowed: false, lifecycleBlockReason: 'pluginFixedGraph' }),
+    plugin('d3', 'gamma', { lifecycleChangesAllowed: false, lifecycleBlockReason: 'pluginFixedGraph' }),
+  ]);
+  assert.equal(r.queryOptions().refetchIntervalInBackground, false);
+  assert.equal(r.queryOptions().refetchInterval({ state: { data: [plugin('d1', 'alpha', { lifecycleChangesAllowed: false, lifecycleBlockReason: 'pluginFixedGraph' })] } }), false);
+  assert.equal(r.queryOptions().refetchInterval({ state: { data: [plugin('d1', 'alpha', { lifecycleChangesAllowed: true, lifecycleBlockReason: null })] } }), 2500);
+  r.register(r.script('alpha'), 'alpha');
+  r.register(r.script('beta'), 'beta');
+  r.register(r.script('gamma'), 'gamma');
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(r.count(), 3);
+  assert.equal(r.invalidations(), 4);
+  assert.equal(r.events(), 1);
+  assert.equal(r.renders(), 1);
 });
