@@ -1,3 +1,7 @@
+/**
+ * 将精确白名单路径映射到宿主共享模块，新增接口须同步白名单和契约测试，避免插件依赖私有实现。
+ * Map exact allowlisted paths to shared host modules, updating the allowlist and contract tests with new APIs so plugins do not depend on private implementations.
+ */
 import * as module76 from "@/platform/auth/captcha-policy";
 import * as module75 from "@/platform/profile-fields/localization";
 import * as module74 from "@/platform/components/settings-secret-field";
@@ -73,7 +77,12 @@ import * as module67 from "@/platform/files/file-preview-drawer";
 import * as module68 from "@/platform/files/file-name-cell";
 import * as module69 from "@/platform/files/file-table-columns";
 import * as module70 from "@/platform/files/use-file-batch-actions";
+import * as module77 from "@/platform/i18n/builtin-dictionary-labels";
+import * as module78 from "@/platform/forms/inferred-defaults";
+import * as module79 from "@/platform/forms/use-settings-draft";
 export const pluginSdkModules = {
+ "@/platform/forms/inferred-defaults": module78,
+ "@/platform/forms/use-settings-draft": module79,
  "@/platform/auth/captcha-policy": module76,
  "@/platform/profile-fields/localization": module75,
  "@/platform/components/settings-secret-field": module74,
@@ -146,6 +155,7 @@ export const pluginSdkModules = {
  "@/platform/routing/use-list-request": module22,
  "@/platform/auth/reauthentication-contract": module28,
  "@/platform/auth/reauthentication-fields": module33,
+ "@/platform/i18n/builtin-dictionary-labels": module77,
  "@/platform/auth/use-reauthentication-ticket": module29,
  "@/platform/auth/use-session-scope": module32,
  "@/platform/auth/passkey": module30,

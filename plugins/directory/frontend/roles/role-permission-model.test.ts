@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  canEditRolePermission,
   checkedPermissionTreeKeys,
+  roleContainsUndelegableActiveGrant,
   filterPermissionCatalog,
+  permissionSearchExpansionKeys,
   mergePermissionPageRows,
   permissionOperationNodeKey,
   permissionPageNodeKey,
@@ -203,4 +206,58 @@ test("bulk select and clear span the full catalog and preserve uneditable and un
 
   const cleared = updateAllEditableActiveRoleAuthorities(selected, groups, ["platform:users:access"], false);
   assert.deepEqual(cleared, ["platform:unknown:grant", "platform:files:access", "plugin:legacy:manage"]);
+});
+
+test("a role that already contains an undelegable active grant is read-only", () => {
+  const groups = catalog().map((group) => ({
+    ...group,
+    permissions: group.permissions.map((entry) => entry.code === "platform:users:update" ? { ...entry, editable: false } : entry),
+  }));
+  assert.equal(roleContainsUndelegableActiveGrant(groups, ["platform:users:update"]), true);
+  assert.equal(roleContainsUndelegableActiveGrant(groups, ["platform:users:access"]), false);
+  assert.equal(roleContainsUndelegableActiveGrant([{
+    id: "retired-permissions",
+    title: "retired",
+    source: "platform",
+    pages: [],
+    permissions: [{ code: "platform:retired:read", label: "retired", editable: false, retired: true }],
+  }], ["platform:retired:read"]), false);
+});
+
+test("the default registration role cannot gain permissions outside its allow-list", () => {
+  const groups: PermissionCatalogGroup[] = [{
+    id: "feedback",
+    title: "feedback",
+    source: "plugin",
+    pages: [],
+    permissions: [
+      { code: "platform:feedback:access", label: "access", editable: true, registrationEligible: true },
+      { code: "platform:feedback:reply", label: "reply", editable: true, registrationEligible: false },
+    ],
+  }];
+  assert.equal(canEditRolePermission(groups, "platform:feedback:reply", [], [], false, true, true), false);
+  assert.equal(canEditRolePermission(groups, "platform:feedback:reply", ["platform:feedback:reply"], [], false, false, true), true);
+  assert.equal(canEditRolePermission(groups, "platform:feedback:access", [], [], false, true, true), true);
+});
+
+test("search expansion follows navigation-group and source changes for the same route", () => {
+  const group = catalog()[0];
+  const page = group.pages[0];
+  const keys = (source: "platform" | "plugin", navigationGroup: string) => permissionSearchExpansionKeys([{
+    group: { ...group, source }, pages: [{ page: { ...page, navigationGroup }, operations: [] }], unmappedPermissions: [],
+  }]);
+  assert.notDeepEqual(keys("platform", "before"), keys("platform", "after"));
+  assert.notDeepEqual(keys("platform", "after"), keys("plugin", "after"));
+  assert.ok(keys("plugin", "after").includes("permission-root:plugin"));
+  assert.ok(keys("plugin", "after").includes("domain:plugin:after"));
+  assert.deepEqual(permissionSearchExpansionKeys([]), []);
+});
+
+test("search expansion deduplicates rows and keeps unmapped branches stable across label changes", () => {
+  const group = catalog()[0];
+  const result = { group, pages: [], unmappedPermissions: [permission("custom:read")] };
+  const keys = permissionSearchExpansionKeys([result]);
+  assert.ok(keys.includes("unmapped-root:platform"));
+  assert.deepEqual(permissionSearchExpansionKeys([result, result]), keys);
+  assert.deepEqual(permissionSearchExpansionKeys([{ ...result, group: { ...group, title: "Translated" } }]), keys);
 });

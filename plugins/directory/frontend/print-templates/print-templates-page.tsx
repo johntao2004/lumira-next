@@ -1,4 +1,5 @@
 "use client";
+import { inferredFileName } from "@/platform/forms/inferred-defaults";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +13,7 @@ import { PlatformDrawer } from "@/platform/components/platform-drawer";
 import { PlatformForm } from "@/platform/components/platform-form";
 import { QueryFailure } from "@/platform/components/query-failure";
 import { ResourceTable } from "@/platform/components/resource-table";
-import { isRolePreviewReadOnly } from "@/platform/api/client";
+import { ApiError, isRolePreviewReadOnly } from "@/platform/api/client";
 import { useSessionScope } from "@/platform/auth/use-session-scope";
 import { useListRequest } from "@/platform/routing/use-list-request";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
@@ -76,6 +77,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
   const [metadataDirty, setMetadataDirty] = useState(false);
   const [pendingSourceReview, setPendingSourceReview] = useState(false);
   const [testFillOpen, setTestFillOpen] = useState(false);
+  const createNameDefault = useRef<string | null>(null);
+  const createNameEdited = useRef(false);
   const [createForm] = PlatformForm.useForm<CreateValues>();
   const [editForm] = PlatformForm.useForm<{ name: string; category: string; tags: string[] }>();
   const initializedTemplateId = useRef<string | null>(null);
@@ -164,6 +167,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
       return Upload.LIST_IGNORE;
     }
     createAction.setError(null);
+    const inferred = inferredFileName(createForm.getFieldValue("name"), createNameDefault.current, createNameEdited.current, file.name, 120);
+    if (inferred !== null) { createForm.setFieldValue("name", inferred); createNameDefault.current = inferred; }
     setCreateFile(file);
     return false;
   };
@@ -197,6 +202,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
       setCreateFile(null);
       setCreateFileList([]);
       createForm.resetFields();
+      createNameDefault.current = null;
+      createNameEdited.current = false;
       setSelectedId(result.id);
       await invalidateLists(result.id);
       void message.success(t("templateCreateSuccess"));
@@ -293,7 +300,7 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
   const tagLabels = (values: string[]) => values.map((tag) => <Tag key={tag}>{tag}</Tag>);
 
   return <>
-    {fieldsQuery.error && <QueryFailure title={t("unavailable")} pending={fieldsQuery.isFetching} onRetry={() => void fieldsQuery.refetch()} />}
+    {fieldsQuery.error && !(fieldsQuery.error instanceof ApiError && fieldsQuery.error.status === 403) && <QueryFailure title={t("unavailable")} pending={fieldsQuery.isFetching} onRetry={() => void fieldsQuery.refetch()} />}
     <ResourceTable<TemplateSummary>
       result={query.data}
       loading={query.isFetching}
@@ -325,6 +332,8 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
         setCreateFile(null);
         setCreateFileList([]);
         createForm.resetFields();
+        createNameDefault.current = null;
+        createNameEdited.current = false;
         createAction.setError(null);
       }}
       formId="print-template-create"
@@ -337,6 +346,7 @@ export function PrintTemplatesPage({ canCreate, canUpdate, canPublish, canUse, c
         layout="vertical"
         disabled={createAction.pending}
         initialValues={{ tags: [], bindingMode: "auto" }}
+        onValuesChange={(changed) => { if (Object.hasOwn(changed, "name")) createNameEdited.current = true; }}
         onFinish={create}
       >
         <Alert type="info" showIcon title={t("templateCreateHint")} />

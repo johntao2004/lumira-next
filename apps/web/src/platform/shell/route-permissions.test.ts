@@ -71,6 +71,18 @@ test("page access controls navigation separately from action grants", () => {
   assert.equal(canAccessSection("online-users", ["platform:users:access"], ["directory"], ["platform:users:access"]), false);
 });
 
+test("page menus follow access grants rather than legacy read operations", () => {
+  assert.equal(canAccessSection("feedback", ["platform:feedback:access"], ["feedback"], []), true);
+  assert.equal(canAccessSection("feedback", ["platform:feedback:read"], ["feedback"], []), false);
+  assert.equal(canAccessSection("localization", ["platform:localization:access"], ["localization"], []), false);
+  assert.equal(canAccessSection("localization", [], ["localization"], ["platform:localization:access"]), true);
+  assert.equal(canAccessSection("localization", [], ["localization"], ["platform:localization:read"]), false);
+  assert.equal(canAccessSection("sensitive-words", [], ["sensitive-words"], ["platform:sensitive-words:access"]), true);
+  assert.equal(canAccessSection("sensitive-words", ["platform:sensitive-words:read"], ["sensitive-words"], []), false);
+  assert.equal(canAccessSection("print-templates", ["platform:print-templates:access"], ["directory"], []), false);
+  assert.equal(canAccessSection("print-templates", [], ["directory"], ["platform:print-templates:access"]), true);
+});
+
 test("site settings tabs include only children with their own page access", () => {
   const settings = frontendModuleManifests.find(({ id }) => id === "site-console");
   assert.ok(settings);

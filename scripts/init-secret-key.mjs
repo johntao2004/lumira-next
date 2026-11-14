@@ -16,7 +16,7 @@ try{
    env:{...process.env,PGHOST:database.hostname.replace(/[\[\]]/g,''),PGPORT:database.port||'5432',PGDATABASE:decodeURIComponent(database.pathname.slice(1)),PGUSER:config.LUMIRA_DB_USER,PGPASSWORD:config.LUMIRA_DB_PASSWORD},
    input:'SELECT count(*) FROM platform_secret WHERE ciphertext IS NOT NULL;',encoding:'utf8',timeout:20000,
   });
-  if(result.status!==0)throw new Error('Cannot verify existing encrypted credentials; apply V23 before initializing a key.');
+  if(result.status!==0)throw new Error('Cannot verify existing encrypted credentials; verify the current database initialization and connectivity before initializing a key.');
   if(result.stdout.trim()!=='0')throw new Error('Encrypted credentials already exist. Restore the original key configuration instead of generating a replacement.');
   config.LUMIRA_SECRET_KEYS='primary='+randomBytes(32).toString('base64');config.LUMIRA_SECRET_ACTIVE_KEY='primary';
   writeFileSync(temporary,JSON.stringify(config,null,2)+'\n',{mode:0o600,flag:'wx'});renameSync(temporary,file);chmodSync(file,0o600);

@@ -38,13 +38,13 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
     }
 
     public PageResult<RoleContentPolicyRepository.Policy> list(PageRequest page, String actor) {
-        requireGlobalOperation(actor, SensitiveWordService.READ);
+        requirePageView(actor);
         return new PageResult<>(
                 policies.list(page), policies.count(page), page.page(), page.pageSize());
     }
 
     public PageResult<RoleContentPolicyRepository.Hit> hits(PageRequest page, String actor) {
-        requireGlobalOperation(actor, SensitiveWordService.READ);
+        requirePageView(actor);
         return new PageResult<>(
                 policies.hits(page), policies.hitCount(page), page.page(), page.pageSize());
     }
@@ -152,7 +152,7 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
     }
 
     public SensitiveWordService.CheckResult preview(UUID roleId, String text, String actor) {
-        requireGlobalOperation(actor, SensitiveWordService.READ);
+        requirePageView(actor);
         if (text != null && text.length() > 200_000)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sensitiveTextTooLong");
         if (roleId == null) return dictionary.check(text, actor);
@@ -178,9 +178,13 @@ public class RoleContentPolicyService implements ContentPolicyPort, Registration
                         .toList());
     }
 
-    private void requireGlobalOperation(String actor, String operation) {
+    private void requirePageView(String actor) {
         guard.require(actor, SensitiveWordService.ACCESS);
         guard.requireGlobal(actor, SensitiveWordService.ACCESS);
+    }
+
+    private void requireGlobalOperation(String actor, String operation) {
+        requirePageView(actor);
         guard.require(actor, operation);
         guard.requireGlobal(actor, operation);
     }

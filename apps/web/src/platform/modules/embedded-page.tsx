@@ -1,6 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
-import { frontendRouteRegistrationKey, renderFrontendPage, subscribeFrontendWorkspaceActions } from "./registry";
+import { frontendRouteRegistrationKey, renderFrontendPage, subscribeFrontendWorkspaceActions } from "./page-store";
 import type { FrontendPageContext } from "./types";
 /** Plugin route composition follows registration and authorization, including unload/replacement. */
 export function EmbeddedFrontendPage({ routeId, context, onSaved }: { routeId: string; context: FrontendPageContext; onSaved?: () => void | Promise<void> }) {

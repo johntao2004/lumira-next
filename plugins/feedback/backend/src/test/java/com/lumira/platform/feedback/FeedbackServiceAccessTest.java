@@ -20,6 +20,7 @@ import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.identity.AdministrationGuard;
 import com.lumira.platform.identity.api.AuthenticationRequestContext;
 import com.lumira.platform.identity.api.RequestAuthorizationContext;
+import com.lumira.platform.modules.PluginPermissions;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +79,24 @@ class FeedbackServiceAccessTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
+        PluginPermissions.replace(
+                "feedback",
+                List.of(
+                        new PluginPermissions.CatalogGroup(
+                                "feedback",
+                                "Feedback",
+                                List.of(),
+                                List.of(
+                                        new PluginPermissions.Permission(
+                                                FeedbackService.ACCESS, "access"),
+                                        new PluginPermissions.Permission(
+                                                FeedbackService.READ, "read"),
+                                        new PluginPermissions.Permission(
+                                                FeedbackService.CREATE, "create"),
+                                        new PluginPermissions.Permission(
+                                                FeedbackService.UPDATE, "update"),
+                                        new PluginPermissions.Permission(
+                                                FeedbackService.REPLY, "reply")))));
         String url = System.getenv("LUMIRA_TEST_DB_URL");
         String user = System.getenv("LUMIRA_TEST_DB_USER");
         String password = System.getenv("LUMIRA_TEST_DB_PASSWORD");
@@ -292,6 +311,7 @@ class FeedbackServiceAccessTest {
 
     @AfterEach
     void tearDown() {
+        PluginPermissions.unregister("feedback");
         if (admin != null && schema != null)
             admin.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
     }

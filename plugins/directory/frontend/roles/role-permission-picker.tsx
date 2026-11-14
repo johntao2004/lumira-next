@@ -1,5 +1,9 @@
 "use client";
 
+/** 展示并编辑权限树，保持显式授权与搜索展开相互独立。
+ * Present and edit the permission tree while keeping explicit grants separate from search expansion.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { Button, Card, Input, Space, Tag, Tooltip, Tree, Typography } from "antd";
 import type { DataNode } from "antd/es/tree";
@@ -8,6 +12,7 @@ import {
   canEditRolePermission,
   checkedPermissionTreeKeys,
   filterPermissionCatalog,
+  permissionSearchExpansionKeys,
   editableActivePermissionCodes,
   mergePermissionPageRows,
   permissionOperationNodeKey,
@@ -34,6 +39,7 @@ type PermissionPickerProps = {
   actorAuthorities: string[];
   canEdit: boolean;
   canManagePluginPermissions: boolean;
+  registrationOnly?: boolean;
   t: (key: string, variables?: Record<string, string | number>) => string;
 };
 
@@ -74,7 +80,7 @@ function unknownNodeKey(code: string) {
 }
 
 export function RolePermissionPicker({
-  value = [], onChange, groups, actorAuthorities, canEdit, canManagePluginPermissions, t,
+  value = [], onChange, groups, actorAuthorities, canEdit, canManagePluginPermissions, registrationOnly = false, t,
 }: PermissionPickerProps) {
   const [search, setSearch] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
@@ -121,11 +127,12 @@ export function RolePermissionPicker({
           actorAuthorities,
           canManagePluginPermissions,
           !value.includes(accessCode),
+          registrationOnly,
         );
 
         const operationNodes: PermissionTreeNode[] = operations.map(({ code, label }) => {
           const operationKey = permissionOperationNodeKey(group, page, code);
-          const canEditOperation = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code));
+          const canEditOperation = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code), registrationOnly);
           const pageAccessGranted = !!accessCode && value.includes(accessCode);
           const actionUnavailable = value.includes(code) && !pageAccessGranted;
           return {
@@ -190,7 +197,7 @@ export function RolePermissionPicker({
       title: <span className="role-permission-picker__domain">{permissionGroupTitle(group, t)}</span>,
       children: groupPermissions.map(({ code, label }) => {
         const key = orphanNodeKey(group, code);
-        const canEditPermission = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code));
+        const canEditPermission = canEdit && canEditRolePermission(groups, code, value, actorAuthorities, canManagePluginPermissions, !value.includes(code), registrationOnly);
         nodeActions.set(key, { codes: [code] });
         return {
           key,
@@ -293,30 +300,19 @@ export function RolePermissionPicker({
     initializedExpandedKeys.current = true;
   }, [groupSignature]);
 
-  const visiblePageRows = mergePermissionPageRows(searchResults.flatMap(({ group, pages }) => pages.map(({ page, operations }) => ({ group, page, operations }))));
+  // 按完整展开键触发，避免新数组循环更新或漏掉导航组变化。
+  // Depend on complete expansion keys to avoid array-driven loops and missed navigation-group changes.
+  const searchExpansionKey = JSON.stringify(permissionSearchExpansionKeys(searchResults));
   useEffect(() => {
     if (!searchText) return;
-    const visibleScopes = new Set(visiblePageRows.map(({ group }) => rootTreeKey(group.source)));
-    const visibleDomains = visiblePageRows.map(({ group, page }) => `domain:${group.source}:${permissionTreeKey(page.navigationGroup ?? "unassigned")}`);
-    const visiblePages = visiblePageRows.map(({ group, page }) => permissionPageNodeKey(group, page));
-    const matchingUnmappedGroups = searchResults.filter(({ unmappedPermissions }) => unmappedPermissions.length > 0);
-    const matchingUnmappedScopes = [...new Set(matchingUnmappedGroups.map(({ group }) => group.source))];
-    const matchingUnmappedDomains = matchingUnmappedGroups.map(({ group }) => `unmapped-domain:${permissionTreeKey(`${group.source}:${group.id}`)}`);
-    setExpandedKeys((current) => [...new Set([
-      ...current,
-      ...visibleScopes,
-      ...visibleDomains,
-      ...visiblePages,
-      ...matchingUnmappedScopes.map((scope) => rootTreeKey(scope)),
-      ...matchingUnmappedScopes.map((scope) => `unmapped-root:${scope}`),
-      ...matchingUnmappedDomains,
-    ])]);
-  }, [searchText, searchResults.map(({ group, pages, unmappedPermissions }) => `${group.id}:${pages.map(({ page }) => page.path).join(",")}:${unmappedPermissions.map(({ code }) => code).join(",")}`).join("\u001f")]);
+    const keys: string[] = JSON.parse(searchExpansionKey);
+    setExpandedKeys((current) => [...new Set([...current, ...keys])]);
+  }, [searchText, searchExpansionKey]);
 
   const checkedKeys = checkedPermissionTreeKeys(nodeActions, value);
   const unknownCheckedKeys = visibleUnknownCodes.map(unknownNodeKey);
   const disabledTree = !canEdit;
-  const bulkCodes = editableActivePermissionCodes(groups, actorAuthorities, canManagePluginPermissions);
+  const bulkCodes = editableActivePermissionCodes(groups, actorAuthorities, canManagePluginPermissions, registrationOnly);
   const bulkAllSelected = bulkCodes.length > 0 && bulkCodes.every((code) => value.includes(code));
   const bulkClearHasChanges = bulkCodes.some((code) => value.includes(code));
 
@@ -327,6 +323,7 @@ export function RolePermissionPicker({
       actorAuthorities,
       selected,
       canManagePluginPermissions,
+      registrationOnly,
     );
     onChange?.(next);
   };
@@ -365,7 +362,7 @@ export function RolePermissionPicker({
         const checked = info.checked;
         const next = updateRoleAuthorities(value, checked
           ? { add: action.codes }
-          : { remove: action.codes }, groups, actorAuthorities, canManagePluginPermissions);
+          : { remove: action.codes }, groups, actorAuthorities, canManagePluginPermissions, registrationOnly);
         onChange?.(next);
       }}
     /> : <Typography.Text type="secondary" className="role-permission-picker__empty">{t("permissionNoMatches")}</Typography.Text>}

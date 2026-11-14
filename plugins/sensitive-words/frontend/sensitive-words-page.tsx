@@ -15,6 +15,7 @@ import { useCenteredModalConfirm } from "@/platform/components/use-centered-moda
 import { ResourceTable } from "@/platform/components/resource-table";
 import type { PageResult } from "@/platform/api/pagination";
 import { usePreferences } from "@/platform/providers";
+import { builtinDictionaryItemLabel } from "@/platform/i18n/builtin-dictionary-labels";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { useListRequest } from "@/platform/routing/use-list-request";
@@ -86,10 +87,11 @@ export function SensitiveWordLibrary({ canRead, canCreate, canUpdate, canDelete,
     queryFn: ({ signal }) => api<SensitiveCategoryOptionsResponse>("/platform/sensitive-words/options", { signal }),
   });
   const categoryOptions = categoriesQuery.data?.categories ?? [];
-  const categoryLabels = Object.fromEntries(categoryOptions.map((item) => [item.value, item.label]));
-  const categoryValueEnum = Object.fromEntries(categoryOptions.map((item) => [item.value, { text: item.label }]));
+  const categoryLabel = (value: string, stored: string) => builtinDictionaryItemLabel("sensitive_word_category", value, stored, t);
+  const categoryLabels = Object.fromEntries(categoryOptions.map((item) => [item.value, categoryLabel(item.value, item.label)]));
+  const categoryValueEnum = Object.fromEntries(categoryOptions.map((item) => [item.value, { text: categoryLabel(item.value, item.label) }]));
   const editorCategoryOptions = (currentCategory?: string | null) => {
-    const options = categoryOptions.map(({ value, label }) => ({ value, label }));
+    const options = categoryOptions.map(({ value, label }) => ({ value, label: categoryLabel(value, label) }));
     if (currentCategory && !categoryOptions.some((item) => item.value === currentCategory)) {
       options.push({ value: currentCategory, label: currentCategory });
     }

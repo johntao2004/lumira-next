@@ -59,8 +59,14 @@ pnpm test:crud
 2. jscpd 5.4.0 检查宿主、插件与运维脚本中的相同 token 块（至少 100 tokens、12 行，忽略注释和 import/package）。测试/浏览器验收脚本、翻译资源和生成/第三方代码不计入业务重复。
 3. `.jscpd-baseline.json` 是重复指纹基线，当前为空；达到配置阈值的重复使 CI 失败。它不是“零重复”证明，也不覆盖所有语义相似代码。不要提高阈值或自动更新基线来绕过失败；先查看 `.runtime/code-quality/duplicates/jscpd-report.json`，决定抽取或明确说明有意重复。移除旧重复后可以收缩基线，新增豁免必须在变更中解释理由。
 
-`pnpm check:java-format` 依次运行 `backend/pom.xml` 和 `plugins/pom.xml` 的 Spotless 检查，不使用 ratchet，因此覆盖宿主与全部插件自己的 Java 源码。`plugins/pom.xml` 仅提供格式检查入口（`packaging=pom`），不是插件编译或发布工程；生成目录与 `node_modules` 会排除。CI 的 backend job 运行这一统一命令，随后照常执行宿主 Maven `verify`。
+`pnpm check:java-format` 依次运行公共 `framework`、独立应用示例、`backend/pom.xml` 和 `plugins/pom.xml` 的 Spotless 检查，不使用 ratchet，因此覆盖宿主与全部插件自己的 Java 源码。`plugins/pom.xml` 仅提供格式检查入口（`packaging=pom`），不是插件编译或发布工程；生成目录与 `node_modules` 会排除。CI 的 backend job 运行这一统一命令，随后照常执行宿主 Maven `verify`。
 
 模块边界脚本与 ArchUnit 检查依赖关系；DTO JSON 契约测试检查响应映射。提交生命周期的浏览器验收需检查错误重试、取消确认、防重复提交、刷新持久化，并清理自建测试记录。构建、健康检查和浏览器验收是不同的验证层。
 
 参考：[Maven 标准布局](https://maven.apache.org/guides/introduction/introduction-to-the-standard-directory-layout.html)、[Google Java Style](https://google.github.io/styleguide/javaguide.html)、[React 组件命名](https://react.dev/learn/your-first-component)、[Umi 目录约定](https://umijs.org/docs/guides/directory-structure/)、[Flyway 版本迁移](https://documentation.red-gate.com/flyway/flyway-concepts/migrations/versioned-migrations)、[jscpd 文档](https://github.com/kucherenko/jscpd)。
+
+## 参考规范与注释
+
+后端采用[Java手册适用规范](reference/backend-standard.md)，前端采用[React适用规范](reference/frontend-standard.md)。当前Java25/PostgreSQL/React/TypeScript的差异按文档处理，不照搬旧API。核心文件必须有简短中英对应职责注释；权限、事务、并发、生命周期的关键约束以及公开接口方法的参数、返回和失败约定同样双语。注释解释为什么和调用责任，不机械复述代码。
+
+核心注释门禁逐块检查中英配对，并覆盖顶层公开接口的抽象和默认方法；字符串、SQL 文本和协议常量不作为注释翻译。静态检查不能证明语义正确，评审须核对授权责任、事务边界及失败约定。

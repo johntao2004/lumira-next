@@ -8,7 +8,7 @@ WORKDIR /workspace
 COPY --from=node-runtime /usr/local/bin/ /usr/local/bin/
 COPY --from=node-runtime /usr/local/lib/node_modules/ /usr/local/lib/node_modules/
 COPY . .
-RUN node --version && ./backend/mvnw -f backend/pom.xml -B -Dmaven.test.skip=true package
+RUN node --version && ./backend/mvnw -f pom.xml -pl backend -am -B -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app

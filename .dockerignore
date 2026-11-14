@@ -5,3 +5,9 @@
 apps/web/dist
 plugins/*/dist
 .git
+# 扫描缓存不属于源码，禁止复制进镜像构建层。
+# Scanner caches are not source and must never enter image build layers.
+.cache
+**/.cache
+**/__pycache__
+**/*.pyc

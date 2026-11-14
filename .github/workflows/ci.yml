@@ -59,26 +59,174 @@ jobs:
       # Includes the integration tests that need PostgreSQL (enabled by LUMIRA_TEST_DB_URL)
       # and ArchitectureTest, which freezes the module dependency graph.
       - run: node scripts/office-worker-test.mjs verify
+      - name: Prepare version-matched PostgreSQL clients
+        run: |
+          mkdir -p "$RUNNER_TEMP/pg-bin"
+          for command in psql createdb dropdb pg_dump pg_restore; do
+            printf '#!/usr/bin/env bash\nexec docker run --rm -i --network host -e PGHOST -e PGPORT -e PGDATABASE -e PGUSER -e PGPASSWORD -e PGOPTIONS -e PGCONNECT_TIMEOUT -e LUMIRA_DB_PASSWORD -e LUMIRA_DB_APP_USER -e LUMIRA_DB_MIGRATION_USER -e LUMIRA_DB_MIGRATION_PASSWORD -e POSTGRES_DB -v /tmp:/tmp postgres:18.6 %s "$@"\n' "$command" > "$RUNNER_TEMP/pg-bin/$command"
+            chmod +x "$RUNNER_TEMP/pg-bin/$command"
+          done
+          echo "$RUNNER_TEMP/pg-bin" >> "$GITHUB_PATH"
+      - name: Verify six isolated initialization and migration cases
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+          LUMIRA_RECOVERY_QA: "1"
+        run: python3 scripts/verify-isolated-migrations.py
+      - name: Verify read-only key inventory on isolated PostgreSQL
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+          LUMIRA_DISPOSABLE_QA: "true"
+        run: python3 scripts/verify-key-inventory.py
+      - name: Verify non-superuser deployment and plugin initialization
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+        run: python3 scripts/verify-deployment-role.py
+      - name: Verify snapshot-consistent backup and content recovery
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+        run: python3 scripts/verify-backup-restore.py
+      - name: Build trusted plugin release artifacts for recovery verification
+        run: |
+          pnpm install --frozen-lockfile
+          node scripts/build-plugins.mjs --no-host
+      - name: Verify complete disposable platform recovery
+        timeout-minutes: 10
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+          LUMIRA_RECOVERY_QA: "1"
+        run: python3 scripts/verify-platform-recovery.py
+      - name: Upload sanitized platform recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .runtime/platform-restore-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Verify independent build, authorization, upgrade and restore
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: lumira_next
+          PGPASSWORD: ci-only
+        run: python3 scripts/verify-independent-app.py
   images:
-    # Proves both production images still build; the server build also runs the localization generator.
-    runs-on: ubuntu-latest
+    # 构建四种应用镜像；实际扫描结果仍由该次 CI 提供。
+    # Build all four application images; scan evidence belongs to the actual CI run.
+    # 固定到锁定 Playwright 支持的系统，避免 latest 漂移破坏浏览器安装。
+    # Pin the OS supported by the locked Playwright version instead of a drifting latest image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - run: docker build -f deploy/database.Dockerfile -t lumira-database:ci .
+      - name: Verify non-root database startup and recovery
+        run: bash scripts/verify-database-image.sh lumira-database:ci
+      - name: Record deployed PostgreSQL image digest
+        run: |
+          docker image inspect lumira-database:ci --format '{{.Id}}'
+          printf '%s\n' 'base=postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336'
+      - name: Scan deployed PostgreSQL image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: lumira-database:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
       - run: docker build -f deploy/server.Dockerfile -t lumira-server:ci .
       - run: docker build -f deploy/web.Dockerfile -t lumira-web:ci .
-      - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix
-        uses: aquasecurity/trivy-action@0.28.0
+      - run: docker build -f deploy/web.Dockerfile --target edge -t lumira-edge:ci .
+      - name: Validate edge routing configuration
+        run: docker run --rm lumira-edge:ci caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      # Office 构建前释放已结束的构建缓存，保留已标记的交付镜像。
+      # Free completed build caches before Office while preserving tagged release images.
+      - name: Reclaim completed build cache before Office
+        run: |
+          docker builder prune --all --force
+          df -h
+      - run: docker build -f deploy/office-worker.Dockerfile -t lumira-office-worker:ci .
+      # 临时构建层已不再需要；保留五个已标记镜像，为漏洞数据库腾出空间。
+      # Discard temporary build layers, keeping all five tagged images and space for vulnerability databases.
+      - name: Reclaim disposable build cache before scanning
+        run: |
+          docker builder prune --all --force
+          docker image prune --force
+          df -h
+      - uses: pnpm/action-setup@v4
         with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Build isolated plugin QA inputs
+        run: node scripts/build-plugins.mjs --no-host payment-core alipay-pay wechat-pay sdk/examples/verification-debugger
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Real browser acceptance against disposable production images
+        timeout-minutes: 30
+        run: |
+          status=0
+          bash scripts/run-ci-browser.sh || status=1
+          LUMIRA_BROWSER_CI_MODE=dynamic bash scripts/run-ci-browser.sh || status=1
+          exit "$status"
+      - name: Upload safe browser acceptance evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .runtime/browser-ci/*/evidence/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Scan images for HIGH/CRITICAL vulnerabilities with a published fix
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
           image-ref: lumira-server:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.75.0
           image-ref: lumira-web:ci
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: lumira-office-worker:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: lumira-edge:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
   dependencies:
     runs-on: ubuntu-latest
     steps:
@@ -93,8 +241,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify:dependency-patches
       - run: pnpm verify:pnpm-audit
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+      # 先缓存解析后的依赖，避免扫描器并行请求 Maven Central 触发限流。
+      # Cache resolved dependencies before scanning to avoid burst requests to Maven Central.
+      - name: Populate Maven dependency cache
+        run: |
+          ./backend/mvnw -f pom.xml -B -DskipTests install
+          ./backend/mvnw -f examples/independent-notes/pom.xml -B dependency:resolve
       - name: Scan lockfiles and pom for known vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -105,7 +264,7 @@ jobs:
           exit-code: "0"
           format: json
           list-all-pkgs: true
-          skip-dirs: .runtime
+          skip-dirs: .runtime,**/target
           output: ${{ runner.temp }}/trivy-fs-report.json
       - name: Gate vulnerability findings against verified source patches
         run: node scripts/verify-trivy-report.mjs "${{ runner.temp }}/trivy-fs-report.json"

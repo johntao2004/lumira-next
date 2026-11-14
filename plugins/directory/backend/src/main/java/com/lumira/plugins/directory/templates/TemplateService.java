@@ -279,6 +279,7 @@ public class TemplateService {
             String actor) {
         guard.requireOperation(actor, PlatformOperation.TEMPLATE_USE);
         requireNotRolePreview();
+        if (userId != null) guard.requireOperationUser(actor, userId, PlatformOperation.USER_PRINT);
         var template = repository.find(id, false);
         int versionNo =
                 requestedVersion > 0

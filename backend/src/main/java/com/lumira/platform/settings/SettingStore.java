@@ -1,3 +1,8 @@
+/**
+ * 为类型化配置服务校验设置操作权限并保存版本、修订和审计，以期望版本拒绝并发覆盖，原始 JSON 仅作内部存储。 Checks setting-operation authority and
+ * persists versions, revisions and audits for typed configuration services, rejecting stale writes
+ * while keeping raw JSON an internal storage format.
+ */
 package com.lumira.platform.settings;
 
 import com.lumira.platform.common.AdministrationPort;
@@ -15,7 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Internal persistence shared by typed setting sections; raw JSON is never an API write contract.
+ * 供类型化设置分区共享的内部持久化层；原始 JSON 从不作为 API 写入契约。
+ *
+ * <p>Internal persistence shared by typed setting sections; raw JSON is never an API write
+ * contract.
  */
 @Repository
 public class SettingStore {

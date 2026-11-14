@@ -1,3 +1,8 @@
+/**
+ * 提供审计追加、受限筛选与分批清理；追加应加入业务事务，并可指定审计 ID 关联同一次操作。 Provides audit appends, constrained filtering and
+ * batched cleanup; appends should join the business transaction and may use an explicit audit ID to
+ * correlate one operation.
+ */
 package com.lumira.platform.audit;
 
 import com.lumira.platform.common.AuditPort;
@@ -55,12 +60,15 @@ public class AuditRepository implements AuditPort, com.lumira.platform.common.Au
         return count(page);
     }
 
-    /** Call inside the same transaction as the state change being recorded. */
+    /** 在被记录状态变更的同一事务内调用。 Call inside the same transaction as the state change being recorded. */
     public void append(String actor, String action, UUID targetId) {
         append(UUID.randomUUID(), actor, action, targetId);
     }
 
-    /** Call inside the same transaction when another record must reference this exact audit row. */
+    /**
+     * 其他记录需要引用这一确切审计行时，在同一事务内调用。 Call inside the same transaction when another record must
+     * reference this exact audit row.
+     */
     @Override
     public void append(UUID id, String actor, String action, UUID targetId) {
         jdbc.sql(INSERT_SQL)
@@ -118,7 +126,10 @@ public class AuditRepository implements AuditPort, com.lumira.platform.common.Au
                 .list();
     }
 
-    /** Delete one bounded batch so retention never holds a large table lock. */
+    /**
+     * 每次只删除有界批次，避免保留期清理长时间占用大量表锁资源。 Delete one bounded batch so retention never holds a large table
+     * lock.
+     */
     public int purgeBefore(OffsetDateTime cutoff, int batchSize) {
         if (cutoff == null || batchSize < 1 || batchSize > 5000)
             throw new IllegalArgumentException("Invalid audit retention batch");

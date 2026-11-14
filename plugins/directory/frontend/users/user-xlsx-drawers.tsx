@@ -19,33 +19,13 @@ import { userFieldLabel } from "@/platform/templates/field-labels";
 import { commitUserImport, exportUsersXlsx, getExportFields, getImportFields, getUserImportErrors, getUserImportTask, getUserImportTemplate, inspectImportColumns, previewUserImport } from "@/platform/templates/api";
 import type { ExportField, ImportColumn, ImportField, ImportPreview, ImportPreviewRow, ImportTask } from "@/platform/templates/types";
 import "./user-xlsx-drawers.css";
+import { importDelegationErrorKeys, importRowErrorKeys, importTaskErrorKeys } from "./user-import-errors";
+import { automaticImportMapping } from "./user-import-mapping";
 
 type ExportScope = "currentPage" | "selected" | "filtered";
 type ImportMode = "create" | "update" | "upsert";
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
-const transferErrorKeys = ["unsupportedFile", "documentFileTooLarge", "forbidden", "fieldNotReadable", "importPreviewExpired", "importVersionConflict", "idempotencyKeyConflict", "batchLimitExceeded", "staleRecord", "unavailable"] as const;
-const importRowErrorKeys: Record<string, MessageKey> = {
-  invalidUsername: "userImportRowInvalidUsername",
-  duplicateUsername: "userImportRowDuplicateUsername",
-  missingDisplayName: "userImportRowMissingDisplayName",
-  invalidBoolean: "userImportRowInvalidBoolean",
-  usernameAlreadyExists: "userImportRowUsernameExists",
-  userNotFound: "userImportRowUserNotFound",
-  forbidden: "userImportRowForbidden",
-  noImportChanges: "userImportRowNoChanges",
-  invalidRoleCodes: "userImportRowInvalidRoleCodes",
-  invalidOrganizationCodes: "userImportRowInvalidOrganizationCodes",
-  invalidProfileValues: "userImportRowInvalidProfileValues",
-};
-const importTaskErrorKeys: Record<string, MessageKey> = {
-  importHasInvalidRows: "userImportTaskRowsInvalid",
-  importVersionConflict: "importVersionConflict",
-  staleRecord: "staleRecord",
-  invalidUser: "userImportTaskInvalidUser",
-  invalidProfileValues: "userImportRowInvalidProfileValues",
-  invalidRoleAssignment: "userImportTaskInvalidRoleAssignment",
-  invalidOrganizationAssignment: "userImportTaskInvalidOrganizationAssignment",
-};
+const transferErrorKeys = [...importDelegationErrorKeys, "unsupportedFile", "documentFileTooLarge", "forbidden", "fieldNotReadable", "importPreviewExpired", "importVersionConflict", "idempotencyKeyConflict", "batchLimitExceeded", "staleRecord", "unavailable"] as const;
 
 function importRowErrorLabel(code: string, fields: ImportField[], t: Translate) {
   if (code.startsWith("requiredFieldMissing:")) {
@@ -59,24 +39,6 @@ function importRowErrorLabel(code: string, fields: ImportField[], t: Translate) 
 
 function importTaskErrorKey(code: string | null | undefined): MessageKey {
   return code ? importTaskErrorKeys[code] ?? "userImportTaskFailedMessage" : "userImportTaskFailedMessage";
-}
-
-function normalizeHeader(value: string) {
-  return value.trim().toLocaleLowerCase().replace(/[\s_\-（）()]/g, "");
-}
-
-function automaticMapping(columns: ImportColumn[], fields: ImportField[]) {
-  const used = new Set<string>();
-  const mapping: Record<string, string> = {};
-  for (const column of columns) {
-    const header = normalizeHeader(column.name);
-    const field = fields.find((item) => !used.has(item.key)
-      && (normalizeHeader(item.key) === header || normalizeHeader(item.label) === header));
-    if (!field) continue;
-    mapping[column.name] = field.key;
-    used.add(field.key);
-  }
-  return mapping;
 }
 
 function displayValue(value: unknown) {
@@ -340,7 +302,7 @@ export function UserImportDrawer({ open, onClose, onImported }: {
       const response = await inspectImportColumns(file, signal);
       if (signal.aborted) return false;
       setColumns(response.columns);
-      setMapping(automaticMapping(response.columns, writableFields));
+      setMapping(automaticImportMapping(response.columns, writableFields, (field) => userFieldLabel(field, t, "import")));
       setPreview(null);
       setCommitKey(null);
       return true;

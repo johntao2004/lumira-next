@@ -1,16 +1,22 @@
 name: lumira-next
 services:
   database:
-    image: postgres:18.6
+    image: lumira-database:18.6
+    build:
+      context: ..
+      dockerfile: deploy/database.Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_DB: lumira_next
-      POSTGRES_USER: lumira_next
-      POSTGRES_PASSWORD: ${LUMIRA_DB_PASSWORD:?Set database password}
+      POSTGRES_USER: lumira_bootstrap
+      POSTGRES_PASSWORD: ${LUMIRA_DB_BOOTSTRAP_PASSWORD:?Set a separate database bootstrap password}
+      LUMIRA_DB_PASSWORD: ${LUMIRA_DB_PASSWORD:?Set application database password}
+      LUMIRA_DB_MIGRATION_PASSWORD: ${LUMIRA_DB_MIGRATION_PASSWORD:?Set a separate migration password}
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./database/10-application-role.sh:/docker-entrypoint-initdb.d/10-application-role.sh:ro
     healthcheck:
-      test: [CMD-SHELL, "pg_isready -U lumira_next -d lumira_next"]
+      test: [CMD-SHELL, "pg_isready -U lumira_bootstrap -d lumira_next"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -20,8 +26,16 @@ services:
       context: ..
       dockerfile: deploy/server.Dockerfile
     environment:
+      # 正式配置启用开发调试强制关闭；独立 QA 必须显式覆盖。
+      # Production activates the development-debug deny gate; isolated QA must override explicitly.
+      SPRING_PROFILES_ACTIVE: production
       LUMIRA_DB_URL: jdbc:postgresql://database:5432/lumira_next
       LUMIRA_DB_USER: lumira_next
+      LUMIRA_DB_MIGRATION_USER: lumira_migrator
+      LUMIRA_DB_MIGRATION_PASSWORD: ${LUMIRA_DB_MIGRATION_PASSWORD:?Set a separate migration password}
+      LUMIRA_DB_REQUIRE_UNPRIVILEGED: "true"
+      LUMIRA_SECRET_KEYS: ${LUMIRA_SECRET_KEYS:?Set a persistent encryption key ring}
+      LUMIRA_SECRET_ACTIVE_KEY: ${LUMIRA_SECRET_ACTIVE_KEY:-primary}
       LUMIRA_DB_PASSWORD: ${LUMIRA_DB_PASSWORD:?Set database password}
       LUMIRA_BOOTSTRAP_PASSWORD: ${LUMIRA_BOOTSTRAP_PASSWORD:?Set initial administrator password}
       LUMIRA_OFFICE_WORKER_URL: http://office-worker:18091
@@ -90,7 +104,10 @@ services:
     depends_on:
       - server
   edge:
-    image: caddy:2
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      target: edge
     restart: unless-stopped
     ports:
       - 127.0.0.1:8010:8010

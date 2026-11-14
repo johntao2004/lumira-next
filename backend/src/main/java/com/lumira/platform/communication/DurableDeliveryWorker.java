@@ -1,3 +1,8 @@
+/**
+ * 以有界并发、续租和截止时间执行渠道投递，网络调用不占数据库事务，结果与审计另行提交，超时或失租按不确定处理。 Executes provider deliveries with bounded
+ * concurrency, lease renewal and deadlines outside database transactions, committing outcomes with
+ * audits and treating timeout or lease loss as uncertain.
+ */
 package com.lumira.platform.communication;
 
 import com.lumira.platform.common.AuditPort;
@@ -19,7 +24,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Shared orchestration for durable provider deliveries.
+ * 持久化服务商投递的共享编排；通道模块只提供载荷、连接、网关结果与存储适配器，领取隔离、有界并发、租约续期、截止中断及保守完成语义由同一实现负责。
+ *
+ * <p>Shared orchestration for durable provider deliveries.
  *
  * <p>Channel modules provide only their payload, connection, gateway result and store adapter.
  * Claim fencing, bounded concurrency, lease renewal, deadline interruption and conservative
@@ -55,6 +62,7 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
     private final long defaultTimeoutMillis;
     private final ExecutorService workers;
     private final ScheduledExecutorService schedules;
+    private final ScheduledExecutorService leaseSchedules;
     private final Semaphore slots = new Semaphore(MAX_CONCURRENCY);
     private final AtomicBoolean stopped = new AtomicBoolean();
 
@@ -79,12 +87,22 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
         this.uncertainResult = uncertainResult;
         this.audit = audit;
         this.transaction = new TransactionTemplate(manager);
+        this.transaction.setTimeout(10);
         this.channel = channel;
         this.defaultTimeoutMillis = defaultTimeoutMillis;
         this.log = LoggerFactory.getLogger(getClass());
         this.workers =
                 Executors.newThreadPerTaskExecutor(
                         Thread.ofVirtual().name(channel + "-delivery-", 0).factory());
+        // 续租可能等待数据库；独立有界线程池不能阻塞网络截止中断。
+        // Renewal can wait on the database; its bounded pool must not block network deadlines.
+        this.leaseSchedules =
+                Executors.newScheduledThreadPool(
+                        MAX_CONCURRENCY,
+                        Thread.ofPlatform()
+                                .daemon()
+                                .name(channel + "-lease-renewal-", 0)
+                                .factory());
         this.schedules =
                 Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform()
@@ -153,17 +171,29 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
 
                 Thread current = Thread.currentThread();
                 AtomicBoolean leaseLost = new AtomicBoolean();
+                Object leaseStateLock = new Object();
+                boolean[] attemptActive = {true};
+                // 完成阶段不接受迟到续租中断，避免旧回调污染结果提交。
+                // Ignore late renewal interrupts after sending finishes so stale callbacks cannot
+                // disrupt completion.
+                Runnable loseLease =
+                        () -> {
+                            synchronized (leaseStateLock) {
+                                if (attemptActive[0]) {
+                                    leaseLost.set(true);
+                                    current.interrupt();
+                                }
+                            }
+                        };
                 var leaseRenewal =
-                        schedules.scheduleAtFixedRate(
+                        leaseSchedules.scheduleAtFixedRate(
                                 () -> {
                                     try {
                                         if (!store.renewLease(claim)) {
-                                            leaseLost.set(true);
-                                            current.interrupt();
+                                            loseLease.run();
                                         }
                                     } catch (RuntimeException error) {
-                                        leaseLost.set(true);
-                                        current.interrupt();
+                                        loseLease.run();
                                     }
                                 },
                                 LEASE_RENEWAL_SECONDS,
@@ -194,6 +224,9 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
                         result = uncertainResult.get();
                     }
                 } finally {
+                    synchronized (leaseStateLock) {
+                        attemptActive[0] = false;
+                    }
                     leaseRenewal.cancel(false);
                     synchronized (deadlineLock) {
                         deadlineState[0] = true;
@@ -232,6 +265,7 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
                     log.warn("{} failure recording deferred for {}", channel, claim.id());
                 }
             }
+            // 完成事务失败时保留 SENDING，等待保守的租约过期恢复。
             // A failed completion transaction leaves SENDING for conservative expiry recovery.
             log.warn(
                     "{} attempt deferred for {} ({})",
@@ -246,6 +280,7 @@ public abstract class DurableDeliveryWorker<P, C extends AutoCloseable, R>
         if (stopped.compareAndSet(false, true)) {
             workers.shutdownNow();
             schedules.shutdownNow();
+            leaseSchedules.shutdownNow();
         }
     }
 }

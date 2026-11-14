@@ -1,9 +1,13 @@
+/**
+ * 将服务端插件清单接入共享加载器和 SDK，同步查询及本地化刷新，并在最后一个消费者退出时释放资源。
+ * Connect the server plugin catalog to the shared loader and SDK, refresh queries and localization, and release resources when the final consumer leaves.
+ */
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getAuthorizationContext } from '../api/client';
 import { pluginSdkModules, type PluginSdkModules } from './plugin-sdk';
 import { accountAvatarKey } from '../api/account-avatar-contract';
-import { registerPluginPages } from './registry';
+import { registerPluginPages } from './page-store';
 import type { FrontendModule } from './types';
 export type PluginView = { id:string; name:string; version:string; digest:string; installed:boolean; enabled:boolean; explicitInstall:boolean; status:'UNINSTALLED'|'RUNNING'|'STOPPED'|'FAILED'; lifecycleChangesAllowed:boolean; lifecycleBlockReason?:string|null; manifest:{ routes: readonly {id:string}[]; files:Record<string,string> } };
 declare global {
@@ -46,6 +50,7 @@ function loadPlugin(plugin:PluginView):Promise<FrontendModule>{
  return new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=assetUrl(plugin.digest,'plugin.js');const revision=getAuthorizationContext()?.revision;pending.set(plugin.id,{version:plugin.version,digest:plugin.digest,revision,script,resolve,reject});
   script.onload=()=>{if(pending.get(plugin.id)?.script===script)fail(new Error('pluginFrontendMissing'));};
   script.onerror=()=>fail(new Error('pluginFrontendLoadFailed'));
+  // 仅在注册动作已兑现 Promise 后才移除 pending 项。
   // Remove the pending entry only after registration has resolved the promise.
   const styles=Object.keys(plugin.manifest.files).filter(p=>p.startsWith('frontend/')&&p.endsWith('.css')).map(p=>{const link=document.createElement('link');link.rel='stylesheet';link.href=assetUrl(plugin.digest,p.slice('frontend/'.length));document.head.appendChild(link);return link;});
   const timer=setTimeout(()=>fail(new Error('pluginFrontendLoadFailed')),15000);

@@ -1,8 +1,11 @@
+"""以可执行约束检查前后端清单、公共依赖、宿主装配、懒加载和 DTO 边界，在运行前暴露依赖方向或声明漂移。
+Check frontend and backend manifests, public dependencies, host composition, lazy loading and DTO boundaries through executable constraints to expose dependency or declaration drift before runtime."""
 import json
 from pathlib import Path
 import re
 import sys
 from module_boundaries import parse_backend_modules, validate_backend_module_graph
+from plugin_boundaries import validate_plugin_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 JAVA_ROOT = ROOT / "backend/src/main/java/com/lumira/platform"
@@ -14,6 +17,11 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+try:
+    validate_plugin_sources(ROOT)
+except (ValueError, OSError, KeyError) as error:
+    fail(str(error))
+
 PLUGIN_ROOTS = [p / "backend/src/main/java/com/lumira/platform" for p in (ROOT / "plugins").iterdir() if (p / "plugin.json").exists()]
 PLUGIN_ROOTS.append(ROOT / "plugins/directory/backend/src/main/java/com/lumira/plugins/directory")
 PLUGIN_ROOTS.append(ROOT / "plugins/file-retention/backend/src/main/java/com/lumira/plugins")
@@ -23,18 +31,18 @@ PLUGIN_ROOTS.append(ROOT / "plugins/delivery-settings/backend/src/main/java/com/
 PLUGIN_ROOTS.append(ROOT / "plugins/profile-console/backend/src/main/java/com/lumira/plugins")
 PLUGIN_ROOTS.append(ROOT / "plugins/personal-files/backend/src/main/java/com/lumira/plugins")
 PLUGIN_ROOTS.append(ROOT / "plugins/authentication-console/backend/src/main/java/com/lumira/plugins")
-
+SDK_ROOTS = [p / "src/main/java/com/lumira/platform" for p in (ROOT / "framework").iterdir() if p.is_dir()]
 def java_relative(path):
-    for base in [JAVA_ROOT, *PLUGIN_ROOTS]:
+    for base in [JAVA_ROOT, *PLUGIN_ROOTS, *SDK_ROOTS]:
         if path.is_relative_to(base): return path.relative_to(base)
     raise ValueError(path)
 def java_path(relative):
-    for base in [JAVA_ROOT, *PLUGIN_ROOTS]:
+    for base in [JAVA_ROOT, *PLUGIN_ROOTS, *SDK_ROOTS]:
         if (base / relative).exists(): return base / relative
     if relative == "navigation/NavigationMenuService.java":
         return ROOT / "plugins/navigation-console/backend/src/main/java/com/lumira/plugins/navigationconsole/NavigationMenuService.java"
     return JAVA_ROOT / relative
-java_files = [p for base in [JAVA_ROOT, *PLUGIN_ROOTS] for p in base.rglob("*.java")]
+java_files = [p for base in [JAVA_ROOT, *PLUGIN_ROOTS, *SDK_ROOTS] for p in base.rglob("*.java")]
 for path in java_files:
     if path.name.endswith("Controller.java") and re.search(
         r"public\s+(?:[\w.]+<)?\w+Repository\.\w+", path.read_text()
@@ -44,6 +52,7 @@ for path in java_files:
 try:
     host_modules = parse_backend_modules(path.read_text() for path in JAVA_ROOT.rglob("*.java"))
     backend_modules = parse_backend_modules(path.read_text() for path in java_files)
+    # 运行时插件由 PluginRuntime.registerCatalog 根据 plugin.json 注册到 ModuleRegistry；静态图应纳入相同描述符，并与插件侧源码描述符对照。
     # Runtime plugins enter ModuleRegistry from plugin.json through
     # PluginRuntime.registerCatalog; include the same descriptors in the
     # static graph and compare any plugin-side source descriptors with it.
@@ -87,6 +96,7 @@ try:
                 f"manifest={descriptor} source={source_descriptor}"
             )
         backend_modules[module_id] = descriptor
+    # Spring 启动前的静态提取须与 ModuleRegistry 校验等价，涵盖运行时插件描述符、必需模块、依赖及循环约束。
     # Keep static extraction equivalent to ModuleRegistry validation before
     # Spring starts, including runtime plugin descriptors, required-module,
     # dependency, and cycle constraints.
@@ -146,6 +156,7 @@ for name, owner in {**table_owners, **object_owners, **migration_owners}.items()
     if owner not in valid_database_owners:
         fail(f"database object {name} has unknown module owner: {owner}")
 
+# 在模块化单体阶段明确声明包归属；包到模块的映射是后续拆分边界，将包移入其他 Maven 模块不能改变其 HTTP 契约。
 # Package ownership is intentionally explicit while the codebase is still a
 # modular monolith. The package-to-module map is the extraction seam: moving a
 # package to a different Maven module later must not change its HTTP contract.
@@ -189,6 +200,7 @@ package_owners = {
 }
 for path in java_files:
     relative_parts = java_relative(path).parts
+    # Spring Boot 启动器是装配入口，可以了解所有模块，并由应用构建单独检查。
     # The Spring Boot launcher is the composition root; it is allowed to know
     # every module and is checked separately by the application build.
     if len(relative_parts) == 1:
@@ -222,6 +234,7 @@ for path in [p for p in java_files if p.name.endswith("Controller.java")]:
         fail(f"controller references unknown module {sorted(unknown)}: {path.relative_to(ROOT)}")
     relative = java_relative(path).as_posix()
     expected_owner = {
+        # 会话管理是由目录领域暴露的身份实现；在保持 API 不变并迁移实现包之前，显式保留这一例外。
         # Session administration is an identity implementation exposed by the
         # directory bounded context; keep the exception explicit until the
         # implementation package is moved without changing its API.
@@ -244,6 +257,7 @@ for path in java_files:
     if "/audit/" not in path.as_posix() and "AuditRepository" in path.read_text():
         fail(f"feature leaks the audit query repository instead of AuditPort: {path.relative_to(ROOT)}")
 
+# 公共模块 API 必须能脱离 Web 和持久化适配器编译；允许用于传输兼容的 Jackson 注解，而 Spring MVC/JDBC 类型会使后续 Maven 拆分反向依赖应用模块。
 # Public module APIs must compile without the web or persistence adapters.
 # Jackson annotations are allowed for wire compatibility; Spring MVC/JDBC
 # types would make later Maven extraction depend on the application module.
@@ -258,7 +272,7 @@ for path in (JAVA_ROOT / "identity").glob("*.java"):
     if re.search(r"(?:import\s+com\.lumira\.platform\.(?:mail|sms)\.|com\.lumira\.platform\.(?:mail|sms)\.)", source):
         fail(f"identity depends on a concrete communication implementation: {path.relative_to(ROOT)}")
 
-for path in (JAVA_ROOT / "feedback").glob("*.java"):
+for path in (ROOT / "plugins/feedback/backend/src/main/java/com/lumira/platform/feedback").rglob("*.java"):
     source = path.read_text()
     if re.search(r"(?:FileService|FileRepository|FileUploadRateLimiter|ImageNormalizer|SensitiveWordService|NotificationService|DictionaryLookupRepository)", source):
         fail(f"feedback depends on a private cross-module implementation: {path.relative_to(ROOT)}")
@@ -269,6 +283,7 @@ for package in ("mail", "sms"):
         if re.search(r"(?:import\s+com\.lumira\.platform\.settings\.|com\.lumira\.platform\.settings\.)", source):
             fail(f"communication adapter depends on settings implementation: {path.relative_to(ROOT)}")
 
+# 身份是底层必需模块，其公开依赖只能来自内核契约或自身 api 包；否则描述符图看似独立，Java 却可能通过设置、文件或字典实现重建循环。
 # Identity is the lower-level required module.  Its public dependencies must
 # be kernel contracts or its own api package; otherwise the descriptor graph
 # can claim independence while Java silently rebuilds a cycle through a
@@ -285,6 +300,7 @@ for path in (JAVA_ROOT / "identity").glob("*.java"):
     if forbidden:
         fail(f"identity leaks concrete feature packages {sorted(forbidden)}: {path.relative_to(ROOT)}")
 
+# 平台适配器可以依赖身份契约，但不能依赖身份私有实现，使后续 Maven 拆分无需重新梳理包耦合。
 # Platform adapters may depend on identity's contracts, but not on private
 # identity implementations.  This is what keeps later Maven extraction
 # mechanical instead of turning into a package rename exercise.
@@ -347,7 +363,7 @@ if "DictionaryLookupRepository" in (ROOT / "plugins/profile-console/backend/src/
 if "ModuleStateStore" in java_path("moduleadmin/ModuleAdminController.java").read_text():
     fail("module administration controller exposes the state storage model")
 
-workspace = (WEB_ROOT / "platform/shell/workspace.tsx").read_text()
+workspace = (WEB_ROOT / "app/dashboard-workspace.tsx").read_text()
 if "const featurePages" in workspace:
     fail("workspace still owns the feature page map")
 for shell_file in WEB_ROOT.joinpath("platform/shell").rglob("*"):
@@ -359,14 +375,16 @@ for shell_file in WEB_ROOT.joinpath("platform/shell").rglob("*"):
         if not feature_import.startswith("@/features/account/"):
             fail(f"workspace imports a business implementation directly: {shell_file.relative_to(ROOT)}")
 
-registry = (WEB_ROOT / "platform/modules/registry.tsx").read_text()
+registry = (WEB_ROOT / "app/dashboard-modules.tsx").read_text()
 registry_contracts = (WEB_ROOT / "platform/modules/contracts.ts").read_text()
 manifest_paths = [*WEB_ROOT.joinpath("features").rglob("manifest.ts"), *ROOT.joinpath("plugins").glob("*/frontend/manifest.ts")]
 manifest_sources = "".join(path.read_text() for path in manifest_paths)
 
+# 宿主可编目插件元数据，但不得将可选插件实现编入自身构建包；共享 UI 应置于 SDK 中。
 # The host may catalogue plugin metadata, but must not compile an optional
 # plugin's implementation into its own bundle. Shared UI belongs in the SDK.
 plugin_root = (ROOT / "plugins").resolve()
+sdk_root = (plugin_root / "sdk" / "frontend").resolve()
 for source_path in [*WEB_ROOT.rglob("*.ts"), *WEB_ROOT.rglob("*.tsx")]:
     if any(part in {".umi", ".umi-production", "node_modules"} for part in source_path.parts):
         continue
@@ -374,9 +392,10 @@ for source_path in [*WEB_ROOT.rglob("*.ts"), *WEB_ROOT.rglob("*.tsx")]:
         if not specifier.startswith("."):
             continue
         target = (source_path.parent / specifier).resolve()
-        if target.is_relative_to(plugin_root) and target.name not in {"manifest", "manifest.ts"}:
+        if target.is_relative_to(plugin_root) and not target.is_relative_to(sdk_root) and target.name not in {"manifest", "manifest.ts"}:
             fail(f"host imports optional plugin implementation: {source_path.relative_to(ROOT)} -> {specifier}")
 
+# 资源表共用同一分页契约；及时发现功能重新引入不同本地默认值，避免形成新的 CRUD 实现分叉。
 # Resource tables share one paging contract.  Catch a feature silently
 # reintroducing a divergent local default before it becomes another CRUD
 # implementation fork.
@@ -403,6 +422,7 @@ pagination = (WEB_ROOT / "platform/api/pagination.ts").read_text()
 if re.search(r"(?:from|import)\s+[^\n]*(?:antd|react|resource-table)", pagination):
     fail("API pagination contracts must not depend on UI components")
 
+# 清单必须保持低导入成本，页面模块有意懒加载；否则注册表只是形式上模块化，初始客户端包仍会将所有功能拉入工作区外壳。
 # A manifest must stay cheap to import. Page modules are deliberately lazy;
 # otherwise the registry would be modular only on paper while the initial
 # client bundle still pulled every feature into the workspace shell.
@@ -447,7 +467,8 @@ for module_id in ("identity", "platform", "communication", "audit-console", "fee
         (path.read_text() for path in (WEB_ROOT / "features").rglob("module.tsx"))
     ) + manifest_sources:
         fail(f"frontend module descriptor is missing: {module_id}")
-if "createFrontendPageRegistry" not in registry or "Duplicate frontend route" not in registry_contracts or "Uncatalogued frontend page" not in registry_contracts:
+page_store = (WEB_ROOT / "platform/modules/page-store.ts").read_text()
+if "initializeHostPages" not in registry or "createFrontendPageRegistry" not in page_store or "Duplicate frontend route" not in registry_contracts or "Uncatalogued frontend page" not in registry_contracts:
     fail("frontend registry does not enforce route/page ownership")
 
 print(

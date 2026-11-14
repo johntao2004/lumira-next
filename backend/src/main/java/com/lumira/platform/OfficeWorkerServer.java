@@ -1,3 +1,8 @@
+/**
+ * 验证令牌和容器资源限制后执行独立 Office 处理，为每次操作启动可回收子进程，并限制请求大小、并发与执行时间。 Runs isolated Office operations after
+ * validating tokens and container limits, using a disposable child process per operation with
+ * bounded request size, concurrency and execution time.
+ */
 package com.lumira.platform;
 
 import com.lumira.platform.common.DocumentWorkerRequestGuard;
@@ -27,7 +32,10 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Small HTTP process which launches one disposable parser JVM per Office operation. */
+/**
+ * 轻量 HTTP 进程；每次 Office 操作均启动一个用完即销毁的解析器 JVM。 Small HTTP process which launches one disposable
+ * parser JVM per Office operation.
+ */
 public final class OfficeWorkerServer {
     public static final int MAX_INPUT_BYTES = 20 * 1024 * 1024;
     private static final int MAX_METADATA_BYTES = 4 * 1024 * 1024;
@@ -90,6 +98,7 @@ public final class OfficeWorkerServer {
         byte[] tokenDigest = sha256(token.getBytes(StandardCharsets.UTF_8));
         boolean testMode = "true".equalsIgnoreCase(System.getenv("LUMIRA_OFFICE_WORKER_TEST_MODE"));
 
+        // 关闭尚有未读请求体的交换时，直接断开连接，避免继续排空攻击者控制的字节；同时限制已接收连接数。
         // Closing an exchange with an unread body must close the connection without draining
         // attacker-controlled bytes from the socket. Cap accepted connections as well.
         System.setProperty("sun.net.httpserver.drainAmount", "0");
@@ -487,6 +496,7 @@ public final class OfficeWorkerServer {
                 new ProcessBuilder(command)
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                         .redirectError(ProcessBuilder.Redirect.DISCARD);
+        // 绝不向解析器子进程传递数据库、服务商、签名或其他服务凭据。
         // Never pass database, provider, signing, or other service credentials to parser children.
         builder.environment().clear();
         builder.environment().put("LANG", "C.UTF-8");

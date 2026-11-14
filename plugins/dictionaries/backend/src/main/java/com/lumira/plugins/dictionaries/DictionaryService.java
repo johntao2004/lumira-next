@@ -20,7 +20,7 @@ public class DictionaryService {
             String remark,
             Long version) {}
 
-    private static final String HOST_AUDIT_REPOSITORY = "com.lumira.platform.audit.AuditRepository";
+    private static final String HOST_AUDIT_REPOSITORY = "AuditRepository";
     private static final Set<String> POLICY_DICTIONARIES =
             Set.of(
                     "work_order_feedback_status",
@@ -52,7 +52,8 @@ public class DictionaryService {
 
     private static boolean isHostAuditRepository(AuditPort audit) {
         return audit != null
-                && HOST_AUDIT_REPOSITORY.equals(AopProxyUtils.ultimateTargetClass(audit).getName());
+                && HOST_AUDIT_REPOSITORY.equals(
+                        AopProxyUtils.ultimateTargetClass(audit).getSimpleName());
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)

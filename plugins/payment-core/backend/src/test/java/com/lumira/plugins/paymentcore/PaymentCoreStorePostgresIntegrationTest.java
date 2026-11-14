@@ -2,6 +2,7 @@ package com.lumira.plugins.paymentcore;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
@@ -119,6 +120,29 @@ class PaymentCoreStorePostgresIntegrationTest {
                                                         .substring(0, 30))
                                 .param("id", orderId)
                                 .update();
+                        store.applyRefundResult(
+                                orderId,
+                                new PaymentGatewayPort.RefundResult(
+                                        PaymentGatewayPort.RefundState.PENDING,
+                                        "synthetic-refund",
+                                        0,
+                                        null,
+                                        "ABNORMAL"));
+                        assertEquals(
+                                "REFUND_PENDING", store.findOrder(orderId).orElseThrow().status());
+                        var rejected =
+                                assertThrows(
+                                        org.springframework.web.server.ResponseStatusException
+                                                .class,
+                                        () ->
+                                                store.reserveRefund(
+                                                        orderId,
+                                                        UUID.randomUUID(),
+                                                        "Synthetic fixture"));
+                        assertEquals(409, rejected.getStatusCode().value());
+                        assertEquals(
+                                refundKey,
+                                store.findOrder(orderId).orElseThrow().refundIdempotencyKey());
                         store.applyRefundResult(
                                 orderId,
                                 new PaymentGatewayPort.RefundResult(

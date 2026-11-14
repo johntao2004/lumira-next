@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /** Trust only an explicitly configured immediate proxy, never an arbitrary forwarded chain. */
 @Component
-public class ClientAddressResolver {
+public class ClientAddressResolver implements ClientAddressPort {
     public static final String HEADER = "X-Lumira-Client-IP";
     private final Set<String> trusted;
 

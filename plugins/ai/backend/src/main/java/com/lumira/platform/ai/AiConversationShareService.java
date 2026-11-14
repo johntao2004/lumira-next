@@ -9,7 +9,9 @@ import com.lumira.platform.common.PlatformPageId;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -28,6 +30,9 @@ import tools.jackson.databind.ObjectMapper;
 public class AiConversationShareService {
     public record Message(String role, String content) {}
 
+    /** Documentation shape; raw JSON is retained at runtime for strict validation. */
+    public record ShareWrite(String title, List<Message> messages) {}
+
     public record CreateResult(UUID id, String token, String path, OffsetDateTime createdAt) {}
 
     public record ShareSummary(UUID id, String title, OffsetDateTime createdAt) {}
@@ -43,6 +48,7 @@ public class AiConversationShareService {
     private static final int MAX_MESSAGES = 200;
     private static final int MAX_MESSAGE_BYTES = 64 * 1024;
     private static final int MAX_TOTAL_CONTENT_BYTES = 512 * 1024;
+    private static final Duration SHARE_TTL = Duration.ofDays(30);
     private static final String TOKEN_PATTERN = "[A-Za-z0-9_-]{43}";
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final List<PlatformOperation> CHAT_OPERATIONS =
@@ -100,13 +106,19 @@ public class AiConversationShareService {
         List<ShareSummary> items =
                 jdbc.sql(
                                 """
-                                SELECT id,title,created_at
-                                  FROM platform_ai_conversation_share
-                                 WHERE created_by=:actor
-                                 ORDER BY created_at DESC,id DESC
+                                SELECT share.id,share.title,share.created_at
+                                  FROM platform_ai_conversation_share share
+                                  JOIN platform_user creator
+                                    ON creator.username=share.created_by
+                                   AND creator.enabled=true
+                                   AND creator.deleted_at IS NULL
+                                 WHERE share.created_by=:actor
+                                   AND share.created_at>:notBefore
+                                 ORDER BY share.created_at DESC,share.id DESC
                                  LIMIT :pageSize OFFSET :offset
                                 """)
                         .param("actor", actor)
+                        .param("notBefore", shareNotBefore())
                         .param("pageSize", page.pageSize())
                         .param("offset", page.offset())
                         .query(
@@ -118,8 +130,18 @@ public class AiConversationShareService {
                         .list();
         long total =
                 jdbc.sql(
-                                "SELECT count(*) FROM platform_ai_conversation_share WHERE created_by=:actor")
+                                """
+                                SELECT count(*)
+                                  FROM platform_ai_conversation_share share
+                                  JOIN platform_user creator
+                                    ON creator.username=share.created_by
+                                   AND creator.enabled=true
+                                   AND creator.deleted_at IS NULL
+                                 WHERE share.created_by=:actor
+                                   AND share.created_at>:notBefore
+                                """)
                         .param("actor", actor)
+                        .param("notBefore", shareNotBefore())
                         .query(Long.class)
                         .single();
         return new PageResult<>(items, total, page.page(), page.pageSize());
@@ -133,15 +155,23 @@ public class AiConversationShareService {
         var updated =
                 jdbc.sql(
                                 """
-                                UPDATE platform_ai_conversation_share
+                                UPDATE platform_ai_conversation_share AS share
                                    SET title=:title,messages=CAST(:messages AS jsonb)
-                                 WHERE id=:id AND created_by=:actor
-                                RETURNING id
+                                 WHERE share.id=:id
+                                   AND share.created_by=:actor
+                                   AND share.created_at>:notBefore
+                                   AND EXISTS (
+                                        SELECT 1 FROM platform_user creator
+                                         WHERE creator.username=share.created_by
+                                           AND creator.enabled=true
+                                           AND creator.deleted_at IS NULL)
+                                RETURNING share.id
                                 """)
                         .param("title", snapshot.title())
                         .param("messages", mapper.writeValueAsString(snapshot.messages()))
                         .param("id", id)
                         .param("actor", actor)
+                        .param("notBefore", shareNotBefore())
                         .query((row, index) -> row.getObject("id", UUID.class))
                         .optional()
                         .orElseThrow(
@@ -157,12 +187,20 @@ public class AiConversationShareService {
         UUID deletedId =
                 jdbc.sql(
                                 """
-                                DELETE FROM platform_ai_conversation_share
-                                 WHERE id=:id AND created_by=:actor
-                                RETURNING id
+                                DELETE FROM platform_ai_conversation_share AS share
+                                 WHERE share.id=:id
+                                   AND share.created_by=:actor
+                                   AND share.created_at>:notBefore
+                                   AND EXISTS (
+                                        SELECT 1 FROM platform_user creator
+                                         WHERE creator.username=share.created_by
+                                           AND creator.enabled=true
+                                           AND creator.deleted_at IS NULL)
+                                RETURNING share.id
                                 """)
                         .param("id", id)
                         .param("actor", actor)
+                        .param("notBefore", shareNotBefore())
                         .query((row, index) -> row.getObject("id", UUID.class))
                         .optional()
                         .orElseThrow(
@@ -177,11 +215,17 @@ public class AiConversationShareService {
         if (token == null || !token.matches(TOKEN_PATTERN)) notFound();
         return jdbc.sql(
                         """
-                        SELECT title,messages::text AS messages_json,created_at
-                          FROM platform_ai_conversation_share
-                         WHERE token_hash=:tokenHash
+                        SELECT share.title,share.messages::text AS messages_json,share.created_at
+                          FROM platform_ai_conversation_share share
+                          JOIN platform_user creator
+                            ON creator.username=share.created_by
+                           AND creator.enabled=true
+                           AND creator.deleted_at IS NULL
+                         WHERE share.token_hash=:tokenHash
+                           AND share.created_at>:notBefore
                         """)
                 .param("tokenHash", hash(token))
+                .param("notBefore", shareNotBefore())
                 .query(
                         (row, index) ->
                                 new SharedConversation(
@@ -191,6 +235,26 @@ public class AiConversationShareService {
                 .optional()
                 .orElseThrow(
                         () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "aiShareNotFound"));
+    }
+
+    /**
+     * A share is an explicit client snapshot. It stays readable for {@link #SHARE_TTL} only while
+     * its creator account is enabled and not deleted.
+     */
+    static boolean shareVisible(
+            OffsetDateTime createdAt,
+            Boolean enabled,
+            OffsetDateTime deletedAt,
+            OffsetDateTime now) {
+        return createdAt != null
+                && Boolean.TRUE.equals(enabled)
+                && deletedAt == null
+                && now != null
+                && createdAt.isAfter(now.minus(SHARE_TTL));
+    }
+
+    private static OffsetDateTime shareNotBefore() {
+        return OffsetDateTime.now(ZoneOffset.UTC).minus(SHARE_TTL);
     }
 
     private boolean hasOperation(String actor, PlatformOperation operation) {

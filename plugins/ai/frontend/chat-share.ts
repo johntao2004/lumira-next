@@ -1,6 +1,6 @@
 import type { ChatSession } from "./chat-history";
-import type { AiChatShareSnapshot } from "../../../apps/web/src/platform/conversations/share-contract.ts";
-export * from "../../../apps/web/src/platform/conversations/share-contract.ts";
+import type { AiChatShareSnapshot } from "../../sdk/frontend/ai-chat-share-contract.ts";
+export * from "../../sdk/frontend/ai-chat-share-contract.ts";
 
 export function createAiChatShareSnapshot(session: ChatSession, untitledConversation: string): AiChatShareSnapshot {
   return {

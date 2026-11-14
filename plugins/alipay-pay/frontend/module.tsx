@@ -5,7 +5,7 @@ import { alipayPayManifest } from "./manifest";
 import { alipayPayMessages } from "./messages";
 
 const fields: readonly PaymentSettingField[] = [
-  { key: "environment", labelKey: "environment", helpKey: "environmentHelp", kind: "text", required: true, maxLength: 10 },
+  { key: "environment", labelKey: "environment", helpKey: "environmentHelp", kind: "select", required: true, options: [{ value: "SANDBOX", labelKey: "environmentSandbox" }, { value: "PRODUCTION", labelKey: "environmentProduction" }] },
   { key: "notifyUrl", labelKey: "notifyUrl", helpKey: "notifyUrlHelp", kind: "text", required: true, maxLength: 2048 },
   { key: "appId", labelKey: "appId", helpKey: "appIdHelp", kind: "text", required: true, maxLength: 32 },
   { key: "sellerId", labelKey: "sellerId", helpKey: "sellerIdHelp", kind: "text", required: true, maxLength: 16 },

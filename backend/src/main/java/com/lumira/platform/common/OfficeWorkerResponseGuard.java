@@ -103,7 +103,7 @@ final class OfficeWorkerResponseGuard {
                 }
                 validateScalar(parser, token, path);
                 if ("workbook.rows[][]".equals(path)
-                        && ++workbookCells > DocumentTemplateProcessor.MAX_WORKBOOK_CELLS)
+                        && ++workbookCells > OfficeWorkerProtocol.MAX_WORKBOOK_CELLS)
                     throw invalid("Workbook response has too many cells");
                 if ("kind".equals(path) && !operation.equals(parser.getText()))
                     throw invalid("Office response operation mismatch");
@@ -120,7 +120,7 @@ final class OfficeWorkerResponseGuard {
                     switch (path) {
                         case "kind" -> 32;
                         case "reason", "issues[].field", "issues[].reason" -> 128;
-                        case "preview.text" -> OfficeDocumentProcessor.MAX_PREVIEW_CODE_POINTS * 2;
+                        case "preview.text" -> OfficeWorkerProtocol.MAX_PREVIEW_CODE_POINTS * 2;
                         case "pdfPage.png" -> (OfficeWorkerProtocol.MAX_PDF_PNG_BYTES * 4 / 3) + 8;
                         case "dictionary.sha256" -> 64;
                         case "dictionary.items[].value",
@@ -133,9 +133,9 @@ final class OfficeWorkerResponseGuard {
                         case "inspection.slots[].text" -> 1000;
                         case "inspection.placeholders[]" -> 64;
                         case "documentPdf" ->
-                                (DocumentTemplateProcessor.MAX_RESPONSE_PDF_BYTES * 4 / 3) + 8;
+                                (OfficeWorkerProtocol.MAX_RESPONSE_PDF_BYTES * 4 / 3) + 8;
                         case "workbookFile" -> (20 * 1024 * 1024 * 4 / 3) + 8;
-                        case "workbook.rows[][]" -> DocumentTemplateProcessor.MAX_CELL_CHARACTERS;
+                        case "workbook.rows[][]" -> OfficeWorkerProtocol.MAX_CELL_CHARACTERS;
                         default -> throw invalid("Unexpected Office response text");
                     };
             if (parser.getTextLength() > maximum)
@@ -192,10 +192,9 @@ final class OfficeWorkerResponseGuard {
         return switch (path) {
             case "dictionary.items" -> 20_000;
             case "issues" -> 100;
-            case "inspection.slots", "inspection.placeholders" ->
-                    DocumentTemplateProcessor.MAX_SLOTS;
-            case "workbook.rows" -> DocumentTemplateProcessor.MAX_WORKBOOK_ROWS;
-            case "workbook.rows[]" -> DocumentTemplateProcessor.MAX_WORKBOOK_COLUMNS;
+            case "inspection.slots", "inspection.placeholders" -> OfficeWorkerProtocol.MAX_SLOTS;
+            case "workbook.rows" -> OfficeWorkerProtocol.MAX_WORKBOOK_ROWS;
+            case "workbook.rows[]" -> OfficeWorkerProtocol.MAX_WORKBOOK_COLUMNS;
             default -> 0;
         };
     }

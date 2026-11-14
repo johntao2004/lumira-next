@@ -1,3 +1,8 @@
+/**
+ * 以有界并发将消费者数据库副作用与租约校验后的确认放在同一事务，过期领取使两者回滚，外部网络副作用不在此原子边界内。 Consumes with bounded concurrency and
+ * commits database effects with a lease-fenced acknowledgement in one transaction, rolling both
+ * back for stale claims while excluding external network effects from this atomic boundary.
+ */
 package com.lumira.platform.events;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
@@ -14,7 +19,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Bounded, horizontally-safe Outbox delivery. PostgreSQL SKIP LOCKED owns the claim. Consumer
+ * 有界且支持横向并发的 Outbox 投递；PostgreSQL SKIP LOCKED
+ * 确立领取权，消费者数据库副作用与令牌隔离的确认同属一个事务，过期租约会使两者一并回滚；外部网络副作用必须经独立持久化 Outbox 发出。
+ *
+ * <p>Bounded, horizontally-safe Outbox delivery. PostgreSQL SKIP LOCKED owns the claim. Consumer
  * database effects and the token-fenced acknowledgement share one transaction, so a stale lease
  * rolls both back. External network effects must be emitted through a separate durable outbox.
  */
@@ -49,7 +57,10 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
         this(store, registry, new TransactionTemplate(transactionManager));
     }
 
-    /** Package-private constructor used by isolated unit tests without a database transaction. */
+    /**
+     * 包内构造器，供不使用数据库事务的隔离单元测试使用。 Package-private constructor used by isolated unit tests without a
+     * database transaction.
+     */
     PlatformEventOutboxWorker(
             PlatformEventOutboxStore store, PlatformEventConsumerRegistry registry) {
         this(store, registry, (TransactionTemplate) null);
@@ -147,9 +158,11 @@ public final class PlatformEventOutboxWorker implements AutoCloseable {
                         status -> consumeAndAcknowledge(lease.consumer(), event, claim));
             }
         } catch (AckFencedException fenced) {
+            // 到达此处前，事务回滚已撤销消费者产生的全部数据库副作用。
             // The transaction rollback removes every consumer DB side effect before this point.
             log.debug("Platform event ack fenced for {}", claim.id());
         } catch (Exception failure) {
+            // 事务及消费者数据库写入已回滚，需单独记录重试状态；fail() 会校验本次领取仍持有有效租约。
             // The transaction (including consumer DB writes) has rolled back. Record retry state
             // separately; fail() checks that this claim still owns a live lease.
             try {

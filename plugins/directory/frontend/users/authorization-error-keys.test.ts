@@ -1,0 +1,71 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { ApiError } from "../../../../apps/web/src/platform/api/client.ts";
+import { messageKeyFor } from "../../../../apps/web/src/platform/api/errors.ts";
+import { deleteErrorKeys } from "../../../../apps/web/src/platform/components/delete-errors.ts";
+import { messages } from "../../../../apps/web/src/platform/i18n/messages/zh-cn.ts";
+import { loadLocaleMessages, staticLocales } from "../../../../apps/web/src/platform/i18n/messages.ts";
+import { importDelegationErrorKeys, importRowErrorKeys, importTaskErrorKeys } from "./user-import-errors.ts";
+import { userErrorKeys } from "./user-errors.ts";
+import { roleAssignmentCheckboxDisabled } from "./user-role-selection.ts";
+
+test("user role assignment shows delegation errors instead of a generic denial", () => {
+  for (const code of [
+    "rolePermissionUnavailable",
+    "rolePermissionDelegationDenied",
+    "rolePermissionRevocationDenied",
+  ] as const) {
+    const key = messageKeyFor(new ApiError(403, code), userErrorKeys);
+    assert.equal(key, code);
+    assert.ok(messages[key].length > 0);
+    assert.doesNotMatch(messages[key], /令牌.*过期/);
+  }
+});
+
+test("import preview and commit map live role delegation errors", () => {
+  for (const code of [
+    "rolePermissionDelegationDenied",
+    "rolePermissionUnavailable",
+    "rolePermissionRevocationDenied",
+    "moduleInstallRequiresPlatformAuthority",
+  ] as const) {
+    assert.equal(importRowErrorKeys[code], code);
+    assert.equal(importTaskErrorKeys[code], code);
+    assert.equal(messages[code].length > 0, true);
+  }
+  assert.equal("invalidRoleAssignment" in importTaskErrorKeys, false);
+  assert.equal("invalidRoleAssignment" in importRowErrorKeys, false);
+  assert.equal(importRowErrorKeys.batchRolledBack, "userImportRowBatchRolledBack");
+  assert.equal(importTaskErrorKeys.batchRolledBack, "userImportRowBatchRolledBack");
+  assert.match(messages.userImportRowBatchRolledBack, /回滚/);
+});
+
+test("an already assigned role can be cleared when it is no longer delegable", () => {
+  const base = { pending: false, committed: false, canAssignRoles: true, assignable: false };
+  assert.equal(roleAssignmentCheckboxDisabled({ ...base, selected: true }), false);
+  assert.equal(roleAssignmentCheckboxDisabled({ ...base, selected: false }), true);
+  assert.equal(roleAssignmentCheckboxDisabled({ ...base, selected: true, canAssignRoles: false }), true);
+});
+
+test("role deletion explains that plugin installation cannot replace revocation", () => {
+  const key = messageKeyFor(new ApiError(403, "rolePermissionRevocationDenied"), deleteErrorKeys);
+  assert.equal(key, "rolePermissionRevocationDenied");
+  assert.match(messages[key], /不能代替/);
+  assert.doesNotMatch(messages[key], /令牌.*过期/);
+});
+
+
+test("all import rejection paths preserve specific delegation messages in every locale", async () => {
+  for (const locale of staticLocales) {
+    const dictionary = await loadLocaleMessages(locale);
+    for (const code of importDelegationErrorKeys) {
+      assert.equal(messageKeyFor(new ApiError(403, code), importDelegationErrorKeys), code);
+      assert.equal(importRowErrorKeys[code], code);
+      assert.equal(importTaskErrorKeys[code], code);
+      assert.ok(dictionary[code]?.trim(), `${locale}: ${code}`);
+      assert.notEqual(dictionary[code], dictionary.forbidden);
+      assert.notEqual(dictionary[code], dictionary.userImportRowUnknownError);
+    }
+    assert.ok(dictionary.saveRoleAuthenticationPolicySucceeded?.trim());
+  }
+});

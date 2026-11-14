@@ -20,6 +20,7 @@ import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { listRequestParams } from "@/platform/api/pagination";
+import { builtinDictionaryName } from "@/platform/i18n/builtin-dictionary-labels";
 
 const dictionaryErrorKeys = ["invalidDictionary", "dictionaryFlat", "dictionaryInUse", "staleRecord", "forbidden"] as const satisfies readonly MessageKey[];
 const dictionaryErrorAliases = { duplicateRecord: "duplicateDictionary" } as const satisfies Readonly<Record<string, MessageKey>>;
@@ -47,8 +48,8 @@ export function DictionariesPage({canCreate,canUpdate,canDelete,canImport,canExp
   return <>
     <ResourceTable<Dictionary> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={()=>void query.refetch()}
       actions={(canCreate || canUpdate || canImport) && <Space>{canCreate && <Button type="primary" onClick={()=>setSelected(null)}>{t("createDictionary")}</Button>}{canImport && <DictionaryFileImport />}</Space>}
-      columns={[{title:t("dictionaryCode"),dataIndex:"code",search:true},{title:t("name"),dataIndex:"name", search: true},{title:t("dictionaryStructure"),dataIndex:"structure",valueEnum:{TREE:{text:t("treeDictionary")},FLAT:{text:t("flatDictionary")}},render:(_,row)=>t(row.structure==="TREE"?"treeDictionary":"flatDictionary")},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,row)=><Tag color={row.enabled?"success":"default"}>{t(row.enabled?"enabled":"disabled")}</Tag>},
-        {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions>{canExport && <DictionaryExport id={row.id} />}<Button type="link" onClick={()=>showItems(row.id)}>{t("dictionaryItems")}</Button><Button type="link" onClick={()=>setSelected(row.id)}>{t(canUpdate?"edit":"details")}</Button>{canDelete && !policyDictionaryCodes.has(row.code) && <DeleteAction name={row.name} onDelete={async()=>{
+      columns={[{title:t("dictionaryCode"),dataIndex:"code",search:true},{title:t("name"),dataIndex:"name", search: true,render:(_,row)=>builtinDictionaryName(row.code,row.name,t)},{title:t("dictionaryStructure"),dataIndex:"structure",valueEnum:{TREE:{text:t("treeDictionary")},FLAT:{text:t("flatDictionary")}},render:(_,row)=>t(row.structure==="TREE"?"treeDictionary":"flatDictionary")},{title:t("status"),dataIndex:"enabled", search: true,valueEnum:{true:{text:t("enabled")},false:{text:t("disabled")}},render:(_,row)=><Tag color={row.enabled?"success":"default"}>{t(row.enabled?"enabled":"disabled")}</Tag>},
+        {title:t("actions"), key: "actions",search:false,render:(_,row)=><TableActions>{canExport && <DictionaryExport id={row.id} />}<Button type="link" onClick={()=>showItems(row.id)}>{t("dictionaryItems")}</Button><Button type="link" onClick={()=>setSelected(row.id)}>{t(canUpdate?"edit":"details")}</Button>{canDelete && !policyDictionaryCodes.has(row.code) && <DeleteAction name={builtinDictionaryName(row.code,row.name,t)} onDelete={async()=>{
           await mutate(`/platform/dictionaries/${row.id}?version=${row.version}`,"DELETE",{});setRequest(pageAfterRemoval(request,query.data?.items.length));await refresh();
         }}/>}</TableActions>}]} />
     <FormDrawer open={selected!==undefined} title={t(selected?"edit":"createDictionary")} formId="dictionary-editor" pending={pending} submitDisabled={!ready || (selected === null ? !canCreate : !canUpdate)} onClose={close}>

@@ -15,13 +15,7 @@ public final class LumiraPlugin extends PluginEntry {
     }
 
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
-    @ComponentScan(
-            basePackages = "com.lumira.platform.monitoring",
-            excludeFilters =
-                    @ComponentScan.Filter(
-                            type = FilterType.REGEX,
-                            pattern =
-                                    "com\\.lumira\\.platform\\.monitoring\\.ApiDocsConfiguration"))
+    @ComponentScan(basePackages = "com.lumira.platform.monitoring")
     @org.springframework.transaction.annotation.EnableTransactionManagement(proxyTargetClass = true)
     public static class Configuration {}
 }

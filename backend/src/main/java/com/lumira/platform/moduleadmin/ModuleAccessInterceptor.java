@@ -1,3 +1,8 @@
+/**
+ * 在请求解析到处理方法后检查其所属模块是否可用，按处理器声明而非 URL 前缀执行模块停用边界。 Checks module availability after handler
+ * resolution, enforcing disabled-module boundaries through handler ownership rather than URL
+ * prefixes.
+ */
 package com.lumira.platform.moduleadmin;
 
 import com.lumira.platform.modules.*;
@@ -8,7 +13,10 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-/** Runs after security filters, on the resolved handler rather than a spoofable URL prefix. */
+/**
+ * 在安全过滤器之后检查已解析的处理器，不依赖可伪造的 URL 前缀。 Runs after security filters, on the resolved handler rather
+ * than a spoofable URL prefix.
+ */
 public final class ModuleAccessInterceptor implements HandlerInterceptor {
     private final ModuleRegistry registry;
     private final ModuleRuntime runtime;

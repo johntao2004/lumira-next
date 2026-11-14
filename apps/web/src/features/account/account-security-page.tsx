@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/platform/api/client";
 import type { AuthenticationPolicy, PrimaryMethod } from "@/platform/auth/api-types";
 import { QueryFailure } from "@/platform/components/query-failure";
-import { frontendRouteOwner, renderFrontendPage } from "@/platform/modules/registry";
+import { frontendRouteOwner, renderFrontendPage } from "@/platform/modules/page-store";
 import { usePluginRuntime } from "@/platform/modules/plugin-runtime";
 import { usePreferences } from "@/platform/providers";
 import { AccountSettingsRow, AccountSettingsSection } from "./account-form-surface";

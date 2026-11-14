@@ -1,8 +1,6 @@
 package com.lumira.platform.common;
 
-import java.nio.charset.StandardCharsets;
 import java.security.*;
-import java.util.HexFormat;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Repository;
@@ -22,18 +20,7 @@ public class FixedWindowBuckets {
     }
 
     public static String key(String namespace, String value) {
-        if (!namespace.matches("[a-z-]{1,15}"))
-            throw new IllegalArgumentException("Invalid rate namespace");
-        try {
-            return namespace
-                    + ":"
-                    + HexFormat.of()
-                            .formatHex(
-                                    MessageDigest.getInstance("SHA-256")
-                                            .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException error) {
-            throw new IllegalStateException(error);
-        }
+        return RateLimitKeys.key(namespace, value);
     }
 
     public boolean consume(String key, int limit) {

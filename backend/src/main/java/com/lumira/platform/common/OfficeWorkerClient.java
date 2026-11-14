@@ -1,3 +1,8 @@
+/**
+ * 以受限并发、超时及响应大小调用独立 Office 服务并校验协议，服务不可用时明确失败，不回退宿主解析。 Calls the isolated Office service with
+ * bounded concurrency, time and response size, validating its protocol and failing explicitly
+ * without host-side parsing fallback.
+ */
 package com.lumira.platform.common;
 
 import java.io.ByteArrayOutputStream;
@@ -23,7 +28,10 @@ import java.util.concurrent.TimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Host-side, bounded client for the cgroup-limited Office parser service. */
+/**
+ * 宿主侧有界客户端，调用受 cgroup 资源限制的 Office 解析服务。 Host-side, bounded client for the cgroup-limited Office
+ * parser service.
+ */
 public final class OfficeWorkerClient {
     private static final int MAX_INPUT_BYTES = 20 * 1024 * 1024;
     private static final int MAX_METADATA_BYTES = 4 * 1024 * 1024;
@@ -47,7 +55,7 @@ public final class OfficeWorkerClient {
                 || preview == null
                 || preview.text() == null
                 || preview.text().codePointCount(0, preview.text().length())
-                        > OfficeDocumentProcessor.MAX_PREVIEW_CODE_POINTS) {
+                        > OfficeWorkerProtocol.MAX_PREVIEW_CODE_POINTS) {
             throw unavailable();
         }
         return preview;
@@ -103,8 +111,8 @@ public final class OfficeWorkerClient {
                 || inspection == null
                 || inspection.slots() == null
                 || inspection.placeholders() == null
-                || inspection.slots().size() > DocumentTemplateProcessor.MAX_SLOTS
-                || inspection.placeholders().size() > DocumentTemplateProcessor.MAX_PLACEHOLDERS)
+                || inspection.slots().size() > OfficeWorkerProtocol.MAX_SLOTS
+                || inspection.placeholders().size() > OfficeWorkerProtocol.MAX_PLACEHOLDERS)
             throw unavailable();
         return inspection;
     }
@@ -125,7 +133,7 @@ public final class OfficeWorkerClient {
         if (!OfficeWorkerProtocol.DOCUMENT_PDF.equals(response.kind())
                 || pdf == null
                 || pdf.length < 8
-                || pdf.length > DocumentTemplateProcessor.MAX_RESPONSE_PDF_BYTES
+                || pdf.length > OfficeWorkerProtocol.MAX_RESPONSE_PDF_BYTES
                 || !new String(pdf, 0, 5, StandardCharsets.US_ASCII).startsWith("%PDF-"))
             throw unavailable();
         return pdf;
@@ -138,7 +146,7 @@ public final class OfficeWorkerClient {
         if (!OfficeWorkerProtocol.WORKBOOK_READ.equals(response.kind())
                 || workbook == null
                 || workbook.rows() == null
-                || workbook.rows().size() > DocumentTemplateProcessor.MAX_WORKBOOK_ROWS)
+                || workbook.rows().size() > OfficeWorkerProtocol.MAX_WORKBOOK_ROWS)
             throw unavailable();
         return workbook;
     }

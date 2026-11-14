@@ -12,7 +12,8 @@ import { formatDateTime } from "@/platform/i18n/format";
 import { usePreferences } from "@/platform/providers";
 import type { AuthenticationPolicy, ReauthenticationAction, ReauthenticationStart, ReauthenticationTicket } from "@/platform/auth/api-types";
 import { RecoveryCodes } from "./recovery-codes";
-import { ReauthenticationFields, reauthenticationCompletionBody } from "./reauthentication-fields";
+import { reauthenticationCompletionBody } from "@/platform/auth/reauthentication-contract";
+import { ReauthenticationFields } from "@/platform/auth/reauthentication-fields";
 import { mfaErrorKeys, type MfaActionValues, type MfaRecovery, type MfaSetup, type MfaStatus } from "./types";
 
 type Action = "setup" | "replace" | "rename" | "recovery" | "disable";

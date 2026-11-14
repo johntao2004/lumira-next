@@ -1,3 +1,8 @@
+/**
+ * 校验插件身份、依赖、页面动作与 HTTP 授权声明，明确页面访问和操作权限，拒绝含糊或跨归属的映射。 Validates plugin identity, dependencies, page
+ * actions and HTTP authorization declarations, separating page access from operations and rejecting
+ * ambiguous or cross-owner mappings.
+ */
 package com.lumira.platform.plugins;
 
 import java.util.*;
@@ -18,7 +23,10 @@ public record PluginManifest(
         List<Rule> apiRules,
         Map<String, String> files,
         List<DataSet> dataSets) {
-    /** Platform module ids and permission resources must remain platform-owned. */
+    /**
+     * 平台模块标识与权限资源必须始终归平台所有。 Platform module ids and permission resources must remain
+     * platform-owned.
+     */
     private static final Set<String> RESERVED_PLUGIN_IDS =
             Set.of(
                     "users",
@@ -68,7 +76,10 @@ public record PluginManifest(
             scopedOperations = List.copyOf(scopedOperations == null ? List.of() : scopedOperations);
         }
 
-        /** Compatibility constructor for v1 routes without explicit scoped action IDs. */
+        /**
+         * 兼容尚未显式声明范围化动作标识的 v1 路由。 Compatibility constructor for v1 routes without explicit scoped
+         * action IDs.
+         */
         public Route(
                 String id,
                 String label,
@@ -80,7 +91,10 @@ public record PluginManifest(
             this(id, label, permission, operations, List.of(), group, order, global);
         }
 
-        /** Compatibility constructor for v1 manifests without explicit operation mappings. */
+        /**
+         * 兼容尚未显式声明操作映射的 v1 清单。 Compatibility constructor for v1 manifests without explicit
+         * operation mappings.
+         */
         public Route(
                 String id,
                 String label,
@@ -103,18 +117,23 @@ public record PluginManifest(
             Boolean signedCallback,
             List<String> allAuthorities,
             List<String> globalAuthorities,
-            Map<String, String> authorityScopes) {
+            Map<String, String> authorityScopes,
+            Boolean pageReadOnly) {
         public Rule {
             authenticatedOnly = Boolean.TRUE.equals(authenticatedOnly);
             previewReadOnly = Boolean.TRUE.equals(previewReadOnly);
             signedCallback = Boolean.TRUE.equals(signedCallback);
             authorityScopes = Map.copyOf(authorityScopes == null ? Map.of() : authorityScopes);
+            pageReadOnly = Boolean.TRUE.equals(pageReadOnly);
             allAuthorities = List.copyOf(allAuthorities == null ? List.of() : allAuthorities);
             globalAuthorities =
                     List.copyOf(globalAuthorities == null ? List.of() : globalAuthorities);
         }
 
-        /** Compatibility with published rules before per-authority scopes. */
+        /**
+         * 兼容尚未显式声明仅需页面权限读取的规则，也兼容公布逐权限范围之前的规则。 Compatibility constructor for rules without explicit
+         * page-only reads and for published rules before per-authority scopes.
+         */
         public Rule(
                 String method,
                 String path,
@@ -137,10 +156,68 @@ public record PluginManifest(
                     signedCallback,
                     allAuthorities,
                     globalAuthorities,
-                    Map.of());
+                    Map.of(),
+                    false);
         }
 
-        /** Compatibility constructor for v1 manifests without mixed-scope global gates. */
+        public Rule(
+                String method,
+                String path,
+                List<String> authorities,
+                boolean global,
+                boolean publicAccess,
+                Boolean authenticatedOnly,
+                Boolean previewReadOnly,
+                Boolean signedCallback,
+                List<String> allAuthorities,
+                List<String> globalAuthorities,
+                Map<String, String> authorityScopes) {
+            this(
+                    method,
+                    path,
+                    authorities,
+                    global,
+                    publicAccess,
+                    authenticatedOnly,
+                    previewReadOnly,
+                    signedCallback,
+                    allAuthorities,
+                    globalAuthorities,
+                    authorityScopes,
+                    false);
+        }
+
+        public Rule(
+                String method,
+                String path,
+                List<String> authorities,
+                boolean global,
+                boolean publicAccess,
+                Boolean authenticatedOnly,
+                Boolean previewReadOnly,
+                Boolean signedCallback,
+                List<String> allAuthorities,
+                List<String> globalAuthorities,
+                boolean pageReadOnly) {
+            this(
+                    method,
+                    path,
+                    authorities,
+                    global,
+                    publicAccess,
+                    authenticatedOnly,
+                    previewReadOnly,
+                    signedCallback,
+                    allAuthorities,
+                    globalAuthorities,
+                    Map.of(),
+                    pageReadOnly);
+        }
+
+        /**
+         * 兼容尚未声明混合范围全局权限门槛的 v1 清单。 Compatibility constructor for v1 manifests without mixed-scope
+         * global gates.
+         */
         public Rule(
                 String method,
                 String path,
@@ -247,7 +324,10 @@ public record PluginManifest(
         }
     }
 
-    /** Ordered, plugin-owned rows. A shared table requires an explicit equality filter. */
+    /**
+     * 按顺序声明插件所属数据行；共享表必须提供显式等值筛选条件。 Ordered, plugin-owned rows. A shared table requires an explicit
+     * equality filter.
+     */
     public record DataSet(String table, String label, String column, String value) {}
 
     public PluginManifest {
@@ -394,6 +474,16 @@ public record PluginManifest(
                             && (r.publicAccess() || r.authenticatedOnly())
                     || r.authenticatedOnly()
                             && (r.publicAccess() || r.global() || !r.authorities().isEmpty())
+                    || r.pageReadOnly()
+                            && (formatVersion != 2
+                                    || r.publicAccess()
+                                    || r.authenticatedOnly()
+                                    || r.previewReadOnly()
+                                    || r.signedCallback()
+                                    || !r.authorities().isEmpty()
+                                    || !r.globalAuthorities().isEmpty()
+                                    || r.allAuthorities().size() != 1
+                                    || !pageReadMethod(id, r))
                     || r.previewReadOnly()
                             && (!r.method().equals("GET")
                                     || r.publicAccess()
@@ -442,7 +532,10 @@ public record PluginManifest(
                 throw new IllegalArgumentException("invalidPluginPermission");
     }
 
-    /** Compatibility constructor for manifests and tests written before permission groups. */
+    /**
+     * 兼容引入权限分组前编写的清单与测试。 Compatibility constructor for manifests and tests written before
+     * permission groups.
+     */
     public PluginManifest(
             int formatVersion,
             String id,
@@ -598,6 +691,7 @@ public record PluginManifest(
                 && permission != null
                 && Set.of("platform:event-outbox:access", "platform:event-outbox:replay")
                         .contains(permission)) return true;
+        // 当业务页面迁出内核时保留完全一致的历史页面授权标识。
         // Preserve exact legacy page grants when business pages move out of the kernel.
         if ("monitoring".equals(pluginId) && "platform:api-docs:access".equals(permission))
             return true;
@@ -615,7 +709,10 @@ public record PluginManifest(
         return mapped.containsAll(authorities);
     }
 
-    /** Each action in a cross-page rule must retain its own conjunctive page gate. */
+    /**
+     * 跨页面规则中的每个动作均须保留其自身的合取页面门禁。 Each action in a cross-page rule must retain its own conjunctive
+     * page gate.
+     */
     private static boolean mappedByRoutes(List<Route> routes, Rule rule, boolean actionsRequired) {
         var pageCodes =
                 routes.stream()
@@ -643,10 +740,32 @@ public record PluginManifest(
         return !codes.isEmpty() && (!actionsRequired || action);
     }
 
-    /** V2 rules require their page gate and at least one same-page action to be enforced. */
+    /**
+     * 仅内置且无副作用的文本检查可通过 POST 执行仅需页面权限的读取。 Only the bundled, side-effect-free text checks may use
+     * POST for page-only reads.
+     */
+    private static boolean pageReadMethod(String pluginId, Rule rule) {
+        return rule.method().equals("GET")
+                || rule.method().equals("POST")
+                        && pluginId.equals("sensitive-words")
+                        && rule.global()
+                        && rule.allAuthorities().equals(List.of("platform:sensitive-words:access"))
+                        && Set.of(
+                                        "/api/platform/sensitive-words/check",
+                                        "/api/platform/sensitive-policies/preview")
+                                .contains(rule.path());
+    }
+
+    /**
+     * V2 动作规则必须有页面权限门槛；显式页面只读规则保留所属页面的权限范围。 V2 action rules require a page gate; explicit page-only
+     * reads preserve that page's scope.
+     */
     private static boolean mappedByV2Route(Route route, Rule rule) {
         if (route.permission() == null || !rule.allAuthorities().contains(route.permission()))
             return false;
+        if (rule.pageReadOnly())
+            return rule.global() == route.global()
+                    && rule.allAuthorities().equals(List.of(route.permission()));
         var actions = new HashSet<>(route.operations().values());
         if (rule.authorities().contains(route.permission())
                 || !actions.containsAll(rule.authorities())) return false;

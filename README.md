@@ -1,10 +1,16 @@
+## 开发入口
+
+目录职责、独立 SDK 与构建见 [框架开发约束](docs/framework-development.md)，演进门槛见 [路线图](docs/evolution-plan.md)，生产交付见 [准入清单](docs/production-readiness.md)。编码参考：[后端规范](docs/reference/backend-standard.md)、[前端规范](docs/reference/frontend-standard.md)。核心双语注释清单见 docs/core-file-inventory.json。
+
 # Lumira 新脚手架
 
 与旧系统并行开发的独立底座。前端 8010，后端 8090，数据库 lumira_next；旧前端 8000 与旧后端不受影响。
 
 新克隆仍由 `scripts/init-local.mjs` 生成默认 `.runtime/local.json` 并使用 `lumira_next`；历史本地配置不会被自动发现或合并。接管已运行服务后，使用 canonical 配置和运行时 pin，并按[本地启动与插件清单换库护栏](docs/database-initialization.md#本地启动与换库插件清单护栏)检查启动和数据库切换。启动、状态和停止入口分别是 `node scripts/start.mjs`、`node scripts/status.mjs`、`node scripts/stop.mjs`。
 
-换电脑后的分支构建、本地配置和重复验收步骤见[跨机器测试说明](docs/cross-machine-testing.md)。
+换电脑后的分支构建、本地配置和重复验收步骤见[跨机器测试说明](docs/cloud-development.md)。
+
+生产 Compose 新卷使用独立数据库 bootstrap、迁移与非超级业务角色，必填密钥环；已有卷需先核验与迁移角色，见[数据库部署角色](docs/database-deployment-roles.md)。
 
 ## 技术基线
 
@@ -32,6 +38,8 @@ pnpm plugins:build
 pnpm test:java
 # 创建独立 PostgreSQL 角色/数据库，仅首次需要
 PSQL_BIN=/opt/homebrew/opt/postgresql@18/bin/psql node scripts/init-local.mjs
+# 首次登录前生成会话密钥。缺少时登录返回 503 secretKeyUnavailable
+node scripts/init-secret-key.mjs
 # 服务首次启动会由 Flyway 自动导入单文件基线
 node scripts/start.mjs
 node scripts/stop.mjs
@@ -65,7 +73,7 @@ pnpm test:java
 pnpm db:schema-smoke
 ```
 
-`pnpm db:schema-smoke` 在数据库迁移完成后检查结构和种子，只执行只读查询。`pnpm test:module-packages`、`pnpm test:plugin-data`、`pnpm test:browser` 以及 `scripts/smoke.py`、`scripts/passkey-smoke.py` 等共享 `smoke_support.py` 的测试会改动 fixture 数据，必须使用显式私有配置和带 QA 标记的专用数据库，不可用默认 `.runtime/local.json`。配置、marker、服务绑定与浏览器测试要求见[QA fixture guard 说明](docs/qa-fixture-guard.md)和[跨机器测试说明](docs/cross-machine-testing.md)。
+`pnpm db:schema-smoke` 在数据库迁移完成后检查结构和种子，只执行只读查询。`pnpm test:module-packages`、`pnpm test:plugin-data`、`pnpm test:browser` 以及 `scripts/smoke.py`、`scripts/passkey-smoke.py` 等共享 `smoke_support.py` 的测试会改动 fixture 数据，必须使用显式私有配置和带 QA 标记的专用数据库，不可用默认 `.runtime/local.json`。配置、marker、服务绑定与浏览器测试要求见[QA fixture guard 说明](docs/qa-fixture-guard.md)和[跨机器测试说明](docs/cloud-development.md)。
 
 命名、目录职责、CRUD 复用与自动质量检查见 [源码约定](docs/code-conventions.md)。`pnpm check:java-format` 使用 Spotless 全量检查宿主后端与独立插件后端的 Java 源码；`pnpm check:quality` 检查命名和新增重复代码，CI 与 `pnpm test` 均执行此检查。
 
@@ -89,7 +97,7 @@ Outbox 提供按事件类型显式注册的消费器边界、虚拟线程并发�
 
 审计流提供全局分页查询、账号安全记录和来源上下文；登录限流/超长密码拒绝在识别到账号时也会写入安全事件。`AuditRetention` 按可配置保留期以有界批次清理过期审计，避免高并发下审计表无限增长；默认保留 365 天，生产需结合合规要求设置 `LUMIRA_AUDIT_RETENTION`。
 
-安全策略（`/dashboard/security`）统一维护密码规则、登录/找回密码的账号与来源限流，以及验证码有效期、冷却时间、请求配额和失败上限。配置使用 PostgreSQL 持久化、版本冲突校验和审计，安全策略页只提供保存操作；认证与验证码存储读取同一策略，登录热路径使用 2 秒有界缓存。TOTP 二次认证通过独立热插拔插件提供，不伪装成短信/邮件供应商配置；绑定、恢复、管理员重置和 fail-closed 边界见 [二次认证说明](docs/mfa.md)。
+安全策略（`/dashboard/security`）统一维护密码规则、登录/找回密码的账号与来源限流，以及验证码有效期、冷却时间、请求配额和失败上限。配置使用 PostgreSQL 持久化、版本冲突校验和审计，安全策略页只提供保存操作；认证与验证码存储读取同一权威数据库策略，不使用进程本地策略缓存；安全与 Passkey 策略的已提交变更对后续读取可见，回滚不会污染后续读取。TOTP 二次认证通过独立热插拔插件提供，不伪装成短信/邮件供应商配置；绑定、恢复、管理员重置和 fail-closed 边界见 [二次认证说明](docs/mfa.md)。
 
 导航管理（`/dashboard/navigation`）使用基线中的版本化菜单树作为 ProLayout 树形菜单的运行时来源，支持内置菜单保护、自定义分组、排序、启停、软删除、版本冲突和按权限/模块过滤。PAGE 标识与路径有数据库唯一约束，componentKey 只解析到前端代码注册表；安全的自定义 PAGE 可进入 `/dashboard/{slug}`，未注册组件时展示受控占位页，不执行数据库 HTML 或代码。模块页支持完整插件包导入、依赖与冲突预检、在线安装/卸载和状态版本护栏。工单反馈、本地化、敏感词和 TOTP 二次认证位于根目录 plugins/，使用 PF4J/Spring 子容器和前端动态注册，无需重构建或重启宿主；详见 [插件开发与运行](docs/plugins.md)。
 
@@ -116,3 +124,5 @@ Outbox 提供按事件类型显式注册的消费器边界、虚拟线程并发�
 账户修改密码回归：`python3 scripts/password-smoke.py` 使用自动清理的临时账号验证，不修改管理员密码。
 
 可观测性、HTTP 安全头、备份恢复演练、供应链扫描与架构护栏见 [运维手册](docs/operations.md)。
+
+生产部署前执行[只读配置预检](docs/deployment-preflight.md)，按[生产准入](docs/production-readiness.md)完成目标环境验证。

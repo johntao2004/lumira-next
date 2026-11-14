@@ -1,17 +1,17 @@
 "use client";
 
-import { Alert, Button, Form as AntForm, Input, Radio, Space, Typography } from "antd";
+import { Alert, Form as AntForm, Input, Radio, Space, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import type { FormInstance } from "antd";
 import { ApiError, mutate } from "@/platform/api/client";
 import type { PasskeyOptions, ReauthenticationCodeChallenge, ReauthenticationMethod, ReauthenticationStart, ReauthenticationTicket } from "@/platform/auth/api-types";
 import { createPasskeyCredential, isPasskeySupported, toAuthenticationPayload, toPublicKeyRequestOptions } from "@/platform/auth/passkey";
+import type { ReauthenticationFormValues } from "@/platform/auth/reauthentication-contract";
 import { AsyncButton } from "@/platform/components/async-button";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { PlatformForm as Form } from "@/platform/components/platform-form";
 import { useSubmitAction } from "@/platform/forms/use-submit-action";
 import { usePreferences } from "@/platform/providers";
-import type { ReauthenticationFormValues } from "./reauthentication-contract";
 
 export { reauthenticationCompletionBody } from "@/platform/auth/reauthentication-contract";
 
@@ -29,7 +29,7 @@ const errorKeys = [
   "passkeyOperationFailed", "forbidden", "loginRateLimited", "unavailable",
 ] as const;
 
-export function ReauthenticationFields({
+export function ReauthenticationFields<T extends ReauthenticationFormValues>({
   challenge,
   form,
   hint,
@@ -40,7 +40,7 @@ export function ReauthenticationFields({
   onPasskeyTicket,
 }: {
   challenge: ReauthenticationStart;
-  form: FormInstance<ReauthenticationFormValues>;
+  form: FormInstance<T>;
   hint: string;
   currentPasswordLabel: string;
   passwordRequired: string;
@@ -48,16 +48,17 @@ export function ReauthenticationFields({
   secondFactorInvalid: string;
   onPasskeyTicket: (ticket: ReauthenticationTicket) => void;
 }) {
+  const fields = form as unknown as FormInstance<ReauthenticationFormValues>;
   const { t } = usePreferences();
   const [codeChallenge, setCodeChallenge] = useState<ReauthenticationCodeChallenge | null>(null);
   const [now, setNow] = useState(Date.now());
   const [passkeyTicketReady, setPasskeyTicketReady] = useState(false);
   const previousMethod = useRef<ReauthenticationMethod | null>(null);
-  const method = Form.useWatch("reauthenticationMethod", form) ?? challenge.methods[0];
+  const method = Form.useWatch("reauthenticationMethod", fields) ?? challenge.methods[0];
   const currentMethod = useRef(method);
   currentMethod.current = method;
   const generation = useRef(0);
-  const factorCode = Form.useWatch("factorCode", form);
+  const factorCode = Form.useWatch("factorCode", fields);
   const sendCode = useSubmitAction({ errorKeys, fallback: "unavailable" });
   const passkeyAction = useSubmitAction({
     errorKeys,
@@ -73,12 +74,12 @@ export function ReauthenticationFields({
   useEffect(() => {
     generation.current += 1;
     const first = challenge.methods[0];
-    form.setFieldValue("reauthenticationMethod", first);
-    form.setFieldsValue({ currentPassword: undefined, factorCode: undefined, reauthenticationCodeChallengeId: undefined, reauthenticationCode: undefined });
+    fields.setFieldValue("reauthenticationMethod", first);
+    fields.setFieldsValue({ currentPassword: undefined, factorCode: undefined, reauthenticationCodeChallengeId: undefined, reauthenticationCode: undefined });
     previousMethod.current = first ?? null;
     setCodeChallenge(null);
     setPasskeyTicketReady(false);
-  }, [challenge, form]);
+  }, [challenge, fields]);
 
   useEffect(() => {
     if (!codeChallenge) return;
@@ -93,8 +94,8 @@ export function ReauthenticationFields({
     previousMethod.current = method;
     setCodeChallenge(null);
     setPasskeyTicketReady(false);
-    form.setFieldsValue({ reauthenticationCodeChallengeId: undefined, reauthenticationCode: undefined, currentPassword: undefined, factorCode: undefined });
-  }, [form, method]);
+    fields.setFieldsValue({ reauthenticationCodeChallengeId: undefined, reauthenticationCode: undefined, currentPassword: undefined, factorCode: undefined });
+  }, [fields, method]);
 
   async function requestCode() {
     if (!method || !["EMAIL_OTP", "SMS_OTP"].includes(method)) return;
@@ -108,7 +109,7 @@ export function ReauthenticationFields({
       if (!result.codeChallengeId || !result.expiresAt || !result.resendAt) throw new ApiError(503, "unavailable");
       if (generation.current !== requestGeneration || currentMethod.current !== requestedMethod) return;
       setCodeChallenge(result);
-      form.setFieldsValue({ reauthenticationCodeChallengeId: result.codeChallengeId, reauthenticationCode: undefined });
+      fields.setFieldsValue({ reauthenticationCodeChallengeId: result.codeChallengeId, reauthenticationCode: undefined });
     });
   }
 
@@ -119,7 +120,7 @@ export function ReauthenticationFields({
       return;
     }
     if (challenge.factorRequired) {
-      try { await form.validateFields(["factorCode"]); } catch { return; }
+      try { await fields.validateFields(["factorCode"]); } catch { return; }
     }
     await passkeyAction.run(async () => {
       const options = await mutate<PasskeyOptions>("/account/reauthentication/passkey/options", "POST", {
@@ -133,7 +134,7 @@ export function ReauthenticationFields({
         ...(challenge.factorRequired ? { factorCode } : {}),
       });
       onPasskeyTicket(ticket);
-      form.setFieldsValue({ factorCode: undefined, currentPassword: undefined, reauthenticationCode: undefined, reauthenticationCodeChallengeId: undefined });
+      fields.setFieldsValue({ factorCode: undefined, currentPassword: undefined, reauthenticationCode: undefined, reauthenticationCodeChallengeId: undefined });
       setPasskeyTicketReady(true);
     });
   }
@@ -151,7 +152,7 @@ export function ReauthenticationFields({
             generation.current += 1;
             setCodeChallenge(null);
             setPasskeyTicketReady(false);
-            form.setFieldsValue({ reauthenticationCodeChallengeId: undefined, reauthenticationCode: undefined, currentPassword: undefined, factorCode: undefined });
+            fields.setFieldsValue({ reauthenticationCodeChallengeId: undefined, reauthenticationCode: undefined, currentPassword: undefined, factorCode: undefined });
           }}
         />
       </Form.Item>

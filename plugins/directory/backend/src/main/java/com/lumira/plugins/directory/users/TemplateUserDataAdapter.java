@@ -59,7 +59,8 @@ public class TemplateUserDataAdapter implements DirectoryTemplateServicePort {
 
     @Override
     public List<Field> readableFields(String actor) {
-        guard.requirePage(actor, PlatformPageId.USERS);
+        if (!hasPage(actor, PlatformPageId.PRINT_TEMPLATES))
+            guard.requirePage(actor, PlatformPageId.USERS);
         var fields = new ArrayList<Field>();
         fields.add(new Field("username", "Username", "TEXT", "account", true, false));
         fields.add(new Field("displayName", "Display name", "TEXT", "account", true, false));

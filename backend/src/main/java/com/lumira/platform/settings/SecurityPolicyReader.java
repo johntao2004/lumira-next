@@ -7,7 +7,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-/** Kernel policy reader remains active when its optional administration plugin is absent. */
+/**
+ * 内核策略读取器在可选管理插件缺失时仍然可用，并在事务内读取权威值，避免回滚污染其他请求缓存。 Kernel policy reader remains active when its
+ * optional administration plugin is absent, and reads authoritative values inside a transaction so
+ * a rollback cannot pollute another request's cache.
+ */
 @Service
 public class SecurityPolicyReader implements SecurityPolicyPort {
     public record View(long version, SecuritySettings data) {}

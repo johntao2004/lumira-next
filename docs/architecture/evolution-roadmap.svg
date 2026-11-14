@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="2440" viewBox="0 0 1800 2440"><defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L8 5 L0 10" fill="none" stroke="#7D91A5" stroke-width="2"/></marker></defs><rect width="1800" height="2440" fill="#F5F7FA"/><g font-family="Noto Sans CJK SC,sans-serif">
+<text x="90" y="100" font-size="54" fill="#203D59" font-weight="700">开发框架演进路线</text>
+<text x="90" y="155" font-size="30" fill="#40566E" font-weight="400">先做稳，再复用；有真实需要，再拆服务。</text>
+<text x="90" y="204" font-size="25" fill="#708297" font-weight="400">按验收与需求推进，不按固定日期升级架构</text>
+<rect x="90" y="270" width="1620" height="405" rx="20" fill="#FFFFFF" stroke="#D6E0E9" stroke-width="2"/>
+<rect x="115" y="295" width="93" height="62" rx="20" fill="#365F8B" stroke="#365F8B" stroke-width="2"/>
+<text x="135" y="338" font-size="33" fill="#FFFFFF" font-weight="700">01</text>
+<text x="235" y="338" font-size="38" fill="#365F8B" font-weight="700">当前版本稳定可验收</text>
+<text x="1480" y="335" font-size="29" fill="#365F8B" font-weight="700">P0</text>
+<text x="125" y="396" font-size="26" fill="#365F8B" font-weight="500">进入条件：现在开始</text>
+<text x="135" y="453" font-size="28" fill="#40566E" font-weight="400">• 前后端按七区分工，明确每个模块的数据所有权</text>
+<text x="135" y="499" font-size="28" fill="#40566E" font-weight="400">• 补齐权限负例、插件失败恢复、浏览器和文档服务测试</text>
+<text x="135" y="545" font-size="28" fill="#40566E" font-weight="400">• 固定发布清单，让依赖违规在构建时被发现</text>
+<rect x="115" y="596" width="1570" height="54" rx="20" fill="#F0F4F7" stroke="#F0F4F7" stroke-width="2"/>
+<text x="135" y="633" font-size="27" fill="#365F8B" font-weight="700">退出：关键路径通过，失败可恢复，备份可还原</text>
+<path d="M900 680 L900 721" stroke="#7D91A5" stroke-width="3" marker-end="url(#a)"/>
+<rect x="90" y="735" width="1620" height="405" rx="20" fill="#FFFFFF" stroke="#D6E0E9" stroke-width="2"/>
+<rect x="115" y="760" width="93" height="62" rx="20" fill="#397A70" stroke="#397A70" stroke-width="2"/>
+<text x="135" y="803" font-size="33" fill="#FFFFFF" font-weight="700">02</text>
+<text x="235" y="803" font-size="38" fill="#397A70" font-weight="700">成为可复用的开发框架</text>
+<text x="1480" y="800" font-size="29" fill="#397A70" font-weight="700">P0 / P1</text>
+<text x="125" y="861" font-size="26" fill="#397A70" font-weight="500">进入条件：需要交付第一个独立应用</text>
+<text x="135" y="918" font-size="28" fill="#40566E" font-weight="400">• 独立开发包、最小发行版、应用脚手架</text>
+<text x="135" y="964" font-size="28" fill="#40566E" font-weight="400">• 公开接口与事件版本，应用不依赖宿主内部源码</text>
+<text x="135" y="1010" font-size="28" fill="#40566E" font-weight="400">• 建立兼容矩阵，验证数据库升级和数据保留</text>
+<rect x="115" y="1061" width="1570" height="54" rx="20" fill="#F0F4F7" stroke="#F0F4F7" stroke-width="2"/>
+<text x="135" y="1098" font-size="27" fill="#397A70" font-weight="700">退出：独立应用可构建、可测试、可升级</text>
+<path d="M900 1145 L900 1186" stroke="#7D91A5" stroke-width="3" marker-end="url(#a)"/>
+<rect x="90" y="1200" width="1620" height="405" rx="20" fill="#FFFFFF" stroke="#D6E0E9" stroke-width="2"/>
+<rect x="115" y="1225" width="93" height="62" rx="20" fill="#756091" stroke="#756091" stroke-width="2"/>
+<text x="135" y="1268" font-size="33" fill="#FFFFFF" font-weight="700">03</text>
+<text x="235" y="1268" font-size="38" fill="#756091" font-weight="700">支持多个应用稳健运行</text>
+<text x="1480" y="1265" font-size="29" fill="#756091" font-weight="700">P1</text>
+<text x="125" y="1326" font-size="26" fill="#756091" font-weight="500">进入条件：出现第二个应用或多副本要求</text>
+<text x="135" y="1383" font-size="28" fill="#40566E" font-weight="400">• 统一登录，各应用分别管理权限与业务数据</text>
+<text x="135" y="1429" font-size="28" fill="#40566E" font-weight="400">• 可靠事件、重复处理保护、监控指标与容量验证</text>
+<text x="135" y="1475" font-size="28" fill="#40566E" font-weight="400">• 验证同构多副本；承诺多租户时才增加隔离验收</text>
+<rect x="115" y="1526" width="1570" height="54" rx="20" fill="#F0F4F7" stroke="#F0F4F7" stroke-width="2"/>
+<text x="135" y="1563" font-size="27" fill="#756091" font-weight="700">退出：跨应用复用成立，服务目标与恢复演练通过</text>
+<path d="M900 1610 L900 1651" stroke="#7D91A5" stroke-width="3" marker-end="url(#a)"/>
+<rect x="90" y="1665" width="1620" height="405" rx="20" fill="#FFFFFF" stroke="#D6E0E9" stroke-width="2"/>
+<rect x="115" y="1690" width="93" height="62" rx="20" fill="#9B7747" stroke="#9B7747" stroke-width="2"/>
+<text x="135" y="1733" font-size="33" fill="#FFFFFF" font-weight="700">04</text>
+<text x="235" y="1733" font-size="38" fill="#9B7747" font-weight="700">按需拆出独立服务</text>
+<text x="1480" y="1730" font-size="29" fill="#9B7747" font-weight="700">P2</text>
+<text x="125" y="1791" font-size="26" fill="#9B7747" font-weight="500">进入条件：扩容、故障隔离或发布需求持续出现</text>
+<text x="135" y="1848" font-size="28" fill="#40566E" font-weight="400">• 每次只拆一个边界，先核对收益与维护成本</text>
+<text x="135" y="1894" font-size="28" fill="#40566E" font-weight="400">• 兼容接口、数据迁移、超时重试、对账补偿</text>
+<text x="135" y="1940" font-size="28" fill="#40566E" font-weight="400">• 小范围切换，保留回退窗口，验证独立发布与恢复</text>
+<rect x="115" y="1991" width="1570" height="54" rx="20" fill="#F0F4F7" stroke="#F0F4F7" stroke-width="2"/>
+<text x="135" y="2028" font-size="27" fill="#9B7747" font-weight="700">退出：拆分收益成立，数据一致性与故障演练通过</text>
+<rect x="90" y="2160" width="1620" height="130" rx="20" fill="#EAF1F7" stroke="#EAF1F7" stroke-width="2"/>
+<text x="120" y="2206" font-size="32" fill="#284D70" font-weight="700">长期形态可以停留在任一阶段</text>
+<text x="120" y="2258" font-size="28" fill="#40566E" font-weight="400">模块化单体＋少量独立服务，也可以是成熟的生产架构。</text>
+<text x="90" y="2340" font-size="23" fill="#6B8094" font-weight="400">P级表示建设优先级；阶段目标不等于当前已经实现。</text>
+<text x="90" y="2385" font-size="23" fill="#6B8094" font-weight="400">框架提供共用基础，各业务应用独立开发。</text>
+</g></svg>

@@ -1,3 +1,8 @@
+/**
+ * 持久化事件、租约、重试与追踪，以幂等键和令牌隔离重复及过期领取，并锁定共享操作行防止并发分片汇总丢失。 Persists events, leases, retries and traces,
+ * using idempotency keys and tokens to fence duplicates and stale claims and locking shared
+ * operation rows to prevent lost shard aggregates.
+ */
 package com.lumira.platform.events;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
@@ -12,7 +17,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-/** Durable, idempotent event boundary shared by platform modules and future business modules. */
+/**
+ * 平台模块及未来业务模块共享的持久化、幂等事件边界。 Durable, idempotent event boundary shared by platform modules and
+ * future business modules.
+ */
 @Repository
 public class PlatformEventOutboxStore implements DurableEventPublisherPort {
     public static final int MAX_ATTEMPTS = 8;
@@ -95,7 +103,10 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
         this.mapper = mapper;
     }
 
-    /** First write wins for the same source/event/key. Call from the producer transaction. */
+    /**
+     * 相同来源、事件与键以首次写入为准；必须从生产方事务内调用。 First write wins for the same source/event/key. Call from the
+     * producer transaction.
+     */
     @Override
     @Transactional
     public boolean publish(
@@ -206,7 +217,24 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
                 .update();
     }
 
-    /** Legacy method retained for existing platform callers and tests. */
+    @Override
+    @Transactional
+    public void completeDuplicateSingleEventOperation(UUID operationId) {
+        Objects.requireNonNull(operationId);
+        jdbc.sql(
+                        """
+                UPDATE platform_event_operation o SET expected_event_count=0,
+                  outcome_code='DUPLICATE_ONLY',inbox_created=0,inbox_skipped=expected_inbox_count,
+                  skipped_by_reason=jsonb_build_object('DUPLICATE',expected_inbox_count),
+                  result_known=true,completed_at=now(),history_status='NO_EVENTS',updated_at=now()
+                WHERE operation_id=:id AND expected_event_count=1 AND completed_event_count=0
+                  AND NOT EXISTS (SELECT 1 FROM platform_event_outbox e WHERE e.operation_id=o.operation_id)
+                """)
+                .param("id", operationId)
+                .update();
+    }
+
+    /** 为现有平台调用方与测试保留的旧方法。 Legacy method retained for existing platform callers and tests. */
     @Transactional
     public boolean append(
             UUID id, String sourceType, String eventType, String eventKey, String payload) {
@@ -262,7 +290,10 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
                 .optional();
     }
 
-    /** Claims one due event. SKIP LOCKED gives horizontal workers exclusive ownership. */
+    /**
+     * 领取一个到期事件；SKIP LOCKED 使横向扩展的工作进程获得独占处理权。 Claims one due event. SKIP LOCKED gives horizontal
+     * workers exclusive ownership.
+     */
     @Transactional
     public Optional<Claim> claim() {
         UUID token = UUID.randomUUID();
@@ -358,6 +389,14 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
 
     private void recordOperationDelivery(
             UUID operationId, DurableEventConsumerPort.ConsumptionResult result) {
+        // deliver 先锁定事件行，再单独串行化共享汇总行，使 READ COMMITTED 在前一分片提交后读取新快照。
+        // Event rows are locked first by deliver. Serialize the shared aggregate separately so
+        // READ COMMITTED takes a fresh snapshot after any preceding shard has committed.
+        jdbc.sql(
+                        "SELECT operation_id FROM platform_event_operation WHERE operation_id=:id FOR UPDATE")
+                .param("id", operationId)
+                .query(UUID.class)
+                .single();
         String skippedJson = mapper.writeValueAsString(result.skippedByReason());
         jdbc.sql(
                         """
@@ -477,7 +516,10 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
                 rs.getObject("available_at", OffsetDateTime.class));
     }
 
-    /** Retry with bounded exponential backoff; after eight attempts the event is a dead letter. */
+    /**
+     * 使用有界指数退避重试；尝试八次后将事件转为死信。 Retry with bounded exponential backoff; after eight attempts the
+     * event is a dead letter.
+     */
     @Transactional
     public boolean fail(Claim claim, String error) {
         String safe = error == null || error.isBlank() ? "UNSPECIFIED" : safeErrorCode(error);
@@ -520,7 +562,9 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
     }
 
     /**
-     * Releases a claim when its event type has no registered consumer. This is not a handler
+     * 事件类型没有已注册消费者时释放领取；这不算处理尝试，事件保持待处理且可观测，保留有界重试延迟，不消耗有限失败额度。
+     *
+     * <p>Releases a claim when its event type has no registered consumer. This is not a handler
      * attempt: keep it pending and observable, retain a bounded retry delay and do not consume the
      * finite failure budget.
      */
@@ -557,7 +601,7 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
         return true;
     }
 
-    /** Converts abandoned leases to retryable or dead-letter records. */
+    /** 将遗弃租约转为可重试或死信记录。 Converts abandoned leases to retryable or dead-letter records. */
     @Transactional
     public List<Recovery> recoverExpired() {
         var recovered =
@@ -614,7 +658,9 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
     }
 
     /**
-     * Reset one dead letter after the administrative adapter has approved a replay. The row lock
+     * 管理适配器批准重放后重置一条死信；行锁防止维护进程在状态检查与重置之间并发领取。
+     *
+     * <p>Reset one dead letter after the administrative adapter has approved a replay. The row lock
      * prevents a concurrent maintenance worker from claiming the record between the status check
      * and reset.
      */
@@ -680,9 +726,11 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
     }
 
     /**
-     * Delete only delivered records after the retention window. Pending, processing and dead-letter
-     * events stay available for recovery or manual replay approval. The bounded CTE keeps cleanup
-     * short under load.
+     * 只删除超过保留期的已投递记录；待处理、处理中和死信事件保留用于恢复或人工批准重放，有界 CTE 限制高负载下的清理时长。
+     *
+     * <p>Delete only delivered records after the retention window. Pending, processing and
+     * dead-letter events stay available for recovery or manual replay approval. The bounded CTE
+     * keeps cleanup short under load.
      */
     @Transactional
     public int purgeDelivered(Duration retention, int batchSize) {
@@ -724,6 +772,7 @@ public class PlatformEventOutboxStore implements DurableEventPublisherPort {
                         .param("limit", batchSize)
                         .query(Integer.class)
                         .single();
+        // 操作汇总沿用审计保留期；删除汇总通过 ON DELETE SET NULL 解除仍保留的待处理或死信事件关联，不删除事件载荷或重放批准。
         // Operation summaries follow the audit retention window. Removing the summary detaches
         // any retained pending/dead-letter events (ON DELETE SET NULL) without deleting their
         // payload or replay approvals.

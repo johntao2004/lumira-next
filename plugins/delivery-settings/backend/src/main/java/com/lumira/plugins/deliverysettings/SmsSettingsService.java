@@ -3,7 +3,7 @@ package com.lumira.plugins.deliverysettings;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PlatformOperation;
-import com.lumira.platform.common.SecretKeys;
+import com.lumira.platform.common.SecretCryptoPort;
 import com.lumira.platform.common.SecretStorePort;
 import com.lumira.platform.settings.*;
 import java.nio.charset.StandardCharsets;
@@ -56,16 +56,16 @@ public class SmsSettingsService {
             boolean encryptionConfigured) {}
 
     private final SettingStore settings;
-    private final SecretStore secrets;
-    private final SecretKeys keys;
+    private final SecretStorePort secrets;
+    private final SecretCryptoPort keys;
     private final AdministrationPort guard;
     private final ObjectMapper mapper;
     private final AuditPort audit;
 
     public SmsSettingsService(
             SettingStore settings,
-            SecretStore secrets,
-            SecretKeys keys,
+            SecretStorePort secrets,
+            SecretCryptoPort keys,
             AdministrationPort guard,
             ObjectMapper mapper,
             AuditPort audit) {
@@ -146,7 +146,7 @@ public class SmsSettingsService {
                 "REPLACE".equals(action) || ("KEEP".equals(action) && state.configured());
         if (input.data().enabled()) {
             if (!willHaveCredential) invalid("smsCredentialRequired");
-            keys.require();
+            if (!keys.configured()) throw unavailable("secretKeyUnavailable");
         }
         var saved =
                 settings.save(

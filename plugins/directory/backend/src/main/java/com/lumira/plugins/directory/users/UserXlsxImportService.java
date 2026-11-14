@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -130,9 +131,9 @@ public class UserXlsxImportService {
     private final AdministrationPort guard;
     private final AuditPort audit;
     private final JdbcClient jdbc;
+    private final RoleService roleDelegation;
     private final TransactionTemplate requiresNew;
     private final TransactionTemplate atomic;
-    private final RoleService roleDelegation;
 
     public UserXlsxImportService(
             UserImportStore store,
@@ -161,7 +162,7 @@ public class UserXlsxImportService {
                 null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public UserXlsxImportService(
             UserImportStore store,
             UserRepository usersRepository,
@@ -484,6 +485,17 @@ public class UserXlsxImportService {
         Map<String, Long> roleVersions = codeVersions(values.get("roles"), true, errors, actor);
         Map<String, Long> organizationVersions =
                 codeVersions(values.get("organizations"), false, errors, actor);
+        if (roleDelegation != null
+                && values.containsKey("roles")
+                && !errors.contains("invalidRoleCodes")) {
+            try {
+                roleDelegation.validateImportAssignment(
+                        matchedId, enabledRoleIds(values.get("roles")), actor);
+            } catch (ResponseStatusException denied) {
+                String reason = denied.getReason();
+                errors.add(reason == null || reason.isBlank() ? "forbidden" : reason);
+            }
+        }
         if (summary != null && changesContainUserData(values)) {
             try {
                 var current = userData.readValues(summary.id(), actor);
@@ -660,6 +672,18 @@ public class UserXlsxImportService {
         if (expected.isEmpty()) return;
         var actual = referenceVersions(findCodeReferences(expected.keySet(), roles, null));
         if (!actual.equals(expected)) conflict("importVersionConflict");
+    }
+
+    private Set<UUID> enabledRoleIds(String value) {
+        Set<String> codes = parseCodes(value);
+        if (codes.isEmpty() || jdbc == null) return Set.of();
+        return jdbc
+                .sql("SELECT id FROM platform_role WHERE code IN (:codes) AND enabled=true")
+                .param("codes", codes)
+                .query((rs, n) -> rs.getObject("id", UUID.class))
+                .list()
+                .stream()
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
     Set<UUID> resolveCodes(String value, boolean roles) {

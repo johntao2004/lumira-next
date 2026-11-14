@@ -1,3 +1,8 @@
+/**
+ * 封装角色、权限、分配及配额持久化，按有效权限和范围筛选可分配项，同时保留既有分配供展示而不将其视作新委派资格。 Persists roles, permissions, assignments
+ * and quotas, filtering assignable options by effective authority and scope while showing existing
+ * assignments without treating them as new delegation eligibility.
+ */
 package com.lumira.plugins.directory.roles;
 
 import com.lumira.platform.common.PageFilterSql;
@@ -30,6 +35,44 @@ public class RoleRepository {
             Long fileQuotaBytesLimit,
             Long fileQuotaFilesLimit,
             boolean assignable) {}
+
+    /**
+     * 按各最低数据范围等级汇总操作者权限；宽范围授权也计入较窄等级，因此 ALL 同时出现在 self、organization 与 subtree 集合中。
+     *
+     * <p>Permissions the actor holds at each minimum data-scope rank. A wider set includes every
+     * narrower grant: an ALL grant is also present in {@code self}, {@code organization}, and
+     * {@code subtree}.
+     */
+    public record AuthorityScopeCeiling(
+            Set<String> self, Set<String> organization, Set<String> subtree, Set<String> all) {
+        public AuthorityScopeCeiling {
+            self = self == null ? Set.of() : Set.copyOf(self);
+            organization = organization == null ? Set.of() : Set.copyOf(organization);
+            subtree = subtree == null ? Set.of() : Set.copyOf(subtree);
+            all = all == null ? Set.of() : Set.copyOf(all);
+        }
+
+        public static AuthorityScopeCeiling none() {
+            return new AuthorityScopeCeiling(Set.of(), Set.of(), Set.of(), Set.of());
+        }
+
+        /**
+         * 显式已知的 ALL 授权，主要用于构造测试数据。 Explicitly known ALL grants, primarily for constructing test
+         * fixtures.
+         */
+        public static AuthorityScopeCeiling unrestricted(Set<String> authorities) {
+            Set<String> held = authorities == null ? Set.of() : Set.copyOf(authorities);
+            return new AuthorityScopeCeiling(held, held, held, held);
+        }
+
+        public int rank(String authority) {
+            if (authority != null && all.contains(authority)) return 3;
+            if (authority != null && subtree.contains(authority)) return 2;
+            if (authority != null && organization.contains(authority)) return 1;
+            if (authority != null && self.contains(authority)) return 0;
+            return -1;
+        }
+    }
 
     private final JdbcClient jdbc;
     private static final String FILTER =
@@ -88,6 +131,8 @@ public class RoleRepository {
             PageRequest page,
             Set<UUID> assignedRoleIds,
             Set<String> delegableAuthorities,
+            Set<String> activeAuthorities,
+            AuthorityScopeCeiling scopeCeiling,
             boolean includeDelegableCandidates) {
         var f = filters(page);
         var params = new HashMap<String, Object>();
@@ -99,16 +144,35 @@ public class RoleRepository {
             return new com.lumira.platform.common.PageResult<>(
                     List.of(), 0, page.page(), page.pageSize());
 
+        AuthorityScopeCeiling ceiling =
+                scopeCeiling == null ? AuthorityScopeCeiling.none() : scopeCeiling;
         String delegationCheck =
                 "NOT EXISTS (SELECT 1 FROM platform_role_authority ra "
                         + "WHERE ra.role_id=r.id "
                         + "AND ra.authority NOT LIKE 'platform:__v50:%' "
-                        + "AND ra.authority NOT IN (:delegableAuthorities))";
+                        + "AND ra.authority IN (:activeAuthorities) "
+                        + "AND (ra.authority NOT IN (:delegableAuthorities) "
+                        + "OR NOT ((r.data_scope='SELF' AND ra.authority IN (:scopeSelf)) "
+                        + "OR (r.data_scope='ORGANIZATION' AND ra.authority IN (:scopeOrganization)) "
+                        + "OR (r.data_scope='SUBTREE' AND ra.authority IN (:scopeSubtree)) "
+                        + "OR (r.data_scope='ALL' AND ra.authority IN (:scopeAll)))))";
         String assignmentFilter = "";
         if (includeDelegableCandidates) {
             params.put(
                     "delegableAuthorities",
                     delegableAuthorities.isEmpty() ? Set.of("") : delegableAuthorities);
+            params.put(
+                    "activeAuthorities",
+                    activeAuthorities == null || activeAuthorities.isEmpty()
+                            ? Set.of("")
+                            : activeAuthorities);
+            params.put("scopeSelf", ceiling.self().isEmpty() ? Set.of("") : ceiling.self());
+            params.put(
+                    "scopeOrganization",
+                    ceiling.organization().isEmpty() ? Set.of("") : ceiling.organization());
+            params.put(
+                    "scopeSubtree", ceiling.subtree().isEmpty() ? Set.of("") : ceiling.subtree());
+            params.put("scopeAll", ceiling.all().isEmpty() ? Set.of("") : ceiling.all());
             if (assigned.isEmpty()) {
                 assignmentFilter = " AND " + delegationCheck;
             } else {
@@ -251,6 +315,10 @@ public class RoleRepository {
                         .param("name", actor)
                         .query(String.class)
                         .list());
+    }
+
+    public Set<String> actorEffectiveAuthorities(String actor) {
+        return actorAuthorities(actor);
     }
 
     public Set<String> actorGlobalAuthorities(String actor) {

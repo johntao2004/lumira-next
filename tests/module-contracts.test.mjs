@@ -306,3 +306,11 @@ test('disposed and superseded dynamic page contexts cannot retain or inherit gra
   assert.equal(newContext.hasOperation('delete'), false);
   assert.equal(newContext.hasRouteAccess('replaceable-page'), false);
 });
+
+test('live plugin metadata replaces stale host metadata and disappears on unload', () => {
+ const registry=createFrontendPageRegistry([]);
+ const current=dynamicModule('optional',{id:'optional',permission:'new:read',accessScope:'global'});
+ const remove=registry.registerPlugin(current);
+ assert.equal(registry.pluginRoute('optional').permission,'new:read');
+ remove();assert.equal(registry.pluginRoute('optional'),null);
+});

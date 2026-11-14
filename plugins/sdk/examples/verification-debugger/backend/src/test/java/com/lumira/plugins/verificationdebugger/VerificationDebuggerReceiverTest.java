@@ -19,9 +19,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 
 class VerificationDebuggerReceiverTest {
     private final HttpClient client = HttpClient.newHttpClient();
+
+    @Test
+    void actualEnvironmentDisablesDebugInProductionEvenWhenExplicitlyRequested() {
+        for (String key : List.of("lumira.sms.debug-enabled", "LUMIRA_SMS_DEBUG_ENABLED")) {
+            var environment = new MockEnvironment().withProperty(key, "true");
+            environment.setActiveProfiles("qa");
+            assertTrue(VerificationDebuggerGate.from(environment).enabled());
+            for (String profile : List.of("prod", "production", "PRODUCTION")) {
+                environment.setActiveProfiles("qa", profile);
+                assertFalse(VerificationDebuggerGate.from(environment).enabled());
+            }
+        }
+        assertFalse(VerificationDebuggerGate.from(new MockEnvironment()).enabled());
+    }
 
     @Test
     void onlyActivatesFromPostPublicationScheduleAndRejectsBrowserAndOversizedRequests()

@@ -14,6 +14,43 @@ import org.junit.jupiter.api.Test;
 
 class VerificationDebuggerSessionsTest {
     @Test
+    void fixedTransportProbeHasNoOtpAndDoesNotRelaxRecipientOrTextRules() {
+        var sessions = new VerificationDebuggerSessions(Clock.systemUTC(), new SecureRandom());
+        var session = sessions.start("qa", "http://127.0.0.1:32001");
+        String auth = "Bearer " + session.bearerToken();
+        var payload =
+                new VerificationDebuggerSessions.WebhookPayload(
+                        VerificationDebuggerSessions.ALLOWED_RECIPIENT,
+                        VerificationDebuggerSessions.DEBUG_SENDER,
+                        VerificationDebuggerSessions.TRANSPORT_TEST_MESSAGE);
+        assertEquals(401, sessions.receiveWebhook("Bearer invalid", payload));
+        assertEquals(202, sessions.receiveWebhook(auth, payload));
+        var message = sessions.messages("qa").items().getFirst();
+        assertEquals("", message.code());
+        assertEquals("transport-test", message.provider());
+        assertEquals(
+                400,
+                sessions.receiveWebhook(
+                        auth,
+                        new VerificationDebuggerSessions.WebhookPayload(
+                                payload.to(), payload.sender(), payload.message() + " extra")));
+        assertEquals(
+                403,
+                sessions.receiveWebhook(
+                        auth,
+                        new VerificationDebuggerSessions.WebhookPayload(
+                                "+15555550124", payload.sender(), payload.message())));
+        assertEquals(
+                403,
+                sessions.receiveWebhook(
+                        auth,
+                        new VerificationDebuggerSessions.WebhookPayload(
+                                payload.to(), "OtherSender", payload.message())));
+        sessions.close();
+        assertEquals(503, sessions.receiveWebhook(auth, payload));
+    }
+
+    @Test
     void webhookMessagesAreOwnerPrivateAndExpireWithTheirSession() {
         var clock = new MutableClock(Instant.parse("2026-10-13T00:00:00Z"));
         var sessions = new VerificationDebuggerSessions(clock, new SecureRandom());

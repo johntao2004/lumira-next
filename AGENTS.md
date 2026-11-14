@@ -41,3 +41,13 @@ preview-source.doc, preview-source.docx, preview-test.txt, preview-test.md,
 preview-long.txt, lumira-quota-chunk-boundary-20260929.txt,
 lumira-quota-ui-20260928-181851.txt. Do not mutate local business data for a cloud
 setup check.
+
+## Architecture and comment gates
+
+Read docs/framework-development.md, docs/evolution-plan.md and docs/production-readiness.md before restructuring. Keep public contracts in framework and host implementations in their owning modules; plugin compilation must never use backend/target/classes. Preserve public FQNs and applied SQL checksums. Test standalone builds outside this repository.
+
+Every core file in docs/core-file-inventory.json requires concise, matching Chinese and English responsibility comments. Every existing and new core comment block must use both languages; explain important authorization, transaction, concurrency and lifecycle constraints without line-by-line narration. Update the inventory when responsibilities move. Run pnpm check:core-comments and review accuracy manually.
+
+Required gates include SDK/host/plugin builds, source boundaries, Java format, types, frontend tests/build, database-backed permission/transaction tests, the independent upgrade/restore example and the production-readiness matrix. Never label blocked Office or browser acceptance as passed. Remove only demonstrably superseded code/docs, update references and preserve compatibility and recovery assets.
+
+Read docs/reference/backend-standard.md and docs/reference/frontend-standard.md for the adopted Java/React rules and explicit version adaptations. Public interface methods need concise bilingual Javadoc for meaningful parameters, results and failure/caller constraints; do not invent authors, dates or guarantees.

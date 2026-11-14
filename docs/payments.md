@@ -90,3 +90,13 @@ https://<your-public-host>/api/plugins/payment-core/callbacks/alipay-pay
 ## 验收边界
 
 自动测试只使用合成凭据、合成二维码地址、合成订单号和签名夹具，不连接真实商户账号，也不发起真实扣款或退款。当前代码验证不代表微信支付或支付宝生产商户已完成联调；正式上线仍需在商户沙箱/受控测试商户验证平台证书轮换、网络重试、回调可达性、真实扫码与退款状态，并由业务负责人确认风险与资金流程。
+
+## 退款受理与终态
+
+支付宝 `code=10000` 只表示请求成功；退款响应 `fund_change=Y` 才立即确认成功。`N` 或缺少此字段继续以原 `out_request_no` 查询，只有明确成功状态及匹配金额才结单。未知标记拒绝解析，保留核心待核实状态。
+
+微信 `PROCESSING`、`ABNORMAL` 均保留待处理，继续追踪同一退款号；`ABNORMAL` 仍可能处理为成功，不能标失败后再建另一退款。`SUCCESS`、`CLOSED` 才分别映射成功/失败。待处理期间核心拒绝替换退款幂等键。
+
+依据：[支付宝退款注意事项](https://aipay.alipay.com/docs/subscribe/api-list/other-basic-interfaces/alipay-trade-refund.html)、[微信退款状态](https://pay.wechatpay.cn/doc/v3/merchant/4013071031)。回归使用独立商户/平台测试密钥、真实回环HTTPS和签名应答及独立PostgreSQL；不代表真实商户受理、资金变动或对账验收。
+
+微信普通查单的 `REFUND` 表示进入退款流程，并不证明退款完成；当前适配器保守拒绝将其转换为PAID或REFUNDED。本地已记录的REFUND_PENDING由原退款号查询继续协调。商户后台发起而本地没有退款号的退款，以及CLOSED后换新退款号重新申请，不属于当前已验证的自动协调路径，须先人工核对官方交易/退款记录，不能靠重复点击或更换幂等键绕过。

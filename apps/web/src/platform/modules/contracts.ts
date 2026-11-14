@@ -1,13 +1,21 @@
+/**
+ * 校验清单及页面归属并拒绝冲突，使旧卸载回调和已失效的动态路由权限辅助判断不能影响新注册。
+ * Validate manifests and page ownership, reject conflicts, and prevent stale disposers or expired dynamic-route permission helpers from affecting newer registrations.
+ */
 import type { ReactNode } from "react";
 import type { FrontendModule, FrontendModuleManifest, FrontendPageContext, FrontendRoute, RegisteredWorkspaceAction } from "./types";
 
 const moduleIdPattern = /^[a-z][a-z0-9-]{0,99}$/u;
 const routeIdPattern = /^[a-z][a-z0-9-]{0,63}$/u;
 const tabGroupIdPattern = /^[a-z][a-z0-9-]{0,63}$/u;
+// 外壳直接渲染工作台，因此有意不为 home 注册功能渲染器。
 // The shell renders Workbench directly and intentionally does not register a feature renderer for home.
 const shellOwnedRouteIds = new Set(["home"]);
 
-/** Validate static and plugin module metadata before it enters a route catalog. */
+/**
+ * 静态模块及插件元数据进入路由目录前先完成校验。
+ * Validate static and plugin module metadata before it enters a route catalog.
+ */
 export function validateFrontendModuleManifest(manifest: FrontendModuleManifest): void {
   if (!moduleIdPattern.test(manifest.id)) throw new Error(`Invalid frontend module id: ${manifest.id}`);
 
@@ -37,7 +45,10 @@ export function validateFrontendModuleManifest(manifest: FrontendModuleManifest)
   }
 }
 
-/** Static modules and loaded plugins must provide one renderer for every declared route. */
+/**
+ * 静态模块与已加载插件必须为每条声明路由提供一个渲染器。
+ * Static modules and loaded plugins must provide one renderer for every declared route.
+ */
 export function validateFrontendModule(module: FrontendModule): void {
   validateFrontendModuleManifest(module);
   const routeIds = new Set(module.routes.map((route) => route.id));
@@ -63,6 +74,7 @@ export type FrontendPageRegistry = {
   render: (section: string, context: FrontendPageContext) => ReactNode | null;
   owner: (section: string) => string | null;
   registrationKey: (section: string) => string | null;
+  pluginRoute: (section: string) => FrontendRoute | null;
   registerPlugin: (module: FrontendModule) => () => void;
   workspaceActions: () => readonly RegisteredWorkspaceAction[];
   subscribeWorkspaceActions: (listener: () => void) => () => void;
@@ -95,7 +107,10 @@ function hasPageOperation(route: FrontendRoute, actionId: string, context: Front
     : context.hasGlobal(operation);
 }
 
-/** Owns renderer registration and prevents stale or duplicate plugin teardown. */
+/**
+ * 负责渲染器注册，防止过期或重复的插件清理移除有效注册。
+ * Owns renderer registration and prevents stale or duplicate plugin teardown.
+ */
 export function createFrontendPageRegistry(modules: readonly FrontendModule[]): FrontendPageRegistry {
   const pageRenderers = new Map<string, FrontendModule["pages"][string]>();
   const pageOwners = new Map<string, string>();
@@ -130,6 +145,7 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
   const snapshot = () => Object.freeze([...actionModules.values()].flat());
   let actions = snapshot();
   const publishActions = () => {
+    // 嵌入式页面仍观察每次注册；未变化的顶部控件保留同一快照。
     // Embedded pages still observe every registration; unchanged header controls keep one snapshot.
     const nextActions = snapshot();
     if (nextActions.length !== actions.length || nextActions.some((action, index) => action !== actions[index])) {
@@ -139,6 +155,7 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
       try {
         listener();
       } catch (error) {
+        // 注册已提交；损坏的订阅者绝不能阻止调用方收到清理函数，或中断其他已挂载外壳的更新。
         // Registration has committed. A broken observer must not prevent the
         // caller receiving its disposer or stop other mounted shells updating.
         console.error("Workspace action subscriber failed", error);
@@ -189,6 +206,9 @@ export function createFrontendPageRegistry(modules: readonly FrontendModule[]): 
     },
     registrationKey(section) {
       return dynamicPages.get(section)?.owner.key ?? pageOwners.get(section) ?? null;
+    },
+    pluginRoute(section) {
+      return dynamicPages.get(section)?.route ?? null;
     },
     owner(section) {
       return pageOwners.get(section) ?? null;

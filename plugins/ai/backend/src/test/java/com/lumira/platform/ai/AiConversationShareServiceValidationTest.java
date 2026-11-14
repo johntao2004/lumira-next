@@ -1,12 +1,15 @@
 package com.lumira.platform.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
+import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -49,6 +52,18 @@ class AiConversationShareServiceValidationTest {
         }
         aggregate.append("]}");
         assertInvalid(aggregate.toString(), "aiShareTooLarge");
+    }
+
+    @Test
+    void shareStaysVisibleForThirtyDaysOnlyWhileTheCreatorIsEnabled() {
+        OffsetDateTime now = OffsetDateTime.parse("2026-10-18T00:00:00Z");
+        assertTrue(AiConversationShareService.shareVisible(now.minusDays(29), true, null, now));
+        assertFalse(AiConversationShareService.shareVisible(now.minusDays(30), true, null, now));
+        assertFalse(AiConversationShareService.shareVisible(now.minusDays(1), false, null, now));
+        assertFalse(
+                AiConversationShareService.shareVisible(
+                        now.minusDays(1), true, now.minusHours(1), now));
+        assertFalse(AiConversationShareService.shareVisible(null, true, null, now));
     }
 
     private void assertInvalid(String source, String reason) {

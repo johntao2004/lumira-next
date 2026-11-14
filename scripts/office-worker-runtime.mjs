@@ -116,6 +116,75 @@ function verifyWorkerContainers({
   };
 }
 
+/** A same-name network with no owner labels can be removed so Compose recreates it labeled. */
+export function legacyUnlabeledNetworkCanBeRetired({
+  name,
+  expectedName,
+  ownerLabel,
+  profileLabel,
+  projectLabel,
+  expectedProject,
+  networkKey,
+  expectedNetworkKey,
+  endpointIds,
+  allowedEndpointIds,
+}) {
+  if (name !== expectedName) return false;
+  if (ownerLabel || profileLabel) return false;
+  if (projectLabel && projectLabel !== expectedProject) return false;
+  if (networkKey && networkKey !== expectedNetworkKey) return false;
+  const allowed = new Set(allowedEndpointIds ?? []);
+  return (endpointIds ?? []).every((id) => allowed.has(id));
+}
+
+function retireLegacyUnlabeledNetwork({
+  name,
+  project,
+  networkKey,
+  env,
+  allowedEndpoints,
+}) {
+  const listed = run("docker", ["network", "ls", "--format", "{{.Name}}"], {
+    env,
+    stdio: "pipe",
+  })
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!listed.includes(name)) return;
+  const actual = run(
+    "docker",
+    [
+      "network",
+      "inspect",
+      "--format",
+      '{{.Name}}|{{index .Labels "com.docker.compose.project"}}|{{index .Labels "com.docker.compose.network"}}|{{index .Labels "com.lumira.office-worker.owner"}}|{{index .Labels "com.lumira.office-worker.profile"}}|{{json .Containers}}',
+      name,
+    ],
+    { env, stdio: "pipe" },
+  );
+  const [actualName, actualProject, actualNetworkKey, actualOwner, actualProfile, containersJson] =
+    actual.replaceAll("<no value>", "").split("|");
+  const endpoints = JSON.parse(containersJson || "{}");
+  if (
+    !legacyUnlabeledNetworkCanBeRetired({
+      name: actualName,
+      expectedName: name,
+      ownerLabel: actualOwner,
+      profileLabel: actualProfile,
+      projectLabel: actualProject,
+      expectedProject: project,
+      networkKey: actualNetworkKey,
+      expectedNetworkKey: networkKey,
+      endpointIds: Object.keys(endpoints),
+      allowedEndpointIds: Object.keys(allowedEndpoints ?? {}),
+    })
+  )
+    return;
+  for (const id of Object.keys(endpoints))
+    run("docker", ["network", "disconnect", "-f", name, id], { env, stdio: "pipe" });
+  run("docker", ["network", "rm", name], { env, stdio: "pipe" });
+}
+
 function verifyManagedNetwork({
   name,
   project,
@@ -269,6 +338,21 @@ export async function startOfficeWorker({
       "office-worker": [networkName],
       "office-worker-ingress": [networkName, privateConfig.ingressNetworkName],
     },
+  });
+  if (!externalNetwork)
+    retireLegacyUnlabeledNetwork({
+      name: networkName,
+      project,
+      networkKey: "office-worker",
+      env,
+      allowedEndpoints: existingContainers.allowedEndpoints,
+    });
+  retireLegacyUnlabeledNetwork({
+    name: privateConfig.ingressNetworkName,
+    project,
+    networkKey: "office-worker-ingress",
+    env,
+    allowedEndpoints: existingContainers.allowedEndpoints,
   });
   verifyManagedNetwork({
     name: networkName,

@@ -88,9 +88,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:sensitive-words:access",
-        "platform:sensitive-words:read"
-      ]
+        "platform:sensitive-words:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "GET",
@@ -99,9 +99,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:sensitive-words:access",
-        "platform:sensitive-words:read"
-      ]
+        "platform:sensitive-words:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "POST",
@@ -110,9 +110,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:sensitive-words:access",
-        "platform:sensitive-words:read"
-      ]
+        "platform:sensitive-words:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "PUT",
@@ -132,9 +132,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:sensitive-words:access",
-        "platform:sensitive-words:read"
-      ]
+        "platform:sensitive-words:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "GET",
@@ -143,9 +143,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:sensitive-words:access",
-        "platform:sensitive-words:read"
-      ]
+        "platform:sensitive-words:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "POST",
@@ -154,9 +154,9 @@
       "global": true,
       "publicAccess": false,
       "allAuthorities": [
-        "platform:sensitive-words:access",
-        "platform:sensitive-words:read"
-      ]
+        "platform:sensitive-words:access"
+      ],
+      "pageReadOnly": true
     },
     {
       "method": "POST",

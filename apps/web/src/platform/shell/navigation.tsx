@@ -1,3 +1,7 @@
+/**
+ * 把已筛选导航转换为 ProLayout 路径、标签和图标，保留顺序与深链，不扩大可访问页面集合。
+ * Convert filtered navigation into ProLayout paths, labels and icons while preserving order and deep links without expanding the accessible page set.
+ */
 import type { ProLayoutProps } from "@ant-design/pro-components";
 import {
   ApartmentOutlined,
@@ -95,7 +99,10 @@ function pageIcon(pageId: string): ReactNode {
   return icons[pageId] ?? <FileOutlined />;
 }
 
-/** Convert the permission-filtered, server-ordered route tree into ProLayout data. */
+/**
+ * 将权限过滤且由服务端排序的路由树转换为 ProLayout 数据。
+ * Convert the permission-filtered, server-ordered route tree into ProLayout data.
+ */
 export function buildProLayoutRoute(groups: readonly NavigationGroup[], translate: Translate): LayoutRoute {
   const pageRoute = (page: NavigationPage): LayoutRoute => ({
     key: page.id,

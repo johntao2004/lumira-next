@@ -1,3 +1,8 @@
+/**
+ * 按来源和事件类型索引已注入消费者并拒绝重复注册，事件只匹配既有处理器，不从数据库内容加载代码。 Indexes injected consumers by source and event
+ * type and rejects duplicate registrations, matching events to known handlers without loading code
+ * from database content.
+ */
 package com.lumira.platform.events;
 
 import com.lumira.platform.common.DurableEventConsumerPort;
@@ -9,7 +14,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates the event handlers supplied by loaded modules and resolves one deterministic handler
+ * 校验已加载模块提供的事件处理器，并为每种事件类型确定唯一处理器；类名和代码均不来自数据库，导航或事件载荷无法据此加载任意代码。
+ *
+ * <p>Validates the event handlers supplied by loaded modules and resolves one deterministic handler
  * for each event type. No class name or code comes from the database, so navigation and event
  * payloads cannot load arbitrary code.
  */
@@ -110,7 +117,7 @@ public final class PlatformEventConsumerRegistry implements DynamicEventConsumer
                 : Optional.of(new Lease(registration.consumer(), admission));
     }
 
-    /** Compatibility constructor for callers that still register legacy handlers. */
+    /** 兼容仍注册旧处理器的调用方。 Compatibility constructor for callers that still register legacy handlers. */
     public PlatformEventConsumerRegistry(List<PlatformEventConsumer> candidates) {
         this(List.of(), candidates);
     }
@@ -158,7 +165,10 @@ public final class PlatformEventConsumerRegistry implements DynamicEventConsumer
         consumers = Map.copyOf(indexed);
     }
 
-    /** Preserves the original lookup API for code that still consumes the platform event shape. */
+    /**
+     * 为仍使用平台事件结构的代码保留原查询 API。 Preserves the original lookup API for code that still consumes the
+     * platform event shape.
+     */
     public Optional<PlatformEventConsumer> resolve(String sourceType, String eventType) {
         var consumer = consumers.get(new Key(sourceType, eventType));
         if (consumer == null) return Optional.empty();

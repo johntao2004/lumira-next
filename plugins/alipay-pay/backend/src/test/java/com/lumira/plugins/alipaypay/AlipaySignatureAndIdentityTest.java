@@ -510,6 +510,7 @@ class AlipaySignatureAndIdentityTest {
                                                     "code", "10000",
                                                     "out_trade_no", ORDER_NO,
                                                     "refund_fee", "23.45",
+                                                    "fund_change", "Y",
                                                     "gmt_refund_pay", "2026-10-10 12:34:56"),
                                             config);
                                 }
@@ -545,6 +546,33 @@ class AlipaySignatureAndIdentityTest {
         assertEquals("REFUND20261010_1", refund.providerRefundNo());
         assertEquals(PaymentGatewayPort.RefundState.SUCCESS, refundQuery.state());
         assertEquals(2345, refundQuery.amountFen());
+    }
+
+    @Test
+    void unconfirmedFundsRemainPendingAndUnknownFlagsAreRejected() {
+        for (String flag : new String[] {"N", "", "UNRECOGNIZED"}) {
+            var adapter =
+                    new AlipayGatewayAdapter(
+                            (config, method, content, notifyUrl) -> {
+                                var response = new LinkedHashMap<String, String>();
+                                response.put("code", "10000");
+                                response.put("out_trade_no", ORDER_NO);
+                                response.put("refund_fee", "23.45");
+                                if (!flag.isEmpty()) response.put("fund_change", flag);
+                                return signedResponse(method, response, config);
+                            });
+            var request =
+                    new PaymentGatewayPort.RefundRequest(
+                            ORDER_NO, "REFUND20261010_1", 2345, "Synthetic refund");
+            if ("UNRECOGNIZED".equals(flag))
+                assertThrows(
+                        IllegalArgumentException.class, () -> adapter.refund(settings, request));
+            else {
+                var result = adapter.refund(settings, request);
+                assertEquals(PaymentGatewayPort.RefundState.PENDING, result.state());
+                assertEquals(0, result.amountFen());
+            }
+        }
     }
 
     private static PaymentGatewayPort.OrderRequest request(long amountFen) {

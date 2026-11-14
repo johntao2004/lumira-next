@@ -23,7 +23,7 @@ import { listRequestParams } from "@/platform/api/pagination";
 import { useCenteredModalConfirm } from "@/platform/components/use-centered-modal-confirm";
 import { RoleAuthenticationEditor } from "./role-authentication-editor";
 import { RolePermissionPicker } from "./role-permission-picker";
-import type { PermissionCatalogGroup } from "./role-permission-model";
+import { roleContainsUndelegableActiveGrant, type PermissionCatalogGroup } from "./role-permission-model";
 import { formatQuotaLimitBytes, formatQuotaLimitCount } from "@/platform/i18n/format";
 
 import type { Role } from "./types";
@@ -53,7 +53,9 @@ export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissi
   const query=useQuery({queryKey:["roles",request],queryFn:({signal})=>api<PageResult<Role>>(`/platform/roles?${listRequestParams(request)}`,{signal})});
   const detail=useQuery({queryKey:["role",selected],enabled:typeof selected==="string",queryFn:({signal})=>api<Role>(`/platform/roles/${selected}`,{signal}),staleTime:0});
   const permissionCatalog=useQuery({queryKey:["permission-catalog"],enabled:selected!==undefined,queryFn:({signal})=>api<PermissionCatalogGroup[]>("/platform/permission-catalog",{signal}),staleTime:0,refetchOnWindowFocus:true,refetchInterval:30_000});
-  const editableRole = !!selected ? effectiveCanUpdate : effectiveCanCreate;
+  const registrationOnly = !!detail.data?.defaultRegistrationRole;
+  const delegationLocked = !!detail.data && !!permissionCatalog.data && roleContainsUndelegableActiveGrant(permissionCatalog.data, detail.data.authorities);
+  const editableRole = (!!selected ? effectiveCanUpdate : effectiveCanCreate) && !delegationLocked;
 
   return <>
     <ResourceTable<Role> result={query.data} loading={query.isFetching} error={query.error} request={request} onChange={setRequest} onRetry={()=>void query.refetch()}
@@ -104,6 +106,7 @@ export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissi
 
       })}>
         {detail.data?.defaultRegistrationRole && <Alert className="mb-4" type="info" showIcon title={t("registrationDefaultRole")} description={t("registrationRoleInUse")} />}
+        {delegationLocked && <Alert className="mb-4" type="warning" showIcon title={t("roleContainsUndelegablePermissions")} />}
         <Form.Item name="code" label={t("roleCode")} rules={[{required:true,pattern:/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,99}$/,message:t("invalidRole")}]}><Input disabled={!!selected || !editableRole} maxLength={100}/></Form.Item>
         <Form.Item name="name" label={t("name")} rules={[{required:true,whitespace:true,message:t("nameRequired")},{max:200,message:t("nameTooLong")}]}><Input maxLength={200}/></Form.Item>
         <Form.Item name="enabled" label={t("enabled")} valuePropName="checked"><Switch/></Form.Item>
@@ -117,7 +120,7 @@ export function RolesPage({canCreate,canUpdate,canDelete,canManagePluginPermissi
           </Form.Item>
         </Card>
         <Form.Item name="authorities" label={t("permissions")} extra={t("permissionPageTreeHint")}>
-          <RolePermissionPicker groups={permissionCatalog.data ?? []} actorAuthorities={authorities} canEdit={editableRole} canManagePluginPermissions={canManagePluginPermissions} t={t} />
+          <RolePermissionPicker groups={permissionCatalog.data ?? []} actorAuthorities={authorities} canEdit={editableRole} canManagePluginPermissions={canManagePluginPermissions} registrationOnly={registrationOnly} t={t} />
         </Form.Item>
       </Form>}
       {selected && detail.data && effectiveCanReadAuthenticationPolicy && <RoleAuthenticationEditor role={detail.data} canWrite={effectiveCanManageAuthenticationPolicy} />}

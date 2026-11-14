@@ -1,3 +1,8 @@
+/**
+ * 协调文件授权、配额预留、暂存、发布与回收站操作，并在上传发布事务中再次校验授权及状态，避免长传输沿用过期许可。 Coordinates file authorization, quota
+ * reservations, staging, publication and trash operations, revalidating authorization and state at
+ * publication so long uploads cannot rely on stale permission.
+ */
 package com.lumira.platform.files;
 
 import com.lumira.platform.common.AuthorizationContextBoundaryPort;
@@ -68,7 +73,9 @@ public class FileService implements FileContentPort {
     }
 
     /**
-     * Only normalized pixels may enter the inline image path. Completion participates in
+     * 内联图片路径只接收规范化后的像素；完成步骤参与发布事务。
+     *
+     * <p>Only normalized pixels may enter the inline image path. Completion participates in
      * publication's transaction.
      */
     FileRepository.Entry uploadImage(
@@ -88,7 +95,10 @@ public class FileService implements FileContentPort {
                 completion);
     }
 
-    /** Store a normalized image while retaining the caller's safe display name. */
+    /**
+     * 保存规范化图片，同时保留调用方提供的安全展示名称。 Store a normalized image while retaining the caller's safe display
+     * name.
+     */
     public FileRepository.Entry uploadNormalizedImage(
             String actor, String filename, ImageNormalizer.Normalized image) throws IOException {
         byte[] bytes = image.png();
@@ -102,7 +112,10 @@ public class FileService implements FileContentPort {
                 entry -> {});
     }
 
-    /** Generic inline images share the same normalization, timeout and quota path as avatars. */
+    /**
+     * 通用内联图片与头像共用规范化、超时和配额处理路径。 Generic inline images share the same normalization, timeout and
+     * quota path as avatars.
+     */
     public FileRepository.Entry uploadInlineImage(
             String actor, String filename, InputStream source, long contentLength)
             throws IOException {
@@ -217,6 +230,7 @@ public class FileService implements FileContentPort {
                         status -> {
                             validateAuthorizationBoundary();
                             UUID ownerId = accounts.id(actor, true);
+                            // 在同一用户行上串行化上传预留与配额变更，使配额下调和并发上传以原子方式相互感知。
                             // Serialize reservations with quota changes on the same user row. This
                             // makes
                             // a quota reduction and a concurrent upload observe one another
@@ -235,6 +249,7 @@ public class FileService implements FileContentPort {
                     status -> {
                         validateAuthorizationBoundary();
                         beforePublication.run();
+                        // 始终遵循账户先于文件的锁顺序，包括新增账户引用的回调。
                         // Keep account -> file lock order, including callbacks which add account
                         // references.
                         accounts.id(actor, true);
@@ -256,6 +271,7 @@ public class FileService implements FileContentPort {
                         return entry;
                     });
         } catch (IOException | RuntimeException failure) {
+            // 即使提交确认失败，事务也可能已经提交；绝不删除 READY 状态的文件字节。
             // A commit may have succeeded even if its acknowledgement failed. Never delete READY
             // bytes.
             try {

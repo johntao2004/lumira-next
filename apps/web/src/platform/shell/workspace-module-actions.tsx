@@ -1,5 +1,5 @@
 import { Component, Suspense, useSyncExternalStore, type ReactNode } from "react";
-import { frontendWorkspaceActions, subscribeFrontendWorkspaceActions } from "../modules/registry";
+import { frontendWorkspaceActions, subscribeFrontendWorkspaceActions } from "../modules/page-store";
 
 /** A failed optional control must not take down the navigation or other modules. */
 class WorkspaceActionBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {

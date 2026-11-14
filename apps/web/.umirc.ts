@@ -1,3 +1,7 @@
+/**
+ * 配置 Umi 路由、代理和静态资源，并隔离开发与生产输出，避免构建清理破坏运行中的预览。
+ * Configure Umi routes, proxies and static assets while separating development and production output so builds do not disrupt a running preview.
+ */
 import { defineConfig } from "@umijs/max";
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -64,6 +68,12 @@ export default defineConfig({
   title: "Lumira",
   headScripts: [{ content: preferenceBootstrap }],
   npmClient: "pnpm",
+  // 官方 CommonJS core 保留宿主 React，避免 Mako 对 ESM 外部依赖的默认导入错配。
+  // The official CommonJS core shares host React and avoids Mako ESM dependency interop mismatches.
+  alias: {
+    "swagger-ui$": realpathSync(resolve(process.cwd(), "node_modules/swagger-ui/dist/swagger-ui.js")),
+  },
+  // Mako 会将开发分块写入磁盘；生产构建不得清理运行中预览用于懒加载路由的目录。
   // Mako writes development chunks to disk. A production build must not clean
   // the directory used by a running preview's lazy-loaded routes.
   outputPath:

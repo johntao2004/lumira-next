@@ -15,6 +15,61 @@ import tools.jackson.databind.ObjectMapper;
 
 class SmsGatewayTest {
     @Test
+    void slowResponseBodyHasTotalDeadlineAndClosesTheConnection() throws Exception {
+        var closed = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.setExecutor(executor);
+        server.createContext(
+                "/send",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    exchange.sendResponseHeaders(202, 0);
+                    try (var body = exchange.getResponseBody()) {
+                        for (int i = 0; i < 100; i++) {
+                            body.write('x');
+                            body.flush();
+                            try {
+                                Thread.sleep(100);
+                            } catch (InterruptedException stopped) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        }
+                    } catch (java.io.IOException disconnected) {
+                        closed.countDown();
+                    } finally {
+                        exchange.close();
+                    }
+                });
+        server.start();
+        try {
+            long began = System.nanoTime();
+            var settings =
+                    new SmsConfigurationPort.Settings(
+                            true,
+                            "webhook",
+                            "http://127.0.0.1:" + server.getAddress().getPort() + "/send",
+                            "Lumira",
+                            "Code {code}",
+                            1);
+            var result =
+                    new SmsGateway(new ObjectMapper())
+                            .send(
+                                    new SmsConnection(
+                                            settings,
+                                            "synthetic-key".getBytes(StandardCharsets.UTF_8)),
+                                    new OutgoingSms("+15555550123", "Synthetic slow response"));
+            assertEquals(SmsGateway.Result.DELIVERY_UNCERTAIN, result);
+            assertTrue(java.time.Duration.ofNanos(System.nanoTime() - began).toMillis() < 3000);
+            assertTrue(closed.await(3, java.util.concurrent.TimeUnit.SECONDS));
+        } finally {
+            server.stop(0);
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void localTestPostsSyntheticFieldsWithTheConfiguredBearerKeyOnlyToLoopback() throws Exception {
         AtomicReference<String> authorization = new AtomicReference<>();
         AtomicReference<String> body = new AtomicReference<>();
@@ -106,7 +161,7 @@ class SmsGatewayTest {
                                             "synthetic-redirect-test-key"
                                                     .getBytes(StandardCharsets.UTF_8)),
                                     new OutgoingSms("+15555550123", "Synthetic local test"));
-            assertEquals(SmsGateway.Result.CONNECTION_FAILED, result);
+            assertEquals(SmsGateway.Result.DELIVERY_UNCERTAIN, result);
             assertFalse(redirectTargetHit.get());
         } finally {
             redirector.stop(0);

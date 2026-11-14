@@ -1,3 +1,8 @@
+/**
+ * 显式映射平台路由所需页面和操作权限及数据范围，未匹配路由交由插件授权端口判断，避免根据路径命名推测权限。 Explicitly maps platform routes to page and
+ * operation authorities with their scopes, delegating unmatched routes to plugin authorization
+ * rather than inferring permissions from path names.
+ */
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.PlatformOperation;
@@ -15,7 +20,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.util.AntPathMatcher;
 
-/** Route-owned HTTP authorization for the host dashboard API. */
+/** 宿主工作台 API 的路由归属式 HTTP 授权策略。 Route-owned HTTP authorization for the host dashboard API. */
 final class PlatformHttpPermissionPolicy {
     private static final AntPathMatcher PATHS = new AntPathMatcher();
     private static final List<Route> ROUTES = routes();
@@ -175,6 +180,7 @@ final class PlatformHttpPermissionPolicy {
                 PlatformOperation.MODULE_UNINSTALL,
                 "/api/platform/modules/plugins/*/uninstall");
 
+        // 即使未启用可选字典模式编辑器，通用身份字典投影仍保持可用。
         // Generic identity dictionary projection remains available without its optional schema
         // editor.
         any(

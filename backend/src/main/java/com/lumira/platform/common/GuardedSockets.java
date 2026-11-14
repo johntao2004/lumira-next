@@ -17,9 +17,10 @@ import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLSocketFactory;
 
 /**
- * Outbound connections whose destination is validated at the moment the socket connects, against
- * the address actually being dialled. Checking a hostname first and letting the HTTP stack resolve
- * it again leaves a DNS-rebinding window; here there is no second lookup to race.
+ * 在实际连接时校验并固定目的地址，避免二次解析带来的 DNS 重绑定窗口。 Outbound connections whose destination is validated at the
+ * moment the socket connects, against the address actually being dialled. Checking a hostname first
+ * and letting the HTTP stack resolve it again leaves a DNS-rebinding window; here there is no
+ * second lookup to race.
  */
 public final class GuardedSockets {
     private GuardedSockets() {}
@@ -30,8 +31,8 @@ public final class GuardedSockets {
     }
 
     /**
-     * Plain TCP socket that refuses to connect to a disallowed address. TLS is layered on top by
-     * the caller.
+     * 拒绝不允许地址的普通 TCP 套接字，由调用方叠加 TLS。 Plain TCP socket that refuses to connect to a disallowed
+     * address. TLS is layered on top by the caller.
      */
     static final class GuardedSocket extends Socket {
         private final Predicate<InetAddress> allowed;
@@ -70,6 +71,7 @@ public final class GuardedSockets {
                     throw new ConnectException("Destination not permitted");
             }
             if (deadline != null) deadline.check();
+            // 校验所有解析结果后固定地址；失败的同一套接字不能可靠重试。
             // Validate every answer, then pin this socket to one address. A failed Socket.connect
             // cannot be reliably retried on the same Socket instance.
             super.connect(new InetSocketAddress(addresses[0], target.getPort()), timeout);
@@ -84,6 +86,7 @@ public final class GuardedSockets {
             if (unbracketed.matches("\\d{1,3}(?:\\.\\d{1,3}){3}") || unbracketed.contains(":")) {
                 if (resolvedAddress != null) return new InetAddress[] {resolvedAddress};
             }
+            // 只采用注入解析器结果，避免提前的系统解析影响连接校验。
             // Resolve again through the injected resolver and use only its returned addresses.
             // InetSocketAddress may already have performed a system lookup before connect().
             return resolver.resolve(unbracketed);
@@ -91,7 +94,8 @@ public final class GuardedSockets {
     }
 
     /**
-     * Plaintext counterpart for protocols that start unencrypted and upgrade later (SMTP STARTTLS).
+     * 支持先明文连接再升级 TLS 的协议，例如 SMTP STARTTLS。 Plaintext counterpart for protocols that start
+     * unencrypted and upgrade later (SMTP STARTTLS).
      */
     public static final class PlainFactory extends javax.net.SocketFactory {
         private final Predicate<InetAddress> allowed;
@@ -137,8 +141,8 @@ public final class GuardedSockets {
     }
 
     /**
-     * Socket factory usable by HttpsURLConnection (HTTPS) and Jakarta Mail (SMTP, STARTTLS and
-     * implicit TLS).
+     * 为 HTTPS 与 SMTP 提供具有地址校验的套接字工厂。 Socket factory usable by HttpsURLConnection (HTTPS) and
+     * Jakarta Mail (SMTP, STARTTLS and implicit TLS).
      */
     public static final class Factory extends SSLSocketFactory {
         private final SSLSocketFactory tls;
@@ -183,8 +187,8 @@ public final class GuardedSockets {
         }
 
         /**
-         * Unconnected plain socket: the caller connects it, then wraps it with {@link
-         * #createSocket(Socket, String, int, boolean)}.
+         * 返回未连接普通套接字，由调用方连接后包装 TLS。 Unconnected plain socket: the caller connects it, then wraps it
+         * with {@link #createSocket(Socket, String, int, boolean)}.
          */
         @Override
         public Socket createSocket() throws IOException {
@@ -241,8 +245,8 @@ public final class GuardedSockets {
     public record Response(int status, byte[] body) {}
 
     /**
-     * HTTPS request to a public destination only. No redirects, bounded response, one connection
-     * per call.
+     * 仅请求公网 HTTPS，不跟随跳转，限制响应大小，每次独立连接。 HTTPS request to a public destination only. No redirects,
+     * bounded response, one connection per call.
      */
     public static Response exchange(
             URI uri,
@@ -262,6 +266,33 @@ public final class GuardedSockets {
                 (SSLSocketFactory) SSLSocketFactory.getDefault(),
                 PublicHosts::isPublicAddress,
                 InetAddress::getAllByName);
+    }
+
+    /**
+     * 公网请求保留地址校验，并由调用方总截止主动关闭资源。 Public request preserves address checks and tracks resources under
+     * the caller's total deadline.
+     */
+    public static Response exchange(
+            URI uri,
+            String method,
+            Map<String, String> headers,
+            byte[] body,
+            Duration timeout,
+            int maxResponseBytes,
+            DeadlineExchange.Scope deadline)
+            throws IOException {
+        return exchangeWithTimeouts(
+                uri,
+                method,
+                headers,
+                body,
+                Duration.ofSeconds(5),
+                timeout,
+                maxResponseBytes,
+                (SSLSocketFactory) SSLSocketFactory.getDefault(),
+                PublicHosts::isPublicAddress,
+                InetAddress::getAllByName,
+                deadline);
     }
 
     public static Response exchange(

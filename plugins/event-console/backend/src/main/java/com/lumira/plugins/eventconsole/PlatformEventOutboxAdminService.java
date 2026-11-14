@@ -1,3 +1,7 @@
+/**
+ * 校验全局重放权限和必填原因，将死信重置、审批记录与审计一并提交，保证人工恢复可追溯。 Checks global replay authority and a required reason,
+ * committing dead-letter resets with approval and audit records to keep manual recovery traceable.
+ */
 package com.lumira.plugins.eventconsole;
 
 import com.lumira.platform.common.AdministrationPort;
@@ -9,7 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Administrative adapter for durable event recovery; payloads never enter this API. */
+/**
+ * 持久化事件恢复的管理适配器；此 API 从不接收或返回事件载荷。 Administrative adapter for durable event recovery; payloads
+ * never enter this API.
+ */
 @Service
 public class PlatformEventOutboxAdminService {
     public static final String REPLAY = PlatformOperation.EVENT_OUTBOX_REPLAY.permission();

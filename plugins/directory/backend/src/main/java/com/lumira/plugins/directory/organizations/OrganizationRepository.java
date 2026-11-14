@@ -1,3 +1,8 @@
+/**
+ * 维护组织层级、祖先链和成员关系，提供预览适配的可见性、循环检测及版本化写入，供服务层保持树结构一致。 Persists organization hierarchies, ancestry
+ * and memberships, providing preview-aware visibility, cycle checks and versioned writes for
+ * service-level tree consistency.
+ */
 package com.lumira.plugins.directory.organizations;
 
 import com.lumira.platform.common.AuthorizationContextProjectionPort;
@@ -226,9 +231,10 @@ public class OrganizationRepository {
     }
 
     /**
-     * An organization is covered when the actor's data scope for the permission includes it. A
-     * global grant covers every organization. A scoped grant covers only that actor's own
-     * organizations, plus descendants when the scope is the subtree.
+     * 当操作者在对应权限的数据范围内包含该组织时视为覆盖；全局授权覆盖全部组织，受限授权仅覆盖其所属组织并在子树范围下包含下级组织。 An organization is covered
+     * when the actor's data scope for the permission includes it. A global grant covers every
+     * organization. A scoped grant covers only that actor's own organizations, plus descendants
+     * when the scope is the subtree.
      */
     public boolean coveredOrganization(String actor, String permission, UUID organizationId) {
         return jdbc.sql(

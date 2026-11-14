@@ -13,8 +13,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
- * Freezes the module dependency graph. A new edge between feature modules is an architectural
- * decision: it fails here until the allow-list below is edited on purpose, in review.
+ * 冻结模块依赖图；新增跨功能依赖必须经过显式评审，公共内核不能反向依赖业务。 Freezes the module dependency graph. A new edge between
+ * feature modules is an architectural decision: it fails here until the allow-list below is edited
+ * on purpose, in review.
  *
  * <p>{@code common} and {@code modules} form the shared kernel; feature modules may use them but
  * the kernel must never reach back into a feature module.
@@ -23,7 +24,8 @@ class ArchitectureTest {
     private static final String ROOT = "com.lumira.platform";
 
     /**
-     * module -> feature modules it is allowed to depend on (kernel packages are always allowed).
+     * 模块到允许依赖的功能邻居；共享内核默认允许。 module -> feature modules it is allowed to depend on (kernel packages
+     * are always allowed).
      */
     private static final Map<String, Set<String>> ALLOWED =
             Map.ofEntries(
@@ -33,6 +35,7 @@ class ArchitectureTest {
                     Map.entry("content", Set.of()),
                     Map.entry("dictionaries", Set.of("identity")),
                     // Compatibility bridge uses only shared leased service contracts.
+                    // 模板的角色预览限制留在目录插件对 identity.api 的调用中，不把该依赖放回宿主 directory 包。
                     Map.entry("directory", Set.of()),
                     Map.entry("events", Set.of()),
                     Map.entry(
@@ -54,9 +57,10 @@ class ArchitectureTest {
 
     private static final Set<String> KERNEL = Set.of("common", "modules");
     private static JavaClasses production;
+    private static final Set<String> publicSourceRoots = new TreeSet<>();
 
     @BeforeAll
-    static void importProduction() {
+    static void importProduction() throws Exception {
         var paths = new java.util.ArrayList<java.nio.file.Path>();
         paths.add(java.nio.file.Path.of("target/classes"));
         paths.add(java.nio.file.Path.of("target/test-classes/com/lumira/plugins/personalfiles"));
@@ -69,18 +73,102 @@ class ArchitectureTest {
         paths.add(
                 java.nio.file.Path.of(
                         "target/test-classes/com/lumira/plugins/authenticationconsole"));
+        // 公共契约迁入独立 JAR 后仍须纳入依赖图，不能用允许空规则掩盖漏扫。
+        // Keep extracted contract JARs in the graph instead of hiding missing coverage with empty
+        // rules.
+        for (Class<?> contract :
+                java.util.List.of(
+                        com.lumira.platform.content.RichText.class,
+                        com.lumira.plugin.sdk.PluginEntry.class,
+                        com.lumira.plugin.sdk.common.PaymentCrypto.class)) {
+            var source = contract.getProtectionDomain().getCodeSource().getLocation().toURI();
+            paths.add(java.nio.file.Path.of(source));
+            publicSourceRoots.add(
+                    java.nio.file.Path.of(source).toAbsolutePath().normalize().toString());
+        }
         for (String id :
-                java.util.List.of("ai", "feedback", "localization", "sensitive-words", "mfa")) {
+                java.util.List.of(
+                        "ai", "feedback", "localization", "sensitive-words", "mfa", "monitoring")) {
+            // 测试编译纳入插件实现，但宿主发行包不内嵌这些实现。
             // Test compilation includes plugin implementations without packaging them in the host.
             paths.add(
                     java.nio.file.Path.of(
                             "target/test-classes/com/lumira/platform/"
                                     + (id.equals("sensitive-words") ? "sensitive" : id)));
         }
+        var locations = new java.util.ArrayList<com.tngtech.archunit.core.importer.Location>();
+        for (var path : paths) {
+            if (path.toString().endsWith(".jar")) {
+                try (var jar = new java.util.jar.JarFile(path.toFile())) {
+                    locations.add(com.tngtech.archunit.core.importer.Location.of(jar));
+                }
+            } else {
+                locations.add(com.tngtech.archunit.core.importer.Location.of(path));
+            }
+        }
         production =
                 new ClassFileImporter()
-                        .withImportOption(location -> !location.toString().contains("Test.class"))
-                        .importPaths(paths);
+                        .withImportOption(
+                                location ->
+                                        !location.toString().contains("Test.class")
+                                                && !location.toString().contains("Test$"))
+                        .importLocations(locations);
+        for (Class<?> contract :
+                java.util.List.of(
+                        com.lumira.platform.content.RichText.class,
+                        com.lumira.plugin.sdk.PluginEntry.class,
+                        com.lumira.plugin.sdk.common.PaymentCrypto.class)) {
+            assertTrue(
+                    production.contain(contract),
+                    "SDK artifact missing from architecture graph: " + contract.getName());
+        }
+    }
+
+    // SDK 的二进制闭包不得回到宿主实现，包括保留旧 FQN 的契约。
+    // The binary SDK dependency closure must not reach host implementations, including contracts
+    // with legacy FQNs.
+    @Test
+    void publicArtifactsDoNotReachPrivateHostImplementations() {
+        Set<String> publicNames = new TreeSet<>();
+        production.forEach(
+                type -> {
+                    String source =
+                            type.getSource()
+                                    .map(
+                                            value ->
+                                                    value.getUri()
+                                                            .toString()
+                                                            .replaceFirst("^jar:", "")
+                                                            .replaceFirst("^file:/+", "/"))
+                                    .orElse("");
+                    if (publicSourceRoots.stream()
+                            .anyMatch(
+                                    root ->
+                                            source.startsWith(
+                                                    root.endsWith(".jar")
+                                                            ? root + "!/"
+                                                            : root + "/")))
+                        publicNames.add(type.getName());
+                });
+        assertTrue(
+                publicNames.size() >= 54,
+                "SDK classes must be scanned from their actual artifact locations");
+        Set<String> forbidden = new TreeSet<>();
+        production.forEach(
+                type -> {
+                    if (!publicNames.contains(type.getName())) return;
+                    type.getDirectDependenciesFromSelf()
+                            .forEach(
+                                    dependency -> {
+                                        String target = dependency.getTargetClass().getName();
+                                        if (target.startsWith("com.lumira.")
+                                                && !publicNames.contains(target))
+                                            forbidden.add(type.getName() + " -> " + target);
+                                    });
+                });
+        assertTrue(
+                forbidden.isEmpty(),
+                () -> "SDK reaches private host implementations: " + forbidden);
     }
 
     @Test

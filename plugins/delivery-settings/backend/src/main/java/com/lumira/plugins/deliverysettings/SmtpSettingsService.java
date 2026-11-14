@@ -3,7 +3,7 @@ package com.lumira.plugins.deliverysettings;
 import com.lumira.platform.common.AdministrationPort;
 import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.PlatformOperation;
-import com.lumira.platform.common.SecretKeys;
+import com.lumira.platform.common.SecretCryptoPort;
 import com.lumira.platform.common.SecretStorePort;
 import com.lumira.platform.settings.*;
 import java.nio.charset.StandardCharsets;
@@ -56,16 +56,16 @@ public class SmtpSettingsService {
             boolean encryptionConfigured) {}
 
     private final SettingStore settings;
-    private final SecretStore secrets;
-    private final SecretKeys keys;
+    private final SecretStorePort secrets;
+    private final SecretCryptoPort keys;
     private final AdministrationPort guard;
     private final ObjectMapper mapper;
     private final AuditPort audit;
 
     public SmtpSettingsService(
             SettingStore settings,
-            SecretStore secrets,
-            SecretKeys keys,
+            SecretStorePort secrets,
+            SecretCryptoPort keys,
             AdministrationPort guard,
             ObjectMapper mapper,
             AuditPort audit) {
@@ -121,7 +121,10 @@ public class SmtpSettingsService {
                 action.equals("REPLACE") || (action.equals("KEEP") && state.configured());
         if (input.data().enabled() && input.data().authentication()) {
             if (!willHavePassword) invalid("smtpPasswordRequired");
-            keys.require();
+            if (!keys.configured()) {
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE, "secretKeyUnavailable");
+            }
             if (action.equals("KEEP")) {
                 try {
                     secrets.reveal(context(current.orElseThrow().id()))

@@ -1,7 +1,7 @@
 package com.lumira.plugins.personalfiles;
 
 import com.lumira.platform.common.AccountFileStoragePort;
-import com.lumira.platform.common.ClientAddressResolver;
+import com.lumira.platform.common.ClientAddressPort;
 import com.lumira.platform.common.FileManagementStoragePort;
 import com.lumira.platform.common.PageRequest;
 import com.lumira.platform.common.PageResult;
@@ -22,12 +22,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class FileController {
     private final PersonalFileService files;
     private final UploadRateLimitPort limiter;
-    private final ClientAddressResolver addresses;
+    private final ClientAddressPort addresses;
 
     public FileController(
-            PersonalFileService files,
-            UploadRateLimitPort limiter,
-            ClientAddressResolver addresses) {
+            PersonalFileService files, UploadRateLimitPort limiter, ClientAddressPort addresses) {
         this.files = files;
         this.limiter = limiter;
         this.addresses = addresses;

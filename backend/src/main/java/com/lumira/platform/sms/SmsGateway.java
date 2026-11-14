@@ -1,5 +1,6 @@
 package com.lumira.platform.sms;
 
+import com.lumira.platform.common.DeadlineExchange;
 import com.lumira.platform.common.GuardedSockets;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -15,7 +16,10 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Cloud provider requests use pinned public HTTPS; responses and credentials never enter logs. */
+/**
+ * 使用固定公网 HTTPS 并限制整次发送时间，响应和凭据不进入日志。 Cloud provider requests use pinned public HTTPS; responses and
+ * credentials never enter logs.
+ */
 @Component
 public class SmsGateway {
     public enum Result {
@@ -48,34 +52,44 @@ public class SmsGateway {
     SmsGateway(HttpClient client, ObjectMapper mapper) {
         this(
                 mapper,
-                (request, timeout) -> {
-                    URI target = request.uri();
-                    boolean loopback =
-                            java.util.Set.of("localhost", "127.0.0.1", "::1", "[::1]")
-                                    .contains(target.getHost());
-                    if (!loopback)
-                        return GuardedSockets.exchange(
-                                target,
-                                request.method(),
-                                request.headers(),
-                                request.body(),
+                (request, timeout) ->
+                        DeadlineExchange.run(
                                 timeout,
-                                32768);
-                    var builder = HttpRequest.newBuilder(target).timeout(timeout);
-                    request.headers().forEach(builder::header);
-                    var publisher =
-                            request.body() == null
-                                    ? HttpRequest.BodyPublishers.noBody()
-                                    : HttpRequest.BodyPublishers.ofByteArray(request.body());
-                    var response =
-                            client.send(
-                                    builder.method(request.method(), publisher).build(),
-                                    HttpResponse.BodyHandlers.ofInputStream());
-                    try (var stream = response.body()) {
-                        return new GuardedSockets.Response(
-                                response.statusCode(), stream.readNBytes(32768));
-                    }
-                });
+                                scope -> {
+                                    URI target = request.uri();
+                                    boolean loopback =
+                                            java.util.Set.of(
+                                                            "localhost",
+                                                            "127.0.0.1",
+                                                            "::1",
+                                                            "[::1]")
+                                                    .contains(target.getHost());
+                                    if (!loopback)
+                                        return GuardedSockets.exchange(
+                                                target,
+                                                request.method(),
+                                                request.headers(),
+                                                request.body(),
+                                                timeout,
+                                                32768,
+                                                scope);
+                                    var builder = HttpRequest.newBuilder(target).timeout(timeout);
+                                    request.headers().forEach(builder::header);
+                                    var publisher =
+                                            request.body() == null
+                                                    ? HttpRequest.BodyPublishers.noBody()
+                                                    : HttpRequest.BodyPublishers.ofByteArray(
+                                                            request.body());
+                                    var response =
+                                            client.send(
+                                                    builder.method(request.method(), publisher)
+                                                            .build(),
+                                                    HttpResponse.BodyHandlers.ofInputStream());
+                                    try (var stream = scope.track(response.body())) {
+                                        return new GuardedSockets.Response(
+                                                response.statusCode(), stream.readNBytes(32768));
+                                    }
+                                }));
     }
 
     SmsGateway(ObjectMapper mapper, Exchange exchange) {
@@ -111,6 +125,7 @@ public class SmsGateway {
                 Thread.currentThread().interrupt();
                 return Result.DELIVERY_UNCERTAIN;
             } catch (java.io.IOException failed) {
+                // 写出后超时可能已有短信副作用，禁止自动重发。
                 // A timeout/read failure after writing may already have sent the SMS. Never resend
                 // it automatically.
                 if (failed instanceof java.net.ConnectException
@@ -131,9 +146,10 @@ public class SmsGateway {
         if (status == 401 || status == 403) return Result.AUTHENTICATION_FAILED;
         if (provider.equals("webhook")) {
             if (status >= 200 && status < 300) return Result.ACCEPTED;
-            if (status >= 400 && status < 500 && status != 408 && status != 429)
-                return Result.DELIVERY_UNCERTAIN;
-            return Result.CONNECTION_FAILED;
+            // 自定义接收方可能已处理请求；任何非成功响应都不能证明可安全重发。
+            // A custom receiver may already have processed the request; non-success is not proof of
+            // safe retry.
+            return Result.DELIVERY_UNCERTAIN;
         }
         if (status == 429) return Result.CONNECTION_FAILED;
         if (status >= 500 || status == 408 || status >= 300 && status < 400)

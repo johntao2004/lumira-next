@@ -1,3 +1,7 @@
+/**
+ * 在根容器读取语言和主题偏好并挂载公共 Provider，使首屏状态与后续客户端状态衔接。
+ * Read language and theme preferences at the root and mount shared providers so initial rendering and client state remain aligned.
+ */
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { defaultBranding } from "@/platform/branding/model";

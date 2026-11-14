@@ -1,3 +1,8 @@
+/**
+ * 装配密码认证、哈希升级与管理员引导，以带版本标识的密码编码和事务化首次改密要求保护凭据兼容及初始化。 Configures password authentication, hash
+ * upgrades and administrator bootstrap, using versioned encoding and transactional first-change
+ * requirements to protect credential compatibility and initialization.
+ */
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.BootstrapRolePort;
@@ -24,8 +29,11 @@ public class IdentityConfiguration {
     private static final String ARGON2_ID = "argon2id@lumira_v1";
 
     /**
-     * Argon2id is the write path. The explicit id makes the parameters part of the stored contract,
-     * while the raw BCrypt fallback keeps existing rows readable during a rolling migration.
+     * 新密码使用 Argon2id；显式标识将参数纳入存储契约，原始 BCrypt 回退保证滚动迁移期间旧记录仍可验证。
+     *
+     * <p>Argon2id is the write path. The explicit id makes the parameters part of the stored
+     * contract, while the raw BCrypt fallback keeps existing rows readable during a rolling
+     * migration.
      */
     @Bean
     PasswordEncoder passwordEncoder() {
@@ -35,12 +43,16 @@ public class IdentityConfiguration {
         encoders.put(ARGON2_ID, argon2);
         encoders.put("bcrypt", bcrypt);
         var delegating = new DelegatingPasswordEncoder(ARGON2_ID, encoders);
+        // 现有 Lumira 记录早于 DelegatingPasswordEncoder，保存的是原始 BCrypt 哈希。
         // Existing Lumira rows predate DelegatingPasswordEncoder and contain raw BCrypt.
         delegating.setDefaultPasswordEncoderForMatches(bcrypt);
         return delegating;
     }
 
-    /** Upgrade a legacy hash only when the presented password has already passed. */
+    /**
+     * 只有输入密码已验证通过后，才升级旧哈希。 Upgrade a legacy hash only when the presented password has already
+     * passed.
+     */
     @Bean
     UserDetailsPasswordService userDetailsPasswordService(JdbcClient jdbc) {
         return (user, newPassword) -> {
@@ -60,7 +72,10 @@ public class IdentityConfiguration {
         };
     }
 
-    /** Make Spring Security's successful-login rehash hook explicit and testable. */
+    /**
+     * 显式提供 Spring Security 登录成功后的哈希升级钩子，便于测试。 Make Spring Security's successful-login rehash hook
+     * explicit and testable.
+     */
     @Bean
     PasswordCredentialProof passwordCredentialProof() {
         return new PasswordCredentialProof();
@@ -109,10 +124,14 @@ public class IdentityConfiguration {
                             .optional()
                             .orElseThrow(() -> new UsernameNotFoundException("Unknown account"));
             var authorities =
-                    jdbc.sql("SELECT authority FROM platform_effective_authority WHERE user_id=:id")
-                            .param("id", account.id())
-                            .query(String.class)
-                            .list();
+                    com.lumira.platform.modules.ActivePermissionCatalog.retain(
+                                    jdbc.sql(
+                                                    "SELECT authority FROM platform_effective_authority WHERE user_id=:id")
+                                            .param("id", account.id())
+                                            .query(String.class)
+                                            .list())
+                            .stream()
+                            .toList();
             var granted =
                     authorities.stream()
                             .map(
@@ -144,6 +163,7 @@ public class IdentityConfiguration {
                         "Bootstrap password must contain at least 16 characters");
             tx.executeWithoutResult(
                     status -> {
+                        // 在并发启动的实例之间串行化初始化。
                         // Serializes initialization across concurrently starting instances.
                         jdbc.sql("SELECT pg_advisory_xact_lock(481025)")
                                 .query(
@@ -189,7 +209,9 @@ public class IdentityConfiguration {
     }
 
     /**
-     * Older installations predate the durable marker. Adopt only the existing admin account when
+     * 旧安装尚无持久化标记时，仅在现有管理员哈希仍能验证配置的初始密码时接管；若保留着明确的改密或重置审计，则优先记录完成，避免再次强制替换管理员已经改过的密码。
+     *
+     * <p>Older installations predate the durable marker. Adopt only the existing admin account when
      * its current hash still proves the configured bootstrap password. A retained positive
      * password-change/reset audit takes precedence and records completion instead of forcing a
      * password the administrator has previously replaced.
@@ -235,6 +257,7 @@ public class IdentityConfiguration {
             revokeBootstrapSessionsAndChallenges(jdbc, administrator.id());
             return;
         }
+        // 禁用用户也需持久化标记，避免重新启用管理员后，未更换的初始密码被当作普通认证登录。
         // Disabled users still need the durable marker so re-enabling an admin cannot turn an
         // unmodified bootstrap password into a normal authenticated login.
         if (!encoder.matches(password, administrator.passwordHash())) return;

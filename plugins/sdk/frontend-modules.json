@@ -17,6 +17,7 @@
   "@/platform/components/use-centered-modal-confirm",
   "@/platform/forms/use-crud-drawer",
   "@/platform/forms/use-submit-action",
+  "@/platform/i18n/builtin-dictionary-labels",
   "@/platform/i18n/format",
   "@/platform/i18n/messages",
   "@/platform/providers",
@@ -73,5 +74,7 @@
   "@/platform/components/resource-picker",
   "@/platform/components/settings-secret-field",
   "@/platform/profile-fields/localization",
-  "@/platform/auth/captcha-policy"
+  "@/platform/auth/captcha-policy",
+  "@/platform/forms/inferred-defaults",
+  "@/platform/forms/use-settings-draft"
 ]

@@ -118,6 +118,94 @@ class MailDeliveryWorkerTest {
     }
 
     @Test
+    void blockedRenewalPoolCannotDelayNetworkDeadline() throws Exception {
+        var field =
+                com.lumira.platform.communication.DurableDeliveryWorker.class.getDeclaredField(
+                        "leaseSchedules");
+        field.setAccessible(true);
+        var renewals = (ScheduledExecutorService) field.get(worker);
+        var entered = new CountDownLatch(4);
+        var release = new CountDownLatch(1);
+        for (int i = 0; i < 4; i++)
+            renewals.submit(
+                    () -> {
+                        entered.countDown();
+                        try {
+                            release.await();
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                        }
+                    });
+        try {
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            when(gateway.send(connection, message))
+                    .thenAnswer(
+                            invocation -> {
+                                try {
+                                    Thread.sleep(10000);
+                                } catch (InterruptedException interrupted) {
+                                    return SmtpGateway.Result.CONNECTION_FAILED;
+                                }
+                                return SmtpGateway.Result.ACCEPTED;
+                            });
+            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                executor.submit(() -> worker.process(claim, 50)).get(2, TimeUnit.SECONDS);
+            }
+            verify(store).complete(claim, SmtpGateway.Result.DELIVERY_UNCERTAIN);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void lateRenewalFailureDoesNotInterruptCompletion() throws Exception {
+        var field =
+                com.lumira.platform.communication.DurableDeliveryWorker.class.getDeclaredField(
+                        "leaseSchedules");
+        field.setAccessible(true);
+        var renewals = (ScheduledThreadPoolExecutor) field.get(worker);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var completed = new CountDownLatch(1);
+        when(store.renewLease(claim))
+                .thenAnswer(
+                        invocation -> {
+                            entered.countDown();
+                            assertTrue(release.await(3, TimeUnit.SECONDS));
+                            return false;
+                        });
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            when(gateway.send(connection, message))
+                    .thenAnswer(
+                            invocation -> {
+                                Runnable scheduled = renewals.getQueue().peek();
+                                assertNotNull(scheduled);
+                                executor.submit(scheduled);
+                                assertTrue(entered.await(2, TimeUnit.SECONDS));
+                                return SmtpGateway.Result.ACCEPTED;
+                            });
+            var result =
+                    executor.submit(
+                            () -> {
+                                worker.process(claim, 1000);
+                                completed.countDown();
+                                try {
+                                    Thread.sleep(250);
+                                } catch (InterruptedException failure) {
+                                    throw new AssertionError(
+                                            "Late renewal interrupted completed attempt", failure);
+                                }
+                            });
+            assertTrue(completed.await(2, TimeUnit.SECONDS));
+            release.countDown();
+            result.get(2, TimeUnit.SECONDS);
+            verify(store).complete(claim, SmtpGateway.Result.ACCEPTED);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
     void completionFailureDoesNotFallBackToPreSendFailure() {
         when(gateway.send(connection, message)).thenReturn(SmtpGateway.Result.ACCEPTED);
         when(store.complete(claim, SmtpGateway.Result.ACCEPTED))

@@ -7,9 +7,9 @@ const LocalizationPage = lazy(() => import("./localization-page").then(({ Locali
 export const localizationFrontendModule = {
   ...localizationManifest,
   pages: {
-    localization: ({ hasOperation }) => (
+    localization: ({ hasOperation, hasRouteAccess }) => (
       <LocalizationPage
-        canRead={hasOperation("read")}
+        canRead={hasRouteAccess("localization") || hasOperation("read")}
         canCreate={hasOperation("create")}
         canUpdate={hasOperation("update")}
         canDelete={hasOperation("delete")}

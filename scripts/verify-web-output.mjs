@@ -1,3 +1,7 @@
+/**
+ * 递归检查产物中的 source map 和引用，避免仅关闭构建选项却仍随静态资源发布遗留映射文件。
+ * Recursively check output for source maps and their references so disabling build options cannot leave stale maps in published static assets.
+ */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

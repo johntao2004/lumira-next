@@ -1,3 +1,8 @@
+/**
+ * 在图级事务锁下校验版本和依赖、保存启停状态及审计，并结合插件存活状态判断可用性；行政授权由调用适配层负责。 Validates versions and dependencies under a
+ * graph-wide transaction lock, persists state and audit records, and combines state with plugin
+ * liveness; administrative authorization belongs to calling adapters.
+ */
 package com.lumira.platform.modules;
 
 import com.lumira.platform.common.AuditPort;
@@ -7,7 +12,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Internal state engine. Administrative authorization and request gating belong in adapters. */
+/**
+ * 内部状态引擎；管理授权与请求放行由适配器负责。 Internal state engine. Administrative authorization and request gating
+ * belong in adapters.
+ */
 @Repository
 public class ModuleStateStore implements ModuleRuntime, ModuleCapabilityPort {
     private static final ThreadLocal<Map<String, Boolean>> REQUEST_CACHE = new ThreadLocal<>();
@@ -170,7 +178,10 @@ public class ModuleStateStore implements ModuleRuntime, ModuleCapabilityPort {
         return registry.modules().size();
     }
 
-    /** Lock order: adapters acquire AdministrationPort first, then this graph-wide lock. */
+    /**
+     * 锁顺序：适配器先获取 AdministrationPort 的锁，再获取此模块图全局锁。 Lock order: adapters acquire AdministrationPort
+     * first, then this graph-wide lock.
+     */
     @Transactional
     public State change(
             String moduleId, boolean enabled, long expectedVersion, String actor, String reason) {

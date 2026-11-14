@@ -1,3 +1,8 @@
+/**
+ * 集中装配 HTTP 安全链、公开入口、权限、CSRF 与限流，并在授权判断前接入实时权限校验，未匹配请求默认拒绝。 Assembles HTTP security, public entry
+ * points, authorization, CSRF and rate limits, refreshing authority before access decisions and
+ * denying unmatched requests by default.
+ */
 package com.lumira.platform.identity;
 
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;

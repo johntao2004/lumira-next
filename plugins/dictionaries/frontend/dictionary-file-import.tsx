@@ -1,5 +1,6 @@
 "use client";
 
+import { inferredFileName } from "@/platform/forms/inferred-defaults";
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ProDescriptions } from "@ant-design/pro-components";
@@ -48,6 +49,8 @@ export function DictionaryFileImport() {
   const client = useQueryClient();
   const [form] = Form.useForm<DictionaryMetadata>();
   const operationSignal = useSessionScope();
+  const nameDefault = useRef<string | null>(null);
+  const nameEdited = useRef(false);
   const generation = useRef(0);
   const [open, setOpen] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -74,6 +77,8 @@ export function DictionaryFileImport() {
     setFile(null);
     setFileList([]);
     form.resetFields();
+    nameDefault.current = null;
+    nameEdited.current = false;
   };
 
   const beforeUpload: UploadProps["beforeUpload"] = (selected) => {
@@ -89,6 +94,10 @@ export function DictionaryFileImport() {
       setFile(null);
       setFileList([]);
       return Upload.LIST_IGNORE;
+    }
+    if (getFileKind(selected) === "tabular") {
+      const inferred = inferredFileName(form.getFieldValue("name"), nameDefault.current, nameEdited.current, selected.name, 200);
+      if (inferred !== null) { form.setFieldValue("name", inferred); nameDefault.current = inferred; }
     }
     setFile(selected);
     return false;
@@ -158,7 +167,10 @@ export function DictionaryFileImport() {
           layout="vertical"
           disabled={pending}
           initialValues={dictionaryDefaults}
-          onValuesChange={invalidate}
+          onValuesChange={(changed) => {
+            if (Object.hasOwn(changed, "name")) nameEdited.current = true;
+            invalidate();
+          }}
           onFinish={() => {
             const signal = operationSignal();
             return run(async () => {

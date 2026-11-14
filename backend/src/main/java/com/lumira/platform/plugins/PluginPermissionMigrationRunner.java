@@ -1,3 +1,8 @@
+/**
+ * 按宿主权限能力选择迁移路径，对指定旧权限脚本保留原校验和并跳过重复授权逻辑，再继续校验和应用后续迁移。 Selects migrations according to host
+ * permission capabilities, preserving original checksums while bypassing specified redundant legacy
+ * grants before validating and applying later migrations.
+ */
 package com.lumira.platform.plugins;
 
 import java.nio.file.Files;
@@ -20,7 +25,10 @@ import org.flywaydb.core.internal.jdbc.Results;
 import org.flywaydb.core.internal.resolver.ResolvedMigrationImpl;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** Applies plugin migrations with checksum-preserving handling of legacy permission scripts. */
+/**
+ * 执行插件迁移，并在处理旧权限脚本时保留其校验和。 Applies plugin migrations with checksum-preserving handling of legacy
+ * permission scripts.
+ */
 final class PluginPermissionMigrationRunner {
     record LegacyPermissionMigration(
             String version, String previousVersion, String script, boolean onlyForFreshInstall) {}
@@ -70,6 +78,7 @@ final class PluginPermissionMigrationRunner {
     }
 
     static void migrate(DataSource dataSource, String pluginId, Path migrations) {
+        PluginMigrationGrantGuard.rejectUntrustedMutations(migrations);
         if (PluginInitializationMigrationRunner.supports(migrations)) {
             PluginInitializationMigrationRunner.migrate(dataSource, pluginId, migrations);
             return;
@@ -118,6 +127,8 @@ final class PluginPermissionMigrationRunner {
             return;
         }
         String resolvedScript = selected.getScript().replace('\\', '/');
+        // 固定版本 Flyway 12.4 的 MigrationInfoImpl 继承的 getResolvedType() 与 getResolvedDescription()
+        // 默认返回 null；待执行迁移需通过稳定 getter 获取解析出的源信息。
         // In the pinned Flyway 12.4 MigrationInfoImpl, getResolvedType() and
         // getResolvedDescription() are inherited defaults that return null. For a pending
         // migration, the stable getters expose the resolved source values.
@@ -165,6 +176,7 @@ final class PluginPermissionMigrationRunner {
                 .load()
                 .migrate();
 
+        // 常规解析器先验证 Flyway 以原始校验和记录了不可变源迁移，再正常执行其余追加迁移。
         // The regular resolver verifies that Flyway recorded the immutable source migration with
         // its original checksum, then applies the remaining appended migrations normally.
         standard.migrate();

@@ -1,10 +1,17 @@
+/**
+ * 将静态清单和服务端导航转为菜单及路由辅助判断，只消费授权事实，实际接口与数据范围权限仍由后端执行。
+ * Turn static manifests and server navigation into menus and route helpers that consume authorization facts while leaving API and data-scope enforcement to the backend.
+ */
 import { isMessageKey, type MessageKey } from "../i18n/messages.ts";
 import { frontendModuleManifests, frontendRoutes, frontendTabGroups, type FrontendRouteId } from "../modules/catalog.ts";
 import type { FrontendRoute, NavigationGroupId } from "../modules/types.ts";
 import type { RuntimeNavigationNode } from "../navigation/runtime-types";
 export type { RuntimeNavigationNode } from "../navigation/runtime-types";
 
-/** Shared route catalog assembled from the frontend modules. */
+/**
+ * 由前端模块共同装配的共享路由目录。
+ * Shared route catalog assembled from the frontend modules.
+ */
 export type Section = FrontendRouteId;
 export type RouteMetadata = Pick<FrontendRoute, "label" | "permission" | "accessScope" | "operations" | "scopedOperations" | "global"> & { module?: string };
 
@@ -26,10 +33,7 @@ export const routes = Object.fromEntries(routeEntries) as Record<Section, RouteM
 export function isSection(value: string): value is Section {
   return Object.hasOwn(routes, value);
 }
-/** Safe single-segment dashboard keys supplied by the server-owned menu tree. */
-export function isDashboardSection(value: string): boolean {
-  return /^[a-z][a-z0-9-]{0,63}$/.test(value);
-}
+export { isDashboardSection } from "../routing/dashboard-section.ts";
 
 export type NavigationPage = {
   id: string;
@@ -52,7 +56,10 @@ export type NavigationGroup = {
   standalone?: boolean;
 };
 
-/** Translate known catalog keys and safely fall back to server-provided labels. */
+/**
+ * 翻译已知目录键，无法翻译时安全回退到服务端标签。
+ * Translate known catalog keys and safely fall back to server-provided labels.
+ */
 export function localizedNavigationLabel(
   labelKey: string | null | undefined,
   labelDefault: string | null | undefined,
@@ -68,7 +75,10 @@ export function canAccessSection(section: Section, authorities: readonly string[
   return (permission === null || (scope === "global" ? globalAuthorities : authorities).includes(permission)) && (!route.module || enabledModules.includes(route.module));
 }
 
-/** Operations are available only when both the route access grant and its declared action grant exist. */
+/**
+ * 只有同时持有路由访问权限与该路由声明的动作权限，操作才可用。
+ * Operations are available only when both the route access grant and its declared action grant exist.
+ */
 export function canOperateSection(
   section: string,
   actionId: string,
@@ -119,7 +129,10 @@ export function availableNavigation(authorities: readonly string[], enabledModul
 
 const tabNavigationGroups = frontendTabGroups;
 
-/** Collapse related route tabs to their visible anchor in the sidebar. */
+/**
+ * 将相关页签归并到其在侧栏中的可见锚点。
+ * Collapse related route tabs to their visible anchor in the sidebar.
+ */
 export function collapseTabbedNavigation(groups: NavigationGroup[]): NavigationGroup[] {
   return groups
     .map((group) => {
@@ -138,7 +151,10 @@ export function collapseTabbedNavigation(groups: NavigationGroup[]): NavigationG
     .filter((group) => group.pages.length > 0);
 }
 
-/** Use the visible group entry as the active menu item for a tab deep link. */
+/**
+ * 页签深链接使用可见分组入口作为当前菜单项。
+ * Use the visible group entry as the active menu item for a tab deep link.
+ */
 export function navigationPageIdForRoute(routeId: string, groups: readonly NavigationGroup[]): string {
   const visibleIds = new Set(groups.flatMap((group) => group.pages.map((page) => page.id)));
   for (const tabGroup of tabNavigationGroups) {
@@ -149,7 +165,10 @@ export function navigationPageIdForRoute(routeId: string, groups: readonly Navig
   return routeId;
 }
 
-/** Find a runtime PAGE by exact path first, then by its stable frontend section key. */
+/**
+ * 先按精确路径查找运行时 PAGE，再按稳定的前端分区键查找。
+ * Find a runtime PAGE by exact path first, then by its stable frontend section key.
+ */
 export function runtimeNavigationPageNode(
   nodes: readonly RuntimeNavigationNode[],
   section: string,
@@ -172,7 +191,10 @@ export function runtimeNavigationPageNode(
     ?? find(node => Boolean(section) && node.sectionKey === section);
 }
 
-/** Find a route's full visible catalog/page ancestry from the permission-filtered runtime tree. */
+/**
+ * 从权限过滤后的运行时树中查找路由完整的可见目录及页面祖先链。
+ * Find a route's full visible catalog/page ancestry from the permission-filtered runtime tree.
+ */
 export function runtimeNavigationTrail(
   nodes: readonly RuntimeNavigationNode[],
   section: string,
@@ -199,7 +221,10 @@ export function runtimeNavigationTrail(
   return null;
 }
 
-/** Resolve labels for the runtime trail; pages absent from the user's tree keep only their title. */
+/**
+ * 解析运行时导航轨迹标签；用户树中不存在的页面只保留自身标题。
+ * Resolve labels for the runtime trail; pages absent from the user's tree keep only their title.
+ */
 export function runtimeBreadcrumbLabels(
   trail: readonly RuntimeNavigationNode[] | null,
   fallbackTitle: string,
@@ -211,6 +236,8 @@ export function runtimeBreadcrumbLabels(
 }
 
 /**
+ * 应用服务端菜单顺序与启用状态，但不让未知菜单创建当前前端无法渲染的路由；静态路由元数据仍是权限和页面组件的类型安全来源。
+ *
  * Apply the server-owned menu order and enabled state without allowing an
  * unknown menu to create a route that the deployed frontend cannot render yet. Static route
  * metadata remains the type-safe source for permissions and page components.
@@ -283,6 +310,7 @@ export function mergeRuntimeNavigation(groups: NavigationGroup[], nodes?: readon
         componentKey: node.componentKey?.trim() || saved.componentKey,
       };
     }
+    // 已注册但不可用的路由仍保持隐藏；运行时数据不能授予静态权限。
     // Registered but unavailable routes stay hidden; runtime data cannot grant static permissions.
     if (isSection(id)) return null;
     if (node.routable !== true) return null;
@@ -319,6 +347,7 @@ export function mergeRuntimeNavigation(groups: NavigationGroup[], nodes?: readon
       appendPages(root.children ?? [], ensureGroup(id, root.labelKey, root.labelDefault));
       return;
     }
+    // 旧菜单树可能将内置 PAGE 放在根节点；仍将其放回既有静态分组。
     // Older menu trees may place a built-in PAGE at the root. Keep it under its existing static group.
     if (root.menuType === "PAGE") {
       const page = pageForRuntimeNode(root);

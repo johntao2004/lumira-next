@@ -24,6 +24,15 @@ public final class OfficeWorkerProtocol {
     public static final int MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
     public static final int PDF_OUTPUT_EDGE = 2048;
     public static final int MAX_PDF_PNG_BYTES = 13 * 1024 * 1024;
+    public static final int MAX_PREVIEW_CODE_POINTS = 200_000;
+    public static final int MAX_SLOTS = 64;
+    public static final int MAX_PLACEHOLDERS = 16;
+    public static final int MAX_RESPONSE_PDF_BYTES = 20 * 1024 * 1024;
+    public static final int MAX_WORKBOOK_ROWS = 5_001;
+    public static final int MAX_WORKBOOK_COLUMNS = 32;
+    public static final int MAX_WORKBOOK_CELLS = MAX_WORKBOOK_ROWS * MAX_WORKBOOK_COLUMNS;
+    public static final int MAX_CELL_CHARACTERS = 2_000;
+    public static final int MAX_TOTAL_CHARACTERS = 2_000_000;
 
     public record ChildRequest(
             String operation,

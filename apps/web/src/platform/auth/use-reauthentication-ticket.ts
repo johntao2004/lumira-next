@@ -1,3 +1,7 @@
+/**
+ * 编排再认证并暂存服务端签发的操作票据，完成后清除表单秘密，票据有效性和操作绑定仍由服务端校验。
+ * Coordinate reauthentication and retain server-issued action tickets, clearing form secrets after completion while leaving ticket validity and action binding to server checks.
+ */
 "use client";
 
 import { useState } from "react";

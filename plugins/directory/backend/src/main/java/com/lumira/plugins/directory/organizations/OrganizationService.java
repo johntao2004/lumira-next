@@ -12,6 +12,10 @@ import org.springframework.transaction.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.annotation.JsonDeserialize;
 
+/**
+ * 在事务和授权快照内维护组织树与用户成员关系，检查动作涉及的目标范围。 Maintain organization trees and memberships within
+ * transactions and authorization snapshots, checking action targets.
+ */
 @Service
 public class OrganizationService {
     public record Input(
@@ -126,8 +130,8 @@ public class OrganizationService {
     }
 
     /**
-     * Empty when the organization is outside the actor's organization scope. Does not mark the
-     * caller transaction rollback-only.
+     * 当组织超出操作者组织范围时返回空值，且不将调用方事务标记为仅回滚。 Empty when the organization is outside the actor's
+     * organization scope. Does not mark the caller transaction rollback-only.
      */
     public java.util.Optional<OrganizationRepository.Organization> findIfVisible(
             UUID id, String actor) {
@@ -218,8 +222,9 @@ public class OrganizationService {
     }
 
     /**
-     * Readers follow user visibility. An actor who can assign organizations must not be shown an
-     * organization they cannot save, or the editor echoes it and the replacement is rejected.
+     * 仅具备只读权限时沿用用户可见范围；对具备分配组织权限的操作者不得展示其无权保存的组织，否则编辑器回显该组织并在整体替换保存时被拒绝。 Readers follow user
+     * visibility. An actor who can assign organizations must not be shown an organization they
+     * cannot save, or the editor echoes it and the replacement is rejected.
      */
     private String membershipVisibilityPermission(String actor) {
         try {

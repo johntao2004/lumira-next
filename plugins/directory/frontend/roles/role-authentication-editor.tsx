@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Card, Checkbox, Radio, Space, Spin, Tag } from "antd";
+import { Alert, App, Card, Checkbox, Radio, Space, Spin, Tag } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { api, mutate } from "@/platform/api/client";
@@ -31,6 +31,7 @@ const methodLabel = {
 
 export function RoleAuthenticationEditor({ role, canWrite }: { role: Role; canWrite: boolean }) {
   const { t } = usePreferences();
+  const { message } = App.useApp();
   const client = useQueryClient();
   const [form] = Form.useForm<Values>();
   const policy = useQuery({
@@ -85,6 +86,7 @@ export function RoleAuthenticationEditor({ role, canWrite }: { role: Role; canWr
           client.invalidateQueries({ queryKey: ["roles"] }),
           client.invalidateQueries({ queryKey: ["session"] }),
         ]);
+        void message.success(t("saveRoleAuthenticationPolicySucceeded"));
       })}
     >
       <Form.Item name="loginMode" label={t("roleLoginMethods")}>
@@ -129,7 +131,7 @@ export function RoleAuthenticationEditor({ role, canWrite }: { role: Role; canWr
       </Form.Item> : <Form.Item><Alert type="info" showIcon title={t("roleCaptchaCapabilityUnavailable")} /></Form.Item>}
       <FeedbackBubble id={`role-auth-policy-${role.id}-error`} content={action.errorMessage} />
       <Space className="form-actions" wrap>
-        <AsyncButton htmlType="submit" type="primary" pending={action.pending} disabled={!canWrite} label={t("save")} />
+        <AsyncButton htmlType="submit" pending={action.pending} disabled={!canWrite} label={t("saveRoleAuthenticationPolicy")} />
       </Space>
     </Form>
   </Card>;

@@ -6,7 +6,7 @@ source scripts/cloud-env.sh
 bash scripts/cloud-database.sh
 # Always install from the refreshed lockfile and compile the current checkout.
 pnpm install --frozen-lockfile
-maven_args=(-f backend/pom.xml -B -DskipTests package dependency:build-classpath -Dmdep.outputFile=target/plugin-classpath.txt)
+maven_args=(-f pom.xml -pl backend -am -B -DskipTests package)
 [[ -z ${LUMIRA_CLOUD_MAVEN_REPO:-} ]] || maven_args+=("-Dmaven.repo.local=$LUMIRA_CLOUD_MAVEN_REPO")
 [[ -z ${LUMIRA_CLOUD_MAVEN_SETTINGS:-} ]] || maven_args+=(--settings "$LUMIRA_CLOUD_MAVEN_SETTINGS")
 ./backend/mvnw "${maven_args[@]}"

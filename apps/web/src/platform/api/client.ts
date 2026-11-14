@@ -1,6 +1,11 @@
+/**
+ * 统一请求凭据、CSRF、授权版本及错误处理并丢弃旧会话响应，服务端授权版本用于一致性检查而非客户端授予权限。
+ * Unify credentials, CSRF, authorization revisions and errors while discarding stale-session responses, using server revisions for consistency checks rather than client-issued grants.
+ */
 import type { AuthorizationContext, LoginResponse } from "../auth/api-types";
 import { acceptSessionIdentity, currentSessionRevision, invalidateSession, sessionSignal } from "../auth/session-lifecycle.ts";
 
+// 角色预览状态有意只保存在内存中；刷新页面后，先由 /auth/me 确立当前修订，再发送应用请求。
 // Role-preview state is intentionally memory-only. Reloading the page causes
 // /auth/me to establish the current revision before application requests run.
 let authorizationContext: AuthorizationContext | null = null;
@@ -68,7 +73,10 @@ async function ensureAuthorizationContext(signal?: AbortSignal) {
 
 export type SessionIdentityRequestSource = "authorization-context-bootstrap" | "workspace-session" | "login-page";
 
-/** Fetch the authoritative current identity and optionally expose QA-only provenance. */
+/**
+ * 获取权威的当前身份，并可选暴露仅供 QA 使用的来源信息。
+ * Fetch the authoritative current identity and optionally expose QA-only provenance.
+ */
 export async function sessionMe<T = unknown>(source: SessionIdentityRequestSource, signal?: AbortSignal): Promise<T> {
   const startingRevision = currentSessionRevision();
   const trace = typeof window === "undefined"
@@ -124,6 +132,7 @@ function broadcastAuthorizationContextRevision() {
     channel.postMessage({ revision: authorizationContext?.revision ?? null });
     channel.close();
   } catch {
+    // 通道关闭或不可用时，只失去跨标签页刷新提示。
     // A closed or unavailable channel only removes the cross-tab refresh hint.
   }
 }
@@ -137,7 +146,10 @@ export function subscribeAuthorizationContext(listener: () => void) {
   return () => { authorizationContextListeners.delete(listener); };
 }
 
-/** True while the server-backed session is operating in any role-preview context. */
+/**
+ * 服务端会话处于任意角色预览上下文时返回 true。
+ * True while the server-backed session is operating in any role-preview context.
+ */
 export function isRolePreviewReadOnly() {
   return authorizationContext?.preview !== null && authorizationContext?.preview !== undefined;
 }
@@ -215,6 +227,7 @@ export async function api<T>(
   const identityBootstrap = route === "/auth/me";
   const startingSessionRevision = currentSessionRevision();
   const signals = [
+    // /auth/me 响应可能确立不同的服务端身份；仍需校验修订，但不能将该请求绑定到接受新身份时必须撤销的旧会话控制器。
     // The /auth/me response may establish a different server identity. Keep it
     // revision-checked below, but don't bind its own transport to the session
     // controller that accepting that identity must retire.
@@ -243,11 +256,13 @@ export async function api<T>(
     cache: "no-store",
     signal: requestSignal,
   });
+  // 某些传输或测试、浏览器拦截层在中止后仍可能完成；这些迟到响应绝不能更新会话身份或界面状态。
   // Some transports and test/browser interception layers can resolve after an
   // abort. Never apply such a late response to session identity or UI state.
   assertActiveSessionEpoch(startingSessionRevision, sessionBound, requestSignal);
   if (!response.ok) {
     let issues: {row:number;field:string;reason:string}[] = [];
+    // 传输错误保持语言中立；页面通过共享文案目录映射稳定 API 错误码，避免底层客户端固定输出某一种语言。
     // Keep transport errors locale-neutral. Pages map stable API error codes
     // through the shared message catalog instead of leaking one language from
     // the low-level client.
@@ -336,14 +351,20 @@ export async function api<T>(
   }
   return result;
 }
-/** Binary reads share authorization headers, cancellation, credentials and API errors with JSON requests. */
+/**
+ * 二进制读取与 JSON 请求共用授权头、取消机制、凭据和 API 错误处理。
+ * Binary reads share authorization headers, cancellation, credentials and API errors with JSON requests.
+ */
 export function apiBlob(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_API_TIMEOUT_MS) {
   return api<Blob>(path, init, response => response.blob(), timeoutMs);
 }
 export async function csrf(signal?: AbortSignal) {
   return api<{ headerName: string; token: string }>("/auth/csrf", { signal });
 }
-/** Binary writes share authentication, CSRF and API error handling with JSON mutations. */
+/**
+ * 二进制写入与 JSON 变更共用认证、CSRF 及 API 错误处理。
+ * Binary writes share authentication, CSRF and API error handling with JSON mutations.
+ */
 export async function upload<T>(path: string, file: Blob, originSignal?: AbortSignal): Promise<T> {
   const route = path.split("?", 1)[0];
   const requestSignal = AbortSignal.any([
@@ -386,7 +407,10 @@ export async function logout() {
   invalidateSession(true);
   return result;
 }
-/** Shared write transport: all platform mutations obtain a fresh CSRF token. */
+/**
+ * 共享写传输：所有平台变更均获取新的 CSRF 令牌。
+ * Shared write transport: all platform mutations obtain a fresh CSRF token.
+ */
 export async function mutate<T>(path: string, method: "POST" | "PUT" | "PATCH" | "DELETE", data?: unknown, signal?: AbortSignal, timeoutMs = 15_000): Promise<T> {
   const route = path.split("?", 1)[0];
   const requestSignal = AbortSignal.any([

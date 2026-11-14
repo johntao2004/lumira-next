@@ -20,8 +20,8 @@ public final class DocumentWorkerClient {
         var result = OfficeWorkerClient.inspectDocument(filename, bytes);
         if (result.slots() == null
                 || result.placeholders() == null
-                || result.slots().size() > DocumentTemplateProcessor.MAX_SLOTS
-                || result.placeholders().size() > DocumentTemplateProcessor.MAX_PLACEHOLDERS) {
+                || result.slots().size() > OfficeWorkerProtocol.MAX_SLOTS
+                || result.placeholders().size() > OfficeWorkerProtocol.MAX_PLACEHOLDERS) {
             throw OfficeWorkerClient.workerUnavailable();
         }
         return new Inspection(

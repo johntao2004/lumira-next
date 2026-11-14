@@ -1,3 +1,7 @@
+/**
+ * 发现插件与 SDK 示例并用临时配置统一类型检查，复用宿主 Umi 类型和依赖以避免工作区解析差异造成漏检。
+ * Discover plugins and SDK examples for unified type checking with a temporary configuration, reusing host Umi types and dependencies to avoid gaps caused by workspace resolution differences.
+ */
 import {mkdirSync,writeFileSync,existsSync,symlinkSync,readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';

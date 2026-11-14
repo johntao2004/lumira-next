@@ -28,7 +28,7 @@ public final class DocumentWorkerRequestGuard {
             throws IOException {
         if (bindings == null
                 || values == null
-                || bindings.size() > DocumentTemplateProcessor.MAX_SLOTS
+                || bindings.size() > OfficeWorkerProtocol.MAX_SLOTS
                 || values.size() > 1_000) throw invalid();
         long characters = 0;
         for (var entry : bindings.entrySet()) {
@@ -42,28 +42,27 @@ public final class DocumentWorkerRequestGuard {
             if (entry.getKey() == null
                     || entry.getKey().length() > 64
                     || entry.getValue() == null
-                    || entry.getValue().length() > DocumentTemplateProcessor.MAX_CELL_CHARACTERS)
+                    || entry.getValue().length() > OfficeWorkerProtocol.MAX_CELL_CHARACTERS)
                 throw invalid();
             characters += entry.getKey().length() + entry.getValue().length();
         }
-        if (characters > DocumentTemplateProcessor.MAX_TOTAL_CHARACTERS) throw invalid();
+        if (characters > OfficeWorkerProtocol.MAX_TOTAL_CHARACTERS) throw invalid();
     }
 
     static void validateRows(java.util.List<java.util.List<String>> rows) throws IOException {
-        if (rows == null || rows.size() > DocumentTemplateProcessor.MAX_WORKBOOK_ROWS)
-            throw invalid();
+        if (rows == null || rows.size() > OfficeWorkerProtocol.MAX_WORKBOOK_ROWS) throw invalid();
         long cells = 0;
         long characters = 0;
         for (java.util.List<String> row : rows) {
-            if (row == null || row.size() > DocumentTemplateProcessor.MAX_WORKBOOK_COLUMNS)
+            if (row == null || row.size() > OfficeWorkerProtocol.MAX_WORKBOOK_COLUMNS)
                 throw invalid();
             cells += row.size();
-            if (cells > DocumentTemplateProcessor.MAX_WORKBOOK_CELLS) throw invalid();
+            if (cells > OfficeWorkerProtocol.MAX_WORKBOOK_CELLS) throw invalid();
             for (String value : row) {
                 if (value == null) continue;
-                if (value.length() > DocumentTemplateProcessor.MAX_CELL_CHARACTERS) throw invalid();
+                if (value.length() > OfficeWorkerProtocol.MAX_CELL_CHARACTERS) throw invalid();
                 characters += value.length();
-                if (characters > DocumentTemplateProcessor.MAX_TOTAL_CHARACTERS) throw invalid();
+                if (characters > OfficeWorkerProtocol.MAX_TOTAL_CHARACTERS) throw invalid();
             }
         }
     }
@@ -114,11 +113,10 @@ public final class DocumentWorkerRequestGuard {
                                 || !keys.add(name)
                                 || keys.size()
                                         > ("bindings".equals(frame.path)
-                                                ? DocumentTemplateProcessor.MAX_SLOTS
+                                                ? OfficeWorkerProtocol.MAX_SLOTS
                                                 : 1_000)) throw invalid();
                         characters += name.length();
-                        if (characters > DocumentTemplateProcessor.MAX_TOTAL_CHARACTERS)
-                            throw invalid();
+                        if (characters > OfficeWorkerProtocol.MAX_TOTAL_CHARACTERS) throw invalid();
                     }
                     frame.field = name;
                     continue;
@@ -133,10 +131,10 @@ public final class DocumentWorkerRequestGuard {
                 int maximum =
                         "bindings".equals(frame.path)
                                 ? 64
-                                : DocumentTemplateProcessor.MAX_CELL_CHARACTERS;
+                                : OfficeWorkerProtocol.MAX_CELL_CHARACTERS;
                 if (value.length() > maximum) throw invalid();
                 characters += value.length();
-                if (characters > DocumentTemplateProcessor.MAX_TOTAL_CHARACTERS) throw invalid();
+                if (characters > OfficeWorkerProtocol.MAX_TOTAL_CHARACTERS) throw invalid();
                 frame.field = null;
             }
         } catch (IOException failure) {
@@ -187,11 +185,11 @@ public final class DocumentWorkerRequestGuard {
                     Frame parent = stack.peek();
                     if (parent.array) {
                         if (parent.path.equals("rows")) {
-                            if (++parent.count > DocumentTemplateProcessor.MAX_WORKBOOK_ROWS)
+                            if (++parent.count > OfficeWorkerProtocol.MAX_WORKBOOK_ROWS)
                                 throw invalid();
                             path = "row";
                         } else if (parent.path.equals("row")) {
-                            if (++parent.count > DocumentTemplateProcessor.MAX_WORKBOOK_COLUMNS)
+                            if (++parent.count > OfficeWorkerProtocol.MAX_WORKBOOK_COLUMNS)
                                 throw invalid();
                             cells++;
                             path = "cell";
@@ -201,7 +199,7 @@ public final class DocumentWorkerRequestGuard {
                         parent.field = null;
                         path = "rows";
                     }
-                    if (cells > DocumentTemplateProcessor.MAX_WORKBOOK_CELLS || stack.size() >= 4)
+                    if (cells > OfficeWorkerProtocol.MAX_WORKBOOK_CELLS || stack.size() >= 4)
                         throw invalid();
                     stack.push(new Frame(path, true));
                     continue;
@@ -216,14 +214,13 @@ public final class DocumentWorkerRequestGuard {
                         || !frame.array
                         || !"row".equals(frame.path)
                         || token != JsonToken.VALUE_STRING) throw invalid();
-                if (++frame.count > DocumentTemplateProcessor.MAX_WORKBOOK_COLUMNS) throw invalid();
+                if (++frame.count > OfficeWorkerProtocol.MAX_WORKBOOK_COLUMNS) throw invalid();
                 String value = parser.getText();
-                if (value.length() > DocumentTemplateProcessor.MAX_CELL_CHARACTERS) throw invalid();
+                if (value.length() > OfficeWorkerProtocol.MAX_CELL_CHARACTERS) throw invalid();
                 cells++;
                 characters += value.length();
-                if (cells > DocumentTemplateProcessor.MAX_WORKBOOK_CELLS
-                        || characters > DocumentTemplateProcessor.MAX_TOTAL_CHARACTERS)
-                    throw invalid();
+                if (cells > OfficeWorkerProtocol.MAX_WORKBOOK_CELLS
+                        || characters > OfficeWorkerProtocol.MAX_TOTAL_CHARACTERS) throw invalid();
             }
         } catch (IOException failure) {
             throw failure;

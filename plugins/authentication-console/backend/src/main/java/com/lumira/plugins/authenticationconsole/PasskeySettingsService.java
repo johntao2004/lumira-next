@@ -5,7 +5,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-/** Administration writes invalidate the independent kernel reader only after commit. */
+/**
+ * 每次从数据库权威读取通行密钥策略并参与调用方现有事务，避免跨实例陈旧值及回滚后缓存污染；管理端写入仅在事务提交后使独立内核读取器失效。 Reads authoritative passkey
+ * policy from the database within the caller transaction to avoid stale nodes and rollback-polluted
+ * caches; administration writes invalidate the independent kernel reader only after commit.
+ */
 @Service
 public class PasskeySettingsService {
     public record View(long version, PasskeySettings data) {}

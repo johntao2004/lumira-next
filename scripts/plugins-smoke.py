@@ -56,7 +56,7 @@ public record ProbeResponse(String code,String loader) {{}}
 }}'''
  (src/'ProbePlugin.java').write_text(source)
  if missing:(src/'MissingClass.java').write_text(f'package {package};public class MissingClass {{}}')
- cp=str(ROOT/'backend/target/classes')+os.pathsep+(ROOT/'backend/target/plugin-classpath.txt').read_text().strip()
+ cp=(ROOT/'framework/plugin-build/target/plugin-classpath.txt').read_text().strip()
  libs={}
  if private:
   private_src=dir/'PrivateValue.java';private_src.write_text('package com.example.qa.api;public class PrivateValue {public static String value(){return "private-library-loaded";}}')

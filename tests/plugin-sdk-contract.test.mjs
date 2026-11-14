@@ -25,6 +25,8 @@ test('plugin frontend SDK allowlist has one typed host export for every exact mo
 
   for (const modulePath of [
     '@/platform/auth/reauthentication-contract',
+    '@/platform/auth/reauthentication-fields',
+    '@/platform/i18n/builtin-dictionary-labels',
     '@/platform/auth/use-reauthentication-ticket',
     '@/platform/auth/passkey',
   ]) {
@@ -33,4 +35,16 @@ test('plugin frontend SDK allowlist has one typed host export for every exact mo
   assert.doesNotMatch(sdkModules.join('\n'), /[*{}]/, 'SDK entries must stay exact module paths');
   assert.match(sdkSource, /export type PluginSdkModules = typeof pluginSdkModules;/);
   assert.match(runtimeSource, /__lumiraPluginSdk\?: PluginSdkModules;/);
+});
+
+
+test('host WeChat reauthentication uses the shared SDK surface without a plugin implementation dependency', () => {
+  const wechatSource = readFileSync('apps/web/src/features/account/wechat-account-page.tsx', 'utf8');
+  assert.match(wechatSource, /from "@\/platform\/auth\/reauthentication-fields"/);
+  assert.doesNotMatch(wechatSource, /plugins\/mfa\/frontend/);
+  for (const filename of ['authenticator-page.tsx', 'management-page.tsx']) {
+    const source = readFileSync(`plugins/mfa/frontend/${filename}`, 'utf8');
+    assert.match(source, /from "@\/platform\/auth\/reauthentication-fields"/);
+    assert.doesNotMatch(source, /from "\.\/reauthentication-fields"/);
+  }
 });

@@ -5,7 +5,7 @@ import com.lumira.platform.common.AuditPort;
 import com.lumira.platform.common.AuthenticationPolicyWriteLock;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.PrimaryMethod;
-import com.lumira.platform.common.SecretKeys;
+import com.lumira.platform.common.SecretCryptoPort;
 import com.lumira.platform.common.SecretStorePort;
 import com.lumira.platform.identity.api.EffectiveAuthenticationPolicyPort;
 import com.lumira.platform.settings.*;
@@ -61,8 +61,8 @@ public class WechatSettingsService {
 
     private static final String SECTION = "wechat";
     private final SettingStore settings;
-    private final SecretStore secrets;
-    private final SecretKeys keys;
+    private final SecretStorePort secrets;
+    private final SecretCryptoPort keys;
     private final AdministrationPort guard;
     private final AuthenticationPolicyWriteLock policyLock;
     private final EffectiveAuthenticationPolicyPort authentication;
@@ -74,8 +74,8 @@ public class WechatSettingsService {
 
     public WechatSettingsService(
             SettingStore settings,
-            SecretStore secrets,
-            SecretKeys keys,
+            SecretStorePort secrets,
+            SecretCryptoPort keys,
             AdministrationPort guard,
             AuthenticationPolicyWriteLock policyLock,
             EffectiveAuthenticationPolicyPort authentication,
@@ -142,7 +142,9 @@ public class WechatSettingsService {
         if (!old.appId().equals(data.appId()) && current.isPresent() && hasBindings(old.appId()))
             conflict("wechatAppInUse");
         if (input.enabled() && !nextSecretConfigured) invalid("wechatAppSecretRequired");
-        if ("REPLACE".equals(action)) keys.require();
+        if ("REPLACE".equals(action) && !keys.configured())
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "secretKeyUnavailable");
         if (!input.enabled() && old.enabled() && secretState.configured())
             requireOtherUsableMethodForBoundAccounts(old.appId());
 

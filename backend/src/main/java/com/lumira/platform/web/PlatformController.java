@@ -101,22 +101,27 @@ public class PlatformController {
                         ? null
                         : requestAuthorization.preview());
         var globalAuthorities =
-                requestAuthorization == null
-                        ? jdbc.sql(
-                                        "SELECT a.authority FROM platform_global_authority a JOIN platform_user u ON u.id=a.user_id WHERE u.username=:username AND u.enabled ORDER BY a.authority")
-                                .param("username", auth.getName())
-                                .query(String.class)
-                                .list()
-                        : requestAuthorization.effectiveGlobalAuthorities().stream()
-                                .sorted()
-                                .toList();
+                com.lumira.platform.modules.ActivePermissionCatalog.retain(
+                                requestAuthorization == null
+                                        ? jdbc.sql(
+                                                        "SELECT a.authority FROM platform_global_authority a JOIN platform_user u ON u.id=a.user_id WHERE u.username=:username AND u.enabled ORDER BY a.authority")
+                                                .param("username", auth.getName())
+                                                .query(String.class)
+                                                .list()
+                                        : requestAuthorization.effectiveGlobalAuthorities())
+                        .stream()
+                        .sorted()
+                        .toList();
         var authorities =
-                requestAuthorization == null
-                        ? auth.getAuthorities().stream()
-                                .map(a -> a.getAuthority())
-                                .sorted()
-                                .toList()
-                        : requestAuthorization.effectiveAuthorities().stream().sorted().toList();
+                com.lumira.platform.modules.ActivePermissionCatalog.retain(
+                                requestAuthorization == null
+                                        ? auth.getAuthorities().stream()
+                                                .map(a -> a.getAuthority())
+                                                .toList()
+                                        : requestAuthorization.effectiveAuthorities())
+                        .stream()
+                        .sorted()
+                        .toList();
         var result = new LinkedHashMap<String, Object>();
         result.put("enabledModules", modules.enabledModules());
         result.put("username", auth.getName());

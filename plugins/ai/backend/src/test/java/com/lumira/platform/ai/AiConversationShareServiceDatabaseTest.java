@@ -62,8 +62,19 @@ class AiConversationShareServiceDatabaseTest {
                         password);
         jdbc = new JdbcTemplate(dataSource);
         JdbcClient client = JdbcClient.create(dataSource);
+        jdbc.execute(TestSchema.table("platform_user"));
         jdbc.execute(TestSchema.table("platform_ai_conversation_share"));
         jdbc.execute(TestSchema.table("platform_audit"));
+        jdbc.update(
+                "INSERT INTO platform_user(id,username,display_name,password_hash,enabled) VALUES (?,?,?,?,true),(?,?,?,?,true)",
+                java.util.UUID.randomUUID(),
+                "alice",
+                "Alice",
+                "not-a-login-credential",
+                java.util.UUID.randomUUID(),
+                "bob",
+                "Bob",
+                "not-a-login-credential");
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         mapper = new ObjectMapper();
         guard = mock(AdministrationPort.class);

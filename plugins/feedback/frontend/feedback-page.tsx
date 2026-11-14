@@ -19,6 +19,7 @@ import { ResourceTable } from "@/platform/components/resource-table";
 import type { PageResult } from "@/platform/api/pagination";
 import { usePreferences } from "@/platform/providers";
 import type { MessageKey } from "@/platform/i18n/messages";
+import { builtinDictionaryItemLabel } from "@/platform/i18n/builtin-dictionary-labels";
 import { formatDateTime } from "@/platform/i18n/format";
 import { FeedbackBubble } from "@/platform/components/feedback-bubble";
 import { useListRequest } from "@/platform/routing/use-list-request";
@@ -142,8 +143,12 @@ export function FeedbackPage({ canRead, canCreate, canUpdateStatus, canReply }: 
     }
   }, [categories, choices?.policy?.defaultPriority, createForm, createOpen]);
 
-  const label = (items: Choice[] | undefined, value: string) =>
-    items?.find((item) => item.value === value)?.label ?? value;
+  const label = (code: string, items: Choice[] | undefined, value: string) => {
+    const stored = items?.find((item) => item.value === value)?.label ?? value;
+    return builtinDictionaryItemLabel(code, value, stored, t);
+  };
+  const choiceOptions = (code: string, items: Choice[]) =>
+    items.map((item) => ({ value: item.value, label: builtinDictionaryItemLabel(code, item.value, item.label, t) }));
   const resetCreate = () => {
     setCreateOpen(false);
     setDetailHtml("");
@@ -252,10 +257,10 @@ export function FeedbackPage({ canRead, canCreate, canUpdateStatus, canReply }: 
         }
         columns={[
           { title: t("feedbackTitle"), dataIndex: "title", search: true },
-          { title: t("feedbackCategory"), dataIndex: "category", search: true, valueEnum: Object.fromEntries(categories.map((item) => [item.value, { text: item.label }])), render: (_: unknown, row: FeedbackSummary) => <Tag>{row.category ? label(categories, row.category) : t("uncategorized")}</Tag> },
+          { title: t("feedbackCategory"), dataIndex: "category", search: true, valueEnum: Object.fromEntries(categories.map((item) => [item.value, { text: label("work_order_feedback_category", categories, item.value) }])), render: (_: unknown, row: FeedbackSummary) => <Tag>{row.category ? label("work_order_feedback_category", categories, row.category) : t("uncategorized")}</Tag> },
           { title: t("feedbackOwner"), dataIndex: "ownerName", search: true, render: (_: unknown, row: FeedbackSummary) => row.ownerName ?? row.ownerId },
-          { title: t("feedbackStatus"), dataIndex: "status", search: true, valueEnum: Object.fromEntries(statuses.map((item) => [item.value, { text: item.label }])), render: (_: unknown, row: FeedbackSummary) => <Tag color={statusColors[row.status]}>{label(statuses, row.status)}</Tag> },
-          { title: t("feedbackPriority"), dataIndex: "priority", search: true, valueEnum: Object.fromEntries(priorities.map((item) => [item.value, { text: item.label }])), render: (_: unknown, row: FeedbackSummary) => <Tag color={priorityColors[row.priority] ?? "default"}>{label(priorities, row.priority)}</Tag> },
+          { title: t("feedbackStatus"), dataIndex: "status", search: true, valueEnum: Object.fromEntries(statuses.map((item) => [item.value, { text: label("work_order_feedback_status", statuses, item.value) }])), render: (_: unknown, row: FeedbackSummary) => <Tag color={statusColors[row.status]}>{label("work_order_feedback_status", statuses, row.status)}</Tag> },
+          { title: t("feedbackPriority"), dataIndex: "priority", search: true, valueEnum: Object.fromEntries(priorities.map((item) => [item.value, { text: label("work_order_feedback_priority", priorities, item.value) }])), render: (_: unknown, row: FeedbackSummary) => <Tag color={priorityColors[row.priority] ?? "default"}>{label("work_order_feedback_priority", priorities, row.priority)}</Tag> },
           { title: t("feedbackUpdatedAt"), dataIndex: "updatedAt", valueType: "dateTimeRange", render: (_: unknown, row: FeedbackSummary) => dateTime(row.updatedAt, locale) },
           { title: t("actions"), key: "actions", search: false, render: (_: unknown, row: FeedbackSummary) => <TableActions><Button type="link" onClick={() => { setDetailRow(row); setFormError(null); }}>{t("details")}</Button></TableActions> },
         ]}
@@ -267,10 +272,10 @@ export function FeedbackPage({ canRead, canCreate, canUpdateStatus, canReply }: 
             <Input maxLength={160} showCount />
           </Form.Item>
           <Form.Item name="category" label={t("feedbackCategory")} rules={[{ required: true, message: t("feedbackCategoryRequired") }]}>
-            <Select options={categories.map((item) => ({ value: item.value, label: item.label }))} />
+            <Select options={choiceOptions("work_order_feedback_category", categories)} />
           </Form.Item>
           <Form.Item name="priority" label={t("feedbackPriority")} rules={[{ required: true }]}>
-            <Select options={priorities.map((item) => ({ value: item.value, label: item.label }))} />
+            <Select options={choiceOptions("work_order_feedback_priority", priorities)} />
           </Form.Item>
           <Form.Item label={t("feedbackDetail")} required>
             <RichTextEditor
@@ -293,9 +298,9 @@ export function FeedbackPage({ canRead, canCreate, canUpdateStatus, canReply }: 
         {detailQuery.data && <Space orientation="vertical" size="middle" className="w-full">
           <Typography.Title level={4} className="!mb-0">{detailQuery.data.title}</Typography.Title>
           <Space wrap>
-            <Tag>{detailQuery.data.category ? label(categories, detailQuery.data.category) : t("uncategorized")}</Tag>
-            <Tag color={statusColors[detailQuery.data.status]}>{label(statuses, detailQuery.data.status)}</Tag>
-            <Tag color={priorityColors[detailQuery.data.priority] ?? "default"}>{label(priorities, detailQuery.data.priority)}</Tag>
+            <Tag>{detailQuery.data.category ? label("work_order_feedback_category", categories, detailQuery.data.category) : t("uncategorized")}</Tag>
+            <Tag color={statusColors[detailQuery.data.status]}>{label("work_order_feedback_status", statuses, detailQuery.data.status)}</Tag>
+            <Tag color={priorityColors[detailQuery.data.priority] ?? "default"}>{label("work_order_feedback_priority", priorities, detailQuery.data.priority)}</Tag>
             <Typography.Text type="secondary">{dateTime(detailQuery.data.createdAt, locale)}</Typography.Text>
           </Space>
           <FeedbackRichTextPreview html={detailQuery.data.detailHtml} />
@@ -306,7 +311,7 @@ export function FeedbackPage({ canRead, canCreate, canUpdateStatus, canReply }: 
       <FormDrawer open={handleOpen} title={t("processFeedback")} pending={handlePending} formId="feedback-handle" submitDisabled={!canHandleCurrent || !detailQuery.data} onClose={() => { if (!handlePending) setHandleOpen(false); }}>
         <FeedbackBubble id="feedback-handle-error" content={handleError ? t(handleError) : undefined}/>
         <Form id="feedback-handle" name="feedback-handle" form={handleForm} layout="vertical" onFinish={saveHandle}>
-          <Form.Item name="status" label={t("feedbackStatus")} rules={[{ required: true }]}><Select disabled={!canUpdateCurrent || handlePending} options={statuses.map((item) => ({ value: item.value, label: item.label }))} /></Form.Item>
+          <Form.Item name="status" label={t("feedbackStatus")} rules={[{ required: true }]}><Select disabled={!canUpdateCurrent || handlePending} options={choiceOptions("work_order_feedback_status", statuses)} /></Form.Item>
           <Form.Item name="adminReply" label={t("feedbackReply")}><Input.TextArea disabled={!canReplyCurrent || handlePending} rows={6} maxLength={4000} showCount /></Form.Item>
         </Form>
       </FormDrawer>

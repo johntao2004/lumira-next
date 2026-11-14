@@ -1,7 +1,7 @@
 package com.lumira.plugins.siteconsole;
 
 import com.lumira.platform.common.AdministrationPort;
-import com.lumira.platform.common.ClientAddressResolver;
+import com.lumira.platform.common.ClientAddressPort;
 import com.lumira.platform.common.FileContentPort;
 import com.lumira.platform.common.PlatformOperation;
 import com.lumira.platform.common.RateLimitExceededException;
@@ -22,13 +22,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class BrandingImageController {
     private final FileContentPort files;
     private final UploadRateLimitPort uploadLimits;
-    private final ClientAddressResolver addresses;
+    private final ClientAddressPort addresses;
     private final AdministrationPort administration;
 
     public BrandingImageController(
             FileContentPort files,
             UploadRateLimitPort uploadLimits,
-            ClientAddressResolver addresses,
+            ClientAddressPort addresses,
             AdministrationPort administration) {
         this.files = files;
         this.uploadLimits = uploadLimits;

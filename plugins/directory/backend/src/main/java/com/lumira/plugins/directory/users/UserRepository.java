@@ -1,3 +1,8 @@
+/**
+ * 封装用户目录持久化，使列表、导出及选中查询取页面与操作可见集的交集并支持预览范围，区分加锁读取和只读快照。 Persists the user directory and intersects
+ * page and operation visibility for lists, exports and selected-user queries, honoring preview
+ * scope and separating locking reads from read-only snapshots.
+ */
 package com.lumira.plugins.directory.users;
 
 import com.lumira.platform.common.JdbcPageQuery;
@@ -356,7 +361,9 @@ public class UserRepository {
     }
 
     /**
-     * Registration-only insert; a concurrent username collision must not abort the caller
+     * 仅用于注册的插入；并发用户名冲突不能中止调用方事务。
+     *
+     * <p>Registration-only insert; a concurrent username collision must not abort the caller
      * transaction.
      */
     public void update(UUID id, String displayName, boolean enabled) {

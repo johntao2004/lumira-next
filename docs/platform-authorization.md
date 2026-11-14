@@ -133,6 +133,27 @@ preview intersects the target role's ordinary grants and data scope with the act
 effective grants and scopes; current role assignments and organization membership are read when the
 preview is checked.
 
+Built-in navigation rows are aligned to the current page access grant and catalog scope when the
+application restores plugins. The published B52 seed still contains a few older operation keys
+(`platform:feedback:read`, `platform:localization:read`, `platform:sensitive-words:read`) and marks
+print templates as caller-scoped. Startup rewrites only built-in page rows, so a grant of the page
+access permission is what shows the page. Localization and sensitive-word list, detail,
+provider options, and read-only previews require only that global page-access permission;
+create, update, delete, import, and policy changes still require their separate operation grants.
+File retention has no B52 menu row; startup inserts one
+built-in page under administration when it is missing, and the frontend lists that page for
+`platform:file-retention:access`. Custom rows that are not built in are left unchanged. Session
+authorities returned by `/auth/me` include only permissions in the current host and installed-plugin
+catalog. Grants kept for an uninstalled plugin stay on the role and become effective again if that
+plugin is reinstalled.
+
+`platform:modules:install` is not a lesser privilege. A role can store it only together with every
+current platform permission, and the actor must hold every current platform permission globally
+before granting it or importing and installing a plugin. Plugin migration SQL that writes
+`platform_role_authority`, `platform_authority`, or `platform_user_role` is rejected unless its
+SHA-256 is one of the published bundled initialization scripts. In-process plugin code still runs
+as the application, so only an operator who already holds the full platform catalog can load it.
+
 ## Deliberately ungranted routes
 
 Self-service routes such as the workspace/home, personal files, and account settings do not appear
@@ -149,3 +170,7 @@ page-only, action-only, unrelated-page, sibling-action, and complete page/action
 regressions use a disposable database and verify archived-source conversion to normal grants,
 scoped/global outcomes, preservation of unrelated stored grants, revocation without resurrection,
 and explicit scoped operations.
+
+### 组织成员关系的目的范围
+
+`users:assign-organizations` 是范围动作。提交仍要求目标用户在页面与动作的有效范围内、用户版本匹配；新增和移除的组织还必须位于该动作的有效组织范围。GLOBAL/ALL 沿用现有 SQL 范围函数，角色预览使用同一目标角色与版本。原有未改变的成员关系不因当前操作者范围收窄被隐式删除；显式移除仍需目的组织权限。该规则为防御性最小权限约束，不能替代真实部署的角色矩阵验收。

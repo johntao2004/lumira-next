@@ -71,8 +71,8 @@
 
 - `platform/modules/types.ts` 定义模块、路由和页面渲染器契约。
 - `platform/api/client.ts` 只负责网络传输、CSRF 和统一错误载体；身份、模块、导航、目录和分页 DTO 分别由对应平台域的 `api-types.ts`/`pagination.ts` 持有，避免形成前端类型上帝文件。
-- `features/*/module.tsx` 由功能模块自己声明路由、权限、依赖和页面；`platform/modules/registry.tsx` 负责拓扑排序、重复路由检查和当前页面渲染。
-- `platform/shell/workspace.tsx` 只消费注册表，不再直接导入所有业务页面；当前只创建和渲染活动页面，减少壳层重渲染工作。
+- `features/*/module.tsx` 由功能模块自己声明路由、权限、依赖和页面；`app/dashboard-modules.tsx` 负责宿主拓扑排序，`platform/modules/contracts.ts` 与 `page-store.ts` 负责重复路由检查和页面注册。
+- `app/dashboard-workspace.tsx` 只消费注册表，不再直接导入所有业务页面；当前只创建和渲染活动页面，减少壳层重渲染工作。
 - 页面模块通过 `React.lazy` 按路由加载；注册表仍在启动时校验所有路由归属，但首屏不会静态加载未访问的业务页面。
 - `routes.ts` 由模块描述生成，新增模块页面不再需要修改一个巨大的中央路由表。
 - 所有 `ResourceTable` 页面和抽屉通过 `platform/routing/use-list-request.ts` 共享分页、页大小和搜索状态；需要浏览器历史的页面继续使用同一契约的 `useListLocation`，避免每个 CRUD 页面重新发明列表状态。
@@ -168,3 +168,41 @@ backend/
 - 算法选择见 [算法基线](algorithm-baseline.md)；当前源码的验证命令见 [README](../README.md) 与 [云端开发说明](cloud-development.md)。
 
 这套标准比“每个目录都叫 module”更严格，也为未来按模块独立部署保留了清晰的升级路径。
+
+## 可执行的插件源码边界
+
+`scripts/plugin_boundaries.py` 从正式插件及 `plugins/sdk/examples/*/plugin.json`
+发现源目录，不假设 Java 包都在 `com.lumira.platform` 下。每个插件保留自己的
+命名空间和实现；宿主公共入口限定为 `common`、`modules`、明确的模块 `api`
+契约以及共享 `content.RichText`。跨插件实现不能直接导入，应使用 SDK SPI。
+使用身份、字典或通知模块的公共 API 仍须在清单声明对应依赖。
+每个插件 Controller 必须声明自身 `@ModuleEndpoint`，样例遵循同一规则。
+
+该检查同时进入模块边界测试及插件打包入口；负例测试覆盖宿主私有实现、
+跨插件实现、未声明 API 依赖及缺失/错误接口归属。这是源码架构约束，不是
+对同进程可信 Java 插件建立安全沙箱；插件仍与宿主共享进程和数据库权限。
+
+
+## 七区职责与实际入口
+
+分区是同一产品的职责边界，不按图拆成七个服务，也不改变 required 模块或已有业务能力。
+
+| 分区 | 实际入口与约束 |
+| --- | --- |
+| 页面与宿主装配 | `apps/web/src/app/dashboard-modules.tsx` 装配静态模块，`dashboard-workspace.tsx` 组合页面；`features/*` 实现业务页面。 |
+| 接入与静态资源 | 现有反向代理、SPA 静态发布与 HTTP 路由保持兼容。 |
+| HTTP 与权限 | 各模块 Controller 处理协议和校验；业务服务的 guard/data-scope 继续复核，前端隐藏按钮不能代替服务端授权。 |
+| 功能模块 | 宿主模块和 `plugins/*` 以明确的 public API / SDK 协作，不导入其他模块的私有仓储。 |
+| 公共能力 | `common`、`modules` 提供宿主内开发契约；`plugins/PluginRuntime` 管理可信插件生命周期；事件、审计、密钥等能力由既有服务承担。 |
+| 数据存取 | Repository / Store 在业务事务中读写共享 PostgreSQL；迁移只向前演进，不修改已应用迁移的校验和。 |
+| 运行基础 | PostgreSQL、兼容旧文件的存储路由、隔离的 Office worker；Office 解析失败不能静默降级为宿主解析。 |
+
+动态页面的存储 `platform/modules/page-store.ts` 不导入宿主组合根。加载器 `plugin-loader.ts` 根据当前 script 对象识别每次加载，卸载、换 digest/version、失败和最后一个使用者退出时回收该次资源。旧脚本不能认领后续相同 ID 的加载。注册 ABI 保持 `(id, bundle)`；页面授权元数据优先采用当前已加载插件版本。静态插件 manifest 只作为预加载的目录元数据，不引入插件页面实现。
+
+宿主组合只初始化一次。开发热更新如重建组合根，应完整刷新页面；生产运行不动态重建静态宿主注册表。
+
+插件卸载先停止接收调用并排空，再撤销路由、资源、子容器和类加载器。每一步清理都必须尝试，异常在清理完毕后传播。PRESERVE 与 DELETE 的安装状态、图批准及成功记录在事务中一起提交；DELETE 额外删除声明的数据。提交前失败需要恢复已卸载实例，恢复失败时保持不可就绪。
+
+事件业务写入、消费副作用与 ACK 继续使用既有本地事务。当前消费者由宿主配置注册；不能假定任意动态插件子容器的 Consumer Bean 会自动热订阅。新增动态订阅机制需要另行设计卸载排空、恢复及无消费者语义。
+
+可执行检查包括 `pnpm test`、`pnpm typecheck`、`pnpm plugins:typecheck`、`pnpm build`、`python3 scripts/plugin_boundaries.py` 和 Java 单元/数据库测试。SDK 包含 8 个正式插件和 3 个样例的源边界检查；插件构建还拒绝通过相对路径导入宿主私有实现。可信插件仍与宿主同进程，这些约束不是安全沙箱。

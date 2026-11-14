@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
  * Deployment key ring. An absent ring disables secret operations, not unrelated platform features.
  */
 @Component
-public final class SecretKeys {
+public final class SecretKeys implements SecretCryptoPort {
     private static final Logger log = LoggerFactory.getLogger(SecretKeys.class);
     private final SecretCipher cipher;
 
@@ -57,5 +57,25 @@ public final class SecretKeys {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE, "secretKeyUnavailable");
         return cipher;
+    }
+
+    @Override
+    public String encrypt(String context, byte[] plaintext) {
+        return require().encrypt(context, plaintext);
+    }
+
+    @Override
+    public byte[] decrypt(String context, String envelope) {
+        return require().decrypt(context, envelope);
+    }
+
+    @Override
+    public String authenticate(String context, byte[] value) {
+        return require().authenticate(context, value);
+    }
+
+    @Override
+    public boolean matchesAuthentication(String context, byte[] value, String expected) {
+        return require().matchesAuthentication(context, value, expected);
     }
 }

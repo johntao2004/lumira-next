@@ -1,3 +1,7 @@
+/**
+ * 维护模块依赖顺序和插件存活状态，拒绝重名、循环依赖及核心模块对可停用模块的依赖。 Tracks module dependency order and plugin liveness,
+ * rejecting duplicate IDs, cycles and core-module dependencies on disableable modules.
+ */
 package com.lumira.platform.modules;
 
 import java.util.*;
@@ -78,7 +82,8 @@ public final class ModuleRegistry implements com.lumira.platform.common.ModuleCa
     }
 
     /**
-     * Validate the complete replacement before publishing; failed imports can restore the catalog.
+     * 在发布前校验完整替换集合，使导入失败时可恢复原有目录。 Validate the complete replacement before publishing; failed
+     * imports can restore the catalog.
      */
     public synchronized void replacePlugins(List<PlatformModule> replacements) {
         var current = catalog;

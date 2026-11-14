@@ -150,6 +150,13 @@ public final class AlipayGatewayAdapter implements PaymentGatewayPort {
         if (refundedFen != request.amountFen())
             throw new IllegalArgumentException(
                     "Alipay refund amount does not match the requested full refund");
+        // 未确认资金变化时继续查询同一退款号，受理成功不能直接当作退款完成。
+        // Query the same refund ID unless funds changed; acceptance alone is not completion.
+        String fundChange = AlipayJson.text(response, "fund_change");
+        if (fundChange == null || "N".equals(fundChange))
+            return new RefundResult(RefundState.PENDING, request.outRefundNo(), 0, null, "退款待确认");
+        if (!"Y".equals(fundChange))
+            throw new IllegalArgumentException("Alipay refund fund_change is invalid");
         return new RefundResult(
                 RefundState.SUCCESS,
                 request.outRefundNo(),

@@ -1,3 +1,8 @@
+/**
+ * 编排可信插件的恢复、装配、健康检查和安装卸载，以批准图、节点租约及调用排空协调运行状态，恢复失败时阻止业务流量。 Orchestrates trusted-plugin restoration,
+ * assembly, health checks and installation or removal using approved graphs, node leases and call
+ * draining, blocking business traffic when recovery fails.
+ */
 package com.lumira.platform.plugins;
 
 import com.lumira.platform.common.*;
@@ -36,7 +41,10 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import tools.jackson.databind.ObjectMapper;
 
-/** Every published extension has an owned, drainable context and database transaction fences. */
+/**
+ * 单实例编排器；每个已发布扩展都有归属明确、可排空在途调用的上下文。 Single-instance orchestrator. Every published extension has an
+ * owned, drainable context and database transaction fences.
+ */
 @Service
 public class PluginRuntime
         implements AutoCloseable,
@@ -112,7 +120,10 @@ public class PluginRuntime
     private record TrafficCheck(
             String revision, TrafficTransition transition, boolean ready, long nodeLeaseDeadline) {}
 
-    /** One servlet dispatch only: no cross-request or background-worker readiness cache. */
+    /**
+     * 仅限单次 Servlet 分发内有效，禁止跨请求或在后台线程缓存就绪状态。 One servlet dispatch only: no cross-request or
+     * background-worker readiness cache.
+     */
     final class TrafficScope implements AutoCloseable {
         private final TrafficScope previous;
         private final ModuleStateStore.Scope moduleScope;
@@ -131,6 +142,7 @@ public class PluginRuntime
             moduleScope.close();
             if (previous == null) trafficScope.remove();
             else {
+                // 嵌套分发可能观察到更新的插件图；禁止回填更早的就绪检查结果。
                 // A nested dispatch can observe a newer graph; do not restore an older result.
                 previous.check = null;
                 trafficScope.set(previous);
@@ -394,6 +406,7 @@ public class PluginRuntime
                                                     return PluginRuntime.class
                                                             .getClassLoader()
                                                             .loadClass(name);
+                                                // 宿主契约优先；插件也可以在自身 api 包中定义响应 DTO。
                                                 // Host contracts win; a plugin may also own
                                                 // response DTOs in its own api package.
                                                 if (name.startsWith("com.lumira.platform.")
@@ -436,6 +449,8 @@ public class PluginRuntime
                                     HttpStatus.BAD_REQUEST, "invalidPluginOperation");
                 };
         guard.requireGlobal(actor, permission);
+        if ("INSTALL".equals(kind))
+            com.lumira.platform.common.PlatformInstallAuthority.require(guard, actor);
     }
 
     private void requireLifecyclePermissions(String actor, Plan plan) {
@@ -491,9 +506,9 @@ public class PluginRuntime
                                                                 }
                                                             });
                                         } else restored = restoreUnderClusterLock();
+                                        // 仅在实际元数据事务提交后才对外发布流量。
                                         // Traffic is published only after the actual metadata
-                                        // transaction
-                                        // commits.
+                                        // transaction commits.
                                         loadedGraphRevision = Objects.requireNonNull(restored);
                                         ready = true;
                                         updateNodeState(true, loadedGraphRevision);
@@ -528,6 +543,7 @@ public class PluginRuntime
         clusterColdRecovery = false;
         trafficTransition = null;
         busy = false;
+        com.lumira.platform.common.NavigationMenuGrantAligner.alignHost(jdbc);
         artifactStore.initialize();
         recoverExpiredOperations();
         boolean bootstrap =
@@ -578,6 +594,7 @@ public class PluginRuntime
                 importArchive(Files.readAllBytes(p), 0);
             }
         }
+        // 运行版本由安装摘要确定，不由目录导入时间确定。
         // The installation digest, rather than catalog import time, selects the running
         // version.
         for (var installation : installationMap().values())
@@ -630,6 +647,7 @@ public class PluginRuntime
                     throw new IllegalStateException("Plugin restore failed: " + id, error);
                 }
             }
+        // Flyway 管理独立的插件初始化历史；切勿跨其连接持有恢复屏障，仅在最终引用校验与发布阶段获取。
         // Flyway owns independent plugin initialization history. Do not hold the recovery
         // barrier across its connections; take it only for final reference validation/publication.
         if (fixedGraph) verifyFixedReleaseCanPublish(removedProviders);
@@ -801,6 +819,7 @@ public class PluginRuntime
                         .orElse(null);
         if (priorApproval != null && !priorApproval.equals(revision()))
             throw conflict("pluginGraphApprovalMismatch");
+        // 同一个已批准插件图的水平扩容或冷替换不得重写元数据，也不得获取会与健康节点业务事务冲突的排他栅栏。
         // HPA/cold replacement of the same approved graph must neither rewrite metadata nor
         // acquire exclusive fences that would conflict with healthy nodes' business transactions.
         if (unchanged) return Set.of();
@@ -907,6 +926,7 @@ public class PluginRuntime
                 .filter(i -> i.installed() && !approved.containsKey(i.moduleId()))
                 .forEach(i -> removed.add(i.moduleId()));
         if (removed.isEmpty()) return Set.of();
+        // 使用已提交的旧插件图（包含同样被新镜像省略的依赖方）；省略条目不得将依赖链变成隐式级联卸载。
         // Use the committed old graph, including dependents also omitted by the new image.
         // Omission cannot turn a dependent chain into an implicit cascading uninstall.
         for (var row :
@@ -968,7 +988,9 @@ public class PluginRuntime
         var graph = graph();
         for (String id : roots) initial.addAll(graph.install(id));
         initial.removeIf(
-                id -> !artifacts.containsKey(id)); // Kernel dependencies are already present.
+                id ->
+                        !artifacts.containsKey(
+                                id)); // 内核依赖已存在，无需按插件导入 / Kernel dependencies are already present.
         return Set.copyOf(initial);
     }
 
@@ -1185,7 +1207,9 @@ public class PluginRuntime
     }
 
     /**
-     * Only publishes local state after commit; the heartbeat executor writes the node row later.
+     * 仅在事务提交后发布本地状态；节点记录稍后由心跳执行器写入。
+     *
+     * <p>Only publishes local state after commit; the heartbeat executor writes the node row later.
      */
     private void publishCommittedGraph(String committedRevision) {
         if (committedRevision == null) {
@@ -1495,7 +1519,10 @@ public class PluginRuntime
         return graphSnapshot().revision();
     }
 
-    /** Reads all revision inputs and its approval in one PostgreSQL statement snapshot. */
+    /**
+     * 在同一 PostgreSQL 语句快照中读取全部修订输入及其批准记录。 Reads all revision inputs and its approval in one
+     * PostgreSQL statement snapshot.
+     */
     private RuntimeGraphSnapshot graphSnapshot() {
         return graphSnapshot(Set.of());
     }
@@ -1537,6 +1564,7 @@ public class PluginRuntime
                 && cached != null
                 && cached.sig() != null
                 && !cached.sig().isEmpty()) {
+            // 在网络往返前启动单调截止计时；慢连接只能缩短已确认租约，绝不能将其延长超过数据库剩余心跳寿命。
             // Start the monotonic deadline before the round trip. A slow connection can shorten a
             // confirmed lease, never extend it past the database's remaining heartbeat lifetime.
             long queryStarted = System.nanoTime();
@@ -1562,6 +1590,7 @@ public class PluginRuntime
             }
             expectedSig = "";
         }
+        // 在网络往返前启动单调截止计时；慢连接只能缩短已确认租约，绝不能将其延长超过数据库剩余心跳寿命。
         // Start the monotonic deadline before the round trip. A slow connection can shorten a
         // confirmed lease, never extend it past the database's remaining heartbeat lifetime.
         long queryStarted = System.nanoTime();
@@ -1729,6 +1758,7 @@ public class PluginRuntime
         guard.requireGlobal(actor, PlatformPageId.MODULES.accessPermission());
         guard.requireGlobal(actor, PlatformOperation.MODULE_INSTALL.permission());
         if (activeNodeCount() > 1) throw conflict("pluginClusterLifecycleUnsupported");
+        com.lumira.platform.common.PlatformInstallAuthority.require(guard, actor);
         requireLifecycleChangeAllowed();
         return withClusterLifecycleLock(
                 () -> {
@@ -1743,6 +1773,7 @@ public class PluginRuntime
                                     status -> {
                                         try {
                                             var imported = importArchive(bytes, 0);
+                                            // 新导入的根插件必须可立即安装；已废弃且未安装的目录条目无需满足该约束。
                                             // Newly imported roots must be immediately installable;
                                             // obsolete, uninstalled catalog entries need not be.
                                             graph().install(imported);
@@ -1890,6 +1921,7 @@ public class PluginRuntime
                 } catch (IllegalArgumentException dependency) {
                     blockers.add(dependency.getMessage());
                 }
+                // 已安装的消费方不得在预检中掩盖残留业务引用；当图校验阻断该显式目标时保持移除列表为空。
                 // Installed consumers must not hide retained business references from preflight.
                 // Keep the removal list empty when graph validation blocks this explicit target.
                 if (installed(id)) referenceBlockers.addAll(configuredBlockers(id));
@@ -2333,6 +2365,7 @@ public class PluginRuntime
                     if (clusterJournal.blocksGraphChange()
                             || !snapshot.revision().equals(snapshot.approvedRevision()))
                         throw conflict("pluginGraphChanged");
+                    // 当前节点在自身租约过期期间错过了后续变更；仅能从当前已批准插件图重建，绝不能发布更旧的终态快照。
                     // This node missed a successor while its own lease was expired. Rebuild only
                     // from the current approved graph, never publish the older terminal snapshot.
                     ready = false;
@@ -2357,7 +2390,10 @@ public class PluginRuntime
         }
     }
 
-    /** Artifact initialization is read-only with respect to the shared graph and its approval. */
+    /**
+     * 工件初始化相对于共享插件图及其批准状态严格只读。 Artifact initialization is read-only with respect to the shared
+     * graph and its approval.
+     */
     private void hydrateClusterArtifacts(
             ClusterOperationJournal.Operation operation, boolean includeDecision) throws Exception {
         artifactStore.initialize();
@@ -2388,7 +2424,10 @@ public class PluginRuntime
         registerCatalog();
     }
 
-    /** Cold recovery must load every enabled installed module before admitting any traffic. */
+    /**
+     * 冷恢复必须在准入任何请求流量前加载全部已启用且已安装的模块。 Cold recovery must load every enabled installed module before
+     * admitting any traffic.
+     */
     private void reconcileClusterGraph(
             ClusterOperationJournal.Operation operation, boolean includeDecision) throws Exception {
         hydrateClusterArtifacts(operation, includeDecision);
@@ -2447,6 +2486,7 @@ public class PluginRuntime
                                 lifecycleCommitted.set(true);
                                 publishCommittedGraph(completedRevision);
                             } else {
+                                // 移除任何提供方前，先排空所有受影响句柄的在途调用。
                                 // Drain all affected handles before removing any provider.
                                 for (String id : plan.remove()) drain(id);
                                 if (!makePlan(plan.moduleId(), plan.kind(), plan.dataMode())
@@ -2476,6 +2516,7 @@ public class PluginRuntime
                         return null;
                     });
         } catch (Throwable error) {
+            // 已提交的插件图即具有权威性，即便后续本地发布失败，也绝不能按准备失败予以回滚。
             // A committed graph is authoritative even if local publication subsequently fails.
             // Never undo it as though preparation had failed.
             if (lifecycleCommitted.get()) {
@@ -2597,6 +2638,7 @@ public class PluginRuntime
                             }
                         }
                         if (restoreRemovedResources) {
+                            // 失败事务释放生命周期锁后，其他节点可能已修改模块图；仅当旧图仍是此运行时唯一批准图时才重新加载。
                             // A peer may have changed the graph after the failed transaction
                             // released its lifecycle lock. Only reload the old graph if it is
                             // still the sole approved graph in this runtime.
@@ -2632,6 +2674,7 @@ public class PluginRuntime
                                             "Plugin permission catalog refresh failed",
                                             catalogError);
                         }
+                        // 排空失败时，恢复所有仍已发布句柄的调用准入。
                         // Failed draining restores admission on all still-published handles.
                         handles.values()
                                 .forEach(
@@ -2646,7 +2689,8 @@ public class PluginRuntime
     }
 
     /**
-     * Publish one durable graph: installation, flags, catalog, audit and operation commit together.
+     * 原子提交并发布一份持久化插件图：安装记录、启用标记、目录、审计与操作状态一并提交。 Publish one durable graph: installation, flags,
+     * catalog, audit and operation commit together.
      */
     private String commitLifecycleOperation(String actor, UUID op, Plan plan) {
         return tx.execute(
@@ -2656,6 +2700,7 @@ public class PluginRuntime
                     affected.addAll(plan.remove());
                     affected.add(plan.moduleId());
                     fenceLifecycle(affected);
+                    // 执行任何变更前先锁定持有者令牌；心跳不能复活已过期令牌，且全部工作完成后会再次核对挂钟时间。
                     // Lock the owner token before any mutation. A heartbeat cannot revive an
                     // expired token, and completion checks wall time again after all work.
                     var owned =
@@ -2817,6 +2862,7 @@ public class PluginRuntime
                                 publishCommittedGraph(committedRevision.get());
                                 return changed;
                             } catch (Exception failure) {
+                                // 持久化发布失败会完整保留原有标记与版本；仅恢复运行时资源，不写入补偿状态变更。
                                 // Failed durable publication leaves the previous flags and versions
                                 // intact. Restore resources, without a compensating state mutation.
                                 try {
@@ -2941,12 +2987,21 @@ public class PluginRuntime
             for (var p : mappings)
                 if (mapping.getHandlerMethods().containsKey(p.mapping()))
                     throw conflict("pluginEndpointConflict");
+            // 只执行前向迁移，每个插件使用独立的迁移历史表。
             // Apply only forward migrations, with a distinct table per plugin.
             progress.accept("migrate " + id);
             Path migrations = a.directory().resolve("migrations");
-            if (Files.isDirectory(migrations))
-                PluginPermissionMigrationRunner.migrate(
-                        host.getBean(DataSource.class), id, migrations);
+            if (Files.isDirectory(migrations)) {
+                var migrationConnection =
+                        host.getBean(com.lumira.platform.common.DatabaseMigrationConnection.class);
+                try {
+                    PluginPermissionMigrationRunner.migrate(
+                            migrationConnection.source(), id, migrations);
+                } finally {
+                    migrationConnection.protectHistory(
+                            "plugin_" + id.replace('-', '_') + "_schema_history");
+                }
+            }
             progress.accept("health check " + id);
             entry.checkHealth();
             manager.startPlugin(id);
@@ -2988,18 +3043,13 @@ public class PluginRuntime
             registerNavigation(a.manifest());
             resources.start();
         } catch (Throwable e) {
-            for (var p : published) mappingProvider.getObject().unregisterMapping(p.mapping());
-            resources.close();
-            context.close();
-            try {
-                manager.stopPlugin(id);
-                manager.unloadPlugin(id);
-            } catch (Exception ignored) {
-            }
-            if (context.getClassLoader() instanceof PluginClassLoader)
-                PluginFrameworkCaches.release(host, context.getClassLoader());
             registry.live(id, false);
             handles.remove(id);
+            try {
+                release(id, published, resources, context);
+            } catch (Throwable cleanupError) {
+                e.addSuppressed(cleanupError);
+            }
             throw e;
         }
     }
@@ -3009,7 +3059,8 @@ public class PluginRuntime
         var contracts = new HashSet<Class<?>>();
         for (var dependency : manifest.dependencies()) {
             var provider = handles.get(dependency.id());
-            if (provider == null) continue; // Kernel contracts come from the parent context.
+            if (provider == null)
+                continue; // 内核契约由父级上下文提供 / Kernel contracts come from the parent context.
             for (var service :
                     provider.context.getBeansOfType(PluginServicePort.class).entrySet().stream()
                             .filter(bean -> !bean.getKey().startsWith("__lumiraDependency."))
@@ -3094,7 +3145,10 @@ public class PluginRuntime
         R call(T service) throws Throwable;
     }
 
-    /** Both dependency proxies and kernel adapters use the same transaction-aware drain lease. */
+    /**
+     * 依赖服务代理与内核适配器共用同一套感知事务的排空租约机制。 Both dependency proxies and kernel adapters use the same
+     * transaction-aware drain lease.
+     */
     private <T, R> R withServiceLease(String owner, Class<T> contract, ServiceCall<T, R> call)
             throws Throwable {
         var current = handles.get(owner);
@@ -3341,6 +3395,13 @@ public class PluginRuntime
                         && !(legacyNavigationOwner(m, existing.get())
                                 && legacyNavigation(m, r, true)))
                     throw conflict("pluginRouteConflict");
+                if (m.id().equals(existing.get())) {
+                    com.lumira.platform.common.NavigationMenuGrantAligner.alignBuiltIn(
+                            jdbc,
+                            new com.lumira.platform.common.NavigationMenuGrantAligner.Desired(
+                                    r.id(), r.permission(), r.global()),
+                            m.id());
+                }
                 continue;
             }
             UUID parent =
@@ -3369,7 +3430,10 @@ public class PluginRuntime
         return owner.isEmpty() || "ai".equals(manifest.id()) && "platform".equals(owner);
     }
 
-    /** Adopt only pinned B52 built-in rows; preserve labels, layout, state and identity. */
+    /**
+     * 仅认领 B52 固定的内置菜单行；完整保留其标签、布局、状态与标识。 Adopt only pinned B52 built-in rows; preserve labels,
+     * layout, state and identity.
+     */
     private boolean legacyNavigation(
             PluginManifest manifest, PluginManifest.Route route, boolean adopt) {
         String knownId =
@@ -3458,12 +3522,33 @@ public class PluginRuntime
         var h = handles.remove(id);
         registry.live(id, false);
         if (h == null) return;
-        h.resources.close();
-        for (var p : h.mappings) mappingProvider.getObject().unregisterMapping(p.mapping());
-        h.context.close();
-        manager.stopPlugin(id);
-        manager.unloadPlugin(id);
-        PluginFrameworkCaches.release(host, h.context.getClassLoader());
+        release(id, h.mappings, h.resources, h.context);
+    }
+
+    /**
+     * 每项资源释放都必须尝试；回调失败不能让路由或类加载器继续存活。
+     *
+     * <p>Every release is attempted; a failed callback must not leave routes or a classloader live.
+     */
+    private void release(
+            String id,
+            List<Published> mappings,
+            PluginOwnedResources resources,
+            AnnotationConfigApplicationContext context)
+            throws Exception {
+        var actions = new ArrayList<AutoCloseable>();
+        for (var published : mappings)
+            actions.add(() -> mappingProvider.getObject().unregisterMapping(published.mapping()));
+        actions.add(resources);
+        actions.add(context::close);
+        actions.add(() -> manager.stopPlugin(id));
+        actions.add(() -> manager.unloadPlugin(id));
+        actions.add(
+                () -> {
+                    if (context.getClassLoader() instanceof PluginClassLoader)
+                        PluginFrameworkCaches.release(host, context.getClassLoader());
+                });
+        PluginCleanup.closeAll(actions);
     }
 
     public AutoCloseable acquire(String id) {
@@ -3637,7 +3722,10 @@ public class PluginRuntime
         return allowed[0];
     }
 
-    /** Legacy `authorities` retain any-of semantics; the additive all-of list is explicit. */
+    /**
+     * 旧 authorities 保留满足任一项的语义；新增的全部满足列表显式声明。 Legacy `authorities` retain any-of semantics; the
+     * additive all-of list is explicit.
+     */
     private static boolean ruleAllows(
             PluginManifest.Rule rule, Set<String> authorities, boolean authenticated) {
         return rule.signedCallback()
@@ -3735,6 +3823,7 @@ public class PluginRuntime
         if (a == null) return false;
         var rule = rulesFor(a).first(method, PluginHttpRuleIndex.requestPath(path));
         if (rule != null) {
+            // MVC 处理器已确立接口归属；其他插件更宽泛的公开规则既不能越权放行此控制器，也不应触发二次目录扫描。
             // The MVC handler has already established ownership. Another plugin's broader
             // public rule must not authorize this controller, nor trigger a second catalog
             // scan.

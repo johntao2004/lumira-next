@@ -1,3 +1,8 @@
+/**
+ * 为邮件短信共用加密负载、租约和重试状态机，将发送后结果未知的任务保留为不确定状态，避免自动重发造成重复投递。 Shares encrypted payload, lease and retry
+ * state across mail and SMS queues, retaining unknown post-send outcomes as uncertain instead of
+ * automatically risking duplicate delivery.
+ */
 package com.lumira.platform.communication;
 
 import com.lumira.platform.common.SecretKeys;
@@ -14,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Shared durable-delivery state machine for provider-specific queues.
+ * 服务商专用队列共用的持久化投递状态机；表名与载荷上下文由模块适配器提供并按标识符校验，请求值从不直接拼入 SQL，邮件与短信因此共享租约、隔离、重试及保留语义，同时保持各自载荷与网关类型私有。
+ *
+ * <p>Shared durable-delivery state machine for provider-specific queues.
  *
  * <p>The table name and payload context are supplied by module-owned adapters and validated as
  * identifiers. No request value is ever interpolated into the SQL. Mail and SMS therefore share the
@@ -62,7 +69,10 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
         return channel + ":" + id + ":payload";
     }
 
-    /** First enqueue wins; repeat IDs never replace an existing message or deadline. */
+    /**
+     * 以首次入队为准；重复标识不能替换已有消息或截止时间。 First enqueue wins; repeat IDs never replace an existing message
+     * or deadline.
+     */
     @Transactional
     public boolean enqueue(UUID id, P payload, int lifetimeSeconds) {
         Objects.requireNonNull(id, "id");
@@ -109,7 +119,7 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                         """
             WITH candidate AS (
               SELECT id FROM %s
-              WHERE state='PENDING' AND available_at<=now() AND expires_at>now() AND attempts<5
+              WHERE state='PENDING' AND available_at<=now() AND expires_at>clock_timestamp() AND attempts<5
               ORDER BY available_at,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
             ) UPDATE %s m SET state='LEASED',attempts=attempts+1,lease_token=:token,
               lease_until=now()+interval '2 minutes',updated_at=now()
@@ -121,14 +131,17 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                 .optional();
     }
 
-    /** Load before beginSending; no DB transaction surrounds subsequent provider IO. */
+    /**
+     * 在 beginSending 前加载数据；后续服务商 I/O 不包裹在数据库事务中。 Load before beginSending; no DB transaction
+     * surrounds subsequent provider IO.
+     */
     @Transactional(readOnly = true)
     public Optional<P> message(Claim claim) {
         Objects.requireNonNull(claim, "claim");
         return jdbc.sql(
                         "SELECT payload FROM "
                                 + table
-                                + " WHERE id=:id AND lease_token=:token AND state='LEASED' AND lease_until>now() AND expires_at>now()")
+                                + " WHERE id=:id AND lease_token=:token AND state='LEASED' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()")
                 .param("id", claim.id())
                 .param("token", claim.token())
                 .query(String.class)
@@ -144,25 +157,30 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                         });
     }
 
-    @Transactional
+    @Transactional(timeout = 5)
     public boolean beginSending(Claim claim) {
+        if (!lockClaim(claim, "LEASED")) return false;
         return jdbc.sql(
                                 "UPDATE "
                                         + table
-                                        + " SET state='SENDING',updated_at=now() WHERE id=:id AND lease_token=:token AND state='LEASED' AND lease_until>now() AND expires_at>now()")
+                                        + " SET state='SENDING',updated_at=now() WHERE id=:id AND lease_token=:token AND state='LEASED' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()")
                         .param("id", claim.id())
                         .param("token", claim.token())
                         .update()
                 == 1;
     }
 
-    /** Extend only the current worker's live lease; a lost lease fences completion. */
-    @Transactional
+    /**
+     * 只续期当前工作进程仍有效的租约；失去租约后禁止完成操作。 Extend only the current worker's live lease; a lost lease fences
+     * completion.
+     */
+    @Transactional(timeout = 5)
     public boolean renewLease(Claim claim) {
+        if (!lockClaim(claim, "SENDING")) return false;
         return jdbc.sql(
                                 "UPDATE "
                                         + table
-                                        + " SET lease_until=now()+interval '2 minutes',updated_at=now() WHERE id=:id AND lease_token=:token AND state='SENDING' AND lease_until>now() AND expires_at>now()")
+                                        + " SET lease_until=clock_timestamp()+interval '2 minutes',updated_at=now() WHERE id=:id AND lease_token=:token AND state='SENDING' AND lease_until>clock_timestamp() AND expires_at>clock_timestamp()")
                         .param("id", claim.id())
                         .param("token", claim.token())
                         .update()
@@ -181,9 +199,13 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                 == 1;
     }
 
-    /** Complete a provider attempt using the shared result names used by both gateways. */
-    @Transactional
+    /**
+     * 使用两个网关共享的结果名称完成一次服务商投递尝试。 Complete a provider attempt using the shared result names used by
+     * both gateways. Expired leases are not acknowledged; recovery marks them uncertain without
+     * retry. 租约过期不确认结果，保留记录供恢复为不确定，禁止盲目重发。
+     */
     protected boolean completeResult(Claim claim, String resultName) {
+        if (!lockClaim(claim, "SENDING")) return false;
         String target =
                 switch (Objects.requireNonNull(resultName, "resultName")) {
                     case "ACCEPTED" -> "ACCEPTED";
@@ -198,7 +220,7 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
               state=CASE WHEN :target='PENDING' THEN CASE WHEN expires_at<=now() THEN 'EXPIRED' WHEN attempts>=5 THEN 'FAILED' ELSE 'PENDING' END ELSE :target END,
               available_at=CASE WHEN :target='PENDING' THEN now()+least(960,60*power(2,attempts-1))*interval '1 second' ELSE available_at END,
               last_result=:result,lease_token=NULL,lease_until=NULL,updated_at=now()
-            WHERE id=:id AND lease_token=:token AND state='SENDING'
+            WHERE id=:id AND lease_token=:token AND state='SENDING' AND lease_until>clock_timestamp()
             """
                                         .formatted(table))
                         .param("target", target)
@@ -209,7 +231,26 @@ public abstract class DurableDeliveryStore<P> implements TerminalDeliveryQueue {
                 == 1;
     }
 
-    /** A worker may have died after provider submission; never requeue expired SENDING leases. */
+    // 先取得行锁，再用真实时间检查；锁等待和事务起点都不能延长租约。
+    // Lock first, then check wall-clock time; lock waits and transaction start must not extend
+    // leases.
+    private boolean lockClaim(Claim claim, String state) {
+        return jdbc.sql(
+                        "SELECT id FROM "
+                                + table
+                                + " WHERE id=:id AND lease_token=:token AND state=:state FOR UPDATE")
+                .param("id", claim.id())
+                .param("token", claim.token())
+                .param("state", state)
+                .query(java.util.UUID.class)
+                .optional()
+                .isPresent();
+    }
+
+    /**
+     * 工作进程可能在向服务商提交后崩溃；绝不将租约过期的 SENDING 记录重新入队。 A worker may have died after provider submission;
+     * never requeue expired SENDING leases.
+     */
     @Transactional
     public List<Recovery> recoverExpiredEntries() {
         return jdbc.sql(
